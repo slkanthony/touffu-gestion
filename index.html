@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Touffu Gestion — Stock & Prix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Berkshire+Swash&family=Questrial&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=20260902x">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+  <!-- Écran de connexion (mode Supabase uniquement) -->
+  <div id="loginScreen" class="login-wrap" style="display:none;">
+    <div class="login-card">
+      <div class="logo">Touffu <small>GESTION · STOCK & PRIX</small></div>
+      <div class="fg mt"><label>Email</label><input type="email" id="loginEmail" autocomplete="username"></div>
+      <div class="fg"><label>Mot de passe</label><input type="password" id="loginPass" autocomplete="current-password"></div>
+      <button class="btn-cta" id="loginBtn" style="width:100%;">Se connecter</button>
+      <p class="muted mt" id="loginMsg"></p>
+    </div>
+  </div>
+
+  <!-- Application -->
+  <div id="appScreen" class="app" style="display:none;">
+    <nav class="topnav" id="sideNav">
+      <div class="topnav-inner" id="topnavInner">
+        <div class="topnav-brand" onclick="App.toggleVisitMode()" title="Masquer / afficher les données sensibles"><span class="logo">Touffu</span><small>GESTION</small><span class="visit-eye" id="visitEye"></span></div>
+      </div>
+    </nav>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div id="scrollFab" class="scroll-fab" style="display:none;">
+    <button id="scrollUpBtn" title="Remonter en haut" onclick="window.scrollTo({top:0,behavior:'smooth'})">▲</button>
+    <button id="scrollDownBtn" title="Descendre en bas" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="js/config.js?v=20260902x"></script>
+  <script src="js/utils.js?v=20260902x"></script>
+  <script src="js/store.js?v=20260902x"></script>
+  <script src="js/pricing.js?v=20260902x"></script>
+
+  <script src="js/catalogue.js?v=20260902x"></script>
+  <script src="js/accessoires.js?v=20260902x"></script>
+  <script src="js/stock.js?v=20260902x"></script>
+  <script src="js/ventes.js?v=20260902x"></script>
+  <script src="js/paniers.js?v=20260902x"></script>
+  <script src="js/b2b.js?v=20260902x"></script>
+  <script src="js/woo.js?v=20260902x"></script>
+  <script src="js/params.js?v=20260902x"></script>
+  <script src="js/stats.js?v=20260902x"></script>
+  <script src="js/calc.js?v=20260902x"></script>
+  <script src="js/app.js?v=20260902x"></script>
+</body>
+</html>

@@ -1,0 +1,632 @@
+/* ============================================================
+   TOUFFU GESTION — Charte graphique Touffu Shop
+   Bleu nuit #133340 · Bleu gris #718096 · Caramel #a67153
+   Beige rosé #f2e6d8 · Polices : Berkshire Swash / Questrial / Quicksand
+   ============================================================ */
+:root {
+  --nuit: #133340;
+  --nuit-2: #0e2833;
+  --gris: #5c6a78;
+  --caramel: #a67153;
+  --caramel-2: #8a5a41;
+  --beige: #f2e6d8;
+  --creme: #fbf6ee;
+  --blanc: #fffdf9;
+  --ok: #4a7c59;
+  --alerte: #c0564a;
+  --warn: #b97a24;
+  --texte: #1c2b33;
+  --ombre: 0 1px 3px rgba(19, 51, 64, 0.06), 0 8px 20px rgba(19, 51, 64, 0.06);
+  --radius: 14px;
+
+  --card-bg: #ffffff;
+  --card-border: #e5d4c0;
+  --input-border: #d9c6b2;
+  --table-border: #d7c3ab;
+  --row-border: #ece0cf;
+  --th-bg: rgba(19, 51, 64, 0.035);
+}
+
+/* ---------- Thème sombre ---------- */
+:root[data-theme="dark"] {
+  --nuit-2: #060f13;
+  --gris: #8fa3b0;
+  --caramel-2: #d99a78;
+  --creme: #1c3846;
+  --blanc: #1f3d4b;
+  --texte: #eee3d3;
+  --card-bg: #1c3844;
+  --card-border: #2c4e5c;
+  --input-border: #3a5c6a;
+  --table-border: #3a5c6a;
+  --row-border: #2c4e5c;
+  --th-bg: rgba(0, 0, 0, 0.18);
+  --ombre: 0 1px 3px rgba(0, 0, 0, 0.25), 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+:root[data-theme="dark"] body { background: var(--nuit-2); }
+:root[data-theme="dark"] h1, :root[data-theme="dark"] h2, :root[data-theme="dark"] h3 { color: var(--beige); }
+:root[data-theme="dark"] .view-title h1 { color: #f2e6d8; }
+:root[data-theme="dark"] th, :root[data-theme="dark"] .prod-list-header { color: #b7c6cf; }
+:root[data-theme="dark"] .prod-list-header { background: #172e3a; }
+:root[data-theme="dark"] .tag { background: rgba(255, 255, 255, 0.05); color: var(--caramel-2); }
+:root[data-theme="dark"] .muted { color: #93a7b2; }
+:root[data-theme="dark"] .badge.ok { background: rgba(74, 124, 89, 0.28); color: #8fd6a4; }
+:root[data-theme="dark"] .badge.warn { background: rgba(185, 122, 36, 0.28); color: #f0b667; }
+:root[data-theme="dark"] .badge.bad { background: rgba(192, 86, 74, 0.3); color: #f29d92; }
+:root[data-theme="dark"] .badge.info { background: rgba(143, 163, 176, 0.22); color: #cfe0ea; }
+:root[data-theme="dark"] .badge.yellow { background: rgba(230, 190, 60, 0.22); color: #ecd27a; }
+:root[data-theme="dark"] .tag.dluo-warn { background: rgba(185, 122, 36, 0.2); }
+:root[data-theme="dark"] .tag.dluo-bad { background: rgba(192, 86, 74, 0.22); }
+:root[data-theme="dark"] .kpi, :root[data-theme="dark"] details.fold { background: var(--card-bg); border-color: var(--card-border); }
+:root[data-theme="dark"] tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
+:root[data-theme="dark"] tbody tr:hover td { background: rgba(166, 113, 83, 0.16); }
+:root[data-theme="dark"] .fold-body table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.02); }
+:root[data-theme="dark"] tbody tr + tr td[style*="padding-left"] { border-top-color: var(--row-border); }
+:root[data-theme="dark"] .btn-ghost { color: var(--texte); border-color: var(--input-border); }
+:root[data-theme="dark"] .btn-icon { color: #93a7b2; }
+:root[data-theme="dark"] .modal { background: var(--nuit-2); }
+:root[data-theme="dark"] .login-wrap { background: var(--nuit-2); }
+:root[data-theme="dark"] .login-card { background: #1c3844; }
+:root[data-theme="dark"] .login-card .logo { color: #f2e6d8; }
+:root[data-theme="dark"] .kpi .v,
+:root[data-theme="dark"] .tab-btn,
+:root[data-theme="dark"] details.fold > summary { color: #eee3d3; }
+/* KPI colorées : redonner de la couleur aux chiffres, pas juste du beige uniforme */
+:root[data-theme="dark"] .kpi.good .v { color: #6fcf8e; }
+:root[data-theme="dark"] .kpi.bad .v { color: #f2887a; }
+:root[data-theme="dark"] .kpi.warn .v { color: #f2b76a; }
+:root[data-theme="dark"] .kpi.info2 .v { color: #7fc4e8; }
+:root[data-theme="dark"] .kpi.info2 { border-left-color: #7fc4e8; }
+:root[data-theme="dark"] .badge.main-sup { background: #c98a63; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: 'Quicksand', sans-serif;
+  background: var(--beige);
+  color: var(--texte);
+  font-size: 15px;
+  line-height: 1.5;
+}
+h1, h2, h3 { color: var(--nuit); font-weight: 600; }
+th, .nav-item, button, label, .tab-btn { font-family: 'Questrial', sans-serif; }
+.num, td.num, .price { font-variant-numeric: tabular-nums; }
+
+/* ---------- Structure ---------- */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+.topnav {
+  background: var(--nuit); color: var(--beige);
+  position: sticky; top: 0; z-index: 80; flex-shrink: 0;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.topnav::-webkit-scrollbar { height: 3px; transition: height 0.2s; }
+.topnav::-webkit-scrollbar-thumb { background: var(--caramel); border-radius: 6px; opacity: 0.6; }
+.topnav:hover::-webkit-scrollbar { height: 10px; }
+.topnav:hover::-webkit-scrollbar-thumb { opacity: 1; }
+.topnav-inner {
+  display: flex; align-items: center; gap: 0;
+  max-width: 1760px; margin: 0 auto; padding: 0 clamp(12px, 3vw, 36px);
+}
+.topnav-brand {
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px 12px 0; flex-shrink: 0;
+  cursor: pointer; border-radius: 8px; position: relative;
+}
+.topnav-brand:hover { background: rgba(166,113,83,0.08); }
+.topnav-brand .visit-eye {
+  position: absolute; bottom: 2px; right: 6px;
+  font-size: .65rem; opacity: .3; pointer-events: none; line-height: 1;
+  color: var(--caramel);
+}
+body.visit-mode .topnav-brand .visit-eye { opacity: .75; }
+.topnav-brand .logo {
+  font-family: 'Berkshire Swash', cursive; font-size: 1.5rem; color: var(--beige); white-space: nowrap;
+}
+.topnav-brand small { font-family: 'Questrial'; font-size: 0.72rem; letter-spacing: 2px; color: var(--caramel); text-transform: uppercase; white-space: nowrap; }
+/* Conteneur des onglets : occupe tout l'espace entre le logo et l'état de sync et répartit
+   les onglets (space-evenly) pour une barre équilibrée ; si l'écran est trop étroit, les
+   onglets débordent et la barre défile horizontalement (.topnav overflow-x:auto). */
+.nav-items { display: flex; align-items: center; flex: 1 0 auto; justify-content: space-evenly; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 5px; padding: 10px 11px;
+  border-radius: 8px; color: var(--beige); text-decoration: none; cursor: pointer;
+  font-size: 0.88rem; border: none; background: none; white-space: nowrap; flex-shrink: 0;
+}
+.nav-item:hover { background: rgba(242, 230, 216, 0.1); }
+.nav-item.active { background: var(--caramel); color: #fff; }
+.nav-item .ico { width: 18px; text-align: center; font-size: 1.05rem; }
+.nav-item .lbl { }
+.topnav-inner .sync-state { font-size: 0.78rem; color: var(--gris); padding: 10px 12px; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
+.topnav-inner .sync-state.ok { color: #9dc3a8; }
+
+.main { flex: 1; padding: 22px clamp(12px, 3vw, 36px) 90px; max-width: 1760px; margin: 0 auto; width: 100%; min-width: 0; }
+.view-title { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.view-title h1 { font-family: 'Berkshire Swash', cursive; font-weight: 400; font-size: 1.9rem; }
+.view-title .sub { color: var(--gris); font-size: 0.9rem; }
+
+/* ---------- Cartes / tableaux ---------- */
+.card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--ombre); padding: 18px; margin-bottom: 18px; }
+.card h2 { font-size: 1.05rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.grid { display: grid; gap: 14px; }
+.grid.c2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid.c3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.grid.c4 { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+
+.kpi { background: var(--card-bg); border: 1px solid var(--card-border); border-left: 5px solid var(--caramel); border-radius: 12px; padding: 14px 16px; box-shadow: var(--ombre); }
+.kpi[onclick] { cursor: pointer; transition: transform 0.12s, filter 0.12s; }
+.kpi[onclick]:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.kpi.info2 { border-left-color: var(--nuit); }
+.kpi .v { font-size: 1.5rem; font-weight: 700; color: var(--nuit); font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: 0.78rem; color: var(--gris); text-transform: uppercase; letter-spacing: 0.5px; font-family: 'Questrial'; }
+.kpi.warn { border-left-color: var(--warn); }
+.kpi.bad { border-left-color: var(--alerte); }
+.kpi.good { border-left-color: var(--ok); }
+
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th { text-align: left; padding: 9px 10px; color: #4a5763; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; background: var(--th-bg); border-bottom: 2px solid var(--table-border); white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--row-border); vertical-align: middle; }
+tbody tr:nth-child(even) td { background: rgba(166, 113, 83, 0.05); }
+td.num, th.num { text-align: right; }
+td.col-name, th.col-name { text-align: center; }
+tbody tr:hover td { background: rgba(166, 113, 83, 0.11); }
+tr.dim { opacity: 0.55; }
+
+/* Étiquette kraft (signature) : lots, DLUO */
+.tag {
+  display: inline-block; background: var(--beige); border: 1px dashed var(--caramel);
+  color: var(--caramel-2); border-radius: 6px; padding: 1px 8px; font-size: 0.76rem;
+  font-family: 'Questrial'; white-space: nowrap;
+}
+.tag-active { background: var(--ok); color: #fff !important; border-color: var(--ok); border-style: solid; }
+:root[data-theme="dark"] .tag-active { background: var(--ok); color: #fff !important; border-color: var(--ok); }
+.tag.dluo-ok { border-color: var(--ok); color: var(--ok); }
+.tag.dluo-warn { border-color: var(--warn); color: var(--warn); background: #fdf3e3; }
+.tag.dluo-bad { border-color: var(--alerte); color: var(--alerte); background: #fbeae8; border-style: solid; }
+.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.74rem; font-family: 'Questrial'; }
+.badge.ok { background: #e4efe7; color: var(--ok); }
+.badge.warn { background: #fdf3e3; color: var(--warn); }
+.badge.bad { background: #fbeae8; color: var(--alerte); }
+.badge.info { background: #e3ebf0; color: var(--nuit); }
+.badge.main-sup { background: var(--caramel); color: #fff; }
+.sup-badges { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.sup-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 4px 10px; border-radius: 6px; font-size: 0.82rem; line-height: 1.3; white-space: nowrap; cursor: pointer; border: 1.5px solid transparent; transition: opacity .15s; }
+.sup-badge.main { background: var(--caramel); color: #fff; border-color: var(--caramel); cursor: pointer; }
+.sup-badge.alt { background: rgba(166, 113, 83, 0.12); color: var(--caramel-2); border-color: rgba(166, 113, 83, 0.3); }
+.sup-badge.alt:hover { background: rgba(166, 113, 83, 0.28); border-color: var(--caramel); }
+:root[data-theme="dark"] .sup-badge.alt { background: rgba(166, 113, 83, 0.15); color: #d9a07e; border-color: rgba(166, 113, 83, 0.35); }
+:root[data-theme="dark"] .sup-badge.alt:hover { background: rgba(166, 113, 83, 0.35); border-color: var(--caramel); }
+.badge.yellow { background: #fdf6d8; color: #8a6d1f; }
+
+/* ---------- Formulaires ---------- */
+label { display: block; font-size: 0.78rem; color: var(--gris); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+input, select, textarea {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--input-border); border-radius: 9px;
+  background: var(--blanc); color: var(--texte); font-family: 'Quicksand'; font-size: 0.92rem;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(166, 113, 83, 0.15); }
+/* Flèche de select redessinée en CSS pur : la flèche native du navigateur n'est pas toujours
+   centrée verticalement selon l'OS/le navigateur (remonté signalé par Antho). */
+select {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%23a67153' d='M5.5 8l4.5 5 4.5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 13px 13px;
+}
+select option:nth-child(even) { background: rgba(166, 113, 83, 0.08); }
+input[type="checkbox"] { width: auto; accent-color: var(--caramel); transform: scale(1.15); }
+.fg { margin-bottom: 12px; }
+.frow { display: flex; gap: 12px; flex-wrap: wrap; }
+.frow > * { flex: 1; min-width: 130px; }
+
+button, .btn {
+  cursor: pointer; border: none; border-radius: 10px; padding: 10px 16px;
+  font-size: 0.88rem; font-family: 'Questrial'; letter-spacing: 0.3px;
+  background: var(--nuit); color: var(--beige); transition: filter 0.15s, transform 0.1s;
+}
+button:hover { filter: brightness(1.15); }
+button:active { transform: scale(0.98); }
+.btn-cta { background: var(--caramel); color: #fff; }
+.btn-ok { background: var(--ok); color: #fff; }
+.btn-danger { background: var(--alerte); color: #fff; }
+.btn-ghost { background: transparent; color: var(--texte); border: 1px solid var(--input-border); }
+/* Bouton "ghost" sélectionné (ex: choix du mode de paiement dans Paniers) : caramel de la DA */
+.btn-ghost.active { background: var(--caramel); color: #fff; border-color: var(--caramel); font-weight: 600; }
+.btn-sm { padding: 5px 10px; font-size: 0.78rem; border-radius: 8px; }
+.btn-icon { background: none; color: var(--gris); padding: 4px 7px; font-size: 1rem; }
+.btn-icon:hover { color: var(--alerte); filter: none; }
+.btn-transfer {
+  color: #fff; font-weight: 700; font-size: 0.95rem; line-height: 1;
+  padding: 6px 10px; border-radius: 6px; margin-right: 2px;
+}
+
+.sku-input { width: 100%; min-width: 100px; font-family: 'Courier New', Consolas, monospace; font-size: 0.78rem; letter-spacing: -0.3px; box-sizing: border-box; }
+td:has(.sku-input) { min-width: 140px; }
+
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.toolbar .fg { margin: 0; flex: 1; min-width: 140px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab-btn { background: var(--creme); color: var(--nuit); border: 1px solid var(--input-border); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; text-decoration: none; cursor: pointer; display: inline-block; }
+.tab-btn.active { background: var(--caramel); color: #fff; border-color: var(--caramel); font-weight: 600; }
+
+/* ---------- Détails repliables ---------- */
+details.fold { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; box-shadow: var(--ombre); }
+details.fold > summary {
+  cursor: pointer; padding: 13px 16px; display: flex; align-items: center; gap: 10px;
+  list-style: none; font-weight: 600; color: var(--nuit); flex-wrap: wrap;
+}
+details.fold > summary::-webkit-details-marker { display: none; }
+/* height fixe + flex interne : centre le glyphe ▸ dans sa propre boîte au lieu de compter sur sa
+   ligne de base (le triangle Unicode n'est pas centré verticalement dans sa police par défaut,
+   ce qui le fait paraître décalé vers le haut par rapport au nom du produit à côté). */
+details.fold > summary::before {
+  content: '▸'; color: var(--caramel); transition: transform 0.2s;
+  display: inline-flex; align-items: center; justify-content: center; height: 14px; line-height: 1;
+}
+details.fold[open] > summary::before { transform: rotate(90deg); }
+details.fold .fold-body { padding: 4px 16px 16px; border-top: 1px solid var(--row-border); }
+summary .spacer { flex: 1; }
+summary .meta { font-size: 0.8rem; color: var(--gris); font-weight: 400; }
+summary .prod-actions { display: flex; gap: 2px; justify-self: end; }
+
+/* Liste produits Stock : colonnes fixes alignées (nom/catégorie/stock/actions) + en-tête triable.
+   Le chevron ▸ est sorti du flux (position:absolute) pour ne pas décaler les colonnes de la grille :
+   sans ça, le pseudo-élément ::before compte comme un item de grille en plus et décale tout d'une colonne. */
+.prod-list-header, details.fold.prod-fold > summary {
+  display: grid; grid-template-columns: minmax(180px, 2fr) 140px 150px 1fr 120px; gap: 10px; align-items: center;
+}
+details.fold.prod-fold > summary { position: relative; padding: 13px 16px 13px 30px; }
+details.fold.prod-fold > summary::before { position: absolute; left: 16px; top: 50%; margin-top: -7px; }
+details.fold.prod-fold[open] > summary::before { transform: rotate(90deg); margin-top: -6px; }
+details.fold.prod-fold > summary .type-col { text-align: center; }
+.prod-list-header {
+  padding: 10px 16px 10px 30px; margin-bottom: 6px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px;
+  color: #4a5763; background: var(--th-bg); border-bottom: 2px solid var(--table-border);
+  border-radius: var(--radius) var(--radius) 0 0; font-family: 'Questrial';
+}
+.sortable { cursor: pointer; }
+.sortable.active { color: var(--caramel); font-weight: 700; }
+.prod-list-header .prod-actions { justify-self: end; }
+/* Liste Catalogue (Prix mastication) : mêmes colonnes alignées + en-tête triable
+   que Stock, mais 4 colonnes différentes (pas d'icônes d'action dans la ligne
+   ici — Modifier/Supprimer sont dans le corps déplié) : Nom / Viande /
+   Fournisseur principal / Variantes-base. Spécificité (3 classes) volontairement
+   plus élevée que `.prod-fold` seul pour ne remplacer que grid-template-columns. */
+
+details.fold.prod-fold.cat-fold > summary,
+.prod-list-header.cat-header {
+  grid-template-columns: minmax(180px, 2fr) 130px 100px minmax(120px, 1.5fr) 1fr 130px 115px;
+}
+.prod-list-header.acc-header,
+details.fold.prod-fold.acc-fold > summary {
+  grid-template-columns: minmax(180px, 2fr) 110px 110px 90px 90px;
+}
+details.fold.acc-fold.acc-critical { border-left: 4px solid var(--alerte) !important; background: rgba(192, 86, 74, 0.12) !important; box-shadow: inset 0 0 0 1px rgba(192, 86, 74, 0.35); }
+:root[data-theme="light"] details.fold.acc-fold.acc-critical { background: rgba(192, 86, 74, 0.08) !important; }
+details.fold.cat-fold.cat-selected { border-left: 4px solid var(--caramel) !important; background: #3d2a1a !important; box-shadow: inset 0 0 0 1px rgba(166,113,83,0.5); }
+:root[data-theme="light"] details.fold.cat-fold.cat-selected { background: rgba(166,113,83,0.15) !important; box-shadow: inset 0 0 0 1px rgba(166,113,83,0.35); }
+.cat-sel-active { background: var(--caramel) !important; color: #fff !important; border-color: var(--caramel) !important; }
+.cat-sel-bar {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; padding: 12px 24px;
+  background: var(--card-bg); border: 2px solid var(--caramel); border-radius: var(--radius);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 50;
+}
+.cat-sel-count { font-weight: 600; color: var(--caramel); white-space: nowrap; }
+
+/* ---------- Liste B2B : grille alignée (Nom / Alertes / Viande / Fournisseur / Décote) ---------- */
+details.fold.b2b-fold > summary,
+.prod-list-header.b2b-list-header {
+  display: grid; grid-template-columns: minmax(180px, 2fr) 130px 100px minmax(120px, 1.5fr) 165px; gap: 10px; align-items: center;
+}
+details.fold.b2b-fold > summary { position: relative; padding: 10px 16px 10px 30px; }
+details.fold.b2b-fold > summary::before { position: absolute; left: 16px; top: 50%; margin-top: -7px; }
+details.fold.b2b-fold[open] > summary::before { transform: rotate(90deg); margin-top: -6px; }
+.b2b-name { font-weight: 600; }
+/* Tables internes B2B (mastication ET accessoires) : les 10 colonnes + le `th`
+   global en `white-space:nowrap` rendaient la table plus large que la page →
+   barre de défilement horizontale inutile (surtout côté accessoires dont la 1re
+   colonne "Prix de vente" est plus large que "Variante"). On autorise le retour
+   à la ligne des en-têtes UNIQUEMENT ici : la table rétrécit et tient sans scroll
+   sur écran normal, les deux onglets restant visuellement identiques. */
+details.fold.b2b-fold .fold-body table th { white-space: normal; }
+/* Widget "Réduction B2B (%)" global (haut de page) — prominent, style ancienne appli */
+.b2b-global-disc {
+  background: rgba(166, 113, 83, 0.12); border: 1.5px solid var(--caramel);
+  border-radius: 12px; padding: 10px 16px; display: inline-flex; flex-direction: column; gap: 6px; min-width: 160px;
+}
+.b2b-global-disc > label { font-size: 0.72rem; font-weight: 700; color: var(--caramel); text-transform: uppercase; letter-spacing: 0.6px; }
+.b2b-global-disc-input { display: flex; align-items: center; gap: 8px; }
+.b2b-global-disc-input input {
+  width: 72px; text-align: center; font-weight: 700; font-size: 1.5rem;
+  background: var(--nuit); color: var(--beige); border: none; border-radius: 8px; padding: 4px 8px;
+}
+.b2b-global-disc-input > span { font-size: 1.2rem; font-weight: 700; color: var(--gris); }
+
+/* Badge décote par produit (dans la grille) */
+.b2b-disc-badge {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+  border: 1.5px solid var(--caramel); border-radius: 8px; padding: 3px 10px; cursor: default;
+}
+.b2b-disc-badge > label { font-size: 0.72rem; color: var(--caramel); font-weight: 700; cursor: default; }
+.b2b-disc-badge > input {
+  width: 46px; text-align: center; font-weight: 700; font-size: 0.9rem;
+  background: var(--nuit); color: var(--beige); border: none; border-radius: 5px; padding: 2px 5px;
+}
+.b2b-disc-badge > span { font-size: 0.82rem; color: var(--caramel); font-weight: 700; }
+.num-decote { color: var(--caramel); font-weight: 600; font-size: 0.82rem; }
+:root[data-theme="dark"] .num-decote { color: var(--caramel-2); }
+.num-decote-eff { color: #e0a040; font-weight: 600; font-size: 0.82rem; font-style: italic; }
+:root[data-theme="dark"] .num-decote-eff { color: #f0b860; }
+
+/* Calculateur de quantité (page 🧮) */
+.calc-ratio { margin-top: 10px; font-size: 0.95rem; color: var(--gris); }
+.calc-ratio b { color: var(--caramel); font-size: 1.1rem; }
+.calc-result { margin-top: 14px; padding: 22px 16px; text-align: center; border-radius: 14px;
+  background: linear-gradient(135deg, rgba(166,113,83,0.14), rgba(166,113,83,0.05)); border: 1px solid rgba(166,113,83,0.28); }
+.calc-result-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gris); }
+.calc-result-value { font-size: 3.1rem; font-weight: 700; line-height: 1.1; color: var(--caramel); margin: 4px 0; }
+.calc-result-unit { font-size: 1rem; color: var(--gris); }
+.calc-result-sub { font-size: 0.82rem; margin-top: 8px; }
+/* Calculateur — réglage du mode par catégorie (2 colonnes déplaçables) */
+.calc-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.calc-col { border: 1px solid var(--row-border); border-radius: 12px; padding: 12px 14px; }
+.calc-col h4 { margin: 0 0 8px; font-size: 0.95rem; }
+.calc-chip { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(166,113,83,0.07); border: 1px solid var(--row-border); border-radius: 8px; padding: 7px 12px; margin-top: 6px; font-weight: 500; }
+.calc-chip .btn-icon.calc-move { font-size: 1.15rem; line-height: 1; color: var(--caramel); flex: 0 0 auto; }
+.calc-chip .btn-icon.calc-move:hover { color: var(--caramel-2); }
+@media (max-width: 700px) { .calc-cols { grid-template-columns: 1fr; } }
+/* B2B — sélection de produits pour l'export « Spécial commercial » */
+.b2b-selrow { display: flex; align-items: flex-start; gap: 10px; }
+.b2b-selrow > details { flex: 1 1 auto; min-width: 0; }
+.b2b-selrow > .b2b-selbox { margin-top: 15px; }
+.b2b-selrow-head { display: flex; align-items: center; gap: 10px; }
+.b2b-selrow-head > .prod-list-header { flex: 1 1 auto; margin: 0; }
+.b2b-selbox { width: 18px; height: 18px; flex: 0 0 auto; cursor: pointer; accent-color: var(--caramel); }
+@media (max-width: 860px) { .b2b-selrow-head { display: none; } }
+/* Case « assujetti à la TVA » — encadré bien visible */
+.vat-toggle { display: flex; gap: 9px; align-items: flex-start; margin-top: 12px; padding: 8px 12px; border: 1px solid var(--row-border); border-radius: 8px; background: rgba(166,113,83,0.05); cursor: pointer; text-transform: none; }
+.vat-toggle:hover { border-color: var(--caramel); }
+.vat-toggle.on { border-color: var(--caramel); background: rgba(166,113,83,0.13); }
+.vat-toggle input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--caramel); cursor: pointer; }
+.vat-toggle-txt { line-height: 1.4; font-size: 0.85rem; }
+
+@media (max-width: 860px) {
+  .prod-list-header { display: none; }
+  details.fold.prod-fold > summary { display: flex; flex-wrap: wrap; position: static; padding: 13px 16px; }
+  details.fold.prod-fold > summary::before { position: static; margin-top: 0; }
+  details.fold.b2b-fold > summary { display: flex; flex-wrap: wrap; position: static; padding: 13px 16px; }
+  details.fold.b2b-fold > summary::before { position: static; margin-top: 0; }
+}
+
+/* ---------- Mode marché (ventes) ---------- */
+.cart { position: sticky; bottom: 70px; background: var(--nuit); color: var(--beige); border-radius: var(--radius); padding: 14px 16px; box-shadow: 0 6px 20px rgba(19,51,64,.35); }
+.cart .line { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 0.9rem; }
+.cart .line .nm { flex: 1; }
+.cart .tot { font-size: 1.35rem; font-weight: 700; }
+
+/* ---------- Divers ---------- */
+.muted { color: var(--gris); font-size: 0.85rem; }
+.right { text-align: right; }
+.mt { margin-top: 14px; } .mb0 { margin-bottom: 0; }
+.pos { color: var(--ok); font-weight: 600; } .neg { color: var(--alerte); font-weight: 600; }
+.warn-txt { color: var(--warn); font-weight: 600; }
+.num-marge { color: var(--ok); font-weight: 600; }
+.num-cotis { color: var(--alerte); font-weight: 600; }
+.num-benef { color: var(--caramel); font-weight: 600; }
+:root[data-theme="dark"] .num-benef { color: var(--caramel-2); }
+.cp-var-title { font-size: .85rem; margin: 16px 0 6px; color: var(--caramel); display: flex; align-items: center; gap: 6px; }
+.cp-var-table .v-num { width: 62px; }
+.cp-var-table input.v-num[type="text"], .cp-var-table input.v-num:not([type="number"]) { width: 78px; }
+.cp-var-table .v-price { width: 78px; font-weight: 600; text-align: right; }
+.cp-var-table .mini-coeff { margin-top: 4px; font-size: .7rem; color: var(--gris); }
+.cp-var-table .mini-coeff input { width: 68px; font-size: .78rem; padding: 2px 4px; margin-left: 4px; }
+.mini-reorder { display: flex; gap: 2px; margin-top: 4px; }
+.mini-reorder .btn-icon { padding: 2px 5px; font-size: .8rem; }
+.empty { text-align: center; padding: 40px 20px; color: var(--gris); }
+.empty .big { font-size: 2.2rem; display: block; margin-bottom: 8px; }
+hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 0; }
+
+#toast {
+  position: fixed; right: 20px; bottom: 20px; transform: translateY(20px);
+  background: var(--nuit); color: var(--beige); padding: 11px 16px; border-radius: 14px;
+  opacity: 0; pointer-events: none; transition: all 0.25s; z-index: 200; font-size: 0.9rem;
+  box-shadow: 0 6px 18px rgba(19,51,64,.4); max-width: 90vw;
+  display: flex; align-items: center; gap: 12px;
+}
+#toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#toast.err { background: var(--alerte); color: #fff; }
+#toast .toast-undo { background: transparent; border: 1px solid var(--beige); color: var(--beige); padding: 4px 12px; border-radius: 8px; font-size: 0.82rem; white-space: nowrap; flex-shrink: 0; }
+#toast .toast-undo:hover { background: rgba(255,255,255,.12); }
+#toast.err .toast-undo { border-color: #fff; color: #fff; }
+@media (max-width: 860px) { #toast { bottom: 78px; right: 10px; }
+  .cat-sel-bar { bottom: 78px; left: 10px; right: 10px; transform: none; flex-wrap: wrap; justify-content: center; padding: 10px 14px; gap: 8px; }
+}
+
+/* Modale */
+/* Coût / unité : bloc fusionné prix / quantité */
+.cost-split { display: inline-flex; align-items: center; border: 1px solid var(--input-border); border-radius: 9px; overflow: hidden; background: var(--blanc); }
+.cost-split input { border: none; background: transparent; text-align: center; width: 60px; padding: 6px 4px; font-size: .85rem; color: var(--texte); font-family: 'Quicksand'; outline: none; }
+.cost-split input:focus { background: rgba(166,113,83,0.08); }
+.cost-split-sep { color: var(--gris); font-weight: 600; padding: 0 2px; user-select: none; flex-shrink: 0; }
+
+/* Tableau matières : colonnes alignées avec les en-têtes */
+.mat-table { table-layout: fixed; width: 100%; }
+.mat-table th:nth-child(3), .mat-table td:nth-child(3),
+.mat-table th:nth-child(4), .mat-table td:nth-child(4),
+.mat-table th:nth-child(5), .mat-table td:nth-child(5) { text-align: center; }
+.mat-table td { overflow: hidden; text-overflow: ellipsis; }
+.mat-table td:last-child { overflow: visible; text-overflow: clip; }
+.mat-table td:nth-child(4) input,
+.mat-table td:nth-child(5) input { width: 70px; text-align: center; }
+
+.acc-inline-input { width: 80px; padding: 5px 8px; text-align: right; font-size: .92rem; border: 1px solid var(--input-border); border-radius: 8px; background: var(--blanc); color: var(--texte); font-family: 'Quicksand'; }
+.acc-inline-input:focus { outline: 2px solid var(--caramel); outline-offset: -1px; background: var(--blanc); }
+
+/* Date picker enrichi (DLUO) */
+.date-picker-wrap { position: relative; }
+.date-picker-wrap input[type="date"] {
+  font-size: 1rem; padding: 10px 12px; font-weight: 600;
+  color-scheme: dark;
+}
+:root:not([data-theme="dark"]) .date-picker-wrap input[type="date"] { color-scheme: light; }
+:root[data-theme="light"] .date-picker-wrap input[type="date"] { color-scheme: light; }
+.date-preview {
+  display: block; font-size: 0.82rem; margin-top: 4px; min-height: 1.2em;
+  color: var(--caramel-2); font-weight: 500;
+}
+.date-preview.date-past { color: var(--alerte); font-weight: 600; }
+.date-preview.date-soon { color: #c97a1a; }
+.date-quick-btns {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+}
+.btn-date-quick {
+  padding: 5px 10px; font-size: 0.75rem; border-radius: 16px;
+  background: rgba(166, 113, 83, 0.12); color: var(--caramel-2);
+  border: 1px solid rgba(166, 113, 83, 0.25); cursor: pointer;
+  font-family: 'Quicksand'; font-weight: 600; letter-spacing: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-date-quick:hover {
+  background: var(--caramel); color: #fff; border-color: var(--caramel);
+}
+
+.modal-bg { position: fixed; inset: 0; background: rgba(19,51,64,.55); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.modal { background: var(--creme); border-radius: var(--radius); padding: 20px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; }
+.modal h2 { margin-bottom: 14px; }
+.modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+
+/* Login */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--nuit); padding: 16px; }
+.login-card { background: var(--creme); border-radius: 18px; padding: 34px 30px; width: 100%; max-width: 380px; text-align: center; }
+.login-card .logo { font-family: 'Berkshire Swash'; font-size: 2.3rem; color: var(--nuit); }
+.login-card .logo small { display: block; font-family: 'Questrial'; font-size: 0.7rem; letter-spacing: 3px; color: var(--caramel); }
+
+/* ---------- Bouton flottant : remonter / descendre ---------- */
+.scroll-fab { position: fixed; right: 18px; bottom: 90px; z-index: 95; display: flex; flex-direction: column; gap: 10px; }
+.scroll-fab button {
+  width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--caramel); color: #fff;
+  font-size: 1.05rem; box-shadow: var(--ombre); display: flex; align-items: center; justify-content: center;
+}
+.scroll-fab button.hidden { display: none; }
+
+/* ---------- Mobile ---------- */
+@media (max-width: 860px) {
+  .topnav { padding: 0 6px; }
+  .topnav-brand { padding: 10px 8px 10px 2px; }
+  .topnav-brand .logo { font-size: 1.2rem; }
+  .nav-item { padding: 10px 10px; font-size: 0.85rem; gap: 5px; }
+  .nav-item .lbl { display: none; }
+  .nav-item .ico { font-size: 1.25rem; }
+  .main { padding-bottom: 40px; }
+  .view-title h1 { font-size: 1.5rem; }
+  td, th { padding: 7px 6px; }
+  .cart { bottom: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media print {
+  .topnav, .toolbar, .tabs, button, #toast { display: none !important; }
+  .main { padding: 0; max-width: none; }
+  .card { box-shadow: none; border: 1px solid #ccc; }
+  tr.excluded-from-print, .no-print { display: none !important; }
+}
+
+/* ---------- Multi-sélection (filtres à cocher) ---------- */
+.multiselect { position: relative; display: block; width: 100%; }
+.multiselect > summary {
+  cursor: pointer; list-style: none; padding: 9px 11px; border: 1px solid var(--input-border);
+  border-radius: 9px; background: var(--blanc); font-size: 0.92rem; color: var(--texte);
+}
+.multiselect > summary::-webkit-details-marker { display: none; }
+.multiselect-panel {
+  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--blanc); border: 1px solid var(--input-border); border-radius: 9px;
+  box-shadow: var(--ombre); padding: 8px 10px; max-height: 260px; overflow-y: auto;
+}
+.meat-filter .multiselect-panel { max-height: 420px; }
+.ms-opt { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 0.86rem; text-transform: none; letter-spacing: 0; cursor: pointer; border-radius: 4px; }
+.multiselect-panel .ms-opt:nth-child(even) { background: rgba(166, 113, 83, 0.06); }
+.ms-opt:hover { background: rgba(166, 113, 83, 0.10); }
+.multiselect-panel .ms-opt:nth-child(even):hover { background: rgba(166, 113, 83, 0.14); }
+.ms-group { border-bottom: 1px solid var(--row-border); padding-bottom: 4px; margin-bottom: 4px; }
+.ms-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.ms-group > summary { list-style: none; }
+.ms-group > summary::-webkit-details-marker { display: none; }
+.ms-group > summary::before { content: '▸'; display: inline-block; width: 14px; font-size: .7rem; transition: transform .15s; }
+.ms-group[open] > summary::before { transform: rotate(90deg); }
+
+/* ---------- Groupes sachet/blister (Paramètres) ---------- */
+.sachet-group { border: 1px solid var(--row-border); border-radius: 8px; padding: 0 12px 8px; }
+.sachet-group > summary { list-style: none; }
+.sachet-group > summary::-webkit-details-marker { display: none; }
+.sachet-group > summary::before { content: '▸'; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: .8rem; color: var(--caramel); transition: transform .15s; margin-right: 4px; }
+.sachet-group[open] > summary::before { transform: rotate(90deg); }
+
+/* ---------- Filtre DLUO custom dropdown ---------- */
+.dluo-filter > summary .badge { font-size: 0.82rem; }
+.dluo-opt { padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 0.88rem; }
+.dluo-opt:hover { background: rgba(166, 113, 83, 0.12); }
+.dluo-opt.active { font-weight: 600; }
+.dluo-opt .badge { font-size: 0.82rem; }
+/* Alternance de couleur (zebra) — normalisée sur tous les menus/listes */
+.dluo-opt:nth-child(even) { background: rgba(166, 113, 83, 0.06); }
+.dluo-opt:nth-child(even):hover { background: rgba(166, 113, 83, 0.14); }
+
+/* ---------- Autocomplete ---------- */
+.autocomplete { position: relative; }
+.ac-list {
+  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--blanc); border: 1px solid var(--input-border); border-radius: 9px;
+  box-shadow: var(--ombre); max-height: 240px; overflow-y: auto;
+}
+.ac-item { padding: 8px 11px; cursor: pointer; font-size: 0.88rem; }
+.ac-item:hover { background: rgba(166, 113, 83, 0.12); }
+.ac-item:nth-child(even) { background: rgba(166, 113, 83, 0.06); }
+.ac-item:nth-child(even):hover { background: rgba(166, 113, 83, 0.14); }
+
+/* ---------- Page Paramètres : contenu centré, titres plus grands ---------- */
+details.fold.params-fold > summary {
+  justify-content: center; position: relative;
+  padding: 16px 40px;
+}
+details.fold.params-fold > summary::before {
+  position: absolute; left: 16px; top: 50%; margin-top: -7px;
+}
+details.fold.params-fold > summary h2 {
+  font-size: clamp(1.15rem, 1.8vw, 1.45rem); margin-bottom: 0;
+}
+details.fold.params-fold > summary .muted {
+  font-size: clamp(0.82rem, 1.2vw, 0.95rem);
+}
+details.fold.params-fold .fold-body { text-align: center; }
+details.fold.params-fold .fold-body .grid { text-align: left; }
+details.fold.params-fold .fold-body .table-wrap { text-align: left; }
+details.fold.params-fold .fold-body .frow { justify-content: center; }
+.card.params-card { text-align: center; }
+.card.params-card h2 { font-size: clamp(1.15rem, 1.8vw, 1.45rem); }
+.card.params-card .table-wrap { text-align: left; }
+
+/* ---------- Sections repliables du tableau de bord ---------- */
+details.dash-section > summary { font-size: 1rem; font-weight: 600; }
+
+/* ─── Stock : variante row → lots visibles en sous-ligne ─── */
+tbody tr + tr td[style*="padding-left"] { border-top: 1px dashed var(--row-border); }
+details.fold tbody tr:hover td { background: rgba(166,113,83,0.08); }
+.fold-body table tbody tr:nth-child(even) td { background: rgba(19,51,64,0.025); }
+
+/* Bloc "Lots pour {variante}" : bien séparé et libellé, plutôt que des colonnes réutilisées */
+.lots-box { background: rgba(19,51,64,0.035); border: 1px solid var(--row-border); border-radius: 10px; padding: 12px 14px; margin: 6px 0 10px; }
+.lots-box-title { font-weight: 700; color: var(--caramel); font-size: 0.85rem; margin-bottom: 8px; }
+.lots-table th { background: rgba(166,113,83,0.12); }
+
+/* ─── Mode visite (masquer coûts & marges) ─── */
+body.visit-mode .sensitive { filter: blur(6px); user-select: none; pointer-events: none; }
+
+/* Paniers : Config (1fr) + Panier composé (2fr), empilé sur mobile */
+.paniers-layout { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 960px) { .paniers-layout { grid-template-columns: 1fr; } }
+
+/* Blocs déplaçables de Réglages financiers (ordre via flex `order`) */
+.fin-block { border-top: 2px dashed rgba(166, 113, 83, 0.75); padding-top: 18px; margin-top: 18px; }
+.fin-block[style*="order:0"] { border-top: none; padding-top: 0; margin-top: 0; }
