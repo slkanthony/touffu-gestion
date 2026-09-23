@@ -23,7 +23,7 @@ const Stock = {
   _peremVariantsCache: [],
 
   // Onglet unifié « Faible stock » : view = 'general' | 'event' | 'total' (3 gros boutons).
-  faible: { view: 'total', type: 'all', variants: [], variantsOpen: false, status: 'low', sel: [], excluded: [], sort: 'gap', sortDir: 'asc' },
+  faible: { view: 'total', type: 'mastication', variants: [], variantsOpen: false, status: 'low', sel: [], excluded: [], sort: 'gap', sortDir: 'asc' },
   _faibleVariantsCache: [],
 
   render() {
@@ -1345,12 +1345,11 @@ const Stock = {
     const seen = new Set();
     f.sel.forEach(key => {
       const [kind, id, vId] = key.split('|');
-      let prodName = '', ref = '', supNotes = [], supplier = '';
+      let prodName = '', ref = '', supNotes = [], supplier = '', supplierUrl = '';
       if (kind === 'M') {
         const p = Store.state.stockM.find(x => x.id === id); const v = p?.variants.find(x => x.id === vId); if (!v) return;
         prodName = `${p.name} — ${Pricing.labelVariant(v)}`;
         ref = v.ref || '';
-        if (!ref) missing++;
         if (p.catalogId) {
           const cat = Store.state.catalogM.find(c => c.id === p.catalogId);
           if (cat) {
@@ -1359,48 +1358,93 @@ const Stock = {
             });
             if (!supNotes.length && cat.notes) supNotes.push({ name: 'Produit', text: cat.notes, isMain: false });
             const main = (cat.suppliers || []).find(s => s.supplierId === cat.mainSupplierId) || (cat.suppliers || [])[0];
-            if (main) supplier = Store.supplierName(main.supplierId);
+          if (main) { supplier = Store.supplierName(main.supplierId); supplierUrl = main.url || ''; }
           }
         }
       } else if (kind === 'MT') {
         const m = Store.state.materials.find(x => x.id === id); if (!m) return;
-        prodName = `${m.product ? m.product + ' ' : ''}${m.variant || m.name}`; missing++;
+        prodName = `${m.product ? m.product + ' ' : ''}${m.variant || m.name}`;
+        if (m.supplierId) supplier = Store.supplierName(m.supplierId);
+        supplierUrl = m.url || '';
       } else {
         const c = Store.state.consumables.find(x => x.id === id); if (!c) return;
         prodName = c.name; missing++;
       }
       const ukey = kind + '|' + id + '|' + (vId || '');
       if (seen.has(ukey)) return; seen.add(ukey);
-      items.push({ prodName, ref, supNotes, supplier });
+      if (!ref && !supplier && !supplierUrl) missing++;
+      items.push({ prodName, ref, supNotes, supplier, supplierUrl });
     });
-    this._orderItems = items;
-    const noteBox = (n) => `<div style="margin:4px 0;padding:6px 10px;background:${n.isMain ? '#fff3cd' : '#e8f4fd'};color:${n.isMain ? '#664d03' : '#1a4a6e'};border-left:4px solid ${n.isMain ? '#ffc107' : '#4da6d9'};border-radius:4px;font-size:.85rem;white-space:pre-wrap;"><b>📝 ${U.esc(n.name)}${n.isMain ? ' ★' : ''}</b>\n${U.esc(n.text)}</div>`;
-    const html = items.map(it =>
-      `<div style="padding:6px 0;border-bottom:1px solid var(--card-border);">
-        <div><b>${U.esc(it.prodName)}</b>${it.supplier ? ` <span class="muted" style="font-size:.85rem;">— ${U.esc(it.supplier)}</span>` : ''}</div>
-        ${it.ref ? `<div style="font-size:.85rem;color:var(--gris);">Réf : <span style="font-family:monospace;">${U.esc(it.ref)}</span></div>` : '<div style="font-size:.85rem;color:var(--alerte);">⚠️ Pas de référence fournisseur</div>'}
-        ${it.supNotes.map(noteBox).join('')}
-      </div>`
-    ).join('');
-    U.modal({
-      title: '📋 Commande à passer', hideOk: true,
-      body: `${missing ? `<p class="warn-txt mt-0">${missing} ligne(s) sans référence fournisseur.</p>` : ''}
-        <div id="order_list" style="max-height:400px;overflow-y:auto;">${html}</div>
-        <button type="button" class="btn-ghost btn-sm mt" onclick="Stock.copyOrderList()">📋 Copier la liste</button>`
-    });
-  },
-  copyOrderList() {
-    const items = this._orderItems; if (!items) return;
-    const text = items.map(it => {
-      let line = it.prodName + (it.ref ? ` [${it.ref}]` : '') + (it.supplier ? ` — ${it.supplier}` : '');
-      it.supNotes.forEach(n => { line += `\n  📝 ${n.name}${n.isMain ? ' ★' : ''} : ${n.text}`; });
-      return line;
-    }).join('\n');
-    navigator.clipboard?.writeText(text).then(() => U.toast('Liste copiée.')).catch(() => {
-      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); ta.remove(); U.toast('Liste copiée.');
-    });
-  },
+      this._orderItems = items;
+      const groups = {};
+      items.forEach(it => { const key = it.supplier || ''; if (!groups[key]) groups[key] = []; groups[key].push(it); });
+      const groupKeys = Object.keys(groups).sort((a, b) => { if (!a && b) return 1; if (a && !b) return -1; return U.sortFr(a, b); });
+      this._orderGroups = groups; this._orderGroupKeys = groupKeys; this._orderFilter = null;
+      U.modal({
+        title: '📋Commande à passer', hideOk: true, wide: true,
+        body: `${missing ? `<p class="warn-txt mt-0">${missing} ligne(s) sans reference fournisseur.</p>` : ''}
+          <div id="order_filterbar">${this._orderFilterBarHTML()}</div>
+          <div id="order_list" style="max-height:min(60vh,560px);overflow-y:auto;">${this._orderListHTML()}</div>
+          <button type="button" class="btn-ghost btn-sm mt" onclick="Stock.copyOrderList()">📋Copier la liste</button>`
+      });
+    },
+
+    _orderNoteBox(n) {
+      return `<div style="margin:4px 0;padding:6px 10px;background:${n.isMain ? '#fff3cd' : '#e8f4fd'};color:${n.isMain ? '#664d03' : '#4a6de5'};border-left:4px solid ${n.isMain ? '#ffc107' : '#4da6d9'};border-radius:4px;font-size:.85rem;white-space:pre-wrap;"><b>💡${U.esc(n.name)}${n.isMain ? ' ★' : ''}</b>\n${U.esc(n.text)}</div>`;
+    },
+
+    _orderFilterBarHTML() {
+      const chip = (key, label, count, active) => `<button type="button" class="btn-sm" style="border-radius:16px;padding:5px 12px;margin:2px;border:1px solid var(--card-border);background:${active ? 'var(--caramel)' : 'transparent'};color:${active ? '#1a1a1a' : 'var(--txt)'};font-weight:${active ? '700' : '400'};cursor:pointer;" onclick="Stock.filterOrderBySupplier('${U.esc(key).replace(/'/g, "\\'")}')">${U.esc(label)} (${count})</button>`;
+      const total = this._orderItems.length;
+      return `<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:10px;">
+        ${chip('__ALL__', 'Tous', total, !this._orderFilter)}
+        ${this._orderGroupKeys.map(k => chip(k, k || 'Sans fournisseur', this._orderGroups[k].length, this._orderFilter === k)).join('')}
+      </div>`;
+    },
+
+    _orderListHTML() {
+      const keys = this._orderFilter !== null ? [this._orderFilter] : this._orderGroupKeys;
+      return keys.map(supName => {
+        const list = this._orderGroups[supName];
+        const header = `<h3 style="margin:14px 0 8px;font-size:1.05rem;font-weight:700;color:var(--caramel);background:var(--card-bg);padding:8px 10px;border-radius:6px;border-left:4px solid var(--caramel);">${supName ? U.esc(supName) : 'Fournisseur non identifie'} <span style="font-size:.8rem;font-weight:400;color:var(--gris);">(${list.length})</span></h3>`;
+        const rows = list.map(it =>
+          `<div style="padding:6px 0;border-bottom:1px solid var(--card-border);">
+            <div><b>${U.esc(it.prodName)}</b></div>
+            ${it.ref ? `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${U.esc(it.ref)}</div>` : ''}
+            ${it.supplierUrl ? `<div style="font-size:.85rem;"><a href="${U.esc(it.supplierUrl)}" target="_blank" rel="noopener" style="color:var(--caramel);">🔗 Commander chez le fournisseur</a></div>` : ''}
+            ${(!it.ref && !it.supplierUrl) ? `<div style="font-size:.85rem;color:var(--alerte);">⚠️Pas de reference fournisseur</div>` : ''}
+            ${it.supNotes.map(n => this._orderNoteBox(n)).join('')}
+          </div>`
+        ).join('');
+        return header + rows;
+      }).join('');
+    },
+
+    filterOrderBySupplier(key) {
+      this._orderFilter = (key === '__ALL__') ? null : key;
+      const bar = document.getElementById('order_filterbar');
+      const list = document.getElementById('order_list');
+      if (bar) bar.innerHTML = this._orderFilterBarHTML();
+      if (list) list.innerHTML = this._orderListHTML();
+    },
+
+    copyOrderList() {
+      const items = this._orderItems; if (!items) return;
+      const keys = this._orderFilter !== null ? [this._orderFilter] : this._orderGroupKeys;
+      const text = keys.map(supName => {
+        const header = `=== ${supName || 'Fournisseur non identifie'} ===`;
+        const body = this._orderGroups[supName].map(it => {
+          let line = it.prodName + (it.ref ? ` [${it.ref}]` : '') + (it.supplierUrl ? ` (${it.supplierUrl})` : '');
+          it.supNotes.forEach(n => { line += `\n${n.isMain ? 'MAIN ' : ''}${n.text}`; });
+          return line;
+        }).join('\n');
+        return header + '\n' + body;
+      }).join('\n\n');
+      const fallbackCopy = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); U.toast('Liste copiee.'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => U.toast('Liste copiee.')).catch(fallbackCopy);
+      } else { fallbackCopy(); }
+    },
 
   /* ───── CONSOMMABLES ───── */
   consoFilters: { link: 'all', sort: 'name', sortDir: 'asc' },

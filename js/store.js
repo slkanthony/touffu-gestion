@@ -73,8 +73,10 @@ const Store = {
     const cfg = window.TOUFFU_CONFIG || {};
     if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase) {
       this.sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+      const isRecovery = window.location.hash.includes('type=recovery') || window.location.hash.includes('type=invite');
       const { data } = await this.sb.auth.getSession();
       this.session = data.session;
+      if (isRecovery && this.session) return 'recovery';
       if (!this.session) return 'login';           // l'app affichera l'écran de connexion
       await this.loadRemote();
       this.remote = true;
@@ -204,6 +206,7 @@ const Store = {
       this.sb.channel('touffu-sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, async () => {
           if (this._flushing || this._dirty.size) return;
+          if (this._justSynced && Date.now() - this._justSynced < 2000) return; // echo de notre propre sauvegarde : rien a recharger
           await this.loadRemote();
           window.App?.rerender?.();
         }).subscribe();
@@ -217,12 +220,19 @@ const Store = {
     // changements pas encore envoyés par l'état encore ancien du serveur —
     // ça donnait l'impression que la 2e/3e action "ne faisait rien".
     window.addEventListener('focus', async () => {
+      const pendingFile = document.getElementById('importFile');
+      if (pendingFile && pendingFile.files && pendingFile.files.length) return; // ne pas ecraser une selection de fichier en cours (ex: retour du selecteur de fichier)
       if (this.remote && !this._flushing && !this._dirty.size) { await this.loadRemote(); window.App?.rerender?.(); }
     });
   },
 
   /* ---------- sauvegarde ---------- */
   save(...domains) {
+    if (window.App && window.App.isViewer) {
+      if (window.U && U.toast) U.toast('Lecture seule : cette modification ne sera pas enregistree.', true);
+      else alert('Lecture seule : cette modification ne sera pas enregistree.');
+      return;
+    }
     domains.forEach(d => this._dirty.add(d));
     clearTimeout(this._saveT);
     this._saveT = setTimeout(() => this.flush(), 500);
@@ -238,6 +248,7 @@ const Store = {
         const rows = dirty.map(k => ({ key: k, data: this.state[k], updated_at: new Date().toISOString() }));
         const { error } = await this.sb.from('app_state').upsert(rows);
         if (error) throw error;
+        this._justSynced = Date.now();
         this.updateSyncBadge('✓ synchronisé');
       } catch (e) {
         dirty.forEach(d => this._dirty.add(d));
@@ -345,7 +356,7 @@ const Store = {
      instantanés accumulés pendant les tests). */
   async clearSnapshots() {
     if (this.remote) {
-      await this.sb.from('snapshots').delete().neq('day', '');
+      const { error } = await this.sb.from('snapshots').delete().gte('day', '1970-01-01'); if (error) throw error;
     } else {
       localStorage.removeItem('touffu_snapshots');
     }

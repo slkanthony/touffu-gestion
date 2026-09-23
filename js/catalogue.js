@@ -151,7 +151,7 @@ const Catalogue = {
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
         <td class="num sensitive ${S.vatActive ? 'num-cotis' : 'num-marge'}">${S.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
-        <td class="num sensitive ${(S.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT) >= 0 ? 'pos' : 'neg'}"><b>${U.eur(S.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT)}</b></td>
+        <td class="num sensitive num-benef-cell ${c.profit >= 0 ? 'pos' : 'neg'}" data-normal="${U.eur(c.profit)}" data-peek="${U.eur(c.profit + c.priceTTC - c.priceHT)}"><b>${U.eur(c.profit)}</b></td>
         <td class="num">${v.priceTTCManual ? `<button class="btn-icon" title="Revenir au calcul automatique (coeff × décote)" onclick="Catalogue.resetCardPrice('${p.id}','${v.id}')" style="vertical-align:middle;">↺</button>` : ''}<b><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" style="width:85px;text-align:right;font-weight:700;" onchange="Catalogue.setCardPriceTTC('${p.id}','${v.id}',this.value,${on ? curIdx : -1})"></b></td>
       </tr>`;
     };
@@ -198,17 +198,16 @@ const Catalogue = {
       <div class="fold-body">
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — les prix ci-dessous sont temporaires, cliquer à nouveau pour revenir au principal</div>' : ''}
         <div class="table-wrap"><table>
-          <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="num">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
+          <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="num">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="9" class="muted">Aucune variante.</td></tr>'}</tbody></table></div>
         ${inactiveVars.length ? `<button class="btn-ghost btn-sm mt" onclick="Catalogue.toggleInactive('${p.id}')" style="font-size:.78rem;">${showInactive ? 'Masquer' : 'Afficher'} les ${inactiveVars.length} variante${inactiveVars.length > 1 ? 's' : ''} désactivée${inactiveVars.length > 1 ? 's' : ''}</button>` : ''}
-        <p class="muted mt">* bénéfice = marge − cotisations URSSAF ${Store.state.settings.vatActive ? '− TVA (reversée à l\'État)' : '(TVA conservée, incluse — non assujetti)'} · coût = produit + sachet + étiquette.</p>
+        <p class="muted mt">* bénéfice = marge − cotisations URSSAF − TVA (toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
         <h3 style="font-size:.85rem;margin:14px 0 6px;">Fournisseurs</h3>
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Fournisseur</th><th class="num">Prix d'achat</th><th></th></tr></thead>
           <tbody>${supRows || '<tr><td colspan="3" class="muted">Aucun fournisseur renseigné.</td></tr>'}</tbody></table></div>
         <div class="frow mt">
           <a class="btn btn-ghost" style="text-decoration:none;text-align:center;" href="#/catalogue/edit/${p.id}">Modifier</a>
-          <button class="btn-danger btn-sm" onclick="Catalogue.remove('${p.id}')">Supprimer</button>
         </div>
       </div>
     </details>`;
@@ -875,6 +874,13 @@ const Catalogue = {
     this.cancelEdit();
   },
 
+peekBenefTVA(active) {
+    document.querySelectorAll('.num-benef-cell b').forEach(b => {
+      const td = b.parentElement;
+      b.textContent = active ? td.dataset.peek : td.dataset.normal;
+    });
+  },
+
   remove(id) {
     const p = Store.state.catalogM.find(x => x.id === id);
     if (!confirm(`Supprimer "${p.name}" du catalogue ? (le stock existant est conservé)`)) return;
@@ -883,6 +889,6 @@ const Catalogue = {
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Produit supprimé — ' + p.name);
     Store.save('catalogM');
     U.toast('Produit supprimé.', false, entry.id);
-    if (this.mode !== 'list') this.cancelEdit(); else App.rerender();
+    this.mode = 'list'; this.editId = null; this._loadedKey = null; location.hash = '/catalogue'; App.rerender();
   }
 };

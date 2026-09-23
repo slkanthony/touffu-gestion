@@ -65,6 +65,7 @@
 :root[data-theme="dark"] .btn-ghost { color: var(--texte); border-color: var(--input-border); }
 :root[data-theme="dark"] .btn-icon { color: #93a7b2; }
 :root[data-theme="dark"] .modal { background: var(--nuit-2); }
+:root[data-theme="dark"] .modal.wide { background: var(--card-bg); }
 :root[data-theme="dark"] .login-wrap { background: var(--nuit-2); }
 :root[data-theme="dark"] .login-card { background: #1c3844; }
 :root[data-theme="dark"] .login-card .logo { color: #f2e6d8; }
@@ -516,9 +517,9 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   .topnav { padding: 0 6px; }
   .topnav-brand { padding: 10px 8px 10px 2px; }
   .topnav-brand .logo { font-size: 1.2rem; }
-  .nav-item { padding: 10px 10px; font-size: 0.85rem; gap: 5px; }
-  .nav-item .lbl { display: none; }
-  .nav-item .ico { font-size: 1.25rem; }
+  .nav-item { flex-direction: column; padding: 7px 4px; font-size: 0.6rem; gap: 2px; min-width: 52px; }
+  .nav-item .lbl { display: block; font-size: 0.6rem; line-height: 1.05; text-align: center; white-space: normal; max-width: 58px; color: inherit; }
+  .nav-item .ico { font-size: 1.15rem; }
   .main { padding-bottom: 40px; }
   .view-title h1 { font-size: 1.5rem; }
   td, th { padding: 7px 6px; }
@@ -630,3 +631,4 @@ body.visit-mode .sensitive { filter: blur(6px); user-select: none; pointer-event
 /* Blocs déplaçables de Réglages financiers (ordre via flex `order`) */
 .fin-block { border-top: 2px dashed rgba(166, 113, 83, 0.75); padding-top: 18px; margin-top: 18px; }
 .fin-block[style*="order:0"] { border-top: none; padding-top: 0; margin-top: 0; }
+.modal.wide { max-width: min(720px, 92vw); }

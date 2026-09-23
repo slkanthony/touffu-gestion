@@ -298,7 +298,8 @@ const Params = {
         <summary><h2 style="display:inline;">📥 Import & sauvegarde</h2></summary>
         <div class="fold-body">
         <p class="muted mb0">Dépose n'importe quel fichier de données : l'app reconnaît toute seule s'il s'agit de ton ancien <b>calculateur de prix</b>, de ton ancienne <b>appli de stock</b> (toutes versions), ou d'une <b>sauvegarde</b> de cette application.</p>
-        <input type="file" id="importFile" accept="application/json,.json" class="mt">
+        <input type="file" id="importFile" accept="application/json,.json" class="mt" onchange="Params._captureImportFile(this)">
+      <p class="muted mt" id="importFileLabel" style="display:none"></p>
         <button class="btn-cta mt" onclick="Params.importAuto()">Importer le fichier (détection automatique)</button>
         <hr class="sep">
         <h3 style="margin:0 0 8px;">Exporter les produits et la configuration</h3>
@@ -361,7 +362,10 @@ const Params = {
         </div>
       </div>
 
-      ${Store.remote ? `<div class="card"><button class="btn-ghost" onclick="Store.logout()">Se déconnecter</button></div>` : ''}
+      ${Store.remote ? `<div class="card">
+          <p class="muted mb0">Connecté(e) : <b>${Store.session?.user?.email || ''}</b> &middot; ${App.isViewer ? 'Lecture seule' : 'Administrateur'}</p>
+          <button class="btn-ghost mt" onclick="Store.logout()">Se déconnecter</button>
+        </div>` : ''}
     `);
     this.loadSnaps();
   },
@@ -1075,8 +1079,17 @@ const Params = {
 
   /* ---------- import de l'ancien calculateur ---------- */
   /* ---------- import universel : détecte le format ---------- */
+  _captureImportFile(input) {
+    this._pendingImportFile = input.files && input.files[0] ? input.files[0] : null;
+    const lbl = document.getElementById('importFileLabel');
+    if (lbl) {
+      if (this._pendingImportFile) { lbl.textContent = '✓ Fichier prêt : ' + this._pendingImportFile.name; lbl.style.display = ''; }
+      else { lbl.style.display = 'none'; }
+    }
+  },
+
   importAuto() {
-    const file = document.getElementById('importFile').files[0];
+    const file = this._pendingImportFile || document.getElementById('importFile').files[0];
     if (!file) { U.toast('Choisis d\u2019abord un fichier à importer.', true); return; }
     const reader = new FileReader();
     reader.onload = () => {

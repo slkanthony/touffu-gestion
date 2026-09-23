@@ -127,11 +127,11 @@ const U = {
      (bouton "Fermer" ou clic hors de la modale) — utile quand un contrôle du formulaire
      appelant (ex: un <select>) a déjà changé de valeur avant l'ouverture de la modale et
      doit être remis dans son état d'origine si l'utilisateur annule. */
-  modal({ title, body, onOk, onCancel, okLabel = 'Valider', danger = false, hideOk = false }) {
+  modal({ title, body, onOk, onCancel, okLabel = 'Valider', danger = false, hideOk = false, wide = false }) {
     U.closeModal();
     const bg = document.createElement('div');
     bg.className = 'modal-bg'; bg.id = 'modalBg';
-    bg.innerHTML = `<div class="modal"><h2>${title}</h2><div id="modalBody">${body}</div>
+    bg.innerHTML = `<div class="modal${wide ? ' wide' : ''}"><h2>${title}</h2><div id="modalBody">${body}</div>
       <div class="actions">
         <button class="btn-ghost" id="modalCancel">Fermer</button>
         ${hideOk ? '' : `<button class="${danger ? 'btn-danger' : 'btn-cta'}" id="modalOk">${okLabel}</button>`}
@@ -186,6 +186,12 @@ const U = {
      toggle/setAll sont des noms de fonctions globales : toggle(value), setAll(bool).
      onOpen est un nom de fonction globale appelée avec le nouvel état ouvert/fermé : onOpen(bool),
      à utiliser par l'appelant pour mémoriser l'état et le repasser dans `open` au ré-rendu suivant. */
+  _msGroupToggle(gi, isOpen, el) {
+    (this._msOpenGroups || (this._msOpenGroups = new Set()));
+    if (isOpen) { this._msOpenGroups.add(gi); el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    else { this._msOpenGroups.delete(gi); }
+  },
+
   multiSelect({ options, groups, selected, toggle, setAll, open, onOpen, placeholder = 'Toutes', labels }) {
     const allItems = groups ? groups.flatMap(g => g.items) : options;
     const lb = (o) => (labels && labels[o]) || o;
@@ -195,10 +201,11 @@ const U = {
     const chk = o => `<label class="ms-opt"><input type="checkbox" ${selected.includes(o) ? 'checked' : ''} onchange="${toggle}('${U.esc(o).replace(/&#39;/g, "\\'")}')"> ${U.esc(lb(o))}</label>`;
     let body;
     if (groups && groups.length) {
-      body = groups.map(g => {
+      body = groups.map((g, gi) => {
         const selCount = g.items.filter(o => selected.includes(o)).length;
         const badge = selCount ? ` <span style="font-size:.75rem;color:var(--caramel);">(${selCount})</span>` : '';
-        return `<details class="ms-group" ontoggle="if(this.open)this.scrollIntoView({behavior:'smooth',block:'nearest'})"><summary style="cursor:pointer;font-weight:600;font-size:.82rem;padding:4px 0;">${U.esc(g.label)}${badge} <span style="font-size:.7rem;color:var(--gris);">(${g.items.length})</span></summary><div style="padding-left:6px;">${g.items.map(chk).join('')}</div></details>`;
+        const gOpen = (U._msOpenGroups || (U._msOpenGroups = new Set())).has(gi);
+        return `<details class="ms-group" ${gOpen ? 'open' : ''} ontoggle="U._msGroupToggle(${gi}, this.open, this)"><summary style="cursor:pointer;font-weight:600;font-size:.82rem;padding:4px 0;">${U.esc(g.label)}${badge} <span style="font-size:.7rem;color:var(--gris);">(${g.items.length})</span></summary><div style="padding-left:6px;">${g.items.map(chk).join('')}</div></details>`;
       }).join('');
     } else {
       body = allItems.length ? allItems.map(chk).join('') : '<span class="muted">Aucune variante.</span>';

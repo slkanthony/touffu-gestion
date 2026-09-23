@@ -2,8 +2,8 @@
 const App = {
   views: [
     { id: 'dashboard', ico: '🏠', label: 'Tableau de bord', group: '' },
-    { id: 'ventes', ico: '🛒', label: 'Ventes', group: 'Stock & ventes' },
     { id: 'stock', ico: '📦', label: 'Stock', group: 'Stock & ventes' },
+    { id: 'ventes', ico: '🛒', label: 'Ventes', group: 'Stock & ventes' },
 
     { id: 'paniers', ico: '🧺', label: 'Paniers', group: 'Stock & ventes' },
 
@@ -30,11 +30,26 @@ const App = {
     try { status = await Store.init(); }
     catch (e) { alert('Erreur de connexion aux données : ' + e.message); return; }
     if (status === 'login') { this.showLogin(); return; }
+    if (status === 'recovery') { this.showRecovery(); return; }
     this.showApp();
+  },
+
+  wirePasswordToggle(inputId, toggleId) {
+    const inp = document.getElementById(inputId), tg = document.getElementById(toggleId);
+    if (!inp || !tg) return;
+    const eOpen = '<svg width="14" height="9" viewBox="0 0 16 10"><path d="M8 1C4.4 1 1.4 3.6 0 5c1.4 1.4 4.4 4 8 4s6.6-2.6 8-4c-1.4-1.4-4.4-4-8-4z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5" r="2" fill="currentColor"/></svg>';
+    const eClosed = '<svg width="14" height="9" viewBox="0 0 16 10"><path d="M8 1C4.4 1 1.4 3.6 0 5c1.4 1.4 4.4 4 8 4s6.6-2.6 8-4c-1.4-1.4-4.4-4-8-4z" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="9" x2="14" y2="1" stroke="currentColor" stroke-width="1.5"/></svg>';
+    tg.innerHTML = eClosed;
+    tg.onclick = () => {
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      tg.innerHTML = show ? eOpen : eClosed;
+    };
   },
 
   showLogin() {
     document.getElementById('loginScreen').style.display = 'flex';
+    this.wirePasswordToggle('loginPass','loginPassToggle');
     document.getElementById('loginBtn').onclick = async () => {
       const msg = document.getElementById('loginMsg');
       msg.textContent = 'Connexion…';
@@ -45,13 +60,43 @@ const App = {
       } catch (e) { msg.textContent = 'Échec : ' + e.message; }
     };
     document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
+
+    document.getElementById('forgotLink').onclick = async (ev) => {
+      ev.preventDefault();
+      const email = U.val('loginEmail');
+      const fmsg = document.getElementById('loginMsg');
+      if (!email) { fmsg.textContent = "Entre d'abord ton email ci-dessus."; return; }
+      fmsg.textContent = 'Envoi en cours...';
+      try { await Store.sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname }); }
+      catch (e) {}
+      fmsg.textContent = 'Si cette adresse existe, un email de réinitialisation a été envoyé.';
+    };
+  },
+
+  showRecovery() {
+    document.getElementById('recoveryScreen').style.display = 'flex';
+    this.wirePasswordToggle('recoveryPass','recoveryPassToggle');
+    document.getElementById('recoveryBtn').onclick = async () => {
+      const rmsg = document.getElementById('recoveryMsg');
+      const pass = U.val('recoveryPass');
+      if (!pass || pass.length < 6) { rmsg.textContent = 'Minimum 6 caractères.'; return; }
+      rmsg.textContent = 'Mise à jour...';
+      try {
+        const { error } = await Store.sb.auth.updateUser({ password: pass });
+        if (error) throw error;
+        window.location.href = window.location.pathname;
+      } catch (e) { rmsg.textContent = 'Echec : ' + e.message; }
+    };
+    document.getElementById('recoveryPass').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('recoveryBtn').click(); });
   },
 
   showApp() {
     document.getElementById('appScreen').style.display = 'flex';
     document.getElementById('scrollFab').style.display = '';
-    this.visitMode = sessionStorage.getItem('touffu_visitMode') === '1';
+    this.isViewer = (Store.session && Store.session.user && Store.session.user.app_metadata && Store.session.user.app_metadata.role) === 'viewer';
+    this.visitMode = this.isViewer ? true : sessionStorage.getItem('touffu_visitMode') === '1';
     if (this.visitMode) document.body.classList.add('visit-mode');
+    if (this.isViewer) { const b = document.querySelector('.topnav-brand'); if (b) b.title = 'Mode lecture seule'; }
     this._syncVisitEye();
     this.buildNav();
     // Molette → défilement horizontal sur TOUT bloc qui a une barre coulissante
@@ -96,6 +141,7 @@ const App = {
 
 
   toggleVisitMode() {
+    if (this.isViewer) return;
     this.visitMode = !this.visitMode;
     document.body.classList.toggle('visit-mode', this.visitMode);
     sessionStorage.setItem('touffu_visitMode', this.visitMode ? '1' : '');
