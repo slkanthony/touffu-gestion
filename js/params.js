@@ -200,7 +200,7 @@ const Params = {
             <b>${U.esc(cat)}</b>
             ${segs.map((seg, i) => `<div class="frow mt" style="gap:10px;align-items:flex-end;">
               <div class="fg" style="flex:2;"><label><input value="${U.esc(seg.label)}" style="width:100%;" onchange="Params.setFabSeg('${ce}',${i},'label',this.value)"></label></div>
-              <div class="fg" style="flex:0;">${U.lenSplit(`pf_${ci}_${i}`, seg.value, { change: `Params.setFabSeg('${ce}',${i},'value',U.lenCm('pf_${ci}_${i}'))` })}</div>
+              <div class="fg" style="flex:0 0 auto;">${U.lenSplit(`pf_${ci}_${i}`, seg.value, { change: `Params.setFabSeg('${ce}',${i},'value',U.lenCm('pf_${ci}_${i}'))` })}</div>
               <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Params.delFabSeg('${ce}',${i})" title="Supprimer">×</button></div>
             </div>`).join('')}
             <button class="btn-ghost btn-sm mt" onclick="Params.addFabSeg('${ce}')">＋ Ajouter un segment</button>

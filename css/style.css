@@ -64,8 +64,7 @@
 :root[data-theme="dark"] tbody tr + tr td[style*="padding-left"] { border-top-color: var(--row-border); }
 :root[data-theme="dark"] .btn-ghost { color: var(--texte); border-color: var(--input-border); }
 :root[data-theme="dark"] .btn-icon { color: #93a7b2; }
-:root[data-theme="dark"] .modal { background: var(--nuit-2); }
-:root[data-theme="dark"] .modal.wide { background: var(--card-bg); }
+:root[data-theme="dark"] .modal { background: var(--card-bg); color-scheme: dark; }
 :root[data-theme="dark"] .login-wrap { background: var(--nuit-2); }
 :root[data-theme="dark"] .login-card { background: #1c3844; }
 :root[data-theme="dark"] .login-card .logo { color: #f2e6d8; }

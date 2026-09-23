@@ -539,7 +539,7 @@ const Accessoires = {
   _fabSegsInnerHTML(segs) {
     return (segs || []).map((s, i) => `<div class="frow" style="gap:8px;align-items:flex-end;margin-top:6px;">
       <div class="fg" style="flex:2;"><input id="a_seg_label_${i}" value="${U.esc(s.label)}" placeholder="ex: Rabat" style="width:100%;"></div>
-      <div class="fg" style="flex:0;">${U.lenSplit('a_seg_val_' + i, s.value)}</div>
+      <div class="fg" style="flex:0 0 auto;">${U.lenSplit('a_seg_val_' + i, s.value)}</div>
       <div class="fg" style="flex:0;"><button class="btn-icon" type="button" onclick="Accessoires.delFabSeg(${i})">×</button></div>
     </div>`).join('') + `<button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addFabSeg()">＋ Ajouter un segment</button>`;
   },
