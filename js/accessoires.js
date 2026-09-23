@@ -391,8 +391,8 @@ const Accessoires = {
     if (!segs.some(s => s.value > 0) && !prodLen && !interne) return '';
     const parts = [];
     if (prodLen > 0) parts.push(`Produit : ${U.qty(prodLen)} m`);
-    segs.filter(s => s.value > 0).forEach(s => parts.push(`${U.esc(s.label)} : ${U.qty(s.value)} cm`));
-    if (interne > 0) parts.push(`Interne : ${U.qty(interne)} cm`);
+    segs.filter(s => s.value > 0).forEach(s => parts.push(`${U.esc(s.label)} : ${U.lenTxt(s.value)}`));
+    if (interne > 0) parts.push(`Interne : ${U.lenTxt(interne)}`);
     if (a.bicolor) {
       const s1 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
       const segT = segs.reduce((sum, s) => sum + U.num(s.value), 0);
@@ -426,22 +426,19 @@ const Accessoires = {
     // -- Colonne gauche : Produit fini + Longueur interne + Bicolor --
     let left = `<div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Produit fini</div>`;
     left += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-      <input type="number" step="0.01" value="${prodLen || ''}" placeholder="—" class="acc-inline-input" style="width:90px;" onchange="Accessoires.setAccProdLen('${a.id}',this.value)">
-      <span class="muted">m</span></div>`;
+      ${U.lenSplit('pl_' + a.id, prodLen * 100, { change: `Accessoires.setAccProdLen('${a.id}',U.lenCm('pl_${a.id}')/100)` })}</div>`;
     left += `<div style="padding:12px;border-radius:8px;background:rgba(100,180,255,0.07);border:1px dashed rgba(100,180,255,0.25);">
       <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Longueur interne (X)</div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <input type="number" step="0.1" value="${interne || ''}" placeholder="0" class="acc-inline-input" style="width:90px;" onchange="Accessoires.setAccInternalLen('${a.id}',this.value)">
-        <span class="muted">cm</span></div></div>`;
+        ${U.lenSplit('il_' + a.id, interne, { change: `Accessoires.setAccInternalLen('${a.id}',U.lenCm('il_${a.id}'))` })}</div></div>`;
     left += `<div style="margin-top:12px;"><label style="cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:6px;"><input type="checkbox" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.toggleBicolor('${a.id}')"> <span>🎨 Bicolor (2 sangles)</span></label></div>`;
 
     // -- Colonne droite : Segments fixes --
     let right = `<div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Segments fixes</div>`;
     segs.forEach((s, i) => {
-      right += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-        <input type="text" value="${U.esc(s.label)}" placeholder="Nom" class="acc-inline-input" style="width:120px;" onchange="Accessoires.setAccSegLabel('${a.id}',${i},this.value)">
-        <input type="number" step="1" value="${s.value || ''}" placeholder="0" class="acc-inline-input" style="width:70px;" onchange="Accessoires.setAccSegment('${a.id}',${i},this.value)">
-        <span class="muted">cm</span>
+      right += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+        <input type="text" value="${U.esc(s.label)}" placeholder="Nom" class="acc-inline-input" style="flex:1;min-width:110px;" onchange="Accessoires.setAccSegLabel('${a.id}',${i},this.value)">
+        ${U.lenSplit(`sg_${a.id}_${i}`, s.value, { change: `Accessoires.setAccSegment('${a.id}',${i},U.lenCm('sg_${a.id}_${i}'))` })}
         <button class="btn-icon" onclick="Accessoires.delAccFabSeg('${a.id}',${i})" title="Supprimer">×</button></div>`;
     });
     right += `<div style="margin-top:6px;"><button class="btn-ghost btn-sm" onclick="Accessoires.addAccFabSeg('${a.id}')">＋ Segment</button></div>`;
@@ -529,12 +526,12 @@ const Accessoires = {
   _fabFieldsHTML(a) {
     const segs = a.fabSegments || [];
     const interne = U.num(a.internalLength);
-    return `<div class="fg"><label>Longueur produit fini (m)</label><input id="a_prodLen" type="number" step="0.01" value="${U.num(a.productLength) || ''}" placeholder="ex: 1.20" onchange="Accessoires.onProdLenChange()"></div>
+    return `<div class="fg"><label>Longueur produit fini</label><div>${U.lenSplit('a_prodLen', U.num(a.productLength) * 100, { change: 'Accessoires.onProdLenChange()' })}</div></div>
       <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--input-border);background:var(--th-bg);">
         <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Détail des longueurs</div>
         <div id="a_segs_wrap">${this._fabSegsInnerHTML(segs)}</div>
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
-          <div class="fg"><label>Longueur interne — X (cm)</label><input id="a_internLen" type="number" step="0.1" value="${interne || ''}" placeholder="0"></div>
+          <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne)}</div></div>
         </div>
       </div>`;
   },
@@ -542,7 +539,7 @@ const Accessoires = {
   _fabSegsInnerHTML(segs) {
     return (segs || []).map((s, i) => `<div class="frow" style="gap:8px;align-items:flex-end;margin-top:6px;">
       <div class="fg" style="flex:2;"><input id="a_seg_label_${i}" value="${U.esc(s.label)}" placeholder="ex: Rabat" style="width:100%;"></div>
-      <div class="fg" style="flex:0;"><div style="display:flex;align-items:center;gap:4px;"><input id="a_seg_val_${i}" type="number" step="0.1" value="${s.value}" style="width:70px;"> <span class="muted">cm</span></div></div>
+      <div class="fg" style="flex:0;">${U.lenSplit('a_seg_val_' + i, s.value)}</div>
       <div class="fg" style="flex:0;"><button class="btn-icon" type="button" onclick="Accessoires.delFabSeg(${i})">×</button></div>
     </div>`).join('') + `<button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addFabSeg()">＋ Ajouter un segment</button>`;
   },
@@ -551,9 +548,8 @@ const Accessoires = {
     const segs = this._a.fabSegments || [];
     for (let i = 0; i < segs.length; i++) {
       const lbl = document.getElementById('a_seg_label_' + i);
-      const val = document.getElementById('a_seg_val_' + i);
       if (lbl) segs[i].label = lbl.value.trim();
-      if (val) segs[i].value = U.num(val.value);
+      if (document.getElementById('a_seg_val_' + i + '_m')) segs[i].value = U.lenCm('a_seg_val_' + i);
     }
   },
 
@@ -592,15 +588,13 @@ const Accessoires = {
     }
     const el = document.getElementById('a_segs_wrap');
     if (el) el.innerHTML = this._fabSegsInnerHTML(this._a.fabSegments || []);
-    const internEl = document.getElementById('a_internLen');
-    if (internEl) internEl.value = U.num(this._a.internalLength) || '';
+    U.lenSet('a_internLen', U.num(this._a.internalLength));
   },
 
   onProdLenChange() {
     const nameEl = document.getElementById('a_name');
-    const lenEl = document.getElementById('a_prodLen');
-    if (!nameEl || !lenEl) return;
-    const len = U.num(lenEl.value);
+    if (!nameEl || !document.getElementById('a_prodLen_m')) return;
+    const len = U.lenCm('a_prodLen') / 100;
     const cat = U.val('a_cat');
     let name = nameEl.value.trim();
     const lenRx = /\s*[—–-]\s*\d+([.,]\d+)?\s*m\s*$/i;
@@ -669,8 +663,8 @@ const Accessoires = {
         a.notes = U.val('a_notes');
         this._readFabSegs();
         a.fabSegments = this._a.fabSegments || [];
-        a.productLength = U.numVal('a_prodLen');
-        a.internalLength = U.numVal('a_internLen');
+        a.productLength = U.lenCm('a_prodLen') / 100;
+        a.internalLength = U.lenCm('a_internLen');
         const wasBicolor = !!this._a.bicolor;
         const nowBicolor = !!document.getElementById('a_bicolor')?.checked;
         a.bicolor = nowBicolor;
@@ -868,7 +862,7 @@ const Accessoires = {
   _updateCustomPreview() {
     const el = document.getElementById('cl_preview');
     if (!el || !this._clSrc) return;
-    const desired = U.numVal('cl_desired');
+    const desired = U.lenCm('cl_desired') / 100;
     const { prodLen, interneVal, fixedTotal, bicolor } = this._clSrc;
     if (desired > 0 && prodLen > 0) {
       const delta = desired - prodLen;
@@ -877,12 +871,12 @@ const Accessoires = {
         const s1 = Math.round(newInterne / 100 * 1000) / 1000;
         const s2 = Math.round(fixedTotal / 100 * 1000) / 1000;
         el.innerHTML = `Produit : <b>${U.qty(desired)} m</b> (${delta >= 0 ? '+' : ''}${U.qty(delta)} m)
-          → Longueur interne : <b>${U.qty(newInterne)} cm</b>
+          → Longueur interne : <b>${U.lenTxt(newInterne)}</b>
           → <b>Sangle 1 : ${U.qty(s1)} m</b> · <b>Sangle 2 : ${U.qty(s2)} m</b>`;
       } else {
         const newStrap = Math.round((fixedTotal + newInterne) / 100 * 1000) / 1000;
         el.innerHTML = `Produit : <b>${U.qty(desired)} m</b> (${delta >= 0 ? '+' : ''}${U.qty(delta)} m)
-          → Longueur interne : <b>${U.qty(newInterne)} cm</b>
+          → Longueur interne : <b>${U.lenTxt(newInterne)}</b>
           → <b>Sangle à couper : ${U.qty(newStrap)} m</b>`;
       }
     } else {
@@ -910,14 +904,14 @@ const Accessoires = {
       title: '📐 Sur mesure — ' + U.esc(src.name), okLabel: 'Créer la copie',
       body: `<p>Sangle actuelle : <b>${U.qty(currentStrap)} m</b> | Produit : <b>${U.qty(prodLen)} m</b></p>
         ${hasSegs || interneVal > 0 ? `<div class="card" style="padding:8px 12px;background:var(--th-bg);margin-bottom:12px;">
-          ${segs.filter(s => s.value > 0).map(s => `<div>${U.esc(s.label)} : <b>${U.qty(s.value)} cm</b></div>`).join('')}
-          ${interneVal > 0 ? `<div style="border-top:1px dashed var(--input-border);padding-top:4px;margin-top:4px;">Longueur interne (X) : <b>${U.qty(interneVal)} cm</b></div>` : ''}
+          ${segs.filter(s => s.value > 0).map(s => `<div>${U.esc(s.label)} : <b>${U.lenTxt(s.value)}</b></div>`).join('')}
+          ${interneVal > 0 ? `<div style="border-top:1px dashed var(--input-border);padding-top:4px;margin-top:4px;">Longueur interne (X) : <b>${U.lenTxt(interneVal)}</b></div>` : ''}
         </div>` : ''}
-        <div class="fg"><label>Longueur souhaitée du produit fini (m)</label><input id="cl_desired" type="number" step="0.01" value="" autofocus oninput="Accessoires._updateCustomPreview()"></div>
+        <div class="fg"><label>Longueur souhaitée du produit fini</label><div>${U.lenSplit('cl_desired', 0, { input: 'Accessoires._updateCustomPreview()' })}</div></div>
         <div id="cl_preview" class="mt" style="font-size:.95rem;"></div>
         <p class="muted mt">Seule la longueur interne (X) changera. Les segments fixes restent identiques.</p>`,
       onOk: () => {
-        const desired = U.numVal('cl_desired');
+        const desired = U.lenCm('cl_desired') / 100;
         if (desired <= 0) { U.toast('Longueur invalide', true); return false; }
         const delta = desired - prodLen;
         const newInterne = Math.max(0, Math.round((interneVal + delta * 100) * 10) / 10);

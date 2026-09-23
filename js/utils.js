@@ -154,6 +154,29 @@ const U = {
   normSearch: s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/gi, 'oe').replace(/æ/gi, 'ae').toLowerCase(),
   val: (id) => document.getElementById(id)?.value ?? '',
   numVal: (id) => U.num(U.val(id)),
+
+  /* Saisie de longueur en double case « [m] m [cm] cm » (même visuel .cost-split que l'encre UV).
+     La valeur est toujours manipulée en CENTIMÈTRES (lenCm). opts.change = code JS exécuté quand on QUITTE
+     le bloc (pas entre m et cm, pour ne pas perdre le focus sur un re-rendu) et seulement si la valeur a changé ;
+     opts.input = code JS exécuté à chaque frappe (aperçu live, sans re-rendu). */
+  lenSplit(id, cm, opts = {}) {
+    const v = Math.max(0, U.num(cm));
+    const m = Math.floor(v / 100), rest = Math.round((v - m * 100) * 10) / 10;
+    const inp = opts.input ? `oninput="${opts.input}"` : '';
+    const out = opts.change ? `data-v="${v}" onfocusout="if(!this.contains(event.relatedTarget)&&U.lenCm('${id}')!=this.dataset.v){this.dataset.v=U.lenCm('${id}');${opts.change}}"` : '';
+    return `<span class="cost-split len-split" ${out}><input id="${id}_m" type="number" min="0" step="any" inputmode="decimal" value="${m || ''}" placeholder="0" ${inp}><span class="cost-split-sep">m</span><input id="${id}_cm" type="number" min="0" step="any" inputmode="decimal" value="${rest || ''}" placeholder="0" ${inp}><span class="cost-split-sep" style="padding-right:8px;">cm</span></span>`;
+  },
+  /* Affichage d'une longueur en cm sous forme lisible : 526 → « 5 m 26 cm », 23 → « 23 cm », 600 → « 6 m ». */
+  lenTxt(cm) {
+    const v = Math.max(0, U.num(cm)), m = Math.floor(v / 100), rest = Math.round((v - m * 100) * 10) / 10;
+    return m ? `${m} m${rest ? ' ' + U.qty(rest) + ' cm' : ''}` : `${U.qty(rest)} cm`;
+  },
+  lenCm: (id) => Math.round((U.numVal(id + '_m') * 100 + U.numVal(id + '_cm')) * 10) / 10,
+  lenSet(id, cm) {
+    const v = Math.max(0, U.num(cm)), m = Math.floor(v / 100), rest = Math.round((v - m * 100) * 10) / 10;
+    const em = document.getElementById(id + '_m'), ec = document.getElementById(id + '_cm');
+    if (em) em.value = m || ''; if (ec) ec.value = rest || '';
+  },
   chk: (id) => !!document.getElementById(id)?.checked,
 
   meatFilter({ current, meats, count, setter, openState, openSetter }) {
