@@ -494,7 +494,7 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 }
 
 .modal-bg { position: fixed; inset: 0; background: rgba(19,51,64,.55); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 14px; }
-.modal { background: var(--creme); border-radius: var(--radius); padding: 20px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; }
+.modal { background: var(--creme); border-radius: var(--radius); padding: 20px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; border: 2px solid var(--caramel); box-shadow: 0 12px 40px rgba(0,0,0,.45); }
 .modal h2 { margin-bottom: 14px; }
 .modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
 
