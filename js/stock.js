@@ -504,6 +504,7 @@ const Stock = {
           else { U.toast('Choisis une fiche dans la liste déroulante (ou vide le champ).', true); return false; }
         }
         v.catalogId = finalCatId;
+        let catSkuChanged = false;
         if (finalCatId) {
           const cat = Store.state.catalogM.find(c=>c.id===finalCatId);
           if (cat) {
@@ -511,7 +512,7 @@ const Stock = {
             const match = (cat.variants||[]).find(cv => Pricing.labelVariant(cv).toLowerCase() === stockLabel);
             const catVarId = match ? match.id : (v.catalogVariantId || '');
             v.catalogVariantId = catVarId;
-            if (catVarId) Stock.applyCatalogVariantPrice(p, v, cat, catVarId);
+            if (catVarId) catSkuChanged = Stock.applyCatalogVariantPrice(p, v, cat, catVarId);
           }
         } else {
           v.catalogVariantId = '';
@@ -530,7 +531,8 @@ const Stock = {
           delete v.tags;
         }
         const entry=Store.commitSnapshot(snap,'stock','Variante modifiée — '+p.name+' ('+Pricing.labelVariant(v)+')');
-        Store.save('stockM'); U.closeModal(); App.rerender();
+        Store.save('stockM'); if (catSkuChanged) Store.save('catalogM');
+        U.closeModal(); App.rerender();
         U.toast('Variante modifiée.', false, entry.id);
       }
     });
@@ -538,16 +540,23 @@ const Stock = {
 
   /* Reprend le prix/coût d'une ligne précise du calcul de prix sur UNE variante
      de stock. `cat` = la fiche catalogue (peut venir de v.catalogId OU de
-     p.catalogId). Ne touche ni aux autres variantes ni au nom du produit. */
+     p.catalogId). Ne touche ni aux autres variantes ni au nom du produit.
+     SKU : le Stock est prioritaire — s'il a déjà un SKU, il écrase celui du
+     Catalogue (même si ce dernier en avait déjà un différent) ; seulement si
+     le Stock est vide, on reprend celui du Catalogue. Retourne true si le
+     SKU du Catalogue a été modifié (pour que l'appelant sauvegarde 'catalogM'). */
   applyCatalogVariantPrice(p, v, cat, catVarId) {
-    const cv = (cat.variants || []).find(x => x.id === catVarId); if (!cv) return;
+    const cv = (cat.variants || []).find(x => x.id === catVarId); if (!cv) return false;
     const base = Pricing.baseUnitCost(cat);
     const enabledVars = (cat.variants || []).filter(x => x.enabled !== false);
     const idx = enabledVars.findIndex(x => x.id === cv.id);
     const calc = Pricing.variantCalc(cat, cv, idx < 0 ? 0 : idx, base, enabledVars.length);
     v.priceTTC = calc.priceTTC;
     v.costUnit = calc.cost;
-    if (cv.sku && !v.sku) v.sku = cv.sku;
+    let catChanged = false;
+    if (v.sku) { if (cv.sku !== v.sku) { cv.sku = v.sku; catChanged = true; } }
+    else if (cv.sku) v.sku = cv.sku;
+    return catChanged;
   },
 
   delVariant(pId, vId) {
@@ -837,7 +846,7 @@ const Stock = {
      variante catalogue se fait par ordre de préférence : catalogVariantId déjà posé, puis
      SKU identique, puis libellé/valeur identique (même logique que Params.applyLink). */
   syncPricesFromCatalog(catalogId) {
-    const cat=Store.state.catalogM.find(c=>c.id===catalogId); if(!cat) return;
+    const cat=Store.state.catalogM.find(c=>c.id===catalogId); if(!cat) return false;
     const norm = s => String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
     const sameVar = (cv, sv) => {
       if ((cv.mode==='gram'||cv.mode==='piece') && sv.mode===cv.mode) return U.num(cv.value)===U.num(sv.value);
@@ -845,6 +854,7 @@ const Stock = {
     };
     const base=Pricing.baseUnitCost(cat);
     const enabledVars=(cat.variants||[]).filter(x=>x.enabled!==false);
+    let catChanged = false;
     Store.state.stockM.filter(s=>s.catalogId===catalogId).forEach(sp=>{
       sp.name=cat.name; sp.meatType=cat.meatType;
       sp.variants.forEach(sv=>{
@@ -855,10 +865,15 @@ const Stock = {
         const idx = enabledVars.indexOf(cv);
         const calc = Pricing.variantCalc(cat,cv,idx,base,enabledVars.length);
         sv.catalogVariantId=cv.id; sv.label=Pricing.labelVariant(cv); sv.mode=cv.mode; sv.value=cv.value;
-        if(cv.sku && !sv.sku) sv.sku=cv.sku;
+        // SKU : le Stock est prioritaire (écrase celui du Catalogue) ; sinon, si le
+        // Stock n'en a pas, on reprend celui du Catalogue comme avant.
+        if (sv.sku) { if (cv.sku !== sv.sku) { cv.sku = sv.sku; catChanged = true; } }
+        else if (cv.sku) sv.sku = cv.sku;
         sv.priceTTC=calc.priceTTC; sv.costUnit=calc.cost;
       });
     });
+    if (catChanged) Store.save('catalogM');
+    return catChanged;
   },
 
   /* Resynchronisation manuelle déclenchée par Antho (bouton 🔄 sur une fiche

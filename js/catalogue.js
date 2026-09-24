@@ -839,12 +839,25 @@ const Catalogue = {
     if (!rv) return;
     const re = new RegExp(rv.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + sfx, 'i');
     if (!re.test(ref.sku)) return;
+    const dupes = [];
     this._d.variants.forEach(v => {
       if (v.mode !== mode || v.sku || v === ref) return;
       const tv = String(v.value);
       if (!tv) return;
-      v.sku = ref.sku.replace(re, tv + sfx);
+      const generated = ref.sku.replace(re, tv + sfx);
+      if (this._skuExists(generated)) dupes.push(generated);
+      v.sku = generated;
     });
+    if (dupes.length) U.toast(`⚠️ SKU généré déjà utilisé ailleurs : ${dupes.join(', ')} — vérifie/modifie-le.`, true);
+  },
+
+  /* Un SKU est-il déjà pris par une AUTRE fiche (Stock, ou une autre fiche Catalogue) ?
+     Utilisé pour alerter (pas bloquer) quand autoFillSkus() génère un SKU en doublon. */
+  _skuExists(sku) {
+    const target = String(sku).trim().toLowerCase();
+    if (!target) return false;
+    if (Store.state.stockM.some(p => (p.variants || []).some(v => (v.sku || '').trim().toLowerCase() === target))) return true;
+    return Store.state.catalogM.some(p => p.id !== this.editId && (p.variants || []).some(v => (v.sku || '').trim().toLowerCase() === target));
   },
 
   save() {
