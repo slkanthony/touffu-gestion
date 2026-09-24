@@ -387,9 +387,18 @@ const Stock = {
     const p=Store.state.stockM.find(x=>x.id===pId); const v=p?.variants.find(x=>x.id===vId); if(!v) return;
     const snap=Store.snapshot('stockM',p);
     v.sku=val;
+    // Le Stock est prioritaire sur le SKU : répercute immédiatement vers la fiche
+    // Catalogue liée (même règle que le lien initial / Params > SKU).
+    const cId = v.catalogId || p.catalogId;
+    let catChanged = false;
+    if (cId && v.catalogVariantId) {
+      const cp = Store.state.catalogM.find(x => x.id === cId);
+      const cv = cp?.variants?.find(x => x.id === v.catalogVariantId);
+      if (cv && cv.sku !== v.sku) { cv.sku = v.sku; catChanged = true; }
+    }
     const entry=Store.commitSnapshot(snap,'stock',`SKU modifié — ${p.name} (${Pricing.labelVariant(v)})`);
     U.toast('SKU mis à jour.', false, entry.id);
-    Store.save('stockM');
+    Store.save('stockM'); if (catChanged) Store.save('catalogM');
   },
 
   moveVariant(pId, vId, dir) {
