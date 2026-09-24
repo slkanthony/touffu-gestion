@@ -706,27 +706,7 @@ const Params = {
         </td></tr>`;
       }).join('') || `<tr><td colspan="4" class="muted">Aucun sachet.</td></tr>`}
       </tbody></table></div>
-      ${this._sachetMissingConsoBtn(items)}
     </details>`;
-  },
-
-  _sachetMissingConsoBtn(items) {
-    const missing = items.filter(s => !s.consumableId);
-    if (!missing.length) return '';
-    return `<button class="btn-ghost btn-sm mt" onclick="Params.generateSachetConsumables()">🔄 Générer les consommables manquants (${missing.length})</button>`;
-  },
-  generateSachetConsumables() {
-    const S = Store.state.settings;
-    const missing = (S.sachets || []).filter(s => (s.type || 'sachet') === 'sachet' && !s.consumableId);
-    if (!missing.length) return;
-    missing.forEach(s => {
-      const conso = { id: U.uid(), name: s.name || 'Sachet', dimensions: s.dims || '', category: 'Sachets', unit: 'PCS', qty: 0, low: 0, costTotal: U.num(s.cost), costQtyPer: 1, costUnit: U.num(s.cost) };
-      Store.state.consumables.push(conso);
-      s.consumableId = conso.id;
-    });
-    this._renameSachets();
-    Store.save('consumables'); Store.save('settings'); App.rerender();
-    U.toast(`${missing.length} consommable(s) créé(s) et lié(s). Pense à renseigner leur quantité/seuil dans Stock > Consommables.`);
   },
 
   _blisterGroupedHTML(items, isOpen) {
