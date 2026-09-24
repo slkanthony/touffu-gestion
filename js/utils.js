@@ -188,8 +188,8 @@ const U = {
     return `<details class="multiselect meat-filter" ${openState ? 'open' : ''} ontoggle="${openSetter}=this.open">
       <summary>${curLabel} ▾</summary>
       <div class="multiselect-panel">
-        ${all.map(m => `<div class="dluo-opt${current.toLowerCase()===m.toLowerCase()?' active':''}" onclick="${setter}('${U.esc(m)}')">${U.esc(m)}</div>`).join('')}
         <div class="dluo-opt${current==='all'?' active':''}" onclick="${setter}('all')">Tous (${count})</div>
+        ${all.map(m => `<div class="dluo-opt${current.toLowerCase()===m.toLowerCase()?' active':''}" onclick="${setter}('${U.esc(m)}')">${U.esc(m)}</div>`).join('')}
       </div>
     </details>`;
   },
