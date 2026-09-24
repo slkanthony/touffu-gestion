@@ -144,6 +144,7 @@ const Stock = {
       this._prodOpen[focusId] = true;
       f.q = ''; f.meat = 'all'; f.variants = []; f.dluo = 'all';
     }
+    U.syncFilters('stock_mastication', f);
     const varGroups = this.allVariantGroups();
     const allVariants = varGroups.flatMap(g => g.items);
     this._allVariantsCache = allVariants;
@@ -1100,6 +1101,7 @@ const Stock = {
   renderPeremptions() {
     const f = this.perem;
     if (!f.excluded) f.excluded = []; // clés (pId|vId|lId) décochées — tout est coché par défaut
+    U.syncFilters('stock_peremptions', f);
     const varGroups = this.allVariantGroups();
     const allVariants = varGroups.flatMap(g => g.items);
     this._peremVariantsCache = allVariants;
@@ -1213,6 +1215,7 @@ const Stock = {
 
   renderFaible() {
     const f = this.faible;
+    U.syncFilters('stock_faible', f);
     const varGroups = this.allVariantGroups();
     const allVariants = varGroups.flatMap(g => g.items);
     this._faibleVariantsCache = allVariants;
@@ -1480,6 +1483,7 @@ const Stock = {
   },
   renderConso(){
     const S=Store.state.settings, f=this.consoFilters;
+    U.syncFilters('stock_conso', f);
     const list = Store.state.consumables.filter(c=>f.link!=='nourl'||!c.url);
     const dir = f.sortDir === 'asc' ? 1 : -1;
     list.sort((a,b) => {
@@ -1645,6 +1649,7 @@ const Stock = {
 
   renderMatieres() {
     const f = this.matFilters, kindLabel = this.matKindLabel;
+    U.syncFilters('stock_matieres', f);
     const allVariants = this.allMaterialVariantLabels();
     this._matVariantsCache = allVariants;
     f.variants = f.variants.filter(v => allVariants.includes(v));

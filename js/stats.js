@@ -41,6 +41,7 @@ const Stats = {
   },
 
   render() {
+    U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesMetric', 'seasonProduct']);
     if ((this.tab || 'price') === 'sales') return this.renderSales();
     return this.renderPrice();
   },

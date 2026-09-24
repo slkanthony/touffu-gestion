@@ -731,6 +731,11 @@ const Paniers = {
 
   /* ---------- Rendu ---------- */
   render() {
+    // Préférences/filtres persistés (pas `basket` : un panier en cours ne doit jamais
+    // réapparaître tout seul après un F5, contrairement à un simple filtre de recherche).
+    U.syncFilters('paniers', this, ['budget', 'livraison', 'nbChiens', 'priority', 'excludeMeats',
+      'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
+      'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct']);
     const S = Store.state.settings;
     const meatTypes = (S.meatTypes || []).slice().sort(U.sortFr);
     const products = Store.state.stockM;

@@ -212,6 +212,7 @@ const Woo = {
   },
 
   render() {
+    U.syncFilters('woo', this.filters);
     const all = this.lines();
     const linked = all.filter(l => l.sku);
     const missing = all.filter(l => !l.sku);

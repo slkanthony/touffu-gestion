@@ -49,6 +49,33 @@ const U = {
   frDateTime: (ts) => new Date(ts).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }),
   daysTo: (iso) => { if (!iso) return null; return Math.ceil((new Date(iso) - new Date(U.today())) / 86400000); },
 
+  /* Persiste un objet de filtres (recherche, viande, tri…) dans localStorage pour qu'il
+     survive à un F5 — appelé en tête de chaque render() de page filtrée : recharge UNE
+     SEULE fois par chargement de page (flag __fLoaded posé sur l'objet lui-même), puis
+     réenregistre à chaque appel pour capter toute mutation faite par les setters (qu'ils
+     réassignent la clé ou mutent un tableau en place, peu importe — on relit l'état actuel).
+     Les clés finissant par "Open" (état ouvert/fermé d'un menu déroulant) ne sont jamais
+     persistées : on ne veut pas rouvrir un panneau de filtre tout seul au chargement.
+     `keys` optionnel : liste de propriétés à cibler sur un objet qui n'est pas dédié aux
+     filtres (ex: un module entier avec quelques propriétés éparses) — sinon Object.keys(obj). */
+  syncFilters(name, obj, keys) {
+    const lsKey = 'touffu_filt_' + name;
+    const isSkipped = k => k === '__fLoaded' || /open$/i.test(k);
+    if (!obj.__fLoaded) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(lsKey) || '{}');
+        Object.keys(saved).forEach(k => { if (!isSkipped(k) && (!keys || keys.includes(k))) obj[k] = saved[k]; });
+      } catch (e) {}
+      obj.__fLoaded = true;
+    }
+    try {
+      const list = keys || Object.keys(obj);
+      const out = {};
+      list.forEach(k => { if (!isSkipped(k)) out[k] = obj[k]; });
+      localStorage.setItem(lsKey, JSON.stringify(out));
+    } catch (e) {}
+  },
+
   frDateLong(iso) {
     if (!iso) return '';
     const d = new Date(iso + 'T00:00:00');

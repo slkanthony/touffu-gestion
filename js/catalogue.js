@@ -32,6 +32,7 @@ const Catalogue = {
   renderList() {
     const S = Store.state.settings;
     const f = this.filters;
+    U.syncFilters('catalogue', f);
     let list = Store.state.catalogM.filter(p =>
       (!f.q || p.name.toLowerCase().includes(f.q.toLowerCase())) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&

@@ -41,6 +41,7 @@ const B2B = {
       this.discountAcc = s !== null ? U.num(s) : 20;
     }
     if (!this._noVatLoaded) { this.noVat = localStorage.getItem('touffu_b2bNoVat') === 'true'; this._noVatLoaded = true; }
+    U.syncFilters('b2b', this.filters);
     const tab = this.tab || 'mast';
     const disc = tab === 'acc' ? this.discountAcc : this.discount;
 

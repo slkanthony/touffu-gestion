@@ -114,6 +114,7 @@ const Accessoires = {
       }
     }
     if (needSave) Store.save('catalogA');
+    U.syncFilters('accessoires', this, ['accQ', 'accCatFilter', 'accWidthFilter', 'accBicolorFilter', 'accSort', 'accSortDir']);
     let list = [...Store.state.catalogA];
     const q = this.accQ.toLowerCase();
     if (q) list = list.filter(a => a.name.toLowerCase().includes(q));
