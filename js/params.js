@@ -653,26 +653,31 @@ const Params = {
         });
       }
     });
-    this._syncBlisterCosts();
+    this._syncPackagingCosts();
   },
 
-  _syncBlisterCosts() {
+  _syncPackagingCosts() {
     const S = Store.state.settings;
     const rolls = S.blisterRolls || {};
     (S.sachets || []).forEach(s => {
-      if ((s.type || 'sachet') !== 'blister') return;
-      const d = this._blisterDims(s);
-      if (!d) return;
-      const roll = rolls[String(d.widthMm)];
-      if (!roll?.consumableId) return;
-      const conso = Store.state.consumables.find(c => c.id === roll.consumableId);
-      if (!conso || !U.num(conso.costUnit)) return;
-      const unit = (conso.unit || 'm').toLowerCase();
-      let len;
-      if (unit === 'mm') len = d.lengthMm;
-      else if (unit === 'cm') len = d.lengthMm / 10;
-      else len = d.lengthMm / 1000;
-      s.cost = Math.round(len * U.num(conso.costUnit) * 10000) / 10000;
+      const type = s.type || 'sachet';
+      if (type === 'blister') {
+        const d = this._blisterDims(s);
+        if (!d) return;
+        const roll = rolls[String(d.widthMm)];
+        if (!roll?.consumableId) return;
+        const conso = Store.state.consumables.find(c => c.id === roll.consumableId);
+        if (!conso || !U.num(conso.costUnit)) return;
+        const unit = (conso.unit || 'm').toLowerCase();
+        let len;
+        if (unit === 'mm') len = d.lengthMm;
+        else if (unit === 'cm') len = d.lengthMm / 10;
+        else len = d.lengthMm / 1000;
+        s.cost = Math.round(len * U.num(conso.costUnit) * 10000) / 10000;
+      } else if (s.consumableId) {
+        const conso = Store.state.consumables.find(c => c.id === s.consumableId);
+        if (conso) s.cost = U.num(conso.costUnit);
+      }
     });
   },
 
@@ -686,11 +691,20 @@ const Params = {
     return `<details class="fold sachet-group" style="margin:10px 0;" ${isOpen ? 'open' : ''} ontoggle="Params._sachetTypeOpen['${type}']=this.open">
       <summary style="cursor:pointer;padding:8px 0;"><b style="font-size:1rem;color:var(--texte);">${title}</b> <span class="muted" style="font-size:.85rem;">(${items.length}) — ${subtitle}</span></summary>
       <div class="table-wrap"><table><thead><tr><th class="col-name">Nom</th><th>Dimensions</th><th class="num">Coût</th><th></th></tr></thead>
-      <tbody>${items.map(s => `<tr>
-        <td class="col-name">${U.esc(s.name)}</td>
+      <tbody>${items.map(s => {
+        const conso = s.consumableId ? Store.state.consumables.find(c => c.id === s.consumableId) : null;
+        return `<tr>
+        <td class="col-name">${U.esc(s.name)}${conso ? ` <span class="badge ok" style="font-size:.7rem;" title="Lié à ${U.esc(conso.name)} — ${U.eur(conso.costUnit, 3)}/${U.esc(!conso.unit || conso.unit === 'pc' ? 'PCS' : conso.unit)}">🔗 lié</span>` : ''}</td>
         <td>${U.esc(s.dims || '—')}</td>
-        <td class="num">${U.eur(s.cost, 3)}</td>
-        <td class="right"><button class="btn-icon" onclick="Params.delSachet('${s.id}')">🗑️</button></td></tr>`).join('') || `<tr><td colspan="4" class="muted">Aucun sachet.</td></tr>`}
+        <td class="num">${conso
+          ? U.eur(s.cost, 3) + ' <span class="muted" style="font-size:.75rem;">(auto)</span>'
+          : `<input type="number" step="0.001" value="${s.cost}" style="width:80px;text-align:right;" onchange="Params.editSachetCost('${s.id}',this.value)">`}</td>
+        <td class="right">
+          <button class="btn-icon" onclick="Params.linkSachetConso('${s.id}')" title="${conso ? 'Modifier le lien' : 'Lier au consommable'}">${conso ? '✏️' : '🔗＋'}</button>
+          ${conso ? `<button class="btn-icon" onclick="Params.unlinkSachetConso('${s.id}')" title="Délier">✕</button>` : ''}
+          <button class="btn-icon" onclick="Params.delSachet('${s.id}')">🗑️</button>
+        </td></tr>`;
+      }).join('') || `<tr><td colspan="4" class="muted">Aucun sachet.</td></tr>`}
       </tbody></table></div>
     </details>`;
   },
@@ -845,6 +859,38 @@ const Params = {
     Store.save('settings'); App.rerender();
   },
   editBlisterCost(id, val) {
+    const s = Store.state.settings.sachets.find(x => String(x.id) === String(id));
+    if (!s) return;
+    s.cost = U.num(val);
+    Store.save('settings');
+  },
+  linkSachetConso(id) {
+    const s = Store.state.settings.sachets.find(x => String(x.id) === String(id));
+    if (!s) return;
+    const consos = Store.state.consumables;
+    if (!consos.length) { U.toast('Aucun consommable en stock — ajoute d\'abord ce sachet dans Stock > Consommables.', true); return; }
+    const current = s.consumableId || '';
+    const opts = consos.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.eur(c.costUnit, 3)}/${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
+    U.modal({
+      title: 'Lier ' + (s.name || 'ce sachet') + ' au consommable', okLabel: 'Enregistrer',
+      body: `<div class="fg"><label>Consommable (sachet en stock)</label><select id="sac_conso"><option value="">— Aucun —</option>${opts}</select></div>
+      <p class="muted">Le coût de ce sachet reprendra automatiquement le coût / unité du consommable choisi.</p>`,
+      onOk: () => {
+        const cid = U.val('sac_conso');
+        if (cid) s.consumableId = cid; else delete s.consumableId;
+        this._renameSachets();
+        Store.save('settings'); U.closeModal(); App.rerender();
+      }
+    });
+  },
+  unlinkSachetConso(id) {
+    const s = Store.state.settings.sachets.find(x => String(x.id) === String(id));
+    if (!s) return;
+    delete s.consumableId;
+    Store.save('settings'); App.rerender();
+    U.toast('Lien consommable retiré.');
+  },
+  editSachetCost(id, val) {
     const s = Store.state.settings.sachets.find(x => String(x.id) === String(id));
     if (!s) return;
     s.cost = U.num(val);
