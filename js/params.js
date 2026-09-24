@@ -706,7 +706,27 @@ const Params = {
         </td></tr>`;
       }).join('') || `<tr><td colspan="4" class="muted">Aucun sachet.</td></tr>`}
       </tbody></table></div>
+      ${this._sachetMissingConsoBtn(items)}
     </details>`;
+  },
+
+  _sachetMissingConsoBtn(items) {
+    const missing = items.filter(s => !s.consumableId);
+    if (!missing.length) return '';
+    return `<button class="btn-ghost btn-sm mt" onclick="Params.generateSachetConsumables()">🔄 Générer les consommables manquants (${missing.length})</button>`;
+  },
+  generateSachetConsumables() {
+    const S = Store.state.settings;
+    const missing = (S.sachets || []).filter(s => (s.type || 'sachet') === 'sachet' && !s.consumableId);
+    if (!missing.length) return;
+    missing.forEach(s => {
+      const conso = { id: U.uid(), name: s.name || 'Sachet', dimensions: s.dims || '', category: 'Sachets', unit: 'PCS', qty: 0, low: 0, costTotal: U.num(s.cost), costQtyPer: 1, costUnit: U.num(s.cost) };
+      Store.state.consumables.push(conso);
+      s.consumableId = conso.id;
+    });
+    this._renameSachets();
+    Store.save('consumables'); Store.save('settings'); App.rerender();
+    U.toast(`${missing.length} consommable(s) créé(s) et lié(s). Pense à renseigner leur quantité/seuil dans Stock > Consommables.`);
   },
 
   _blisterGroupedHTML(items, isOpen) {
@@ -807,15 +827,17 @@ const Params = {
     Store.save('settings'); App.rerender();
   },
   linkBlisterRoll(widthKey) {
-    const consos = Store.state.consumables;
-    if (!consos.length) { U.toast('Aucun consommable en stock — ajoute d\'abord le rouleau dans Stock > Consommables.', true); return; }
+    const all = Store.state.consumables;
+    if (!all.length) { U.toast('Aucun consommable en stock — ajoute d\'abord le rouleau dans Stock > Consommables.', true); return; }
+    const consos = all.filter(c => c.category === 'Blisters');
+    const list = consos.length ? consos : all;
     const S = Store.state.settings;
     const current = (S.blisterRolls || {})[widthKey]?.consumableId || '';
-    const opts = consos.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.qty(c.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
+    const opts = list.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.qty(c.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
     U.modal({
       title: 'Lier Blister ' + widthKey + 'mm au consommable', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Consommable (rouleau en stock)</label><select id="bl_conso"><option value="">— Aucun —</option>${opts}</select></div>
-      <p class="muted">Sélectionne le rouleau de blister correspondant dans le stock Consommables.<br>La longueur sera déduite du stock quand un lot utilisant ce blister est créé.</p>`,
+      <p class="muted">Sélectionne le rouleau de blister correspondant dans le stock Consommables.<br>La longueur sera déduite du stock quand un lot utilisant ce blister est créé.${consos.length ? '' : ' <br>⚠️ Aucun consommable de catégorie « Blisters » trouvé — tous les consommables sont affichés.'}</p>`,
       onOk: () => {
         if (!S.blisterRolls) S.blisterRolls = {};
         const id = U.val('bl_conso');
@@ -867,14 +889,16 @@ const Params = {
   linkSachetConso(id) {
     const s = Store.state.settings.sachets.find(x => String(x.id) === String(id));
     if (!s) return;
-    const consos = Store.state.consumables;
-    if (!consos.length) { U.toast('Aucun consommable en stock — ajoute d\'abord ce sachet dans Stock > Consommables.', true); return; }
+    const all = Store.state.consumables;
+    if (!all.length) { U.toast('Aucun consommable en stock — ajoute d\'abord ce sachet dans Stock > Consommables.', true); return; }
+    const consos = all.filter(c => c.category === 'Sachets');
+    const list = consos.length ? consos : all;
     const current = s.consumableId || '';
-    const opts = consos.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.eur(c.costUnit, 3)}/${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
+    const opts = list.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.eur(c.costUnit, 3)}/${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
     U.modal({
       title: 'Lier ' + (s.name || 'ce sachet') + ' au consommable', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Consommable (sachet en stock)</label><select id="sac_conso"><option value="">— Aucun —</option>${opts}</select></div>
-      <p class="muted">Le coût de ce sachet reprendra automatiquement le coût / unité du consommable choisi.</p>`,
+      <p class="muted">Le coût de ce sachet reprendra automatiquement le coût / unité du consommable choisi.${consos.length ? '' : ' <br>⚠️ Aucun consommable de catégorie « Sachets » trouvé — tous les consommables sont affichés.'}</p>`,
       onOk: () => {
         const cid = U.val('sac_conso');
         if (cid) s.consumableId = cid; else delete s.consumableId;
