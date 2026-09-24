@@ -283,6 +283,8 @@ const Params = {
         <hr class="sep">
         <p class="muted mb0">Si tu as importé le calculateur et le stock séparément, relie-les (par SKU puis par nom exact) pour que coûts, marges et valeurs remontent au tableau de bord. Pour tout le reste (noms différents, cas ambigus), utilise "✏️ Modifier le produit" dans Stock → "Lier au catalogue prix" : c'est toi qui choisis la bonne fiche dans la liste, rien n'est deviné automatiquement.</p>
         <button class="btn-ghost mt" onclick="Params.relink()">🔗 Relier stock ↔ catalogue (noms identiques)</button>
+        <p class="muted mb0 mt">Les produits déjà reliés se resynchronisent normalement tout seuls (à chaque enregistrement côté Prix mastication, ou à chaque modif de SKU). Ce bouton est un filet de sécurité : il force la resynchro de TOUS les produits déjà reliés (prix, variantes, SKU), au cas où l'un d'eux aurait été manqué.</p>
+        <button class="btn-ghost mt" onclick="Params.resyncAllFromCatalog()">🔄 Resynchroniser tout (Stock ↔ Catalogue)</button>
         </div>
       </details>
 
@@ -1232,6 +1234,27 @@ const Params = {
     const n = this.linkStockToCatalog();
     Store.save('stockM', 'catalogM');
     U.toast(n ? `${n} produit(s) du stock reliés au catalogue.` : 'Aucune nouvelle liaison trouvée (déjà reliés ou noms différents).');
+    App.rerender();
+  },
+
+  /* Filet de sécurité : force la resynchro (prix, variantes, SKU) de TOUS les produits
+     stock DÉJÀ reliés à une fiche catalogue — jamais de nouvelle liaison ni de création
+     de variante (Stock.syncPricesFromCatalog garde ses garde-fous habituels), juste un
+     rattrapage en masse au cas où un produit aurait été manqué. Annulable en un clic. */
+  resyncAllFromCatalog() {
+    const linked = Store.state.stockM.filter(p => p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId));
+    if (!linked.length) { U.toast('Aucun produit relié au catalogue à resynchroniser.', true); return; }
+    if (!confirm(`Resynchroniser ${linked.length} produit(s) déjà reliés au catalogue prix (prix, variantes, SKU) ?`)) return;
+    const snaps = linked.map(p => Store.snapshot('stockM', p));
+    const catIds = [...new Set(linked.map(p => p.catalogId))];
+    catIds.forEach(id => {
+      const cat = Store.state.catalogM.find(c => c.id === id);
+      if (cat) snaps.push(Store.snapshot('catalogM', cat));
+    });
+    catIds.forEach(id => Stock.syncPricesFromCatalog(id));
+    const entry = Store.log('paramètres', `Resynchronisation globale Stock ↔ Catalogue : ${linked.length} produit(s), ${catIds.length} fiche(s) prix`, { type: 'restoreBatch', data: snaps });
+    Store.save('stockM', 'catalogM');
+    U.toast(`${linked.length} produit(s) resynchronisé(s).`, false, entry.id);
     App.rerender();
   },
 
