@@ -169,7 +169,7 @@ const U = {
     if (!hideOk) document.getElementById('modalOk').onclick = () => { if (onOk && onOk() === false) return; };
     return bg;
   },
-  closeModal() { document.getElementById('modalBg')?.remove(); },
+  closeModal() { document.getElementById('modalBg')?.remove(); if (typeof Store !== 'undefined' && Store._afterModal) Store._afterModal(); },
 
   download(filename, text, mime = 'application/json') {
     const a = document.createElement('a');

@@ -207,6 +207,7 @@ const Store = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, async () => {
           if (this._flushing || this._dirty.size) return;
           if (this._justSynced && Date.now() - this._justSynced < 2000) return; // echo de notre propre sauvegarde : rien a recharger
+          if (this._modalOpen()) { this._pendingReload = true; return; }
           await this.loadRemote();
           window.App?.rerender?.();
         }).subscribe();
@@ -222,8 +223,28 @@ const Store = {
     window.addEventListener('focus', async () => {
       const pendingFile = document.getElementById('importFile');
       if (pendingFile && pendingFile.files && pendingFile.files.length) return; // ne pas ecraser une selection de fichier en cours (ex: retour du selecteur de fichier)
-      if (this.remote && !this._flushing && !this._dirty.size) { await this.loadRemote(); window.App?.rerender?.(); }
+      if (this.remote && !this._flushing && !this._dirty.size) {
+        if (this._modalOpen()) { this._pendingReload = true; return; }
+        await this.loadRemote(); window.App?.rerender?.();
+      }
     });
+  },
+
+  /* ⚠️ Piège corrigé (2026-09-26, « je dois enregistrer 2 fois ») : une fenêtre d'édition
+     (U.modal) garde une référence vers l'objet du produit. Si loadRemote() remplace
+     this.state pendant qu'elle est ouverte (retour sur l'onglet après avoir copié une URL,
+     ou modif d'un autre appareil), l'enregistrement s'appliquait à l'ANCIENNE copie → perdu
+     sans message. On diffère donc tout rechargement tant qu'une fenêtre est ouverte ;
+     U.closeModal() appelle _afterModal() pour le rattraper ensuite. */
+  _modalOpen() { return !!document.getElementById('modalBg'); },
+  _afterModal() {
+    if (!this._pendingReload) return;
+    this._pendingReload = false;
+    setTimeout(async () => {
+      if (!this.remote || this._modalOpen()) { this._pendingReload = true; return; }
+      if (this._flushing || this._dirty.size) return; // notre propre save part : le serveur aura notre version
+      await this.loadRemote(); window.App?.rerender?.();
+    }, 1200);
   },
 
   /* ---------- sauvegarde ---------- */

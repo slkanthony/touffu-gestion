@@ -647,7 +647,7 @@ const Stock = {
       </div>
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="sp_name" value="${U.esc(p.name)}"></div>
-        <div class="fg"><label>Viande</label><select id="sp_meat">${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Viande</label><select id="sp_meat">${(p.meatType && !S.meatTypes.some(m=>m.toLowerCase()===p.meatType.toLowerCase()) ? `<option value="${U.esc(p.meatType)}" selected>${U.esc(p.meatType)} (hors liste)</option>` : '')}${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
@@ -738,14 +738,16 @@ const Stock = {
         const cat=Store.state.catalogM.find(c=>c.id===p.catalogId);
         const stockName = U.val('sp_name').trim();
         let catRenameEntry = null;
-        if (cat && catId && stockName && cat.name !== stockName) {
+        const stockMeat = U.val('sp_meat');
+        if (cat && catId && ((stockName && cat.name !== stockName) || (stockMeat && cat.meatType !== stockMeat))) {
           const catSnap = Store.snapshot('catalogM', cat);
-          cat.name = stockName;
-          catRenameEntry = Store.commitSnapshot(catSnap, 'catalogue', 'Nom catalogue uniformisé — ' + stockName);
+          if (stockName) cat.name = stockName;
+          if (stockMeat) cat.meatType = stockMeat;
+          catRenameEntry = Store.commitSnapshot(catSnap, 'catalogue', 'Fiche prix alignée sur le stock (nom/viande) — ' + (stockName || cat.name));
           Store.save('catalogM');
         }
         p.name=stockName||cat?.name||'Sans nom';
-        p.meatType=cat?.meatType||U.val('sp_meat');
+        p.meatType=U.val('sp_meat')||cat?.meatType||'';
         p.url=U.val('sp_url').trim();
         const poilVal = U.val('sp_poil');
         const hypoVal = U.val('sp_hypo');
@@ -764,7 +766,7 @@ const Stock = {
           id ? { type:'editStockProduct', data:{ pId:p.id, before } } : { type:'createStockProduct', data:{ pId:p.id } });
         Store.save('stockM'); U.closeModal(); App.rerender();
         if (catRenameEntry) {
-          U.toast('Modification enregistrée — nom du catalogue prix uniformisé.', false, catRenameEntry.id);
+          U.toast('Modification enregistrée — fiche prix alignée sur le stock (nom/viande).', false, catRenameEntry.id);
         } else {
           U.toast(id?'Modification enregistrée.':'Produit créé.', false, entry.id);
         }
@@ -866,8 +868,16 @@ const Stock = {
     const base=Pricing.baseUnitCost(cat);
     const enabledVars=(cat.variants||[]).filter(x=>x.enabled!==false);
     let catChanged = false;
-    Store.state.stockM.filter(s=>s.catalogId===catalogId).forEach(sp=>{
-      sp.name=cat.name; sp.meatType=cat.meatType;
+    // Le STOCK est prioritaire (décision d'Antho, 2026-09-26) : nom et viande de la fiche
+    // stock sont recopiés sur la fiche prix liée — jamais l'inverse. Une resynchro corrige
+    // donc d'elle-même une viande/un nom divergent côté prix (ex. « Bois Végétal » vs « Bois Naturel »).
+    const linked = Store.state.stockM.filter(s=>s.catalogId===catalogId);
+    const ref = linked[0];
+    if (ref) {
+      if (ref.name && cat.name !== ref.name) { cat.name = ref.name; catChanged = true; }
+      if (ref.meatType && cat.meatType !== ref.meatType) { cat.meatType = ref.meatType; catChanged = true; }
+    }
+    linked.forEach(sp=>{
       sp.variants.forEach(sv=>{
         let cv = sv.catalogVariantId ? enabledVars.find(x=>x.id===sv.catalogVariantId) : null;
         if(!cv && sv.sku) cv = enabledVars.find(x=>x.sku && norm(x.sku)===norm(sv.sku));
