@@ -37,14 +37,93 @@ const Stats = {
     return `<div class="card"><div class="frow" style="gap:8px;">
       <button class="${t === 'price' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('price')">📊 Prix &amp; marges</button>
       <button class="${t === 'sales' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('sales')">🛒 Ventes</button>
+      <button class="${t === 'pack' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('pack')">📦 Emballages</button>
     </div></div>`;
   },
 
   render() {
     U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesMetric', 'seasonProduct']);
     if ((this.tab || 'price') === 'sales') return this.renderSales();
+    if (this.tab === 'pack') return this.renderPack();
     return this.renderPrice();
   },
+
+  /* ═══════════ Onglet « 📦 Emballages » (2026-09-26) ═══════════
+     Sachets : historique de conditionnement des lots (v.packHistory, posé par Stock._packApply).
+     Cartons : lignes consommables (kind 'C') des ventes dont le consommable est de catégorie « Cartons ».
+     But (Antho) : voir ce qui sert le plus / le moins pour réduire le nombre de formats. */
+  _packAgg() {
+    const period = this.salesPeriod || 'all';
+    const now = Date.now();
+    const inPeriod = iso => {
+      if (period === 'all') return true;
+      const t = new Date(iso).getTime();
+      return period === '12m' ? t >= now - 365 * 86400000 : t >= new Date(new Date().getFullYear(), 0, 1).getTime();
+    };
+    const consos = Store.state.consumables || [];
+    const isCat = (c, re) => re.test((c && c.category) || '');
+    const mk = c => ({ id: c.id, name: c.name, dims: c.dimensions || '', unitCost: U.num(c.costUnit), stock: U.num(c.qty), uses: 0, qty: 0, cost: 0, last: '', prods: {}, replaceBy: c.replaceBy || '' });
+    // Sachets
+    const sach = {};
+    consos.filter(c => isCat(c, /sachet/i)).forEach(c => { sach[c.id] = mk(c); });
+    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => (v.packHistory || []).forEach(h => {
+      if (!inPeriod(h.date)) return;
+      const r = sach[h.consoId] || (sach[h.consoId] = { id: h.consoId, name: h.name + ' (supprimé)', dims: h.dims || '', unitCost: U.num(h.unitCost), stock: 0, uses: 0, qty: 0, cost: 0, last: '', prods: {}, replaceBy: '' });
+      r.uses++; r.qty += U.num(h.qty); r.cost += U.num(h.qty) * U.num(h.unitCost);
+      if (!r.last || h.date > r.last) r.last = h.date;
+      const k = p.name + ' ' + Pricing.labelVariant(v);
+      r.prods[k] = (r.prods[k] || 0) + U.num(h.qty);
+    })));
+    // Cartons
+    const cart = {};
+    consos.filter(c => isCat(c, /carton/i)).forEach(c => { cart[c.id] = mk(c); });
+    Store.state.sales.filter(s => !s.cancelled && inPeriod(new Date(s.ts).toISOString())).forEach(s => {
+      const items = s.items || [];
+      items.filter(i => i.kind === 'C' && cart[i.pId]).forEach(i => {
+        const r = cart[i.pId];
+        r.uses++; r.qty += U.num(i.qty); r.cost += U.num(i.cost);
+        const d = new Date(s.ts).toISOString().slice(0, 10);
+        if (!r.last || d > r.last) r.last = d;
+        items.filter(x => x.kind !== 'C').forEach(x => { r.prods[x.name] = (r.prods[x.name] || 0) + 1; });
+      });
+    });
+    const sort = o => Object.values(o).sort((a, b) => b.qty - a.qty || U.sortFr(a.name, b.name));
+    return { sach: sort(sach), cart: sort(cart) };
+  },
+
+  _packTable(rows, unitWord, prodWord) {
+    if (!rows.length) return '<p class="muted">Aucun consommable de cette catégorie.</p>';
+    const total = rows.reduce((a, r) => a + r.qty, 0) || 1;
+    const sixMonths = new Date(Date.now() - 182 * 86400000).toISOString().slice(0, 10);
+    const lbl = r => U.esc(r.name) + (r.dims ? ` <span class="muted">${U.esc(r.dims)}</span>` : '');
+    return `<div class="table-wrap"><table>
+      <thead><tr><th class="col-name">Emballage</th><th class="num">${unitWord}</th><th class="num">Part</th><th class="num">Coût total</th><th>Dernier usage</th><th>${prodWord}</th><th>Statut</th></tr></thead>
+      <tbody>${rows.map(r => {
+        const top = Object.entries(r.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ') || '<span class="muted">—</span>';
+        const rep = r.replaceBy ? Store.state.consumables.find(c => c.id === r.replaceBy) : null;
+        let st;
+        if (!r.qty) st = '<span class="badge bad">jamais utilisé</span>';
+        else if (r.last < sixMonths) st = '<span class="badge warn">peu utilisé (+6 mois)</span>';
+        else st = '<span class="badge ok">actif</span>';
+        if (rep) st += ` <span class="badge info" title="À remplacer au prochain achat">💡 → ${U.esc(rep.name)}${rep.dims || rep.dimensions ? ' ' + U.esc(rep.dimensions || '') : ''}</span>`;
+        return `<tr class="${!r.qty ? 'dim' : ''}"><td class="col-name">${lbl(r)}</td><td class="num"><b>${U.qty(r.qty)}</b></td><td class="num">${Math.round(r.qty / total * 100)} %</td><td class="num sensitive">${U.eur(r.cost)}</td><td>${r.last ? U.frDate(r.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  },
+
+  renderPack() {
+    const agg = this._packAgg();
+    const periodOpts = [{ v: 'all', l: 'Tout l\'historique' }, { v: 'year', l: 'Cette année' }, { v: '12m', l: '12 derniers mois' }];
+    App.mount(`
+      <div class="view-title"><h1>Statistiques</h1><span class="sub">emballages — sachets & cartons</span></div>
+      ${this.tabBar()}
+      <div class="card">
+        <div class="fg" style="max-width:220px;margin:0;"><label>Période</label>${U.customSelect({ value: this.salesPeriod, options: periodOpts, onPick: 'Stats.setSalesPeriod' })}</div>
+        <p class="muted mb0 mt" style="font-size:.85rem;">Sachets : d'après le conditionnement indiqué à l'ajout des lots (Stock → ＋ Ajouter un lot, ou 📦 sur un lot). Cartons : d'après les consommables de catégorie « Cartons » ajoutés aux ventes. Le « jamais / peu utilisé » t'aide à repérer les formats à supprimer ou remplacer.</p>
+      </div>
+      <div class="card"><h2>🛍️ Sachets</h2>${this._packTable(agg.sach, 'Sachets utilisés', 'Produits qui l\'utilisent le plus')}</div>
+      <div class="card"><h2>📦 Cartons</h2>${this._packTable(agg.cart, 'Colis envoyés', 'Produits le plus souvent envoyés dedans')}</div>`);
+  },
+
 
   renderPrice() {
     const S = Store.state.settings;

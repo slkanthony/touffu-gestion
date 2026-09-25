@@ -686,8 +686,16 @@ const Params = {
           s.name = `${prefix} — ${d.lengthStr}`;
         });
       } else {
+        // Sachet lié à un consommable : nom + dimensions repris du consommable (lisible
+        // partout : fiche prix, liste de choix, stats) — demande d'Antho 2026-09-26.
+        items.forEach(s => {
+          const conso = s.consumableId ? Store.state.consumables.find(c => c.id === s.consumableId) : null;
+          if (conso) { s.name = conso.name || s.name; if (conso.dimensions) s.dims = conso.dimensions; }
+        });
+        items.sort(this._dimSort(type));
         let num = 0, lastDims = null, bisCount = 0;
         items.forEach(s => {
+          if (s.consumableId && Store.state.consumables.some(c => c.id === s.consumableId)) return;
           const d = (s.dims || '').trim();
           if (d && d === lastDims) {
             bisCount++;

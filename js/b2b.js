@@ -154,7 +154,7 @@ const B2B = {
     return `<details class="fold b2b-fold" id="b2bacc-${a.id}" ${open ? 'open' : ''} ontoggle="B2B.setAccProdOpen('${a.id}',this.open)">
       <summary>
         <span class="b2b-name"><b>${U.esc(a.name)}</b></span>
-        <span>${critical ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
+        <span>${critical ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${this._expDiff('a:' + a.id, it.priceHTB2B) ? ' <span class="badge warn" title="Un prix pro a changé depuis ton dernier export">💶 prix modifié</span>' : ''}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${widthBadges}</span>
         <span class="b2b-disc-badge" onclick="event.preventDefault();event.stopPropagation()">
@@ -170,7 +170,7 @@ const B2B = {
             <td class="num muted sensitive">${U.eur(it.cost, 3)}</td>
             <td class="num sensitive">${it.coeffPublic.toFixed(3)}</td>
             <td class="num muted">${U.eur(it.priceTTCPublic)}</td>
-            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)} <span class="muted">HT</span></td>
+            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)} <span class="muted">HT</span>${this._expBadge(this._expDiff('a:' + it.a.id, it.priceHTB2B))}</td>
             <td class="num sensitive ${it.critical ? 'neg' : ''}">${it.coeffB2B.toFixed(3)}${it.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${it.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(it.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(it.socialB2B)}</td>
@@ -254,8 +254,35 @@ const B2B = {
     return (specific !== undefined && specific !== '' && specific !== null) ? U.num(specific) : U.num(this.discountAcc);
   },
 
+  /* Alerte « prix pro modifié depuis le dernier export » (demande d'Antho 2026-09-26) :
+     chaque export (tarif pro / spécial commercial) mémorise le prix B2B HT envoyé par
+     produit+variante dans settings.b2bLastExport ; ensuite on signale tout écart, pour
+     penser à prévenir le client. Clé : 'm:<id catalogue>|<libellé variante>' ou 'a:<id accessoire>'. */
+  _expKeyM(pId, label) { return 'm:' + pId + '|' + label; },
+  _lastExp() { return Store.state.settings.b2bLastExport || { prices: {} }; },
+  _expDiff(key, price) {
+    const le = this._lastExp(), e = (le.prices || {})[key];
+    if (!e) return null;
+    const d = price - U.num(e.price);
+    return Math.abs(d) < 0.005 ? null : { d, date: e.date };
+  },
+  _expBadge(x) {
+    if (!x) return '';
+    return ` <span class="badge ${x.d > 0 ? 'warn' : 'info'}" style="font-size:.68rem;white-space:nowrap;" title="Prix pro différent de celui envoyé le ${U.frDate(x.date)} — pense à prévenir ton client">${x.d > 0 ? '↑ +' : '↓ '}${U.eur(x.d)} depuis l'export du ${U.frDate(x.date).slice(0, 5)}</span>`;
+  },
+  _recordExport(entries) {
+    const S = Store.state.settings;
+    const le = S.b2bLastExport = S.b2bLastExport || { prices: {} };
+    le.prices = le.prices || {};
+    const d = U.today();
+    entries.forEach(([k, price]) => { le.prices[k] = { price: Math.round(price * 100) / 100, date: d }; });
+    le.date = d;
+    Store.save('settings');
+  },
+
   card(it) {
     const { p, rows, discPct, supplierName, critical, preview } = it;
+    const expChanged = rows.some(r => this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B));
     const open = this._prodOpen[p.id] || false;
     const activeSup = preview || p.mainSupplierId;
     const supBadges = (p.suppliers || []).slice().sort((a, b) => a.supplierId === p.mainSupplierId ? -1 : b.supplierId === p.mainSupplierId ? 1 : 0).map(s => {
@@ -268,7 +295,7 @@ const B2B = {
     return `<details class="fold b2b-fold" id="b2b-${p.id}" ${open ? 'open' : ''} ontoggle="B2B.setProdOpen('${p.id}',this.open)">
       <summary>
         <span class="b2b-name"><b>${U.esc(p.name)}</b></span>
-        <span>${critical ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
+        <span>${critical ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${expChanged ? ' <span class="badge warn" title="Un prix pro a changé depuis ton dernier export">💶 prix modifié</span>' : ''}</span>
         <span class="type-col">
           <span class="badge info">${U.esc(p.meatType || '—')}</span>
         </span>
@@ -287,7 +314,7 @@ const B2B = {
             <td class="num muted sensitive">${U.eur(r.cost, 3)}</td>
             <td class="num sensitive">${r.coeffPublic.toFixed(3)}</td>
             <td class="num muted">${U.eur(r.priceTTCPublic)}</td>
-            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)} <span class="muted">HT</span></td>
+            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)} <span class="muted">HT</span>${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
             <td class="num sensitive ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(3)}${r.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${r.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(r.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(r.socialB2B)}</td>
@@ -389,6 +416,7 @@ const B2B = {
     });
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-pro-mastication-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
+    this._recordExport((this._items || []).flatMap(it => it.rows.map(r => [this._expKeyM(it.p.id, r.label), r.priceHTB2B])));
     U.toast('Tarif pro mastication exporté (CSV, ouvrable dans Excel).');
   },
 
@@ -397,6 +425,7 @@ const B2B = {
     (this._accItems || []).forEach(r => lines.push([r.a.name, r.a.category || '', r.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]));
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-pro-accessoires-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
+    this._recordExport((this._accItems || []).map(r => ['a:' + r.a.id, r.priceHTB2B]));
     U.toast('Tarif pro accessoires exporté (CSV, ouvrable dans Excel).');
   },
 
@@ -433,6 +462,7 @@ const B2B = {
     }
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-commercial-${acc ? 'accessoires' : 'mastication'}-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
+    this._recordExport(acc ? chosen.map(x => ['a:' + x.it.a.id, x.it.priceHTB2B]) : chosen.flatMap(x => x.it.rows.map(r => [this._expKeyM(x.it.p.id, r.label), r.priceHTB2B])));
     U.toast(`Export commercial généré${note} : ${chosen.length} produit(s).`);
   }
 };

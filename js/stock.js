@@ -302,6 +302,7 @@ const Stock = {
               <td class="num muted">${U.qty(tot)}</td>
               <td class="right" style="white-space:nowrap;">
                 ${isVrac?`<button class="btn-ghost btn-sm" onclick="Stock.conditionner('${p.id}','${v.id}','${l.id}')">🎁 Conditionner</button>`:''}
+                ${l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost,3)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
                 <button class="btn-icon" title="Modifier le lot" onclick="Stock.editLot('${p.id}','${v.id}','${l.id}')">✏️</button>
                 <button class="btn-icon" title="Supprimer le lot" onclick="Stock.delLot('${p.id}','${v.id}','${l.id}')">🗑️</button>
               </td></tr>`;
@@ -312,7 +313,7 @@ const Stock = {
     </td></tr>`;
 
     return `<tr>
-      <td class="col-name"><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin-right:4px;">${open?'▾':'▸'}</button><b>${U.esc(label)}</b>${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <span class="badge" title="Lié à : ${U.esc(lc.name)}" style="font-size:.65rem;background:var(--caramel);color:#fff;cursor:help;">💰</span>` : ''; })() : ''}</td>
+      <td class="col-name"><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin-right:4px;">${open?'▾':'▸'}</button><b>${U.esc(label)}</b>${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <span class="badge" title="Lié à : ${U.esc(lc.name)}" style="font-size:.65rem;background:var(--caramel);color:#fff;cursor:help;">💰</span>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</td>
       <td><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)"></td>
       <td class="num"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"></td>
       <td class="num"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
@@ -1014,12 +1015,165 @@ const Stock = {
       onOk:()=>{
         // Le coût unitaire vient du prix d'achat déjà réglé sur la variante (colonne "Prix achat"
         // de la fiche produit) — pas besoin de le ressaisir à chaque lot.
-        v.lots.push({id:U.uid(),lotNumber:U.val('nl_num'),dluo:U.val('nl_dluo'),qtyGeneral:U.numVal('nl_qg'),qtyEvent:U.numVal('nl_qe'),costUnit:U.num(v.costUnit)});
+        const newLot={id:U.uid(),lotNumber:U.val('nl_num'),dluo:U.val('nl_dluo'),qtyGeneral:U.numVal('nl_qg'),qtyEvent:U.numVal('nl_qe'),costUnit:U.num(v.costUnit)};
+        v.lots.push(newLot);
         const entry=Store.commitSnapshot(snap,'stock',`Lot ajouté — ${p.name}/${Pricing.labelVariant(v)} (${U.val('nl_num')||'sans n°'})`);
         Store.save('stockM'); U.closeModal(); App.rerender();
         U.toast('Lot ajouté.', false, entry.id);
+        // Fenêtre facultative de conditionnement (sachet) — « Fermer » pour passer.
+        const units = U.num(newLot.qtyGeneral) + U.num(newLot.qtyEvent);
+        if (units > 0 && this.packConsos().length) this.packLot(p.id, v.id, newLot.id);
       }
     });
+  },
+
+  /* ================= Conditionnement d'un lot (sachets) — 2026-09-26 =================
+     Après « ＋ Ajouter un lot », fenêtre FACULTATIVE : quel sachet (consommable) a été utilisé,
+     combien. Effets à la validation :
+       - stock du consommable déduit (plancher 0) ;
+       - le lot garde lot.pack = {consoId,name,dims,qty,unitCost,date} (historique → Stats Emballages) ;
+       - v.lastSachetConsoId = repère « 📦 habituel » + pré-sélection la fois suivante ;
+       - si la variante est liée à une fiche prix et que le sachet diffère de celui de la fiche :
+         la fiche passe sur ce sachet MAIS son prix TTC est FIGÉ (priceTTCManual = prix actuel) —
+         seuls coût/marge/cotisations/bénéfice bougent (règle d'Antho). La Revente pro reprend le
+         même coût (remise inchangée) → badge critique si le coeff pro passe sous le seuil ;
+       - le coût du lot (lot.costUnit) est recalé sur le nouveau coût de revient → bénéfice réel. */
+  packConsos() {
+    const all = Store.state.consumables || [];
+    const sach = all.filter(c => (c.category || '').toLowerCase() === 'sachets');
+    return (sach.length ? sach : all).slice().sort((a, b) => U.sortFr(a.name + ' ' + (a.dimensions || ''), b.name + ' ' + (b.dimensions || '')));
+  },
+  /* Sachet « habituel » d'une variante = le plus utilisé dans son historique (à égalité : le plus récent). */
+  usualPack(v) {
+    const h = v.packHistory || []; if (!h.length) return null;
+    const cnt = {}; h.forEach((e, i) => { const k = e.consoId; cnt[k] = cnt[k] || { n: 0, last: -1, e }; cnt[k].n++; cnt[k].last = i; cnt[k].e = e; });
+    const best = Object.values(cnt).sort((a, b) => b.n - a.n || b.last - a.last)[0];
+    const c = Store.state.consumables.find(x => x.id === best.e.consoId);
+    return { name: c ? c.name : best.e.name, dims: c ? (c.dimensions || '') : best.e.dims, n: best.n, total: h.length };
+  },
+  consoLabel(c) { return c ? c.name + (c.dimensions ? ' · ' + c.dimensions : '') : '—'; },
+  _packCatInfo(p, v) {
+    const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
+    if (!cat) return null;
+    const enabled = (cat.variants || []).filter(x => x.enabled !== false);
+    const cv = enabled.find(x => x.id === v.catalogVariantId);
+    if (!cv) return null;
+    const idx = enabled.indexOf(cv);
+    const calc = Pricing.variantCalc(cat, cv, idx, Pricing.baseUnitCost(cat), enabled.length);
+    const sac = Store.sachet(cv.sachetId);
+    return { cat, cv, calc, sachet: sac, sachetConsoId: (sac && sac.consumableId) || '' };
+  },
+  _packImpact(info, newSacCost) {
+    const S = Store.state.settings, c = info.calc;
+    const thr = U.num(S.b2bCoeffThreshold);
+    if (typeof B2B !== 'undefined') B2B.discount = B2B.discount || U.num(localStorage.getItem('touffu_b2bDiscount')) || 20;
+    const disc = typeof B2B !== 'undefined' ? B2B.effectiveDiscount(info.cat) : 0;
+    const soc = U.num(S.socialTaxRate) / 100;
+    const mk = cost => {
+      const proHT = c.priceHT * (1 - disc / 100);
+      return {
+        cost,
+        coeff: cost > 0 ? c.priceHT / cost : 0,
+        profit: c.priceHT - cost - c.social - c.vatAmt,
+        coeffB2B: cost > 0 ? proHT / cost : 0,
+        profitB2B: proHT - cost - proHT * soc
+      };
+    };
+    return { before: mk(c.cost), after: mk(c.cost - c.sacCost + newSacCost), thr, disc, priceTTC: c.priceTTC };
+  },
+  packLot(pId, vId, lId) {
+    const f = this.findLot(pId, vId, lId); if (!f) return;
+    const { p, v, lot } = f;
+    const consos = this.packConsos();
+    const info = this._packCatInfo(p, v);
+    const def = v.lastSachetConsoId || (info && info.sachetConsoId) || '';
+    const units = U.num(lot.qtyGeneral) + U.num(lot.qtyEvent);
+    this._packCtx = { pId, vId, lId, units };
+    const opts = consos.map(c => `<option value="${c.id}" ${c.id === def ? 'selected' : ''}>${U.esc(this.consoLabel(c))} — ${U.eur(c.costUnit, 3)} (stock ${U.num(c.qty)})</option>`).join('');
+    U.modal({
+      title: '📦 Conditionnement — ' + U.esc(p.name) + ' › ' + U.esc(Pricing.labelVariant(v)),
+      okLabel: 'Valider', wide: !!info,
+      body: `<p class="muted mb0">Facultatif : indique le sachet utilisé pour ce lot. <b>Fermer</b> = passer (déjà conditionné / pas nécessaire).</p>
+        <div class="frow mt">
+          <div class="fg" style="flex:3;"><label>Sachet utilisé</label><select id="pk_conso" onchange="Stock._packRefresh()"><option value="">— choisir —</option>${opts}</select></div>
+          <div class="fg"><label>Nombre de sachets</label><input id="pk_qty" type="number" step="1" min="0" value="${units}" oninput="Stock._packRefresh()"></div>
+        </div>
+        <div id="pk_impact"></div>`,
+      onOk: () => this._packApply()
+    });
+    this._packRefresh();
+  },
+  _packRefresh() {
+    const box = document.getElementById('pk_impact'); if (!box || !this._packCtx) return;
+    const f = this.findLot(this._packCtx.pId, this._packCtx.vId, this._packCtx.lId); if (!f) return;
+    const conso = Store.state.consumables.find(c => c.id === U.val('pk_conso'));
+    const qty = U.numVal('pk_qty');
+    let html = '';
+    if (conso && qty > U.num(conso.qty)) html += `<p style="color:var(--alerte);">⚠️ Stock de ce sachet insuffisant (${U.num(conso.qty)} dispo) — il sera mis à 0.</p>`;
+    const info = this._packCatInfo(f.p, f.v);
+    const sacLbl = info && info.sachet ? info.sachet.name + (info.sachet.dims ? ' · ' + info.sachet.dims : '') : 'aucun';
+    if (!info) { box.innerHTML = html + `<p class="muted">Pas de fiche prix liée à cette variante : le sachet est seulement déduit et mémorisé.</p>`; return; }
+    if (!conso) { box.innerHTML = html + `<p class="muted">Sachet de la fiche prix actuelle : <b>${U.esc(sacLbl)}</b> (${U.eur(info.calc.sacCost, 3)}).</p>`; return; }
+    const im = this._packImpact(info, U.num(conso.costUnit));
+    const same = conso.id === info.sachetConsoId;
+    const dEur = (a, b, lowerIsGood) => { const x = b - a; if (Math.abs(x) < 0.0005) return '<span class="muted">=</span>'; const good = lowerIsGood ? x < 0 : x > 0; return `<b class="${good ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${U.eur(x, 3)}</b>`; };
+    const dCo = (a, b) => { const x = b - a; if (Math.abs(x) < 0.005) return '<span class="muted">=</span>'; return `<b class="${x > 0 ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${x.toFixed(2)}</b>`; };
+    const cls = (coeff, profit) => (profit < 0 || coeff < im.thr) ? 'neg' : 'pos';
+    const n = this._packCtx.units;
+    const flags = [];
+    if (im.after.profit < 0) flags.push('🔴 <b>Vente à perte</b> (prix public)');
+    else if (im.after.coeff < im.thr) flags.push(`🟠 <b>Coeff critique</b> (prix public sous ${im.thr})`);
+    if (im.after.profitB2B < 0) flags.push('🔴 <b>Vente à perte en revente pro</b>');
+    else if (im.after.coeffB2B < im.thr) flags.push(`🟠 <b>Coeff pro critique</b> (sous ${im.thr} avec ta remise de ${im.disc} %) — pense à baisser la remise ou revoir le prix`);
+    box.innerHTML = html + `
+      <div class="table-wrap mt"><table>
+        <thead><tr><th></th><th class="num">Sachet de la fiche<br><span class="muted">${U.esc(sacLbl)} · ${U.eur(info.calc.sacCost, 3)}</span></th><th class="num">Sachet choisi<br><span class="muted">${U.esc(this.consoLabel(conso))} · ${U.eur(conso.costUnit, 3)}</span></th><th class="num">Écart</th></tr></thead>
+        <tbody>
+          <tr><td>Prix de vente TTC</td><td class="num">${U.eur(im.priceTTC)}</td><td class="num">${U.eur(im.priceTTC)}</td><td class="num muted">inchangé</td></tr>
+          <tr><td>Coût de revient / unité</td><td class="num">${U.eur(im.before.cost, 3)}</td><td class="num">${U.eur(im.after.cost, 3)}</td><td class="num">${dEur(im.before.cost, im.after.cost, true)}</td></tr>
+          <tr><td>Coeff public</td><td class="num">${im.before.coeff.toFixed(2)}</td><td class="num ${cls(im.after.coeff, im.after.profit)}">${im.after.coeff.toFixed(2)}</td><td class="num">${dCo(im.before.coeff, im.after.coeff)}</td></tr>
+          <tr><td>Bénéfice / unité</td><td class="num">${U.eur(im.before.profit)}</td><td class="num ${im.after.profit >= 0 ? 'pos' : 'neg'}">${U.eur(im.after.profit)}</td><td class="num">${dEur(im.before.profit, im.after.profit)}</td></tr>
+          <tr><td>Bénéfice sur le lot (${n} u.)</td><td class="num">${U.eur(im.before.profit * n)}</td><td class="num ${im.after.profit >= 0 ? 'pos' : 'neg'}">${U.eur(im.after.profit * n)}</td><td class="num">${dEur(im.before.profit * n, im.after.profit * n)}</td></tr>
+          <tr><td>Coeff pro (remise ${im.disc} %)</td><td class="num">${im.before.coeffB2B.toFixed(2)}</td><td class="num ${cls(im.after.coeffB2B, im.after.profitB2B)}">${im.after.coeffB2B.toFixed(2)}</td><td class="num">${dCo(im.before.coeffB2B, im.after.coeffB2B)}</td></tr>
+          <tr><td>Bénéfice pro / unité</td><td class="num">${U.eur(im.before.profitB2B)}</td><td class="num ${im.after.profitB2B >= 0 ? 'pos' : 'neg'}">${U.eur(im.after.profitB2B)}</td><td class="num">${dEur(im.before.profitB2B, im.after.profitB2B)}</td></tr>
+        </tbody></table></div>
+      ${flags.length ? `<p class="mt" style="color:var(--alerte);">${flags.join('<br>')}</p>` : `<p class="mt pos">✅ Au-dessus de ton seuil critique (${im.thr}).</p>`}
+      <p class="muted" style="font-size:.82rem;">${same ? 'Même sachet que la fiche prix : rien ne change dans les prix.' : 'En validant, la fiche prix passe sur ce sachet : prix TTC figé, coût/marges recalculés (Prix mastication + Revente pro).'}</p>`;
+  },
+  _packApply() {
+    const ctx = this._packCtx; if (!ctx) return;
+    const f = this.findLot(ctx.pId, ctx.vId, ctx.lId); if (!f) return;
+    const conso = Store.state.consumables.find(c => c.id === U.val('pk_conso'));
+    if (!conso) { U.toast('Choisis un sachet, ou « Fermer » pour passer.', true); return false; }
+    const qty = Math.max(0, Math.round(U.numVal('pk_qty')));
+    const { p, v, lot } = f;
+    const info = this._packCatInfo(p, v);
+    const snaps = [Store.snapshot('stockM', p), Store.snapshot('consumables', conso)];
+    const changeFiche = !!info && conso.id !== info.sachetConsoId;
+    if (changeFiche) snaps.push(Store.snapshot('catalogM', info.cat));
+    // 1) déduction du consommable (jamais négatif)
+    conso.qty = Math.max(0, U.num(conso.qty) - qty);
+    // 2) fiche prix : passe sur ce sachet, prix TTC figé
+    if (changeFiche) {
+      const S = Store.state.settings;
+      let sac = (S.sachets || []).find(x => (x.type || 'sachet') === 'sachet' && x.consumableId === conso.id);
+      if (!sac) { sac = { id: U.uid(), name: conso.name, type: 'sachet', cost: U.num(conso.costUnit), dims: conso.dimensions || '', consumableId: conso.id }; S.sachets.push(sac); }
+      if (!(U.num(info.cv.priceTTCManual) > 0)) info.cv.priceTTCManual = Math.round(info.calc.priceTTC * 100) / 100;
+      info.cv.sachetId = sac.id;
+      Params._renameSachets();
+      this.syncPricesFromCatalog(info.cat.id);
+      Store.save('settings', 'catalogM');
+    }
+    // 3) historique sur le lot + coût réel du lot
+    lot.pack = { consoId: conso.id, name: conso.name, dims: conso.dimensions || '', qty, unitCost: U.num(conso.costUnit), date: U.today() };
+    if (info) { const fresh = this._packCatInfo(p, v); if (fresh) lot.costUnit = fresh.calc.cost; }
+    v.lastSachetConsoId = conso.id;
+    // Historique durable sur la VARIANTE (les lots vides sont supprimés après vente → on ne
+    // peut pas compter sur lot.pack pour les statistiques sur 1-2 ans).
+    (v.packHistory = v.packHistory || []).push({ ...lot.pack, lotNumber: lot.lotNumber || '' });
+    const entry = Store.log('stock', `Lot conditionné — ${p.name}/${Pricing.labelVariant(v)} : ${qty} × ${this.consoLabel(conso)}` + (changeFiche ? ' (fiche prix mise à jour)' : ''), { type: 'restoreBatch', data: snaps });
+    Store.save('stockM', 'consumables'); U.closeModal(); App.rerender();
+    U.toast('Conditionnement enregistré' + (changeFiche ? ' — fiche prix passée sur ce sachet (prix TTC inchangé).' : '.'), false, entry.id);
   },
 
   delLot(pId,vId,lId){
