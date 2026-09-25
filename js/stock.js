@@ -637,6 +637,7 @@ const Stock = {
       : {id:U.uid(),catalogId:'',name:'',meatType:S.meatTypes[0],variants:[]};
     const curCat = Store.state.catalogM.find(c => c.id === p.catalogId);
     this._catPickId = p.catalogId || '';
+    this._catPickPid = p.id;
     U.modal({
       title:id?'Modifier le produit':'Nouveau produit en stock', okLabel:'Enregistrer',
       body:`<div class="fg"><label>Lier au catalogue prix (recommandé)</label>
@@ -647,7 +648,7 @@ const Stock = {
       </div>
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="sp_name" value="${U.esc(p.name)}"></div>
-        <div class="fg"><label>Viande</label><select id="sp_meat">${(p.meatType && !S.meatTypes.some(m=>m.toLowerCase()===p.meatType.toLowerCase()) ? `<option value="${U.esc(p.meatType)}" selected>${U.esc(p.meatType)} (hors liste)</option>` : '')}${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Viande</label><select id="sp_meat" onchange="Stock.refreshCatPick()">${(p.meatType && !S.meatTypes.some(m=>m.toLowerCase()===p.meatType.toLowerCase()) ? `<option value="${U.esc(p.meatType)}" selected>${U.esc(p.meatType)} (hors liste)</option>` : '')}${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
@@ -780,11 +781,31 @@ const Stock = {
      de poulet" présent 2 fois côté catalogue chez Antho). */
   catPickOptionsHTML(q) {
     const query = (q || '').trim().toLowerCase();
+    // Champ vide → seulement les fiches de la MÊME viande que le produit (select « Viande »
+    // de la fenêtre, suivi en direct) ; dès qu'on tape → recherche dans TOUTES les viandes
+    // (retrouver une fiche rangée dans une mauvaise viande, ex. Bois Végétal/Bois Naturel).
+    const meat = (U.val('sp_meat') || '').toLowerCase();
+    const byMeat = !query && meat;
     const matches = Store.state.catalogM
-      .filter(c => !query || c.name.toLowerCase().includes(query))
+      .filter(c => query ? c.name.toLowerCase().includes(query) : (!byMeat || (c.meatType || '').toLowerCase() === meat))
       .sort((a, b) => U.sortFr(a.name, b.name));
+    // Repères de liaison : ✓ = déjà lié à CE produit ; 🔗 = déjà pris par un autre produit stock.
+    const linkedBy = {};
+    Store.state.stockM.forEach(sp => { if (sp.catalogId) (linkedBy[sp.catalogId] = linkedBy[sp.catalogId] || []).push(sp); });
+    const tag = c => {
+      const l = linkedBy[c.id] || [];
+      if (l.some(sp => sp.id === this._catPickPid)) return ` <span style="color:var(--ok,#4caf50);font-weight:600;">✓ ce produit</span>`;
+      if (l.length) return ` <span style="color:var(--warn,#e0a040);">🔗 lié à : ${U.esc(l.map(sp => sp.name).join(', '))}</span>`;
+      return '';
+    };
+    const hint = byMeat ? `<div class="muted" style="padding:6px 10px;font-size:.8rem;">Fiches ${U.esc(U.val('sp_meat'))} — tape pour chercher dans toutes les viandes</div>` : '';
     const noneItem = `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('','')">— aucun (libre) —</div>`;
-    return noneItem + matches.map(c => `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span></div>`).join('');
+    const empty = !matches.length ? `<div class="muted" style="padding:6px 10px;">Aucune fiche${byMeat ? ' pour cette viande — tape le nom pour chercher partout' : ''}.</div>` : '';
+    return hint + noneItem + empty + matches.map(c => `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span>${tag(c)}</div>`).join('');
+  },
+  refreshCatPick() {
+    const box = document.getElementById('cat_pick_list');
+    if (box && box.style.display !== 'none') box.innerHTML = this.catPickOptionsHTML(U.val('sp_cat_q'));
   },
   filterCatPick(q) {
     const box = document.getElementById('cat_pick_list');
