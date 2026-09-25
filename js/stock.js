@@ -827,7 +827,13 @@ const Stock = {
     const hint = byMeat ? `<div class="muted" style="padding:6px 10px;font-size:.8rem;">Fiches ${U.esc(U.val('sp_meat'))} — tape pour chercher dans toutes les viandes</div>` : '';
     const noneItem = `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('','')">— aucun (libre) —</div>`;
     const empty = !matches.length ? `<div class="muted" style="padding:6px 10px;">Aucune fiche${byMeat ? ' pour cette viande — tape le nom pour chercher partout' : ''}.</div>` : '';
-    return hint + noneItem + empty + matches.map(c => `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span>${tag(c)}</div>`).join('');
+    // Ordre (demande d'Antho) : fiche déjà liée à CE produit en tête, puis les fiches LIBRES (A→Z),
+    // puis un séparateur et les fiches déjà liées à un autre produit (A→Z).
+    const rank = c => { const l = linkedBy[c.id] || []; return l.some(sp => sp.id === this._catPickPid) ? 0 : (l.length ? 2 : 1); };
+    matches.sort((a, b) => rank(a) - rank(b) || U.sortFr(a.name, b.name));
+    const sepIdx = matches.findIndex(c => rank(c) === 2);
+    const sep = `<div class="muted" style="padding:6px 10px;font-size:.78rem;border-top:1px dashed var(--caramel);margin-top:4px;">Déjà liées à un autre produit</div>`;
+    return hint + noneItem + empty + matches.map((c, i) => (i === sepIdx ? sep : '') + `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span>${tag(c)}</div>`).join('');
   },
   refreshCatPick() {
     const box = document.getElementById('cat_pick_list');
