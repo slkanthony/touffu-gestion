@@ -54,7 +54,7 @@ const Catalogue = {
       <div class="toolbar">
         <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
-        <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(S.suppliers.slice().sort((a,b) => U.sortFr(a.name,b.name)).map(s => ({v:s.id,l:s.name}))), onPick: 'Catalogue._setSupFilter' })}</div>
+        <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(S.suppliers.map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
@@ -170,7 +170,7 @@ const Catalogue = {
     }).map(s => {
       const isMain = s.supplierId === p.mainSupplierId;
       const vatNote = (s.vatRate !== undefined && s.vatRate !== '') ? ` <span class="muted">(TVA achat ${U.num(s.vatRate)}%)</span>` : '';
-      const link = s.url ? ` <button class="btn-icon" title="Ouvrir la page fournisseur" onclick="window.open('${U.esc(s.url)}','_blank','noopener')">🔗</button>` : '';
+      const link = (s.url && !Store.hideSupplierInfo()) ? ` <button class="btn-icon" title="Ouvrir la page fournisseur" onclick="window.open('${U.esc(s.url)}','_blank','noopener')">🔗</button>` : '';
       return `<tr class="${isMain ? '' : 'dim'}">
         <td class="col-name">${isMain ? '★ ' : ''}${U.esc(Store.supplierName(s.supplierId))}${vatNote}${link}</td>
         <td class="num sensitive">${U.eur(this.supUnitHT(s), 3)}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</td>
@@ -516,14 +516,14 @@ const Catalogue = {
           <option value="piece" ${s.unit === 'piece' ? 'selected' : ''}>à la pièce</option></select></div>
         <div class="fg"><label>Poids (kg) / Qté</label><input type="number" step="0.001" value="${s.unit === 'piece' ? (s.quantity ?? 1) : (s.weight ?? 1)}" onchange="Catalogue.setSupDiv(${i},this.value)"></div>
         <div class="fg"><label>Pièces par kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
-        <div class="fg" style="flex:2;"><label>Lien page fournisseur (URL)</label>
+        <div class="fg" style="flex:2;${Store.hideSupplierInfo() ? 'display:none;' : ''}"><label>Lien page fournisseur (URL)</label>
           <div style="display:flex;gap:6px;">
             <input type="url" id="sup_url_${i}" value="${U.esc(s.url || '')}" placeholder="https://…" style="flex:1;min-width:0;" onchange="Catalogue._d.suppliers[${i}].url=this.value;Catalogue.drawSuppliers()">
             <button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sup_url_${i}').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button>
           </div></div>
         <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Catalogue.delSupplier(${i})">🗑️</button></div>
       </div>
-      <div style="margin:-4px 0 8px;padding:0 4px;">
+      <div style="margin:-4px 0 8px;padding:0 4px;${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg mb0" style="flex:1;"><label>📝 Notes fournisseur <span class="muted" style="font-weight:400;">(visible dans la liste de commande)</span></label>
           <textarea rows="2" placeholder="Ex: acheter au minimum 5 kg sinon aller chez Cernunos…" style="width:100%;resize:vertical;font-size:.85rem;" onchange="Catalogue._d.suppliers[${i}].notes=this.value">${U.esc(s.notes || '')}</textarea></div>
       </div>`).join('') || '<p class="muted">Aucun fournisseur — ajoute au moins un fournisseur avec son prix d\'achat.</p>';

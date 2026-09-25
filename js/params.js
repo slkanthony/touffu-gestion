@@ -155,7 +155,7 @@ const Params = {
         <div class="fold-body">
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Général (commun à tout)</div>
           <div class="grid c2">
-            ${this.listCard('Fournisseurs', 'suppliers', S.suppliers.map(s => s.name), true)}
+            ${this.listCard('Fournisseurs', 'suppliers', S.suppliers.map(s => Store.supplierName(s.id)), true)}
           </div>
 
           <hr class="sep" style="border-style:dashed;margin:16px 0;">
@@ -353,10 +353,18 @@ const Params = {
         </div>
         <div class="card params-card">
           <h2>📓 Journal des mouvements</h2>
-          <button class="btn-danger btn-sm" style="margin-bottom:8px;" onclick="Params.clearJournal()">🗑️ Vider le journal</button>
+          ${(() => {
+            const users = [...new Set(Store.state.journal.map(j => j.user || ''))];
+            const hasUsers = users.some(u => u);
+            return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+              <button class="btn-danger btn-sm" onclick="Params.clearJournal()">🗑️ Vider le journal</button>
+              ${hasUsers ? `<div style="min-width:220px;">${U.customSelect({ value: this._journalUser || 'all', options: [{ v: 'all', l: 'Tous les utilisateurs' }].concat(users.map(u => ({ v: u || '_none', l: u || '— (non renseigné)' }))), onPick: 'Params._setJournalUser' })}</div>` : ''}
+            </div>`;
+          })()}
           <div class="table-wrap" style="max-height:340px; overflow-y:auto;"><table><tbody>
-            ${Store.state.journal.slice(0, 60).map(j => `<tr>
+            ${Store.state.journal.filter(j => !this._journalUser || this._journalUser === 'all' || (j.user || '_none') === this._journalUser).slice(0, 100).map(j => `<tr>
               <td style="white-space:nowrap;" class="muted">${U.frDateTime(j.ts)}</td>
+              <td style="white-space:nowrap;" class="muted">${U.esc(j.user || '—')}</td>
               <td>${U.esc(j.label)}</td>
               <td class="right">${j.undo ? `<button class="btn-ghost btn-sm" onclick="Params.undo('${j.id}')">Annuler</button>` : ''}</td>
             </tr>`).join('') || '<tr><td class="muted">Aucun mouvement.</td></tr>'}
@@ -364,12 +372,43 @@ const Params = {
         </div>
       </div>
 
+      ${Store.remote && App.role === 'admin' ? `<div class="card">
+          <h2>👥 Connexions des utilisateurs</h2>
+          <p class="muted" style="font-size:.85rem;">Chaque ouverture de l'appli (au plus une toutes les 30 min par appareil).</p>
+          <div id="connList" class="muted">Chargement…</div>
+        </div>` : ''}
+
       ${Store.remote ? `<div class="card">
-          <p class="muted mb0">Connecté(e) : <b>${Store.session?.user?.email || ''}</b> &middot; ${App.isViewer ? 'Lecture seule' : 'Administrateur'}</p>
+          <p class="muted mb0">Connecté(e) : <b>${Store.session?.user?.email || ''}</b> &middot; ${App.isViewer ? 'Lecture seule' : App.isTeam ? 'Équipe (stock)' : 'Administrateur'}</p>
           <button class="btn-ghost mt" onclick="Store.logout()">Se déconnecter</button>
         </div>` : ''}
     `);
     this.loadSnaps();
+    if (Store.remote && App.role === 'admin') this.loadConnexions();
+  },
+
+  _setJournalUser(v) { Params._journalUser = v; App.rerender(); },
+  _connUser: 'all',
+  _setConnUser(v) { Params._connUser = v; Params.loadConnexions(); },
+  async loadConnexions() {
+    const box = document.getElementById('connList'); if (!box) return;
+    const { data, error } = await Store.sb.from('connexions').select('email,role,created_at').order('created_at', { ascending: false }).limit(300);
+    if (error) { box.innerHTML = 'Le suivi des connexions n’est pas encore activé (table <code>connexions</code> à créer dans Supabase).'; return; }
+    const rows = data || [];
+    if (!rows.length) { box.innerHTML = 'Aucune connexion enregistrée pour l’instant.'; return; }
+    const roleLbl = r => r === 'viewer' ? 'Lecture seule' : r === 'team' ? 'Équipe' : 'Admin';
+    const users = [...new Set(rows.map(r => r.email))];
+    const last = {}; const count = {};
+    rows.forEach(r => { count[r.email] = (count[r.email] || 0) + 1; if (!last[r.email]) last[r.email] = r; });
+    const shown = rows.filter(r => this._connUser === 'all' || r.email === this._connUser).slice(0, 100);
+    box.classList.remove('muted');
+    box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Utilisateur</th><th>Profil</th><th>Dernière connexion</th><th style="text-align:center;">Nb</th></tr></thead><tbody>
+        ${users.map(u => `<tr><td>${U.esc(u)}</td><td>${roleLbl(last[u].role)}</td><td>${U.frDateTime(last[u].created_at)}</td><td style="text-align:center;">${count[u]}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div style="margin:12px 0 8px;max-width:280px;">${U.customSelect({ value: this._connUser, options: [{ v: 'all', l: 'Tous les utilisateurs' }].concat(users.map(u => ({ v: u, l: u }))), onPick: 'Params._setConnUser' })}</div>
+      <div class="table-wrap" style="max-height:300px;overflow-y:auto;"><table><tbody>
+        ${shown.map(r => `<tr><td class="muted" style="white-space:nowrap;">${U.frDateTime(r.created_at)}</td><td>${U.esc(r.email)}</td><td class="muted">${roleLbl(r.role)}</td></tr>`).join('')}
+      </tbody></table></div>`;
   },
 
   listCard(title, key, values, isSupplier) {
@@ -2076,12 +2115,14 @@ const Params = {
   },
 
   exportAll() {
+    if (Store.hideSupplierInfo()) { U.toast('Export réservé à l’administrateur.', true); return; }
     const dump = { app: 'touffu-gestion', version: 1, exportedAt: new Date().toISOString() };
     Store.DOMAINS.forEach(d => dump[d] = Store.state[d]);
     U.download(`touffu-sauvegarde-${U.today()}.json`, JSON.stringify(dump, null, 2));
     U.toast('Sauvegarde téléchargée.');
   },
   exportProducts(scope, withQty) {
+    if (Store.hideSupplierInfo()) { U.toast('Export réservé à l’administrateur.', true); return; }
     const stockMode = U.val('exp_stock') || 'all';
     const stripQty = (items) => items.map(p => {
       const cp = JSON.parse(JSON.stringify(p));

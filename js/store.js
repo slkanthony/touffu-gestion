@@ -227,11 +227,20 @@ const Store = {
   },
 
   /* ---------- sauvegarde ---------- */
+  /* Domaines qu'un compte « équipe » a le droit d'enregistrer (stock + journal). */
+  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta'],
+
   save(...domains) {
     if (window.App && window.App.isViewer) {
-      if (window.U && U.toast) U.toast('Lecture seule : cette modification ne sera pas enregistree.', true);
+      if (typeof U !== 'undefined' && U.toast) U.toast('Lecture seule : cette modification ne sera pas enregistree.', true);
       else alert('Lecture seule : cette modification ne sera pas enregistree.');
       return;
+    }
+    if (window.App && window.App.isTeam) {
+      const blocked = domains.filter(d => !this.TEAM_DOMAINS.includes(d));
+      domains = domains.filter(d => this.TEAM_DOMAINS.includes(d));
+      if (blocked.length && typeof U !== 'undefined' && U.toast) U.toast('Profil équipe : seul le stock peut être modifié — le reste n’est pas enregistré.', true);
+      if (!domains.length) return;
     }
     domains.forEach(d => this._dirty.add(d));
     clearTimeout(this._saveT);
@@ -270,7 +279,7 @@ const Store = {
   // Retourne l'entrée créée (id notamment) pour que l'appelant puisse la passer à
   // U.toast(msg, err, entry.id) et afficher un "↺ Annuler" directement dans le toast.
   log(action, label, undo) {
-    const entry = { id: U.uid(), ts: Date.now(), action, label, undo: undo || null };
+    const entry = { id: U.uid(), ts: Date.now(), action, label, undo: undo || null, user: this.session?.user?.email || '' };
     this.state.journal.unshift(entry);
     if (this.state.journal.length > 600) this.state.journal.length = 600;
     this.save('journal');
@@ -374,7 +383,29 @@ const Store = {
 
   /* ---------- accès pratiques ---------- */
   supplier(id) { return this.state.settings.suppliers.find(s => s.id === id); },
-  supplierName(id) { return this.supplier(id)?.name || '—'; },
+  /* Nom affiché d'un fournisseur. Pour un compte viewer, anonymisé en « Fournisseur N »
+     (N = rang dans le référentiel Paramètres → Fournisseurs, stable sur toutes les pages). */
+  supplierName(id) {
+    const list = this.state.settings.suppliers || [];
+    const i = list.findIndex(s => s.id === id);
+    if (i < 0) return '—';
+    return (window.App && App.isViewer) ? 'Fournisseur ' + (i + 1) : list[i].name;
+  },
+  /* true si l'utilisateur courant ne doit voir ni liens, ni références, ni notes fournisseur. */
+  hideSupplierInfo() { return !!(window.App && App.isViewer); },
+
+  /* Suivi des connexions : une ligne dans la table Supabase `connexions` à chaque ouverture
+     de l'appli (au plus une toutes les 30 min par navigateur). Si la table n'existe pas
+     encore, l'erreur est ignorée silencieusement — rien n'est bloqué. */
+  async logConnexion() {
+    if (!this.remote || !this.sb || !this.session) return;
+    try {
+      const k = 'touffu_lastConnLog', last = +localStorage.getItem(k) || 0;
+      if (Date.now() - last < 30 * 60 * 1000) return;
+      const { error } = await this.sb.from('connexions').insert({ email: this.session.user.email, role: (window.App && App.role) || 'admin' });
+      if (!error) localStorage.setItem(k, String(Date.now()));
+    } catch (e) {}
+  },
   sachet(id) { return this.state.settings.sachets.find(s => String(s.id) === String(id)); },
   material(id) { return this.state.materials.find(m => m.id === id); },
   /* 🧮 Calculateur : mode de référence d'une catégorie de matière.

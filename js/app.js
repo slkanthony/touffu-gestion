@@ -93,10 +93,16 @@ const App = {
   showApp() {
     document.getElementById('appScreen').style.display = 'flex';
     document.getElementById('scrollFab').style.display = '';
-    this.isViewer = (Store.session && Store.session.user && Store.session.user.app_metadata && Store.session.user.app_metadata.role) === 'viewer';
-    this.visitMode = this.isViewer ? true : sessionStorage.getItem('touffu_visitMode') === '1';
+    /* Rôles (app_metadata.role dans Supabase) : absent = admin ; 'viewer' = lecture seule,
+       fournisseurs anonymisés ; 'team' = peut modifier le stock (Store.TEAM_DOMAINS), voit
+       les vrais fournisseurs/liens, mais coûts/marges masqués comme un viewer. */
+    this.role = (Store.session && Store.session.user && Store.session.user.app_metadata && Store.session.user.app_metadata.role) || 'admin';
+    this.isViewer = this.role === 'viewer';
+    this.isTeam = this.role === 'team';
+    this.visitMode = (this.isViewer || this.isTeam) ? true : sessionStorage.getItem('touffu_visitMode') === '1';
     if (this.visitMode) document.body.classList.add('visit-mode');
-    if (this.isViewer) { const b = document.querySelector('.topnav-brand'); if (b) b.title = 'Mode lecture seule'; }
+    if (this.isViewer || this.isTeam) { const b = document.querySelector('.topnav-brand'); if (b) b.title = this.isViewer ? 'Mode lecture seule' : 'Profil équipe'; }
+    Store.logConnexion();
     this._syncVisitEye();
     this.buildNav();
     // Molette → défilement horizontal sur TOUT bloc qui a une barre coulissante
@@ -141,7 +147,7 @@ const App = {
 
 
   toggleVisitMode() {
-    if (this.isViewer) return;
+    if (this.isViewer || this.isTeam) return;
     this.visitMode = !this.visitMode;
     document.body.classList.toggle('visit-mode', this.visitMode);
     sessionStorage.setItem('touffu_visitMode', this.visitMode ? '1' : '');
@@ -261,7 +267,7 @@ const App = {
   supplierOptions(sel) {
     return Store.state.settings.suppliers
       .slice().sort((a, b) => U.sortFr(a.name, b.name))
-      .map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('');
+      .map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${U.esc(Store.supplierName(s.id))}</option>`).join('');
   },
 
   /* ================= TABLEAU DE BORD ================= */

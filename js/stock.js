@@ -239,7 +239,7 @@ const Stock = {
         </span>
         <span class="meta"><b>${totalG+totalE}</b> unités · gén <b>${totalG}</b> · évén <b>${totalE}</b> · <span class="muted">${nv} variante(s)</span></span>
         <span class="prod-actions" style="white-space:nowrap;">
-          <button class="btn-icon" title="${p.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>
+          ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${p.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>`}
           ${cat ? `<button class="btn-icon" title="Resynchroniser prix/variantes depuis le catalogue (ex: une taille ajoutée côté calcul de prix après coup)" onclick="event.preventDefault();event.stopPropagation();Stock.resyncFromCatalog('${p.id}')">🔄</button>` : `<button class="btn-icon" title="Créer la fiche de calcul de prix à partir de ce produit (reprend nom, viande et conditionnement — tu complètes fournisseur et prix)" onclick="event.preventDefault();event.stopPropagation();Stock.createCatalogFromStock('${p.id}')">📋</button>`}
           <button class="btn-icon" title="Ajouter une variante" onclick="event.preventDefault();event.stopPropagation();Stock.addVariant('${p.id}')">➕</button>
           <button class="btn-icon" title="Modifier le produit" onclick="event.preventDefault();event.stopPropagation();Stock.editProduct('${p.id}')">✏️</button>
@@ -429,7 +429,7 @@ const Stock = {
       title:'✏️ Modifier variante — '+U.esc(p.name), okLabel:'Enregistrer',
       body:`<div class="frow">
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
-        <div class="fg"><label>Réf. fournisseur (optionnel)</label><input id="ev_ref" value="${U.esc(v.ref||'')}"></div>
+        <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="ev_ref" value="${U.esc(v.ref||'')}"></div>
       </div>
       <hr class="sep">
       <div class="fg" data-onclose="Stock.closeEvCatPick">
@@ -611,7 +611,7 @@ const Stock = {
         <div class="fg"><label>Valeur / étiquette</label><input id="av_val" placeholder="ex: 100, S, 1…"></div>
       </div>
       <div class="frow">
-        <div class="fg"><label>Réf. fournisseur</label><input id="av_ref" placeholder="optionnel"></div>
+        <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur</label><input id="av_ref" placeholder="optionnel"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="av_sku" placeholder="optionnel"></div>
       </div>
       <div class="frow">
@@ -649,7 +649,7 @@ const Stock = {
         <div class="fg" style="flex:2;"><label>Nom</label><input id="sp_name" value="${U.esc(p.name)}"></div>
         <div class="fg"><label>Viande</label><select id="sp_meat">${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
       </div>
-      <div class="fg"><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
+      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Poil</label><select id="sp_poil">
           <option value="" ${!(p.tags||{}).poil?'selected':''}>— non renseigné —</option>
@@ -843,6 +843,7 @@ const Stock = {
 
   openProductLink(id) {
     const p=Store.state.stockM.find(x=>x.id===id); if(!p) return;
+    if (Store.hideSupplierInfo()) return;
     if (p.url) window.open(p.url, '_blank', 'noopener');
     else this.editProduct(id);
   },
@@ -1399,7 +1400,8 @@ const Stock = {
       }
       const ukey = kind + '|' + id + '|' + (vId || '');
       if (seen.has(ukey)) return; seen.add(ukey);
-      if (!ref && !supplier && !supplierUrl) missing++;
+      if (Store.hideSupplierInfo()) { ref = ''; supplierUrl = ''; supNotes = []; }
+      else if (!ref && !supplier && !supplierUrl) missing++;
       items.push({ prodName, ref, supNotes, supplier, supplierUrl });
     });
       this._orderItems = items;
@@ -1439,7 +1441,7 @@ const Stock = {
             <div><b>${U.esc(it.prodName)}</b></div>
             ${it.ref ? `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${U.esc(it.ref)}</div>` : ''}
             ${it.supplierUrl ? `<div style="font-size:.85rem;"><a href="${U.esc(it.supplierUrl)}" target="_blank" rel="noopener" style="color:var(--caramel);">🔗 Commander chez le fournisseur</a></div>` : ''}
-            ${(!it.ref && !it.supplierUrl) ? `<div style="font-size:.85rem;color:var(--alerte);">⚠️Pas de reference fournisseur</div>` : ''}
+            ${(!it.ref && !it.supplierUrl && !Store.hideSupplierInfo()) ? `<div style="font-size:.85rem;color:var(--alerte);">⚠️Pas de reference fournisseur</div>` : ''}
             ${it.supNotes.map(n => this._orderNoteBox(n)).join('')}
           </div>`
         ).join('');
@@ -1513,7 +1515,7 @@ const Stock = {
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
           <td style="text-align:center;">${U.num(c.low)||'—'}</td>
           <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div></td>
-          <td class="right"><button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>
+          <td class="right">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
             <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button>
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
             <button class="btn-icon" onclick="Stock.delConso('${c.id}')">🗑️</button></td></tr>`;}).join('')}
@@ -1564,7 +1566,7 @@ const Stock = {
         <div class="fg"><label>Pour (qté achetée)</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} /u</span></div>
       </div>
-      <div class="fg"><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
+      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
       onOk:()=>{
         const snap = id ? Store.snapshot('consumables',c) : null;
         c.name=U.val('c_name').trim(); if(!c.name){U.toast('Nom obligatoire',true);return false;}
@@ -1630,6 +1632,7 @@ const Stock = {
   },
   openConsoLink(id){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
+    if (Store.hideSupplierInfo()) return;
     if (c.url) window.open(c.url, '_blank', 'noopener');
     else this.editConso(id);
   },
@@ -1792,7 +1795,7 @@ const Stock = {
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
       <td><input type="number" step="0.01" value="${low}" title="Seuil d'alerte" onchange="Stock.setMatField('${m.id}','low',this.value)"></td>
       <td class="right" style="white-space:nowrap;">
-        <button class="btn-icon" title="${m.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openMatLink('${m.id}')">${m.url ? '🔗' : '🔗＋'}</button>
+        ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${m.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openMatLink('${m.id}')">${m.url ? '🔗' : '🔗＋'}</button>`}
         <button class="btn-icon" title="Monter" ${i <= 0 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${i >= items.length - 1 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',1)">↓</button>
         <button class="btn-icon" title="Modifier" onclick="Stock.editMat('${m.id}')">✏️</button>
@@ -1909,7 +1912,7 @@ const Stock = {
         <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>
       </div>
-      <div class="fg"><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="m_url" value="${U.esc(m.url || '')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('m_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
+      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="m_url" value="${U.esc(m.url || '')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('m_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
       onOk: () => {
         const snap = id ? Store.snapshot('materials', m) : null;
         const product = U.val('m_product').trim(), variant = U.val('m_variant').trim();
@@ -1977,6 +1980,7 @@ const Stock = {
 
   openMatLink(id) {
     const m=Store.state.materials.find(x=>x.id===id); if(!m) return;
+    if (Store.hideSupplierInfo()) return;
     if (m.url) window.open(m.url, '_blank', 'noopener');
     else this.editMat(id);
   }
