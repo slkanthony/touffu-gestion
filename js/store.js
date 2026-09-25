@@ -17,7 +17,7 @@ const Store = {
     return {
       settings: {
         vatRate: 20, vatActive: false, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5,
-        laborRate: 20, labelCost: 0.10, bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0,
+        laborRate: 20, labelCost: 0.10, bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
         uvCartridgePrice: 42, uvCartridgeVolume: 100, // impression UV : coût encre/ml = prix ÷ volume
         uvMaintPct: 0, // + majoration entretien optionnelle (% du coût encre) — filtres/nettoyage/entretien
         // Entretien imprimante UV — charges annuelles (déduites du bénéfice net mensuel ÷ 12, PAS du prix de l'accessoire)
@@ -392,6 +392,31 @@ const Store = {
     }
     this.state.meta.lastSnapshotDay = '';
     this.save('meta');
+  },
+
+  /* ---------- Nettoyage des instantanés (2026-09-26, validé par Antho : 30 jours) ----------
+     Les instantanés quotidiens ne sont jamais supprimés côté Supabase : on garde les N derniers
+     jours (settings.snapRetentionDays, 30 par défaut). Un rappel MENSUEL (App._maybeAskCleanup)
+     propose d'abord de télécharger une sauvegarde complète, puis de nettoyer (ou de reporter). */
+  _snapCutoff(days) { return new Date(Date.now() - (U.num(days) || 30) * 86400000).toISOString().slice(0, 10); },
+  async oldSnapshotDays(days) {
+    const cut = this._snapCutoff(days);
+    if (this.remote) {
+      const { data, error } = await this.sb.from('snapshots').select('day').lt('day', cut);
+      if (error) throw error;
+      return (data || []).map(r => r.day);
+    }
+    return Object.keys(JSON.parse(localStorage.getItem('touffu_snapshots') || '{}')).filter(d => d < cut);
+  },
+  async purgeOldSnapshots(days) {
+    const cut = this._snapCutoff(days);
+    if (this.remote) {
+      const { error } = await this.sb.from('snapshots').delete().lt('day', cut); if (error) throw error;
+    } else {
+      const all = JSON.parse(localStorage.getItem('touffu_snapshots') || '{}');
+      Object.keys(all).forEach(d => { if (d < cut) delete all[d]; });
+      localStorage.setItem('touffu_snapshots', JSON.stringify(all));
+    }
   },
 
   /* Vide le journal des mouvements (et donc l'historique d'annulation récent).

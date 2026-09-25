@@ -103,6 +103,7 @@ const App = {
     if (this.visitMode) document.body.classList.add('visit-mode');
     if (this.isViewer || this.isTeam) { const b = document.querySelector('.topnav-brand'); if (b) b.title = this.isViewer ? 'Mode lecture seule' : 'Profil équipe'; }
     Store.logConnexion();
+    if (!this.isViewer && !this.isTeam) setTimeout(() => this._maybeAskCleanup(), 4000);
     this._syncVisitEye();
     this.buildNav();
     // Molette → défilement horizontal sur TOUT bloc qui a une barre coulissante
@@ -145,6 +146,37 @@ const App = {
     this.updateScrollFab();
   },
 
+
+  /* Rappel mensuel de nettoyage des instantanés (admin uniquement) : s'il existe des instantanés
+     plus vieux que la durée de conservation, propose Télécharger une sauvegarde / Nettoyer / Plus tard.
+     « Plus tard » reporte de 7 jours ; après un nettoyage, prochain rappel dans 30 jours. */
+  async _maybeAskCleanup() {
+    try {
+      const m = Store.state.meta || (Store.state.meta = {});
+      if (m.cleanupNext && U.today() < m.cleanupNext) return;
+      if (document.getElementById('modalBg')) return;
+      const days = U.num(Store.state.settings.snapRetentionDays) || 30;
+      const old = await Store.oldSnapshotDays(days);
+      const later = n => { m.cleanupNext = new Date(Date.now() + n * 86400000).toISOString().slice(0, 10); Store.save('meta'); };
+      if (!old.length) { later(30); return; }
+      U.modal({
+        title: '🧹 Nettoyage mensuel des instantanés', hideOk: true,
+        body: `<p><b>${old.length}</b> instantané(s) de retour arrière ont plus de <b>${days} jours</b> (le plus ancien : ${U.frDate(old.slice().sort()[0])}).</p>
+          <p class="muted">Ce sont des copies automatiques quotidiennes. Tes produits, ton stock, tes ventes et tes statistiques ne sont <b>pas</b> touchés. Conseil : télécharge d'abord une sauvegarde complète.</p>
+          <div class="frow" style="gap:8px;flex-wrap:wrap;">
+            <button class="btn-ghost" onclick="Params.exportAll()">💾 Télécharger une sauvegarde complète</button>
+            <button class="btn-cta" onclick="App._doCleanup()">🧹 Nettoyer (garder ${days} jours)</button>
+            <button class="btn-ghost" onclick="App._laterCleanup()">Plus tard (7 jours)</button>
+          </div>`,
+        onCancel: () => later(7)
+      });
+      this._laterCleanup = () => { later(7); U.closeModal(); };
+      this._doCleanup = async () => {
+        try { await Store.purgeOldSnapshots(days); later(30); U.closeModal(); U.toast(old.length + ' ancien(s) instantané(s) supprimé(s).'); }
+        catch (e) { console.error(e); U.toast('Nettoyage impossible : ' + (e.message || e), true); }
+      };
+    } catch (e) { console.warn('cleanup check', e); }
+  },
 
   toggleVisitMode() {
     if (this.isViewer || this.isTeam) return;

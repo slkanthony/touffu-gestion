@@ -354,6 +354,11 @@ const Params = {
             <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Params.snapshotNow()">Prendre un instantané maintenant</button>
             <button class="btn-danger btn-sm" style="flex:0 0 auto;" onclick="Params.clearSnapshots()">🗑️ Effacer tous les instantanés</button>
           </div>
+          <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div class="fg" style="max-width:190px;margin:0;"><label>Conserver (jours)</label><input type="number" min="7" step="1" value="${U.num(S.snapRetentionDays) || 30}" onchange="Params.setSnapRetention(this.value)"></div>
+            <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Params.cleanupSnapshotsNow()">🧹 Nettoyer les plus anciens</button>
+          </div>
+          <p class="muted" style="font-size:.8rem;">Un rappel mensuel te propose de télécharger une sauvegarde puis de supprimer les instantanés plus vieux que cette durée.</p>
           <div id="snapList" class="mt"><p class="muted">Chargement…</p></div>
         </div>
         <div class="card params-card">
@@ -2273,6 +2278,19 @@ const Params = {
       : '<p class="muted">Aucun instantané pour l\u2019instant.</p>';
   },
   async snapshotNow() { await Store.takeSnapshot(U.today()); this.loadSnaps(); },
+  setSnapRetention(v) {
+    Store.state.settings.snapRetentionDays = Math.max(7, Math.round(U.num(v)) || 30);
+    Store.save('settings'); App.rerender();
+  },
+  async cleanupSnapshotsNow() {
+    const days = U.num(Store.state.settings.snapRetentionDays) || 30;
+    const old = await Store.oldSnapshotDays(days);
+    if (!old.length) { U.toast('Aucun instantané de plus de ' + days + ' jours.'); return; }
+    if (!confirm(old.length + ' instantané(s) de plus de ' + days + ' jours vont être supprimés.\n\nTes données actuelles ne sont pas touchées. Pense à télécharger une sauvegarde avant (bouton « Exporter la sauvegarde »).\n\nContinuer ?')) return;
+    await Store.purgeOldSnapshots(days);
+    U.toast(old.length + ' ancien(s) instantané(s) supprimé(s).');
+    this.loadSnaps();
+  },
   async clearSnapshots() {
     if (!confirm('Effacer TOUS les instantanés de retour arrière ?\n\nÇa supprime uniquement les sauvegardes automatiques quotidiennes accumulées — tes produits, stock et ventes actuels ne sont PAS touchés.\n\nUtile pour repartir propre à la mise en service. Action irréversible.')) return;
     await Store.clearSnapshots();
