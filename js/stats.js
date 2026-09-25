@@ -66,8 +66,18 @@ const Stats = {
     // Sachets
     const sach = {};
     consos.filter(c => isCat(c, /sachet/i)).forEach(c => { sach[c.id] = mk(c); });
+    const blis = {}; // largeur (mm) → { widthStr, roll, lengths: { lengthMm → {...} } }
     Store.state.stockM.forEach(p => (p.variants || []).forEach(v => (v.packHistory || []).forEach(h => {
       if (!inPeriod(h.date)) return;
+      if (h.type === 'blister') {
+        const w = blis[h.widthMm] || (blis[h.widthMm] = { widthMm: h.widthMm, widthStr: (h.dims || '').split('×')[0], rollId: h.consoId, lengths: {} });
+        const L = w.lengths[h.lengthMm] || (w.lengths[h.lengthMm] = { lengthMm: h.lengthMm, lengthStr: (h.dims || '').split('×')[1] || (h.lengthMm / 10 + 'cm'), uses: 0, qty: 0, cost: 0, last: '', prods: {} });
+        L.uses++; L.qty += U.num(h.qty); L.cost += U.num(h.qty) * U.num(h.unitCost);
+        if (!L.last || h.date > L.last) L.last = h.date;
+        const k = p.name + ' ' + Pricing.labelVariant(v);
+        L.prods[k] = (L.prods[k] || 0) + U.num(h.qty);
+        return;
+      }
       const r = sach[h.consoId] || (sach[h.consoId] = { id: h.consoId, name: h.name + ' (supprimé)', dims: h.dims || '', unitCost: U.num(h.unitCost), stock: 0, uses: 0, qty: 0, cost: 0, last: '', prods: {}, replaceBy: '' });
       r.uses++; r.qty += U.num(h.qty); r.cost += U.num(h.qty) * U.num(h.unitCost);
       if (!r.last || h.date > r.last) r.last = h.date;
@@ -88,7 +98,13 @@ const Stats = {
       });
     });
     const sort = o => Object.values(o).sort((a, b) => b.qty - a.qty || U.sortFr(a.name, b.name));
-    return { sach: sort(sach), cart: sort(cart) };
+    const blisters = Object.values(blis).sort((a, b) => a.widthMm - b.widthMm).map(w => {
+      const roll = Store.state.consumables.find(c => c.id === w.rollId);
+      const unit = ((roll && roll.unit) || 'm').toLowerCase();
+      const perM = roll ? U.num(roll.costUnit) * (unit === 'mm' ? 1000 : unit === 'cm' ? 100 : 1) : 0; // € par mètre
+      return { ...w, roll, perM, lengths: Object.values(w.lengths).sort((a, b) => a.lengthMm - b.lengthMm) };
+    });
+    return { sach: sort(sach), cart: sort(cart), blisters };
   },
 
   _packTable(rows, unitWord, prodWord) {
@@ -102,25 +118,62 @@ const Stats = {
         const top = Object.entries(r.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ') || '<span class="muted">—</span>';
         const rep = r.replaceBy ? Store.state.consumables.find(c => c.id === r.replaceBy) : null;
         let st;
+        const cObj = Store.state.consumables.find(c => c.id === r.id);
         if (!r.qty) st = '<span class="badge bad">jamais utilisé</span>';
         else if (r.last < sixMonths) st = '<span class="badge warn">peu utilisé (+6 mois)</span>';
         else st = '<span class="badge ok">actif</span>';
-        if (rep) st += ` <span class="badge info" title="À remplacer au prochain achat">💡 → ${U.esc(rep.name)}${rep.dims || rep.dimensions ? ' ' + U.esc(rep.dimensions || '') : ''}</span>`;
+        if (cObj && cObj.toReplace) st += typeof Stock !== 'undefined' ? Stock.replaceBadge(cObj) : ' 🚩';
         return `<tr class="${!r.qty ? 'dim' : ''}"><td class="col-name">${lbl(r)}</td><td class="num"><b>${U.qty(r.qty)}</b></td><td class="num">${Math.round(r.qty / total * 100)} %</td><td class="num sensitive">${U.eur(r.cost)}</td><td>${r.last ? U.frDate(r.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
       }).join('')}</tbody></table></div>`;
+  },
+
+  _blisterHTML(bl) {
+    if (!bl.length) return '<p class="muted">Aucune découpe de blister enregistrée sur la période (choisis un blister dans la fenêtre 📦 Conditionnement d\'un lot).</p>';
+    return bl.map(w => {
+      const tot = w.lengths.reduce((a, L) => a + L.qty, 0) || 1;
+      const meters = w.lengths.reduce((a, L) => a + L.qty * L.lengthMm / 1000, 0);
+      const opts = w.lengths.map(L => `<option value="${L.lengthMm}">${U.esc(L.lengthStr)}</option>`).join('');
+      return `<h3 class="mt">Rouleau ${U.esc(w.widthStr)} <span class="muted" style="font-size:.85rem;">${w.roll ? '· ' + U.esc(w.roll.name) + ' · ' + U.eur(w.perM, 3) + '/m' : '· rouleau non lié'} · ${U.qty(Math.round(meters * 100) / 100)} m consommés</span></h3>
+        <div class="table-wrap"><table>
+          <thead><tr><th class="col-name">Longueur de découpe</th><th class="num">Découpes</th><th class="num">Part</th><th class="num">Mètres</th><th class="num">Coût</th><th>Dernier usage</th><th>Produits qui l'utilisent le plus</th></tr></thead>
+          <tbody>${w.lengths.map(L => {
+            const top = Object.entries(L.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ');
+            return `<tr><td class="col-name"><b>${U.esc(L.lengthStr)}</b></td><td class="num"><b>${U.qty(L.qty)}</b></td><td class="num">${Math.round(L.qty / tot * 100)} %</td><td class="num">${U.qty(Math.round(L.qty * L.lengthMm / 10) / 100)}</td><td class="num sensitive">${U.eur(L.cost)}</td><td>${U.frDate(L.last)}</td><td style="font-size:.85rem;">${top}</td></tr>`;
+          }).join('')}</tbody></table></div>
+        ${w.lengths.length > 1 ? `<div class="frow mt" style="align-items:flex-end;gap:8px;">
+          <div class="fg" style="max-width:170px;"><label>Simuler : remplacer</label><select id="bsim_a_${w.widthMm}" onchange="Stats._simBlister(${w.widthMm})">${opts}</select></div>
+          <div class="fg" style="max-width:170px;"><label>par (plus long)</label><select id="bsim_b_${w.widthMm}" onchange="Stats._simBlister(${w.widthMm})">${opts}</select></div>
+          <div class="fg" style="flex:2;"><span id="bsim_r_${w.widthMm}" class="muted"></span></div>
+        </div>` : ''}`;
+    }).join('');
+  },
+  /* Simulateur de regroupement : si toutes les découpes de longueur A avaient été faites à la
+     longueur B (plus longue, pour découper à l'avance en moins de formats), combien de mètres
+     de rouleau en plus (= perte) et quel surcoût, sur l'historique de la période. */
+  _simBlister(widthMm) {
+    const out = document.getElementById('bsim_r_' + widthMm); if (!out) return;
+    const w = (this._packAgg().blisters || []).find(x => x.widthMm === widthMm); if (!w) return;
+    const a = U.num(U.val('bsim_a_' + widthMm)), b = U.num(U.val('bsim_b_' + widthMm));
+    const A = w.lengths.find(L => L.lengthMm === a), B = w.lengths.find(L => L.lengthMm === b);
+    if (!A || !B) return;
+    if (b <= a) { out.innerHTML = 'Choisis une longueur de remplacement <b>plus longue</b> que celle remplacée.'; return; }
+    const extraM = A.qty * (b - a) / 1000;
+    const extraEur = extraM * w.perM;
+    out.innerHTML = `Les <b>${U.qty(A.qty)}</b> découpes de ${U.esc(A.lengthStr)} faites en ${U.esc(B.lengthStr)} → <b class="neg">+${U.qty(Math.round(extraM * 100) / 100)} m</b> de rouleau` + (w.perM ? `, soit <b class="neg">+${U.eur(extraEur)}</b> sur la période` : ' (coût inconnu : rouleau non lié)') + ` — une longueur de moins à préparer.`;
   },
 
   renderPack() {
     const agg = this._packAgg();
     const periodOpts = [{ v: 'all', l: 'Tout l\'historique' }, { v: 'year', l: 'Cette année' }, { v: '12m', l: '12 derniers mois' }];
     App.mount(`
-      <div class="view-title"><h1>Statistiques</h1><span class="sub">emballages — sachets & cartons</span></div>
+      <div class="view-title"><h1>Statistiques</h1><span class="sub">emballages — sachets, blisters & cartons</span></div>
       ${this.tabBar()}
       <div class="card">
         <div class="fg" style="max-width:220px;margin:0;"><label>Période</label>${U.customSelect({ value: this.salesPeriod, options: periodOpts, onPick: 'Stats.setSalesPeriod' })}</div>
         <p class="muted mb0 mt" style="font-size:.85rem;">Sachets : d'après le conditionnement indiqué à l'ajout des lots (Stock → ＋ Ajouter un lot, ou 📦 sur un lot). Cartons : d'après les consommables de catégorie « Cartons » ajoutés aux ventes. Le « jamais / peu utilisé » t'aide à repérer les formats à supprimer ou remplacer.</p>
       </div>
       <div class="card"><h2>🛍️ Sachets</h2>${this._packTable(agg.sach, 'Sachets utilisés', 'Produits qui l\'utilisent le plus')}</div>
+      <div class="card"><h2>🎞️ Blisters</h2><p class="muted mb0" style="font-size:.85rem;">Par largeur de rouleau et longueur de découpe. Le simulateur montre ce que coûterait de regrouper deux longueurs (découper à l'avance en moins de formats, avec un peu de perte).</p>${this._blisterHTML(agg.blisters)}</div>
       <div class="card"><h2>📦 Cartons</h2>${this._packTable(agg.cart, 'Colis envoyés', 'Produits le plus souvent envoyés dedans')}</div>`);
   },
 
