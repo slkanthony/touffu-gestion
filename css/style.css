@@ -631,3 +631,19 @@ body.visit-mode .sensitive { filter: blur(6px); user-select: none; pointer-event
 .fin-block { border-top: 2px dashed rgba(166, 113, 83, 0.75); padding-top: 18px; margin-top: 18px; }
 .fin-block[style*="order:0"] { border-top: none; padding-top: 0; margin-top: 0; }
 .modal.wide { max-width: min(720px, 92vw); }
+
+/* ── Barres de défilement aux couleurs de l'appli (caramel) — 2026-09-26 ──
+   Avant : barre blanche du navigateur, qui détonnait sur le thème sombre. */
+* { scrollbar-color: var(--caramel) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--caramel); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #8a5a40; background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Tables Statistiques → Emballages : s'adaptent à la largeur (pas de défilement inutile) ── */
+table.pack-tbl { width: 100%; }
+table.pack-tbl th { white-space: normal; font-size: .72rem; line-height: 1.2; }
+table.pack-tbl td, table.pack-tbl th { padding: 6px 8px; }
+table.pack-tbl td.num { white-space: nowrap; }
+table.pack-tbl td:nth-last-child(2) { min-width: 140px; }

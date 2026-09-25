@@ -258,6 +258,7 @@ const Stock = {
           </tr></thead>
           <tbody>${varRows || '<tr><td colspan="11" class="muted">Aucune variante.</td></tr>'}</tbody>
         </table></div>
+        <button class="btn-cta btn-sm mt" onclick="Stock.addVariant('${p.id}')">＋ Ajouter une variante</button>
       </div></details>`;
   },
 

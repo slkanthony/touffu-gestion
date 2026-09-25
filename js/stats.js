@@ -143,7 +143,7 @@ const Stats = {
     const total = rows.reduce((a, r) => a + r.qty, 0) || 1;
     const sixMonths = new Date(Date.now() - 182 * 86400000).toISOString().slice(0, 10);
     const lbl = r => U.esc(r.name) + (r.dims ? ` <span class="muted">${U.esc(r.dims)}</span>` : '');
-    return `<div class="table-wrap"><table>
+    return `<div class="table-wrap"><table class="pack-tbl">
       <thead><tr><th class="col-name">Emballage</th><th class="num">Coût / u.</th><th class="num">En stock</th>${withFiches ? '<th class="num" title="Nombre de variantes de fiches prix (Prix mastication) qui utilisent cet emballage — survole pour la liste">Fiches prix</th>' : ''}<th class="num">${unitWord}</th><th class="num">Part</th><th class="num">Coût total</th><th>Dernier usage</th><th>${prodWord}</th><th>Statut</th></tr></thead>
       <tbody>${rows.map(r => {
         const top = Object.entries(r.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ') || '<span class="muted">—</span>';
@@ -167,8 +167,10 @@ const Stats = {
       const nF = w.lengths.reduce((a, L) => a + L.fiches.length, 0);
       const opts = w.lengths.map(L => `<option value="${L.lengthMm}">${U.esc(L.lengthStr)}</option>`).join('');
       const opts2 = w.lengths.map((L, i) => `<option value="${L.lengthMm}" ${i === 1 ? 'selected' : ''}>${U.esc(L.lengthStr)}</option>`).join('');
-      return `<h3 class="mt">Rouleau ${U.esc(w.widthStr)} <span class="muted" style="font-size:.85rem;">${w.roll ? '· ' + U.esc(w.roll.name) + ' · ' + U.eur(w.perM, 3) + '/m · stock ' + U.qty(w.roll.qty) + ' ' + U.esc(w.roll.unit || 'm') : '· rouleau non lié'} · ${nF} fiche(s) prix · ${U.qty(Math.round(meters * 100) / 100)} m consommés</span>${w.roll && w.roll.toReplace && typeof Stock !== 'undefined' ? Stock.replaceBadge(w.roll) : ''}</h3>
-        <div class="table-wrap"><table>
+      const open = !!(this._rollOpen || {})[w.widthMm];
+      return `<details class="fold sachet-group" style="margin:8px 0;" ${open ? 'open' : ''} ontoggle="(Stats._rollOpen=Stats._rollOpen||{})[${w.widthMm}]=this.open">
+        <summary style="cursor:pointer;padding:8px 0;"><b style="font-size:1rem;">Rouleau ${U.esc(w.widthStr)}</b> <span class="muted" style="font-size:.85rem;">${w.roll ? '· ' + U.esc(w.roll.name) + ' · ' + U.eur(w.perM, 3) + '/m · stock ' + U.qty(w.roll.qty) + ' ' + U.esc(w.roll.unit || 'm') : '· rouleau non lié'} · ${nF} fiche(s) prix · ${U.qty(Math.round(meters * 100) / 100)} m consommés</span>${w.roll && w.roll.toReplace && typeof Stock !== 'undefined' ? Stock.replaceBadge(w.roll) : ''}</summary>
+        <div class="table-wrap"><table class="pack-tbl">
           <thead><tr><th class="col-name">Longueur de découpe</th><th class="num">Coût / découpe</th><th class="num" title="Variantes de fiches prix qui utilisent cette découpe — survole pour la liste">Fiches prix</th><th class="num">Découpes</th><th class="num">Part</th><th class="num">Mètres</th><th class="num">Coût</th><th>Dernier usage</th><th>Produits conditionnés</th><th>Statut</th></tr></thead>
           <tbody>${w.lengths.map(L => {
             const top = Object.entries(L.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ') || '<span class="muted">—</span>';
@@ -179,7 +181,8 @@ const Stats = {
           <div class="fg" style="max-width:170px;"><label>Simuler : remplacer</label><select id="bsim_a_${w.widthMm}" onchange="Stats._simBlister(${w.widthMm})">${opts}</select></div>
           <div class="fg" style="max-width:170px;"><label>par (plus long)</label><select id="bsim_b_${w.widthMm}" onchange="Stats._simBlister(${w.widthMm})">${opts2}</select></div>
           <div class="fg" style="flex:2;"><span id="bsim_r_${w.widthMm}" class="muted"></span></div>
-        </div>` : ''}`;
+        </div>` : ''}
+      </details>`;
     }).join('');
   },
   /* Simulateur de regroupement : remplacer la longueur A par B (plus longue) pour découper à
