@@ -288,6 +288,11 @@ const Params = {
         </div>
       </details>
 
+      <details class="fold card params-fold" ${this._dupOpen ? 'open' : ''} ontoggle="Params._dupOpen=this.open">
+        <summary><h2 style="display:inline;">🔍 Contrôle des doublons</h2> <span class="muted">liaisons & liens fournisseur</span></summary>
+        <div class="fold-body">${this._dupOpen ? this._renderDupCheck() : ''}</div>
+      </details>
+
       <details class="fold card params-fold" ${this._mergeOpen ? 'open' : ''} ontoggle="Params._mergeOpen=this.open">
         <summary><h2 style="display:inline;">🧹 Fusionner les doublons</h2></summary>
         <div class="fold-body">
@@ -1267,6 +1272,34 @@ const Params = {
       if (cv) { sv.catalogVariantId = cv.id; if (sv.sku && !cv.sku) cv.sku = sv.sku; }
     });
     Stock.syncPricesFromCatalog(cat.id);
+  },
+
+  /* Liste des doublons : fiches prix liées à plusieurs produits stock + liens fournisseur
+     partagés (mastication + consommables). Noms cliquables → produit dans le Stock. */
+  _renderDupCheck() {
+    const link = o => o.kind === 'C'
+      ? `<a href="#/stock/conso">${U.esc(o.name)}</a> <span class="muted">(consommable)</span>`
+      : `<a href="#/stock/mastication/${o.id}">${U.esc(o.name)}</a>`;
+    const byCat = {};
+    Store.state.stockM.forEach(sp => { if (sp.catalogId) (byCat[sp.catalogId] = byCat[sp.catalogId] || []).push(sp); });
+    const catDups = Object.entries(byCat).filter(([, l]) => l.length > 1).map(([cid, l]) => {
+      const cat = Store.state.catalogM.find(c => c.id === cid);
+      return { name: cat ? cat.name : '(fiche supprimée)', items: l.map(sp => ({ kind: 'M', id: sp.id, name: sp.name })) };
+    }).sort((a, b) => U.sortFr(a.name, b.name));
+    const byUrl = {};
+    Store.state.stockM.forEach(sp => { const k = Stock.normUrl(sp.url); if (k) (byUrl[k] = byUrl[k] || { url: sp.url, items: [] }).items.push({ kind: 'M', id: sp.id, name: sp.name }); });
+    Store.state.consumables.forEach(c => { const k = Stock.normUrl(c.url); if (k) (byUrl[k] = byUrl[k] || { url: c.url, items: [] }).items.push({ kind: 'C', id: c.id, name: c.name }); });
+    const urlDups = Object.values(byUrl).filter(g => g.items.length > 1);
+    const table = (rows, head) => `<div class="table-wrap"><table><thead><tr><th>${head}</th><th>Produits concernés</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+    const catHTML = catDups.length
+      ? table(catDups.map(d => `<tr><td>${U.esc(d.name)}</td><td>${d.items.map(link).join(' · ')}</td></tr>`), 'Fiche prix')
+      : '<p class="muted">✅ Aucune fiche prix liée à plusieurs produits.</p>';
+    const urlHTML = urlDups.length
+      ? table(urlDups.map(g => `<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${U.esc(g.url)}"><a href="${U.esc(g.url)}" target="_blank" rel="noopener">${U.esc(g.url)}</a></td><td>${g.items.map(link).join(' · ')}</td></tr>`), 'Lien fournisseur')
+      : '<p class="muted">✅ Aucun lien fournisseur en double.</p>';
+    return `<p class="muted mb0">Les alertes ne bloquent rien : un doublon peut être voulu. Clique un nom pour ouvrir le produit et corriger. (Matières premières non contrôlées : une même page fournisseur sert souvent à plusieurs couleurs/largeurs.)</p>
+      <h3 class="mt">🔗 Fiches prix liées à plusieurs produits stock (${catDups.length})</h3>${catHTML}
+      <h3 class="mt">🌐 Liens fournisseur en double (${urlDups.length})</h3>${urlHTML}`;
   },
 
   relink() {

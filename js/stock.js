@@ -631,6 +631,30 @@ const Stock = {
     });
   },
 
+  /* Contrôle des doublons (demande d'Antho, 2026-09-26) — ALERTE, jamais blocage :
+     - une fiche prix liée à plusieurs produits stock (le 1er impose alors nom/viande, cf. stock prioritaire) ;
+     - un lien fournisseur partagé entre produits mastication et/ou consommables
+       (matières premières exclues : une même page sert souvent plusieurs couleurs/largeurs). */
+  normUrl(u) { return String(u || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, ''); },
+  urlOwners(url) {
+    const k = this.normUrl(url); if (!k) return [];
+    return Store.state.stockM.filter(x => this.normUrl(x.url) === k).map(x => ({ kind: 'M', id: x.id, name: x.name }))
+      .concat(Store.state.consumables.filter(c => this.normUrl(c.url) === k).map(c => ({ kind: 'C', id: c.id, name: c.name })));
+  },
+  dupWarnings({ pId, consoId, catId, url }) {
+    const msgs = [];
+    if (catId) {
+      const others = Store.state.stockM.filter(x => x.catalogId === catId && x.id !== pId);
+      if (others.length) {
+        const cat = Store.state.catalogM.find(c => c.id === catId);
+        msgs.push('⚠️ La fiche prix « ' + (cat ? cat.name : '?') + ' » est déjà liée à : ' + others.map(x => x.name).join(', '));
+      }
+    }
+    const owners = this.urlOwners(url).filter(o => !((o.kind === 'M' && o.id === pId) || (o.kind === 'C' && o.id === consoId)));
+    if (owners.length) msgs.push('⚠️ Ce lien fournisseur est déjà utilisé par : ' + owners.map(o => o.name + (o.kind === 'C' ? ' (consommable)' : '')).join(', '));
+    return msgs;
+  },
+
   editProduct(id) {
     const S = Store.state.settings;
     const p = id ? Store.state.stockM.find(x=>x.id===id)
@@ -733,6 +757,8 @@ const Stock = {
           else if (exact.length > 1) { U.toast('Plusieurs produits catalogue portent ce nom — clique une ligne précise dans la liste (viande/fournisseur affichés) plutôt que taper.', true); return false; }
           else { U.toast('Choisis un produit catalogue dans la liste déroulante (ou vide le champ pour ne pas relier).', true); return false; }
         }
+        const dupMsgs = this.dupWarnings({ pId: p.id, catId, url: U.val('sp_url') });
+        if (dupMsgs.length && !confirm(dupMsgs.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
         const oldCatId = p.catalogId || '';
         const before = id ? { name: p.name, meatType: p.meatType, catalogId: p.catalogId, url: p.url, tags: JSON.parse(JSON.stringify(p.tags || {})), variants: JSON.parse(JSON.stringify(p.variants)) } : null;
         p.catalogId=catId;
@@ -1599,8 +1625,11 @@ const Stock = {
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
       onOk:()=>{
+        if(!U.val('c_name').trim()){U.toast('Nom obligatoire',true);return false;}
+        const dupMsgs = this.dupWarnings({ consoId: c.id, url: U.val('c_url') });
+        if (dupMsgs.length && !confirm(dupMsgs.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
         const snap = id ? Store.snapshot('consumables',c) : null;
-        c.name=U.val('c_name').trim(); if(!c.name){U.toast('Nom obligatoire',true);return false;}
+        c.name=U.val('c_name').trim();
         c.dimensions=U.val('c_dim').trim();
         c.category=U.val('c_cat');c.unit=U.val('c_unit');c.qty=U.numVal('c_qty');c.low=U.numVal('c_low');
         c.costTotal=U.numVal('c_costTotal'); c.costQtyPer=Math.max(0.01,U.numVal('c_costQty'));
