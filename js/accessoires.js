@@ -755,11 +755,11 @@ const Accessoires = {
     return items.map(it => {
       if (it.type === 'family') {
         const f = it.data;
-        return `<div class="ac-item" onmousedown="event.preventDefault();Accessoires.pickBomFamily(${i},'${U.esc(f.key)}')">${U.esc(f.label)} <span class="muted">(moy. ${U.eur(f.avgCost, 3)}/${f.unit === 'm' ? 'm' : 'PCS'} — ${f.count} réf.)</span></div>`;
+        return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomFamily(${i},'${U.esc(f.key)}')"><span class="pp-a">${U.esc(f.label)}</span><span class="pp-b">${f.count} réf.</span><span class="pp-c">moy. ${U.eur(f.avgCost, 3)} / ${f.unit === 'm' ? 'm' : 'PCS'}</span></div>`;
       }
       const m = it.data;
       const unit = m.unit === 'm' ? 'm' : 'PCS';
-      return `<div class="ac-item" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')">${U.esc(m.name)} <span class="muted">(${U.eur(m.costUnit, 3)}/${unit} — stock: ${U.qty(m.qty)} ${unit})</span></div>`;
+      return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')"><span class="pp-a">${U.esc(m.name)}</span><span class="pp-b">stock ${U.qty(m.qty)} ${unit}</span><span class="pp-c">${U.eur(m.costUnit, 3)} / ${unit}</span></div>`;
     }).join('');
   },
 

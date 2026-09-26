@@ -1391,7 +1391,7 @@ const Stock = {
     const def = v.lastPackKey || (v.lastSachetConsoId ? 'c:' + v.lastSachetConsoId : '') || (info && info.key) || '';
     const units = U.num(lot.qtyGeneral) + U.num(lot.qtyEvent);
     this._packCtx = { pId, vId, lId, units };
-    const opt = o => `<option value="${o.key}" ${o.key === def ? 'selected' : ''}>${o.flag ? '🚩 ' : ''}${U.esc(o.label)} — ${U.eur(o.cost, 3)} (stock ${U.esc(o.stock)})</option>`;
+    const opt = o => `<option value="${o.key}" ${o.key === def ? 'selected' : ''} data-a="${U.esc((o.flag ? '🚩 ' : '') + o.label)}" data-b="stock ${U.esc(o.stock)}" data-c="${U.esc(U.eur(o.cost, 3))}">${o.flag ? '🚩 ' : ''}${U.esc(o.label)} — ${U.eur(o.cost, 3)} (stock ${U.esc(o.stock)})</option>`;
     const opts = (po.sachets.length ? `<optgroup label="Sachets">${po.sachets.map(opt).join('')}</optgroup>` : '')
       + (po.blisters.length ? `<optgroup label="Blisters (découpe)">${po.blisters.map(opt).join('')}</optgroup>` : '');
     U.modal({
@@ -2204,7 +2204,7 @@ const Stock = {
   _replaceOpts(selfId, cat, cur) {
     const same = Store.state.consumables.filter(x => x.id !== selfId && (x.category || 'Autre') === (cat || 'Autre'))
       .sort((a, b) => U.sortFr(a.name + (this.consoDims(a) || ''), b.name + (this.consoDims(b) || '')));
-    return `<option value="">—</option>` + same.map(x => `<option value="${x.id}" ${cur === x.id ? 'selected' : ''}>${U.esc(x.name)}${this.consoDims(x) ? ' · ' + U.esc(this.consoDims(x)) : ''}</option>`).join('');
+    return `<option value="">—</option>` + same.map(x => `<option value="${x.id}" ${cur === x.id ? 'selected' : ''} data-a="${U.esc(x.name)}" data-b="${U.esc(this.consoDims(x) || '')}" data-c="${U.esc(U.eur(x.costUnit, 3))}">${U.esc(x.name)}${this.consoDims(x) ? ' · ' + U.esc(this.consoDims(x)) : ''}</option>`).join('');
   },
   _onConsoCatChange() {
     const cat = U.val('c_cat');

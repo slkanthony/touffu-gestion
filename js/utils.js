@@ -274,7 +274,7 @@ const U = {
     return `<details class="multiselect custom-select${cls ? ' ' + cls : ''}">
       <summary>${U.esc(label)} ▾</summary>
       <div class="multiselect-panel">
-        ${options.map(o => `<div class="dluo-opt${String(o.v)===String(value)?' active':''}" onclick="this.closest('details').open=false;(${onPick})('${U.esc(String(o.v)).replace(/&#39;/g, "\\'")}')">${U.esc(o.l)}</div>`).join('')}
+        ${options.map(o => { const m = String(o.l).match(/^(.*\S)\s*\((\d+)\)$/); return `<div class="dluo-opt${String(o.v)===String(value)?' active':''}" onclick="this.closest('details').open=false;(${onPick})('${U.esc(String(o.v)).replace(/&#39;/g, "\\'")}')">${m ? `<span>${U.esc(m[1])}</span><span class="opt-n">${m[2]}</span>` : U.esc(o.l)}</div>`; }).join('')}
       </div>
     </details>`;
   },
@@ -412,3 +412,157 @@ U.applyHelp = (root) => {
 new MutationObserver(muts => {
   for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.classList.contains('help') || n.querySelector('.help'))) U.applyHelp(n);
 }).observe(document.documentElement, { childList: true, subtree: true });
+
+/* ───── Menus déroulants de l'appli (2026-09-29, demande d'Antho : les menus natifs du navigateur
+   collaient nom / dimensions / coût dans la même police, illisibles). Tout <select> de l'appli est
+   automatiquement doublé d'un menu maison, même présentation que le choix du sachet du bloc 5 :
+   colonnes nom · détail · valeur, titres de groupe (optgroup), choix surligné caramel, recherche si
+   la liste est longue. Le <select> d'origine reste dans la page (caché) : valeur, onchange, U.val…
+   fonctionnent sans rien changer. Colonnes : data-a / data-b / data-c sur l'<option> si fournis,
+   sinon découpage du texte sur « — » (1er morceau = nom, dernier = valeur à droite) et parenthèse
+   finale contenant un chiffre (ex. « sachets XS (10*3*15) ») = détail. <select data-native> = exclu. */
+U.nsel = {
+  cur: null,
+  parts(o) {
+    const d = o.dataset || {};
+    if (d.a || d.b || d.c) return [d.a || o.textContent.trim(), d.b || '', d.c || ''];
+    const ps = o.textContent.trim().split(' — ');
+    let a = ps[0], b = ps.length > 2 ? ps.slice(1, -1).join(' · ') : '', c = ps.length > 1 ? ps[ps.length - 1] : '';
+    const m = !b && a.match(/^(.+?)\s*\(([^()]*\d[^()]*)\)$/);
+    if (m) { a = m[1]; b = m[2]; }
+    return [a, b, c];
+  },
+  labelHTML(sel) {
+    const o = sel.options[sel.selectedIndex];
+    if (!o) return '<span class="nsel-a muted">—</span>';
+    const [a, b, c] = this.parts(o);
+    const extra = [b, c].filter(Boolean).map(U.esc).join(' · ');
+    return `<span class="nsel-a">${U.esc(a)}</span>${extra ? `<span class="nsel-x">${extra}</span>` : ''}`;
+  },
+  sync(sel) {
+    const t = sel._nselTrig; if (!t) return;
+    t.innerHTML = this.labelHTML(sel);
+    t.disabled = sel.disabled;
+    t.title = sel.title || '';
+    const st = sel.getAttribute('style') || '';
+    if (t._st !== st) { t._st = st; t.style.cssText = st; }
+  },
+  enhance(sel) {
+    if (sel._nselTrig || sel.multiple || sel.hasAttribute('data-native')) return;
+    const t = document.createElement('button');
+    t.type = 'button'; t.className = 'nsel-trig';
+    sel._nselTrig = t; t._sel = sel;
+    sel.classList.add('nsel-native'); sel.tabIndex = -1;
+    sel.after(t);
+    this.sync(sel);
+    t.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); this.cur && this.cur.sel === sel ? this.close() : this.open(sel); });
+    t.addEventListener('keydown', e => { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); this.open(sel); } });
+  },
+  open(sel) {
+    this.close();
+    const t = sel._nselTrig; if (!t || t.disabled) return;
+    const items = [];
+    [...sel.children].forEach(ch => {
+      if (ch.tagName === 'OPTGROUP') { items.push({ head: ch.label }); [...ch.children].forEach(o => items.push({ o })); }
+      else if (ch.tagName === 'OPTION') items.push({ o: ch });
+    });
+    const opts = items.filter(x => x.o && !x.o.hidden);
+    const cols3 = opts.some(x => { const p = this.parts(x.o); return p[1] && p[2]; });
+    const p = document.createElement('div');
+    p.className = 'nsel-panel' + (cols3 ? ' c3' : '');
+    p.innerHTML = (opts.length > 10 ? `<input class="nsel-q" placeholder="Rechercher…" autocomplete="off">` : '') + `<div class="nsel-list">${items.map(x => {
+      if (x.head) return `<div class="pp-head">${U.esc(x.head)}</div>`;
+      if (x.o.hidden) return '';
+      const [a, b, c] = this.parts(x.o);
+      return `<div class="pp-row${x.o.selected ? ' active' : ''}${x.o.disabled ? ' off' : ''}" data-i="${x.o.index}"><span class="pp-a">${U.esc(a) || '&nbsp;'}</span><span class="pp-b">${U.esc(b)}</span><span class="pp-c">${U.esc(c)}</span></div>`;
+    }).join('')}</div>`;
+    document.body.appendChild(p);
+    const r = t.getBoundingClientRect();
+    p.style.minWidth = Math.min(Math.max(r.width, 200), window.innerWidth - 16) + 'px';
+    p.style.maxWidth = Math.min(620, window.innerWidth - 16) + 'px';
+    const w = p.offsetWidth;
+    p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    const below = window.innerHeight - r.bottom - 8, above = r.top - 8;
+    const h = Math.min(p.offsetHeight, 380);
+    if (below < h && above > below) { p.style.bottom = (window.innerHeight - r.top + 4) + 'px'; p.style.maxHeight = Math.min(380, above) + 'px'; }
+    else { p.style.top = (r.bottom + 4) + 'px'; p.style.maxHeight = Math.min(380, Math.max(160, below)) + 'px'; }
+    this.cur = { sel, p, t };
+    t.classList.add('open');
+    p.addEventListener('mousedown', e => e.stopPropagation());
+    p.addEventListener('click', e => {
+      const row = e.target.closest('.pp-row'); if (!row || row.classList.contains('off')) return;
+      this.pick(sel, +row.dataset.i);
+    });
+    const q = p.querySelector('.nsel-q');
+    const rows = () => [...p.querySelectorAll('.pp-row:not(.off)')].filter(x => x.style.display !== 'none');
+    const hl = (dir) => {
+      const rs = rows(); if (!rs.length) return;
+      let i = rs.findIndex(x => x.classList.contains('hl'));
+      if (i < 0) i = rs.findIndex(x => x.classList.contains('active'));
+      rs.forEach(x => x.classList.remove('hl'));
+      i = Math.max(0, Math.min(rs.length - 1, i + dir));
+      rs[i].classList.add('hl'); rs[i].scrollIntoView({ block: 'nearest' });
+    };
+    p.tabIndex = -1;
+    p.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); hl(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); hl(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); const h = p.querySelector('.pp-row.hl') || (q && rows()[0]); if (h) this.pick(sel, +h.dataset.i); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(); t.focus(); }
+    });
+    if (q) {
+      q.addEventListener('input', () => {
+        const s = U.normSearch(q.value).trim();
+        p.querySelectorAll('.pp-row').forEach(x => { x.style.display = !s || U.normSearch(x.textContent).includes(s) ? '' : 'none'; x.classList.remove('hl'); });
+        p.querySelectorAll('.pp-head').forEach(hd => {
+          let n = hd.nextElementSibling, any = false;
+          while (n && !n.classList.contains('pp-head')) { if (n.style.display !== 'none') any = true; n = n.nextElementSibling; }
+          hd.style.display = any ? '' : 'none';
+        });
+      });
+      q.focus();
+    } else p.focus();
+    const act = p.querySelector('.pp-row.active'); if (act) act.scrollIntoView({ block: 'nearest' });
+  },
+  pick(sel, i) {
+    this.close();
+    if (sel.selectedIndex !== i) {
+      sel.selectedIndex = i;
+      sel.dispatchEvent(new Event('input', { bubbles: true }));
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    this.sync(sel);
+    if (sel._nselTrig && sel._nselTrig.isConnected) sel._nselTrig.focus();
+  },
+  close() {
+    if (!this.cur) return;
+    this.cur.p.remove(); this.cur.t.classList.remove('open');
+    this.cur = null;
+  },
+  scan(root) {
+    if (root.tagName === 'SELECT') this.enhance(root);
+    else if (root.querySelectorAll) root.querySelectorAll('select').forEach(s => this.enhance(s));
+  }
+};
+(() => {
+  // Valeur changée par le code (select.value = …) → libellé du menu mis à jour.
+  ['value', 'selectedIndex'].forEach(k => {
+    const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, k);
+    Object.defineProperty(HTMLSelectElement.prototype, k, { configurable: true, get() { return d.get.call(this); }, set(v) { d.set.call(this, v); if (this._nselTrig) U.nsel.sync(this); } });
+  });
+  document.addEventListener('mousedown', e => { if (U.nsel.cur && !e.target.closest('.nsel-trig')) U.nsel.close(); }, true);
+  window.addEventListener('scroll', e => { if (U.nsel.cur && !U.nsel.cur.p.contains(e.target)) U.nsel.close(); }, true);
+  window.addEventListener('resize', () => U.nsel.close());
+  document.addEventListener('change', e => { if (e.target.tagName === 'SELECT' && e.target._nselTrig) U.nsel.sync(e.target); }, true);
+  new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.type === 'attributes') { if (m.target._nselTrig) U.nsel.sync(m.target); continue; }
+      const s = m.target.closest && m.target.closest('select');
+      if (s) { U.nsel.sync(s); continue; }
+      for (const n of m.addedNodes) if (n.nodeType === 1) U.nsel.scan(n);
+      for (const n of m.removedNodes) if (n.nodeType === 1 && U.nsel.cur && (n === U.nsel.cur.t || n.contains(U.nsel.cur.t))) U.nsel.close();
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'style'] });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => U.nsel.scan(document));
+  else U.nsel.scan(document);
+})();
