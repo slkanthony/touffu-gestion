@@ -670,3 +670,5 @@ body.visit-mode .kpi.sensitive .l::after { content: none; }
 .recap-tile .cmp { display: block; font-size: .75rem; font-weight: 600; margin-top: 4px; }
 .recap-net { border-left-color: var(--ok); background: rgba(90,160,110,.08); }
 body.visit-mode .kpi.sensitive .cmp { filter: blur(6px); }
+/* Tuile « Dates critiques » : entièrement floutée (chiffre + intitulé) en mode visite */
+body.visit-mode .kpi.kpi-fullblur { filter: blur(6px); user-select: none; }

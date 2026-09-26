@@ -403,10 +403,12 @@ const App = {
 
     // Alertes stock (seuils bas atteints) : mastication + matières + consommables + accessoires
     let lowCount = 0;
-    inv.forEach(r => r.vars.forEach(v => { if (v.low > 0 && v.qGen <= v.low) lowCount++; }));
-    st.materials.forEach(m => { if (U.num(m.low) > 0 && U.num(m.qty) <= U.num(m.low)) lowCount++; });
-    st.consumables.forEach(c => { if (U.num(c.low) > 0 && U.num(c.qty) <= U.num(c.low)) lowCount++; });
-    acc.forEach(r => { if (r.low > 0 && r.total <= r.low) lowCount++; });
+    // Les tuiles « Alertes stock » et « Dates critiques » suivent le périmètre choisi (barre « Afficher »).
+    if (dashScope.includes('Mastication')) inv.forEach(r => r.vars.forEach(v => { if (v.low > 0 && v.qGen <= v.low) lowCount++; }));
+    if (dashScope.includes('Matières premières')) st.materials.forEach(m => { if (U.num(m.low) > 0 && U.num(m.qty) <= U.num(m.low)) lowCount++; });
+    if (dashScope.includes('Consommable')) st.consumables.forEach(c => { if (U.num(c.low) > 0 && U.num(c.qty) <= U.num(c.low)) lowCount++; });
+    if (dashScope.includes('Accessoire')) acc.forEach(r => { if (r.low > 0 && r.total <= r.low) lowCount++; });
+    const dluoScope = dashScope.includes('Mastication'); // seule la mastication a des DLUO
 
     // Ventes 30 j
     const saleConsoCost = (s) => s.items.filter(i => i.kind === 'C').reduce((a, i) => a + Pricing.saleItemCost(i), 0);
@@ -576,7 +578,7 @@ const App = {
         <div class="kpi good sensitive" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${U.eur(valVente)}</div><div class="l">Valeur stock (vente TTC)</div></div>
         <div class="kpi info2" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${nbProduits}</div><div class="l">Produits (${enStock} en stock)</div></div>
         <div class="kpi ${lowCount ? 'bad' : 'good'}" onclick="Stock.tab='faible';App.go('stock')"><div class="v">${lowCount}</div><div class="l">Alertes stock (seuils atteints)</div></div>
-        <div class="kpi ${alerts.length ? 'bad' : 'good'}" onclick="Stock.tab='peremptions';App.go('stock')"><div class="v">${alerts.length}</div><div class="l">Dates critiques (DLUO ≤ ${S.dluoAlertDays} j)</div></div>
+        <div class="kpi kpi-fullblur ${!dluoScope ? '' : alerts.length ? 'bad' : 'good'}" onclick="Stock.tab='peremptions';App.go('stock')"><div class="v">${dluoScope ? alerts.length : '—'}</div><div class="l">Dates critiques (DLUO ≤ ${S.dluoAlertDays} j)${dluoScope ? '' : ' — mastication uniquement'}</div></div>
       </div>
 
       <div class="card mt dash-scope-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
