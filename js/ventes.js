@@ -554,12 +554,27 @@ const Ventes = {
 
   /* ─── Nom d'événement (2026-09-27) : sale.eventName, pour les stats par événement ───
      Suggestions = noms déjà utilisés (datalist), pour taper toujours le même nom. */
-  eventNames() {
-    const set = new Set();
-    Store.state.sales.forEach(x => { if (x.eventName) set.add(x.eventName); });
-    return [...set].sort(U.sortFr);
+  eventNames() { return Store.eventList(); },
+  eventNamesDatalist() { return ''; },
+  /* Menu déroulant d'événement (référentiel Paramètres → Événements) + « ＋ Nouvel événement… »
+     qui l'ajoute au référentiel sans quitter l'écran. `cb` = code JS appelé avec la valeur (v). */
+  eventSelect(cur, cb, style) {
+    const names = this.eventNames();
+    if (cur && !names.includes(cur)) names.unshift(cur);
+    return `<select style="${style || ''}" onchange="Ventes._pickEvent(this, v => { ${cb} })"><option value="">— choisir —</option>${names.map(n => `<option ${n === cur ? 'selected' : ''} value="${U.esc(n)}">${U.esc(n)}</option>`).join('')}<option value="__new">＋ Nouvel événement…</option></select>`;
   },
-  eventNamesDatalist() { return `<datalist id="dl_event_names">${this.eventNames().map(n => `<option value="${U.esc(n)}"></option>`).join('')}</datalist>`; },
+  _pickEvent(sel, cb) {
+    let v = sel.value;
+    if (v === '__new') {
+      const n = (prompt('Nom du nouvel événement (ex : Marché de Noël Lyon) :') || '').trim();
+      if (!n) { sel.value = ''; return; }
+      v = Params.addEvent(n) || n;
+      cb(v);
+      this.render();   // le nouvel événement apparaît aussitôt dans les autres menus (autres journées, espèces)
+      return;
+    }
+    cb(v);
+  },
   setEventName(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
@@ -970,7 +985,7 @@ const Ventes = {
         </div>
         <div class="fg"><label>Date de l'événement</label><input type="date" value="${d.cashDate}" onchange="Ventes.setCashDate(this.value)"></div>
       </div>
-      <div class="fg"><label>🎪 Événement (ventes espèces)</label><input list="dl_event_names" placeholder="même nom que la journée SumUp si c'est le même marché" value="${U.esc(this.retourData && this.retourData.cashEventName || '')}" onchange="Ventes.setCashEventName(this.value)"></div>
+      <div class="fg"><label>🎪 Événement (ventes espèces)</label>${this.eventSelect(this.retourData && this.retourData.cashEventName || '', 'Ventes.setCashEventName(v)')}</div>
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="0.001" min="0" value="${this.cashQty || 1}" onchange="Ventes.cashQty=U.num(this.value)"></div>
@@ -1078,7 +1093,7 @@ const Ventes = {
         ${this.eventNamesDatalist()}
         <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
           <label style="margin:0;text-transform:none;">Nom de l'événement</label>
-          <input list="dl_event_names" style="width:280px;" value="${U.esc(s.eventName || '')}" placeholder="ex : Marché de Noël Lyon" onchange="Ventes.setEventName('${s.id}',this.value)">
+          ${this.eventSelect(s.eventName || '', `Ventes.setEventName('${s.id}',v)`, 'width:280px;')}
           <span class="muted" style="font-size:.82rem;">sert aux statistiques par événement (Statistiques → 🎪 Événements)</span>
         </div>
         <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;">
@@ -1128,7 +1143,7 @@ const Ventes = {
       </label>
       ${allDup ? '' : `<div class="frow" style="margin-top:7px;gap:8px;align-items:center;">
         <label style="margin:0;text-transform:none;font-size:.85rem;">🎪 Événement</label>
-        <input list="dl_event_names" placeholder="ex : Marché de Noël Lyon" style="width:230px;" value="${U.esc((this.retourData.eventNames || {})[g.key] || '')}" onchange="Ventes.setDayEventName('${g.key}',this.value)">
+        ${this.eventSelect((this.retourData.eventNames || {})[g.key] || '', `Ventes.setDayEventName('${g.key}',v)`, 'width:240px;')}
         <label style="margin:0;text-transform:none;font-size:.85rem;">🏪 Frais de stand (€)</label>
         <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.standFees || {})[g.key]) || ''}" onchange="Ventes.setStandFee('${g.key}',this.value)">
         <span class="muted" style="font-size:.78rem;">coût du stand pour cette journée (métrage, emplacement…)</span>

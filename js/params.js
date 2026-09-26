@@ -156,6 +156,7 @@ const Params = {
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Général (commun à tout)</div>
           <div class="grid c2">
             ${this.listCard('Fournisseurs', 'suppliers', S.suppliers.map(s => Store.supplierName(s.id)), true)}
+            ${this.eventsCard()}
           </div>
 
           <hr class="sep" style="border-style:dashed;margin:16px 0;">
@@ -429,6 +430,48 @@ const Params = {
       </div>
       <div class="frow mt"><input id="add_${key}" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Params.addItem('${key}',${!!isSupplier})"><button class="btn-ghost btn-sm" onclick="Params.addItem('${key}',${!!isSupplier})">＋</button></div>
     </div>`;
+  },
+
+  /* Référentiel « Événements » (2026-09-27) : noms de marchés/salons choisis dans une liste au
+     retour d'événement (plus de faute de frappe). Renommer met à jour toutes les ventes liées. */
+  eventsCard() {
+    const list = Store.eventList();
+    const used = n => Store.state.sales.filter(s => s.eventName === n).length;
+    const enc = n => encodeURIComponent(n).replace(/'/g, '%27');
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">🎪 Événements <span class="muted" style="font-weight:400;font-size:.8rem;">(marchés, salons…)</span></h3>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${list.map(n => `<div style="display:flex;gap:6px;align-items:center;">
+          <input value="${U.esc(n)}" style="flex:1;" title="Modifier le nom (mis à jour sur toutes les ventes de cet événement)" onchange="Params.renameEvent('${enc(n)}',this.value)">
+          <span class="muted" style="font-size:.75rem;white-space:nowrap;">${used(n)} vente(s)</span>
+          <button class="btn-icon" title="Retirer de la liste" onclick="Params.delEvent('${enc(n)}')">×</button></div>`).join('') || '<span class="muted">Aucun événement.</span>'}
+      </div>
+      <div class="frow mt"><input id="add_event" placeholder="ex : Marché de Noël Lyon" onkeydown="if(event.key==='Enter')Params.addEvent()"><button class="btn-ghost btn-sm" onclick="Params.addEvent()">＋</button></div>
+    </div>`;
+  },
+  addEvent(name) {
+    const n = String(name !== undefined ? name : U.val('add_event')).trim(); if (!n) return false;
+    const S = Store.state.settings; S.events = S.events || [];
+    if (Store.eventList().some(x => x.toLowerCase() === n.toLowerCase())) { if (name === undefined) U.toast('Cet événement existe déjà.', true); return Store.eventList().find(x => x.toLowerCase() === n.toLowerCase()); }
+    S.events.push(n); Store.save('settings');
+    if (name === undefined) App.rerender();
+    return n;
+  },
+  renameEvent(enc, val) {
+    const old = decodeURIComponent(enc), n = String(val || '').trim();
+    if (!n || n === old) return;
+    if (Store.eventList().some(x => x !== old && x.toLowerCase() === n.toLowerCase()) && !confirm('« ' + n + ' » existe déjà : fusionner les deux événements ?')) { App.rerender(); return; }
+    const S = Store.state.settings; S.events = (S.events || []).filter(x => x !== old && x.toLowerCase() !== n.toLowerCase()); S.events.push(n);
+    let cnt = 0; Store.state.sales.forEach(s => { if (s.eventName === old) { s.eventName = n; cnt++; } });
+    Store.save('settings', 'sales'); App.rerender();
+    U.toast('Événement renommé' + (cnt ? ' (' + cnt + ' vente(s) mises à jour)' : '') + '.');
+  },
+  delEvent(enc) {
+    const n = decodeURIComponent(enc);
+    const cnt = Store.state.sales.filter(s => s.eventName === n).length;
+    if (cnt && !confirm('« ' + n + ' » est utilisé par ' + cnt + ' vente(s). Le retirer de la liste enlève aussi ce nom de ces ventes (elles ne seront plus comptées dans les statistiques par événement). Continuer ?')) return;
+    const S = Store.state.settings; S.events = (S.events || []).filter(x => x !== n);
+    Store.state.sales.forEach(s => { if (s.eventName === n) s.eventName = ''; });
+    Store.save('settings', 'sales'); App.rerender();
   },
 
   /* Types de produit (occupation/mastication, éducation/friandises + ajouts type

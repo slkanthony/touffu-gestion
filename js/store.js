@@ -42,6 +42,7 @@ const Store = {
         widths: ['10mm', '16mm', '20mm', '25mm'],
         consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre', 'Autre'],
         suppliers: [{ id: 's1', name: 'Cernunos' }, { id: 's2', name: 'Kuaurtikel' }],
+        events: [],
         sachets: [],   // {id, name, cost, type}
         meatAbbrev: {}, // {meatType: 'ABBR'} — surcharge l'auto-abréviation
         matAbbrev: {},  // {matKind: 'ABBR'} — abréviations catégories matières (Sangle→SAN)
@@ -462,6 +463,13 @@ const Store = {
       const { error } = await this.sb.from('connexions').insert({ email: this.session.user.email, role: (window.App && App.role) || 'admin' });
       if (!error) localStorage.setItem(k, String(Date.now()));
     } catch (e) {}
+  },
+  /* Référentiel des événements (marchés, salons…) — Paramètres → Référentiels.
+     Inclut aussi les noms déjà présents sur des ventes (anciens imports), pour ne rien perdre. */
+  eventList() {
+    const set = new Set((this.state.settings.events || []).filter(Boolean));
+    (this.state.sales || []).forEach(s => { if (s.eventName) set.add(s.eventName); });
+    return [...set].sort(U.sortFr);
   },
   sachet(id) { return this.state.settings.sachets.find(s => String(s.id) === String(id)); },
   material(id) { return this.state.materials.find(m => m.id === id); },
