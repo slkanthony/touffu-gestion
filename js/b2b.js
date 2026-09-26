@@ -67,7 +67,7 @@ const B2B = {
             <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
           </div>
         </div>
-        <p class="muted" style="margin-top:10px;">Le prix pro applique la remise sur le prix HT public. Chaque fiche peut avoir sa propre décote (surcharge le champ ci-dessus) — utile pour les produits où tu marges moins ou plus que la moyenne.${tab === 'acc' ? ` Cotisations accessoires au taux <b>fait main (${U.pct(Pricing.socialRateHandmade())})</b>.` : ''}</p>
+        <p class="muted help" style="margin-top:10px;">Le prix pro applique la remise sur le prix HT public. Chaque fiche peut avoir sa propre décote (surcharge le champ ci-dessus) — utile pour les produits où tu marges moins ou plus que la moyenne.${tab === 'acc' ? ` Cotisations accessoires au taux <b>fait main (${U.pct(Pricing.socialRateHandmade())})</b>.` : ''}</p>
       </div>`;
 
     App.mount(`

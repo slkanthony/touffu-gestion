@@ -154,7 +154,7 @@ const Calc = {
       <div class="grid c2">
         <div class="card">
           <h2>1. Référence</h2>
-          <p class="muted" style="margin-top:-4px;">Le mode de chaque catégorie se règle dans <b>Paramètres → Référentiels</b>. Par défaut : sangles = référence <b>partagée par largeur/type</b> (le poids au mètre ne dépend pas de la couleur ; les <b>Hexa</b>, plus légères, sont séparées) ; boucleries = référence <b>par article</b>. Ou saisis une référence manuelle ponctuelle.</p>
+          <p class="muted help" style="margin-top:-4px;">Le mode de chaque catégorie se règle dans <b>Paramètres → Référentiels</b>. Par défaut : sangles = référence <b>partagée par largeur/type</b> (le poids au mètre ne dépend pas de la couleur ; les <b>Hexa</b>, plus légères, sont séparées) ; boucleries = référence <b>par article</b>. Ou saisis une référence manuelle ponctuelle.</p>
 
           <div class="fg"><label>Sangle (largeur/type) / bouclerie</label>${U.customSelect({ value: this.refSel, options, onPick: 'Calc.pickRef' })}</div>
 
@@ -171,7 +171,7 @@ const Calc = {
           <div class="calc-ratio">Ratio : <b id="calc_ratio">${this.ratio() ? U.qty(this.ratio()) : '—'}</b> g/${this.unitLabel()}</div>
 
           ${kind !== 'manual' ? `<button class="btn-cta btn-sm mt" onclick="Calc.saveRef()">💾 Enregistrer la référence pour ${U.esc(savedName)}</button>
-          <p class="muted" style="font-size:.8rem;margin-top:6px;">${kind === 'width' ? 'Cette référence sera partagée par <b>toutes les couleurs</b> de cette largeur et de ce type (classique / Hexa).' : 'Cette référence sera enregistrée sur cet article.'} Seul ce bouton écrit quelque chose — le calcul ci-contre ne touche jamais au stock.</p>` : ''}
+          <p class="muted help" style="font-size:.8rem;margin-top:6px;">${kind === 'width' ? 'Cette référence sera partagée par <b>toutes les couleurs</b> de cette largeur et de ce type (classique / Hexa).' : 'Cette référence sera enregistrée sur cet article.'} Seul ce bouton écrit quelque chose — le calcul ci-contre ne touche jamais au stock.</p>` : ''}
         </div>
 
         <div class="card">
@@ -187,9 +187,8 @@ const Calc = {
         </div>
       </div>
 
-      <div class="card mt">
-        <h2>💡 Comment définir la référence</h2>
-        <ul class="muted" style="line-height:1.7;margin:0;padding-left:18px;">
+      <div>
+        <ul class="muted help" data-help-anchor=".view-title h1" style="line-height:1.7;margin:0;padding-left:18px;">
           <li><b>Sangle</b> : choisis la <b>largeur</b> (les sangles <b>Hexa</b>, plus légères, ont leur propre référence, séparée des classiques). Pèse une longueur connue (ex : un rouleau neuf de 30 m), mets ce poids et 30 en référence, puis enregistre : la référence vaut pour toutes les couleurs de cette largeur et de ce type. Ensuite, pèse n'importe quel rouleau entamé → sa longueur restante.</li>
           <li><b>Bouclerie</b> : choisis l'article, pèse un nombre connu de pièces (ex : 50 mousquetons), mets ce poids et 50 en référence, enregistre. Ensuite, pèse un sachet → le nombre de pièces.</li>
           <li>Une fois enregistrée, la référence se recharge automatiquement à chaque fois — tu ne la ressaisis plus.</li>

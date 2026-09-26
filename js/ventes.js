@@ -1008,7 +1008,7 @@ const Ventes = {
     if (!d) {
       return `<div class="card">
         <h2>📥 Retour d'événement — import des ventes SumUp</h2>
-        <p class="muted">Dépose ton export SumUp au format <b>CSV</b> (avec la colonne SKU). L'appli regroupe les ventes <b>par journée de marché</b>, déduit ton stock <b>Événement</b> pour chaque article reconnu par son SKU, et te liste à part ce qui est à traiter à la main (sans SKU / SKU inconnu). Rien n'est déduit sans ta validation, et un fichier déjà importé ne l'est jamais deux fois.</p>
+        <p class="muted help">Dépose ton export SumUp au format <b>CSV</b> (avec la colonne SKU). L'appli regroupe les ventes <b>par journée de marché</b>, déduit ton stock <b>Événement</b> pour chaque article reconnu par son SKU, et te liste à part ce qui est à traiter à la main (sans SKU / SKU inconnu). Rien n'est déduit sans ta validation, et un fichier déjà importé ne l'est jamais deux fois.</p>
         <input type="file" id="retour_file" accept=".csv,text/csv" class="mt">
         <div class="frow mt"><button class="btn-cta" onclick="Ventes.analyzeRetour()">Analyser le fichier</button></div>
       </div>`;
@@ -1060,15 +1060,15 @@ const Ventes = {
       ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${this.retourDeduct ? 'qui seront déduits du stock événement' : 'enregistrés SANS déduction (import historique)'}</b> (${safeQty} article(s))${safeList.some(x => x.short) ? ' <span class="badge bad">⚠️ stock insuffisant sur ' + safeList.filter(x => x.short).length + '</span>' : ''}</summary><div class="fold-body">
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${this.retourDeduct ? 'Après validation' : 'Après (inchangé)'}</th></tr></thead>
         <tbody>${safeList.map(x => `<tr${x.short && this.retourDeduct ? ' style="color:var(--alerte);"' : ''}><td class="col-name"><b>${U.esc(x.name)}</b></td><td>${U.esc(x.label || '')}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${U.qty(x.cur)}</td><td class="num">${this.retourDeduct ? `<b>${U.qty(x.after)}</b>${x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : ''}` : U.qty(x.cur)}</td></tr>`).join('')}</tbody></table></div>
-        <p class="muted" style="font-size:.82rem;">Déduction FEFO (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif. Les ventes espèces et consommables ajoutés plus bas sont déduits en plus.</p>
+        <p class="muted help" style="font-size:.82rem;">Déduction FEFO (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif. Les ventes espèces et consommables ajoutés plus bas sont déduits en plus.</p>
       </div></details>` : ''}
       ${problems.length ? (() => { const gp = this._groupProblems(problems); return `<details class="fold" style="margin-top:12px;"><summary><b>⚠️ ${gp.length} produit(s) à traiter à la main</b> (${problems.reduce((a, l) => a + l.qty, 0)} article(s))</summary><div class="fold-body">
-        <p class="muted">Non déduits automatiquement (sans SKU ou SKU absent de ton stock). Fais-les à la main dans la vente si nécessaire, ou complète le SKU côté SumUp et Stock puis réimporte.</p>
+        <p class="muted help">Non déduits automatiquement (sans SKU ou SKU absent de ton stock). Fais-les à la main dans la vente si nécessaire, ou complète le SKU côté SumUp et Stock puis réimporte.</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit (SumUp)</th><th>SKU</th><th class="num">Qté</th><th class="num">Montant</th><th>Motif</th></tr></thead>
         <tbody>${gp.map(l => `<tr><td class="col-name">${U.esc(l.desc)}</td><td>${l.sku ? `<span class="tag">${U.esc(l.sku)}</span>` : '—'}</td><td class="num">${U.qty(l.qty)}</td><td class="num sensitive">${U.eur(l.ttc)}</td><td>${l.status === 'noSku' ? 'Sans SKU' : 'SKU inconnu'}</td></tr>`).join('')}</tbody></table></div>
       </div></details>`; })() : ''}
       ${ambList.length ? `<details class="fold" style="margin-top:12px;"><summary><b>🔀 ${ambList.length} produit(s) à traiter (numéro de lot)</b> (${ambQty} article(s))</summary><div class="fold-body">
-        <p class="muted">Ces produits ont <b>plusieurs numéros de lot</b> en stock événement et tu n'en as vendu qu'une partie : impossible de deviner lequel est parti, donc <b>non déduits</b>. Retire la bonne quantité du bon lot dans <b>Stock</b> (ou via une Vente Événement).</p>
+        <p class="muted help">Ces produits ont <b>plusieurs numéros de lot</b> en stock événement et tu n'en as vendu qu'une partie : impossible de deviner lequel est parti, donc <b>non déduits</b>. Retire la bonne quantité du bon lot dans <b>Stock</b> (ou via une Vente Événement).</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Vendu</th><th class="num">En stock évén.</th><th class="num">Nb lots</th></tr></thead>
         <tbody>${ambList.map(a => `<tr><td class="col-name"><b>${U.esc(a.name)}</b> <span class="muted">${U.esc(a.label || '')}</span></td><td class="num">${U.qty(a.qty)}</td><td class="num">${U.qty(a.total)}</td><td class="num">${a.nLots}</td></tr>`).join('')}</tbody></table></div>
       </div></details>` : ''}
@@ -1094,7 +1094,7 @@ const Ventes = {
     const cashTotal = d.cashLines.reduce((a, l) => a + l.price * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--nuit);margin-top:12px;">
       <h3 style="margin-top:0;">💵 Ventes en liquide (non SumUp)</h3>
-      <p class="muted">Ajoute ici les ventes de l'événement encaissées en espèces (absentes de l'export SumUp). Elles créent un ticket séparé « espèces » et déduisent aussi ton stock événement.</p>
+      <p class="muted help">Ajoute ici les ventes de l'événement encaissées en espèces (absentes de l'export SumUp). Elles créent un ticket séparé « espèces » et déduisent aussi ton stock événement.</p>
       <div class="grid c2">
         <div class="fg autocomplete" data-onclose="Ventes.closeCashMenu"><label>Produit</label>
           <input id="cash_prod" type="text" autocomplete="off" placeholder="tape un nom ou un SKU…" value="${U.esc(this.cashQ)}"
@@ -1105,8 +1105,8 @@ const Ventes = {
         <div class="fg"><label>Date de l'événement</label><input type="date" value="${d.cashDate}" onchange="Ventes.setCashDate(this.value)"></div>
       </div>
       <div class="fg"><label>🎪 Événement (ventes espèces)</label>${this.eventSelect(this.retourData && this.retourData.cashEventName || '', 'Ventes.setCashEventName(v)')}</div>
-      <div class="fg"><label>🏪 Frais de stand (€) <span class="muted" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
-      <div class="fg"><label>🚗 Déplacement <span class="muted" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label>${this.travelWidget((d.travelDet || {}).__cash, 'cash', d.cashTravel)}</div>
+      <div class="fg"><label>🏪 Frais de stand (€) <span class="muted help" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
+      <div class="fg"><label>🚗 Déplacement <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label>${this.travelWidget((d.travelDet || {}).__cash, 'cash', d.cashTravel)}</div>
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="0.001" min="0" value="${this.cashQty || 1}" onchange="Ventes.cashQty=U.num(this.value)"></div>
         <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : cashSel.price}" onchange="Ventes.cashPrice=U.num(this.value)"></div>
@@ -1137,7 +1137,7 @@ const Ventes = {
     const totalCost = cons.reduce((a, l) => a + l.costUnit * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--caramel);margin-top:12px;">
       <h3 style="margin-top:0;">📦 Consommables utilisés (sacs, étiquettes…)</h3>
-      <p class="muted">Indique ce que tu as consommé pendant l'événement (ex : sacs donnés aux clients). ${this.retourDeduct ? 'Déduit du stock consommable' : 'Non déduit (mode historique)'} et compté en <b>coût</b> pour une marge plus précise dans les stats.</p>
+      <p class="muted help">Indique ce que tu as consommé pendant l'événement (ex : sacs donnés aux clients). ${this.retourDeduct ? 'Déduit du stock consommable' : 'Non déduit (mode historique)'} et compté en <b>coût</b> pour une marge plus précise dans les stats.</p>
       ${avail.length ? `<div class="grid c2">
         <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.retourConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: c.name + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '') }))), onPick: 'Ventes._setRetourConso' })}</div>
         <div class="fg"><label>Quantité utilisée</label><input id="retour_conso_qty" type="number" step="1" min="1" value="${this.retourConsoQty || 1}" onchange="Ventes.retourConsoQty=U.num(this.value)"></div>
@@ -1229,7 +1229,7 @@ const Ventes = {
 
       <div class="card" style="border-left:3px solid var(--caramel);">
         <h2>📦 Consommables utilisés (sacs, étiquettes…)</h2>
-        <p class="muted">${s.historical ? 'Événement <b>historique</b> → coût compté sans toucher au stock actuel.' : 'Déduit du stock consommable'} et compté en <b>coût</b> dans la marge du mois de cet événement.</p>
+        <p class="muted help">${s.historical ? 'Événement <b>historique</b> → coût compté sans toucher au stock actuel.' : 'Déduit du stock consommable'} et compté en <b>coût</b> dans la marge du mois de cet événement.</p>
         ${avail.length ? `<div class="grid c2">
           <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.ticketConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: c.name + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '') }))), onPick: 'Ventes._setTicketConso' })}</div>
           <div class="fg"><label>Quantité utilisée</label><input id="ticket_conso_qty" type="number" step="1" min="1" value="${this.ticketConsoQty || 1}" onchange="Ventes.ticketConsoQty=U.num(this.value)"></div>

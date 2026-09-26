@@ -447,7 +447,7 @@ const Stock = {
         <input id="ev_cat_q" value="${U.esc(linkedCat ? linkedCat.name : '')}" placeholder="Rechercher une fiche catalogue…" autocomplete="off"
           onfocus="Stock.filterEvCatPick(this.value)" oninput="Stock.filterEvCatPick(this.value)">
         <div id="ev_cat_pick_list" class="ac-list" style="position:static;max-height:180px;overflow-y:auto;margin-top:4px;display:none;"></div>
-        <p class="muted" style="font-size:.78rem;margin-top:4px;">Associe cette variante à sa propre fiche du calcul de prix — chaque variante peut pointer vers une fiche différente.</p>
+        <p class="muted help" style="font-size:.78rem;margin-top:4px;">Associe cette variante à sa propre fiche du calcul de prix — chaque variante peut pointer vers une fiche différente.</p>
       </div>
       ${v.mode === 'size' ? `<hr class="sep">
       <p class="muted" style="font-size:.78rem;margin-bottom:8px;">Tags de cette variante — vide = hérite du produit</p>
@@ -1686,7 +1686,7 @@ const Stock = {
     }
 
     const hint = eventView
-      ? `<p class="muted mb0">Avant un marché : vérifie que ton stock événement respecte le seuil. La colonne « général dispo » indique ce que tu peux transférer depuis le général.</p>`
+      ? `<p class="muted help mb0">Avant un marché : vérifie que ton stock événement respecte le seuil. La colonne « général dispo » indique ce que tu peux transférer depuis le général.</p>`
       : `<p class="muted mb0">Coche les produits à recommander puis « Générer la commande ».</p>`;
 
     document.getElementById('stockBody').innerHTML = `

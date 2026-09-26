@@ -202,7 +202,7 @@ const Catalogue = {
           <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="num">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="9" class="muted">Aucune variante.</td></tr>'}</tbody></table></div>
         ${inactiveVars.length ? `<button class="btn-ghost btn-sm mt" onclick="Catalogue.toggleInactive('${p.id}')" style="font-size:.78rem;">${showInactive ? 'Masquer' : 'Afficher'} les ${inactiveVars.length} variante${inactiveVars.length > 1 ? 's' : ''} désactivée${inactiveVars.length > 1 ? 's' : ''}</button>` : ''}
-        <p class="muted mt">* bénéfice = marge − cotisations URSSAF − TVA (toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
+        <p class="muted help mt">* bénéfice = marge − cotisations URSSAF − TVA (toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
         <h3 style="font-size:.85rem;margin:14px 0 6px;">Fournisseurs</h3>
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Fournisseur</th><th class="num">Prix d'achat</th><th></th></tr></thead>
@@ -423,7 +423,7 @@ const Catalogue = {
 
       <div class="card" style="border-left:4px solid #4a7c59;">
         <h2>🏬 2. Fournisseurs & prix d'achat</h2>
-        <p class="muted mb0">Coche le fournisseur <b>principal</b> : c'est son prix qui sert de base à tous les calculs (coût de revient, marges, revente pro). Renseigne les autres pour comparer, et bascule quand tu veux.</p>
+        <p class="muted help mb0">Coche le fournisseur <b>principal</b> : c'est son prix qui sert de base à tous les calculs (coût de revient, marges, revente pro). Renseigne les autres pour comparer, et bascule quand tu veux.</p>
         <div id="cp_sups" class="mt"></div>
         <button class="btn-ghost btn-sm" onclick="Catalogue.addSupplier()">＋ Ajouter un fournisseur</button>
       </div>
@@ -443,7 +443,7 @@ const Catalogue = {
             <option value="" ${!Store.labelType(p.labelTypeId) ? 'selected' : ''}>Autre montant (vrac…)</option></select></div>
           <div class="fg" style="max-width:160px;"><label>Coût (€)</label><input id="cp_label" type="number" step="0.01" value="${Store.labelCostOf(p)}" ${Store.labelType(p.labelTypeId) ? 'disabled title="Suit le coût réglé dans Paramètres → Réglages financiers → Consommables"' : ''} oninput="Catalogue._d.labelCost=this.value;Catalogue.drawVars()"></div>
         </div>
-        <p class="muted" style="font-size:.78rem;margin:2px 0 0;">Les types d'étiquette (et leur coût) se gèrent dans Paramètres → Réglages financiers → Consommables.</p>
+        <p class="muted help" style="font-size:.78rem;margin:2px 0 0;">Les types d'étiquette (et leur coût) se gèrent dans Paramètres → Réglages financiers → Consommables.</p>
       </div>
 
       <div class="card" style="border-left:4px solid #c0564a;">
@@ -452,17 +452,17 @@ const Catalogue = {
           <div class="fg"><label>Coefficient par défaut</label><input id="cp_coeff" type="number" step="0.001" value="${p.coefficient}" oninput="Catalogue.syncMargin('coeff')"></div>
           <div class="fg"><label>Marge commerciale (%)</label><input id="cp_marge" type="number" step="0.1" value="${U.num(p.coefficient) > 0 ? ((1 - 1 / U.num(p.coefficient)) * 100).toFixed(1) : ''}" oninput="Catalogue.syncMargin('marge')"></div>
         </div>
-        <p class="muted mb0">Modifier l'un met à jour l'autre automatiquement — coefficient par défaut, utilisé si une variante n'a ni prix fixe ni coefficient propre.</p>
+        <p class="muted help mb0">Modifier l'un met à jour l'autre automatiquement — coefficient par défaut, utilisé si une variante n'a ni prix fixe ni coefficient propre.</p>
         <div class="frow mt">
           <div class="fg"><label>Taux de TVA (%)</label><input id="cp_vat" type="number" step="0.1" value="${p.vatRate ?? ''}" placeholder="${S.vatRate} (global)" oninput="Catalogue.syncTaxFields()"></div>
           <div class="fg"><label>Décote paliers (%)</label><input id="cp_bulk" type="number" step="1" value="${p.bulkDiscount ?? ''}" placeholder="${S.bulkDiscount || 0} (global)" title="Réduction automatiquement appliquée dès la 2e variante active vendue (plus le grammage/lot est élevé, plus la décote compte) — laisse vide pour utiliser le réglage global." oninput="Catalogue.syncTaxFields()"></div>
         </div>
-        <p class="muted mb0">Laisse vide pour utiliser les réglages globaux (Paramètres). Renseigne uniquement si ce produit a un taux ou une décote spécifique.</p>
+        <p class="muted help mb0">Laisse vide pour utiliser les réglages globaux (Paramètres). Renseigne uniquement si ce produit a un taux ou une décote spécifique.</p>
       </div>
 
       <div class="card" style="border-left:4px solid var(--caramel);">
         <h2>🏪 5. Variantes de vente</h2>
-        <p class="muted mb0">Les boutons ci-dessous génèrent d'un coup les paliers standards : décoche ceux que tu ne vends pas. Prix vente HT/TTC sont éditables directement — les modifier fixe ce prix (il ne bougera plus si tu changes de fournisseur principal) ; ↺ pour revenir au calcul automatique (coût × coefficient).</p>
+        <p class="muted help mb0">Les boutons ci-dessous génèrent d'un coup les paliers standards : décoche ceux que tu ne vends pas. Prix vente HT/TTC sont éditables directement — les modifier fixe ce prix (il ne bougera plus si tu changes de fournisseur principal) ; ↺ pour revenir au calcul automatique (coût × coefficient).</p>
         <div id="cp_vars" class="mt"></div>
         <div class="frow" style="gap:10px;">
           <button class="btn-ghost" onclick="Catalogue.addVar('gram')">＋ Poids</button>

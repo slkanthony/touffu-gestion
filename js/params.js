@@ -192,7 +192,7 @@ const Params = {
       <details class="fold card params-fold" ${this._fabOpen ? 'open' : ''} ontoggle="Params._fabOpen=this.open">
         <summary><h2 style="display:inline;">📐 Segments de fabrication</h2> <span class="muted">(accessoires — longueurs fixes)</span></summary>
         <div class="fold-body">
-        <p class="muted mb0">Longueurs fixes (sangle consommée, en m + cm) de chaque segment par type d'accessoire. Ces valeurs sont pré-remplies à la création d'un nouvel accessoire et utilisées pour le calcul "Sur mesure".</p>
+        <p class="muted help mb0">Longueurs fixes (sangle consommée, en m + cm) de chaque segment par type d'accessoire. Ces valeurs sont pré-remplies à la création d'un nouvel accessoire et utilisées pour le calcul "Sur mesure".</p>
         ${(S.accCategories || []).map((cat, ci) => {
           const d = (S.accFabDefaults || {})[cat] || { segments: [] };
           const segs = d.segments || [];
@@ -225,7 +225,7 @@ const Params = {
         <summary><h2 style="display:inline;">📐 Variantes</h2> <span class="muted">(paliers standards, normalisation & récupération)</span></summary>
         <div class="fold-body">
         <h3 style="margin:0 0 6px;text-align:center;">Paliers standards</h3>
-        <p class="muted mb0" style="text-align:center;">Paliers proposés automatiquement à la création d'un produit. Les variantes déjà utilisées sur tes produits existants sont listées en dessous — clique sur ＋ pour les ajouter aux paliers standards.</p>
+        <p class="muted help mb0" style="text-align:center;">Paliers proposés automatiquement à la création d'un produit. Les variantes déjà utilisées sur tes produits existants sont listées en dessous — clique sur ＋ pour les ajouter aux paliers standards.</p>
         <div class="grid c3" style="gap:8px;margin-top:8px;">
           ${this.varPresetBlock('gram', 'Poids (grammes)', vp.gram || [], 'g')}
           ${this.varPresetBlock('piece', 'Pièces (lots)', vp.piece || [], 'pc')}
@@ -233,11 +233,11 @@ const Params = {
         </div>
         ${this._renderFilteredProducts()}
         <h3 style="margin:16px 0 8px;">Variantes existantes sur tes produits</h3>
-        <p class="muted mb0">Variantes textuelles (pièces et tailles) trouvées sur tes produits mais pas encore dans les paliers standards. Clique sur ＋ pour les récupérer.</p>
+        <p class="muted help mb0">Variantes textuelles (pièces et tailles) trouvées sur tes produits mais pas encore dans les paliers standards. Clique sur ＋ pour les récupérer.</p>
         <div id="existing_variants_list" class="mt">${this._renderExistingVariants(vp)}</div>
         <hr class="sep">
         <h3 style="margin:0 0 8px;">Normaliser</h3>
-        <p class="muted mb0">Si une même variante existe écrite de plusieurs façons (ex: "100g" et "100G", "Lot 2" et "LOT 2"), uniformise-les ici. Les variantes identiques après renommage sont automatiquement fusionnées (leurs lots sont conservés).</p>
+        <p class="muted help mb0">Si une même variante existe écrite de plusieurs façons (ex: "100g" et "100G", "Lot 2" et "LOT 2"), uniformise-les ici. Les variantes identiques après renommage sont automatiquement fusionnées (leurs lots sont conservés).</p>
         <button class="btn-ghost btn-sm mt" onclick="Params.uppercaseAllVariants()">🔠 Tout mettre en MAJUSCULES</button>
         <div class="frow mt" style="align-items:flex-end;">
           <div class="fg"><label>Variante existante</label><select id="pv_old">${Stock.allVariantLabels().map(l => `<option>${U.esc(l)}</option>`).join('')}</select></div>
@@ -250,7 +250,7 @@ const Params = {
       <details class="fold card params-fold" ${this._skuOpen ? 'open' : ''} ontoggle="Params._skuOpen=this.open">
         <summary><h2 style="display:inline;">🏷️ SKU</h2> <span class="muted">gestion & régénération</span></summary>
         <div class="fold-body">
-        <p class="muted mb0">Les SKU sont générés automatiquement en abrégeant les noms de viande et en supprimant les mots inutiles (ex: <code>POU-AILES-DE-POULET-100G</code> → <code>AILES-POU-100G</code>). Tu peux aussi modifier chaque SKU individuellement.</p>
+        <p class="muted help mb0">Les SKU sont générés automatiquement en abrégeant les noms de viande et en supprimant les mots inutiles (ex: <code>POU-AILES-DE-POULET-100G</code> → <code>AILES-POU-100G</code>). Tu peux aussi modifier chaque SKU individuellement.</p>
         <details class="fold" style="margin-top:8px;" ${this._abbrevOpen ? 'open' : ''} ontoggle="Params._abbrevOpen=this.open">
           <summary><b>Abréviations des viandes</b> <span class="muted">(cliquer pour configurer)</span></summary>
           <div class="fold-body">
@@ -282,9 +282,9 @@ const Params = {
         </div>
         <div id="sku_all_list">${this._renderSkuAll()}</div>
         <hr class="sep">
-        <p class="muted mb0">Si tu as importé le calculateur et le stock séparément, relie-les (par SKU puis par nom exact) pour que coûts, marges et valeurs remontent au tableau de bord. Pour tout le reste (noms différents, cas ambigus), utilise "✏️ Modifier le produit" dans Stock → "Lier au catalogue prix" : c'est toi qui choisis la bonne fiche dans la liste, rien n'est deviné automatiquement.</p>
+        <p class="muted help mb0">Si tu as importé le calculateur et le stock séparément, relie-les (par SKU puis par nom exact) pour que coûts, marges et valeurs remontent au tableau de bord. Pour tout le reste (noms différents, cas ambigus), utilise "✏️ Modifier le produit" dans Stock → "Lier au catalogue prix" : c'est toi qui choisis la bonne fiche dans la liste, rien n'est deviné automatiquement.</p>
         <button class="btn-ghost mt" onclick="Params.relink()">🔗 Relier stock ↔ catalogue (noms identiques)</button>
-        <p class="muted mb0 mt">Les produits déjà reliés se resynchronisent normalement tout seuls (à chaque enregistrement côté Prix mastication, ou à chaque modif de SKU). Ce bouton est un filet de sécurité : il force la resynchro de TOUS les produits déjà reliés (prix, variantes, SKU), au cas où l'un d'eux aurait été manqué.</p>
+        <p class="muted help mb0 mt">Les produits déjà reliés se resynchronisent normalement tout seuls (à chaque enregistrement côté Prix mastication, ou à chaque modif de SKU). Ce bouton est un filet de sécurité : il force la resynchro de TOUS les produits déjà reliés (prix, variantes, SKU), au cas où l'un d'eux aurait été manqué.</p>
         <button class="btn-ghost mt" onclick="Params.resyncAllFromCatalog()">🔄 Resynchroniser tout (Stock ↔ Catalogue)</button>
         </div>
       </details>
@@ -297,7 +297,7 @@ const Params = {
       <details class="fold card params-fold" ${this._mergeOpen ? 'open' : ''} ontoggle="Params._mergeOpen=this.open">
         <summary><h2 style="display:inline;">🧹 Fusionner les doublons</h2></summary>
         <div class="fold-body">
-        <p class="muted mb0">Si un import répété a créé des doublons (même produit ou même matière apparaissant plusieurs fois), fusionne-les ici : les quantités et les lots sont additionnés, un seul exemplaire est conservé.</p>
+        <p class="muted help mb0">Si un import répété a créé des doublons (même produit ou même matière apparaissant plusieurs fois), fusionne-les ici : les quantités et les lots sont additionnés, un seul exemplaire est conservé.</p>
         <button class="btn-danger mt" onclick="Params.mergeDuplicatesPrompt()">🧹 Fusionner les doublons maintenant</button>
         </div>
       </details>
@@ -305,7 +305,7 @@ const Params = {
       <details class="fold card params-fold" ${this._importOpen ? 'open' : ''} ontoggle="Params._importOpen=this.open">
         <summary><h2 style="display:inline;">📥 Import & sauvegarde</h2></summary>
         <div class="fold-body">
-        <p class="muted mb0">Dépose n'importe quel fichier de données : l'app reconnaît toute seule s'il s'agit de ton ancien <b>calculateur de prix</b>, de ton ancienne <b>appli de stock</b> (toutes versions), ou d'une <b>sauvegarde</b> de cette application.</p>
+        <p class="muted help mb0">Dépose n'importe quel fichier de données : l'app reconnaît toute seule s'il s'agit de ton ancien <b>calculateur de prix</b>, de ton ancienne <b>appli de stock</b> (toutes versions), ou d'une <b>sauvegarde</b> de cette application.</p>
         <input type="file" id="importFile" accept="application/json,.json" class="mt" onchange="Params._captureImportFile(this)">
       <p class="muted mt" id="importFileLabel" style="display:none"></p>
         <button class="btn-cta mt" onclick="Params.importAuto()">Importer le fichier (détection automatique)</button>
@@ -350,7 +350,7 @@ const Params = {
       <div class="grid c2">
         <div class="card params-card">
           <h2>🛟 Instantanés (retour arrière)</h2>
-          <p class="muted">Une sauvegarde automatique est prise chaque jour. Tu peux revenir à l'état d'un jour précédent — utile si un marché a mal tourné.</p>
+          <p class="muted help">Une sauvegarde automatique est prise chaque jour. Tu peux revenir à l'état d'un jour précédent — utile si un marché a mal tourné.</p>
           <div class="frow" style="gap:8px;flex-wrap:wrap;">
             <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Params.snapshotNow()">Prendre un instantané maintenant</button>
             <button class="btn-danger btn-sm" style="flex:0 0 auto;" onclick="Params.clearSnapshots()">🗑️ Effacer tous les instantanés</button>
@@ -359,7 +359,7 @@ const Params = {
             <div class="fg" style="max-width:190px;margin:0;"><label>Conserver (jours)</label><input type="number" min="7" step="1" value="${U.num(S.snapRetentionDays) || 30}" onchange="Params.setSnapRetention(this.value)"></div>
             <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Params.cleanupSnapshotsNow()">🧹 Nettoyer les plus anciens</button>
           </div>
-          <p class="muted" style="font-size:.8rem;">Un rappel mensuel te propose de télécharger une sauvegarde puis de supprimer les instantanés plus vieux que cette durée.</p>
+          <p class="muted help" style="font-size:.8rem;">Un rappel mensuel te propose de télécharger une sauvegarde puis de supprimer les instantanés plus vieux que cette durée.</p>
           <div id="snapList" class="mt"><p class="muted">Chargement…</p></div>
         </div>
         <div class="card params-card">
@@ -579,7 +579,7 @@ const Params = {
         : `<div class="calc-chip">${lbl}${btn}</div>`;  // colonne de gauche : flèche → à droite
     };
     const empty = '<div class="muted" style="font-size:.8rem;padding:8px 2px;">Aucune catégorie</div>';
-    return `<p class="muted mb0">Range chaque catégorie de matière (gérée dans <b>Référentiels → Accessoires</b>) dans son mode, avec les flèches. <b>Par article</b> = une référence propre à chaque article (boucleries — un mousqueton sécurisé ≠ non sécurisé). <b>Partagée par largeur</b> = une seule saisie pour toutes les couleurs d'une même largeur (sangles).</p>
+    return `<p class="muted help mb0">Range chaque catégorie de matière (gérée dans <b>Référentiels → Accessoires</b>) dans son mode, avec les flèches. <b>Par article</b> = une référence propre à chaque article (boucleries — un mousqueton sécurisé ≠ non sécurisé). <b>Partagée par largeur</b> = une seule saisie pour toutes les couleurs d'une même largeur (sangles).</p>
       <div class="calc-cols">
         <div class="calc-col"><h4>📦 Par article</h4>${perItem.map(k => chip(k, 'shared')).join('') || empty}</div>
         <div class="calc-col"><h4>📏 Partagée par largeur</h4>${shared.map(k => chip(k, 'perItem')).join('') || empty}</div>
@@ -1427,7 +1427,7 @@ const Params = {
     const siteHTML = siteDups.length
       ? table(siteDups.map(g => `<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${U.esc(g.url)}"><a href="${U.esc(g.url)}" target="_blank" rel="noopener">${U.esc(g.url)}</a></td><td>${g.items.map(link).join(' · ')}</td></tr>`), 'Lien site Touffu')
       : '<p class="muted">✅ Aucun lien site Touffu en double.</p>';
-    return `<p class="muted mb0">Liens et réf. fournisseur : Prix mastication, matières premières et consommables. Liens site Touffu : produits du stock mastication. Les alertes ne bloquent rien : un doublon peut être voulu (ex. une page qui sert à plusieurs couleurs). Clique un nom pour ouvrir le produit et corriger.</p>
+    return `<p class="muted help mb0">Liens et réf. fournisseur : Prix mastication, matières premières et consommables. Liens site Touffu : produits du stock mastication. Les alertes ne bloquent rien : un doublon peut être voulu (ex. une page qui sert à plusieurs couleurs). Clique un nom pour ouvrir le produit et corriger.</p>
       <h3 class="mt">🔗 Fiches prix liées à plusieurs produits stock (${catDups.length})</h3>${catHTML}
       <h3 class="mt">🌐 Liens fournisseur en double (${urlDups.length})</h3>${urlHTML}
       <h3 class="mt">🏷️ Références fournisseur en double (${refDups.length})</h3>${refHTML}

@@ -243,9 +243,8 @@ const Woo = {
     App.mount(`
       <div class="view-title"><h1>Site (WooCommerce)</h1><span class="sub">liaison par SKU · prix & stock</span></div>
 
-      <div class="card">
-        <h2>🔗 Comment ça marche</h2>
-        <p class="muted mb0">Le <b>SKU</b> (référence unique d'un produit sur ton site) relie chaque produit de l'app à sa fiche WooCommerce. L'app calcule le <b>prix de vente</b> et le <b>stock</b> ; tu les envoies vers le site via un fichier CSV que WooCommerce applique aux produits existants (il les retrouve par leur SKU). Ton <b>coût d'achat et tes marges restent dans l'app</b> — WooCommerce n'en a pas besoin.</p>
+      <div>
+        <p class="muted help mb0" data-help-anchor=".view-title h1">Le <b>SKU</b> (référence unique d'un produit sur ton site) relie chaque produit de l'app à sa fiche WooCommerce. L'app calcule le <b>prix de vente</b> et le <b>stock</b> ; tu les envoies vers le site via un fichier CSV que WooCommerce applique aux produits existants (il les retrouve par leur SKU). Ton <b>coût d'achat et tes marges restent dans l'app</b> — WooCommerce n'en a pas besoin.</p>
       </div>
 
       <div class="card">
@@ -266,15 +265,15 @@ const Woo = {
           ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSel()">Vider la sélection</button>` : ''}
         </div>
         <button id="woo_export_btn" class="btn-cta mt" onclick="Woo.exportCsv()">${exportLabel}</button>
-        <p class="muted mt">Sur ton site : menu <b>Produits</b> (l'entrée à part, <u>pas</u> le menu WooCommerce) → <b>Tous les produits</b> → bouton <b>Importer</b> en haut de la page → choisir le fichier → cocher <b>« Mettre à jour les produits existants »</b>. WooCommerce retrouve chaque produit par son SKU.</p>
+        <p class="muted help mt">Sur ton site : menu <b>Produits</b> (l'entrée à part, <u>pas</u> le menu WooCommerce) → <b>Tous les produits</b> → bouton <b>Importer</b> en haut de la page → choisir le fichier → cocher <b>« Mettre à jour les produits existants »</b>. WooCommerce retrouve chaque produit par son SKU.</p>
         <p class="pos mb0" style="margin-top:4px;">✓ Le fichier ne contient que <b>SKU + prix + stock</b> : tes <b>descriptions, catégories, étiquettes et images</b> sur le site ne sont <b>jamais touchées</b>.</p>
-        <p class="muted mb0" style="margin-top:4px;">Les colonnes sont au <b>format français de ton site</b> (UGS, Tarif régulier, Stock, En stock ?) → WooCommerce les reconnaît sans mapping manuel. <b>Fais un essai sur 2-3 produits d'abord</b> et vérifie que le prix affiché est bien le bon (ni ×100, ni ÷100).</p>
-        <p class="muted mb0" style="margin-top:4px;">Seule la <b>mastication</b> est envoyée. Les <b>accessoires</b> (modèles de calcul, sans SKU), <b>matières premières</b> et <b>consommables</b> ne sont <b>jamais</b> exportés ni comparés — ce ne sont pas des produits vendus en ligne. Pour un produit mastication que tu gardes dans l'appli mais ne vends pas en ligne (événement-only, test…), clique <b>🚫</b> dans la colonne « Envoi site » : il sera <b>exclu définitivement</b> de l'export.</p>
+        <p class="muted help mb0" style="margin-top:4px;">Les colonnes sont au <b>format français de ton site</b> (UGS, Tarif régulier, Stock, En stock ?) → WooCommerce les reconnaît sans mapping manuel. <b>Fais un essai sur 2-3 produits d'abord</b> et vérifie que le prix affiché est bien le bon (ni ×100, ni ÷100).</p>
+        <p class="muted help mb0" style="margin-top:4px;">Seule la <b>mastication</b> est envoyée. Les <b>accessoires</b> (modèles de calcul, sans SKU), <b>matières premières</b> et <b>consommables</b> ne sont <b>jamais</b> exportés ni comparés — ce ne sont pas des produits vendus en ligne. Pour un produit mastication que tu gardes dans l'appli mais ne vends pas en ligne (événement-only, test…), clique <b>🚫</b> dans la colonne « Envoi site » : il sera <b>exclu définitivement</b> de l'export.</p>
       </div>
 
       <div class="card">
         <h2>🔄 Comparer avec le site (import)</h2>
-        <p class="muted">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée.</p>
+        <p class="muted help">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée.</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="woo_cmp_file" accept=".csv,text/csv">
           <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSite()">Comparer</button>
@@ -285,7 +284,7 @@ const Woo = {
 
       ${missing.length ? `<div class="card" style="border-left:4px solid var(--warn);">
         <h2>⚠️ ${missing.length} produit(s) sans SKU — à relier</h2>
-        <p class="muted">Ces produits ne seront pas envoyés tant qu'ils n'ont pas de SKU. Renseigne le même SKU que sur ta fiche WooCommerce (Prix mastication → Modifier → colonne SKU, ou Accessoires → Modifier).</p>
+        <p class="muted help">Ces produits ne seront pas envoyés tant qu'ils n'ont pas de SKU. Renseigne le même SKU que sur ta fiche WooCommerce (Prix mastication → Modifier → colonne SKU, ou Accessoires → Modifier).</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Type</th></tr></thead>
           <tbody>${missing.map(l => `<tr><td class="col-name">${U.esc(l.name)}</td><td><span class="badge info">${l.kind}</span></td></tr>`).join('')}</tbody></table></div>
       </div>` : `<div class="card"><p class="pos">✓ Tous tes produits ont un SKU.</p></div>`}
@@ -308,7 +307,7 @@ const Woo = {
 
       <div class="card">
         <h2>🔄 Synchronisation automatique (plus tard)</h2>
-        <p class="muted mb0">L'export CSV ci-dessus est le moyen le plus sûr pour commencer. Pour une synchro automatique (l'app pousse prix et stock vers le site sans fichier), WooCommerce offre une API REST. Elle ne peut pas être appelée directement depuis cette app (les clés seraient exposées et le navigateur bloque ces appels) : il faut un petit relais côté serveur. Comme tu utilises déjà Supabase, ce relais peut être une « Edge Function » Supabase. C'est décrit dans le guide, section WooCommerce — à activer quand tu voudras. En attendant, l'export CSV fait le travail.</p>
+        <p class="muted help mb0">L'export CSV ci-dessus est le moyen le plus sûr pour commencer. Pour une synchro automatique (l'app pousse prix et stock vers le site sans fichier), WooCommerce offre une API REST. Elle ne peut pas être appelée directement depuis cette app (les clés seraient exposées et le navigateur bloque ces appels) : il faut un petit relais côté serveur. Comme tu utilises déjà Supabase, ce relais peut être une « Edge Function » Supabase. C'est décrit dans le guide, section WooCommerce — à activer quand tu voudras. En attendant, l'export CSV fait le travail.</p>
       </div>
     `);
   },

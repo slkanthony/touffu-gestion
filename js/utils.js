@@ -322,3 +322,42 @@ const U = {
 
 document.addEventListener('click', (e) => { if (!e.target.closest || !e.target.closest('.info-tip')) U.tipHide(); });
 window.addEventListener('scroll', () => U.tipHide(), true);
+
+/* Aide repliée (2026-09-27) : tout élément marqué class="help" (paragraphe explicatif) est retiré de la page
+   et son texte passe dans un ⓘ posé sur le titre le plus proche : data-help-anchor (sélecteur) > libellé parent
+   > libellé du champ (.fg) > titre juste avant > dernier titre du bloc (.card, details, fenêtre…). Plusieurs
+   aides pour le même titre sont regroupées dans une seule bulle. Marche aussi pour les rendus partiels / fenêtres. */
+U._helpAnchor = (el) => {
+  const sel = el.getAttribute('data-help-anchor');
+  if (sel) { const a = document.querySelector(sel); if (a) return a; }
+  if (el.parentElement && el.parentElement.tagName === 'LABEL') return el.parentElement;
+  const fg = el.closest('.fg'); if (fg) { const lb = fg.querySelector(':scope > label'); if (lb && lb !== el) return lb; }
+  const prev = el.previousElementSibling;
+  if (prev && /^H[1-4]$/.test(prev.tagName)) return prev;
+  let box = el.parentElement;
+  while (box && box !== document.body) {
+    const heads = [...box.querySelectorAll('h1,h2,h3,h4')].filter(h => !el.contains(h) && (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+    if (heads.length) return heads[heads.length - 1];
+    if (box.tagName === 'DETAILS') { const sm = box.querySelector(':scope > summary'); if (sm) return sm.querySelector(':scope > span, :scope > b') || sm; }
+    box = box.parentElement;
+  }
+  return null;
+};
+U.applyHelp = (root) => {
+  const list = [...(root || document).querySelectorAll('.help')];
+  if (root && root.classList && root.classList.contains('help')) list.unshift(root);
+  list.forEach(el => {
+    if (!el.isConnected || el._helpDone) return;
+    el._helpDone = true;
+    const html = el.innerHTML.trim().replace(/^—\s*/, '');
+    const a = U._helpAnchor(el);
+    if (!a) { el.outerHTML = U.info(html); return; }
+    const ex = a.querySelector(':scope > .info-tip[data-auto]');
+    if (ex) ex.querySelector('.info-src').insertAdjacentHTML('beforeend', '<br><br>' + html);
+    else { a.insertAdjacentHTML('beforeend', ' ' + U.info(html).replace('<span class="info-tip"', '<span class="info-tip" data-auto')); }
+    el.remove();
+  });
+};
+new MutationObserver(muts => {
+  for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.classList.contains('help') || n.querySelector('.help'))) U.applyHelp(n);
+}).observe(document.documentElement, { childList: true, subtree: true });

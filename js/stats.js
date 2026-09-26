@@ -132,12 +132,12 @@ const Stats = {
       <div class="card">
         <h2>🎪 Rentabilité par événement</h2>
         ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <p class="muted" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
+        <p class="muted help" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
       <div class="card">
         <h2>🎪 Mes événements — fiche & simulation</h2>
-        <p class="muted">Choisis (ou crée) un marché, enregistre sa fiche habituelle (stand, km, péages…) : elle sera pré-remplie à chaque retour d'événement. La simulation en bas se met à jour avec.</p>
+        <p class="muted help">Choisis (ou crée) un marché, enregistre sa fiche habituelle (stand, km, péages…) : elle sera pré-remplie à chaque retour d'événement. La simulation en bas se met à jour avec.</p>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:300px;"><label>Événement</label>${Ventes.eventSelect(simName, 'Stats._evSim=v;Stats.render()', '', 'Stats.render()')}</div>
           ${simName ? `<div class="fg" style="max-width:200px;"><label>CA espéré (€)</label><input id="ev_sim_ca" type="number" step="1" min="0" value="${(this._evSimCA || {})[simName] || ''}" placeholder="moyenne" oninput="(Stats._evSimCA=Stats._evSimCA||{})[Stats._evSimCur]=this.value;Stats._simEvent()"></div>` : ''}
@@ -365,10 +365,10 @@ const Stats = {
       ${this.tabBar()}
       <div class="card">
         <div class="fg" style="max-width:220px;margin:0;"><label>Période</label>${U.customSelect({ value: this.salesPeriod, options: periodOpts, onPick: 'Stats.setSalesPeriod' })}</div>
-        <p class="muted mb0 mt" style="font-size:.85rem;">Sachets : d'après le conditionnement indiqué à l'ajout des lots (Stock → ＋ Ajouter un lot, ou 📦 sur un lot). Cartons : d'après les consommables de catégorie « Cartons » ajoutés aux ventes. Le « jamais / peu utilisé » t'aide à repérer les formats à supprimer ou remplacer.</p>
+        <p class="muted help mb0 mt" style="font-size:.85rem;">Sachets : d'après le conditionnement indiqué à l'ajout des lots (Stock → ＋ Ajouter un lot, ou 📦 sur un lot). Cartons : d'après les consommables de catégorie « Cartons » ajoutés aux ventes. Le « jamais / peu utilisé » t'aide à repérer les formats à supprimer ou remplacer.</p>
       </div>
       <div class="card"><h2>🛍️ Sachets</h2>${this._packTable(agg.sach, 'Sachets utilisés', 'Produits qui l\'utilisent le plus')}</div>
-      <div class="card"><h2>🎞️ Blisters</h2><p class="muted mb0" style="font-size:.85rem;">Par largeur de rouleau et longueur de découpe. Le simulateur montre ce que coûterait de regrouper deux longueurs (découper à l'avance en moins de formats, avec un peu de perte).</p>${this._blisterHTML(agg.blisters)}</div>
+      <div class="card"><h2>🎞️ Blisters</h2><p class="muted help mb0" style="font-size:.85rem;">Par largeur de rouleau et longueur de découpe. Le simulateur montre ce que coûterait de regrouper deux longueurs (découper à l'avance en moins de formats, avec un peu de perte).</p>${this._blisterHTML(agg.blisters)}</div>
       <div class="card"><h2>📦 Cartons</h2>${this._packTable(agg.cart, 'Colis envoyés', 'Produits le plus souvent envoyés dedans')}</div>`);
     agg.blisters.forEach(w => { if (w.lengths.length > 1) this._simBlister(w.widthMm); });
   },
@@ -704,7 +704,7 @@ const Stats = {
       </tbody>
       <tfoot><tr><td><b>Bénéfice net</b></td><td class="num sensitive ${M.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(M.net)}</b></td><td class="num sensitive ${A.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(A.net)}</b></td></tr></tfoot>
     </table></div>
-    <p class="muted" style="margin-top:6px;font-size:.8rem;">« Charges fixes matériel » = entretien imprimante UV (→ accessoires) + amortissement du matériel réparti sur la période (tagué mastication/accessoires directement, « commun » au prorata du CA). ${va ? '' : 'TVA non déduite (non assujetti) — affichée pour info seulement si tu coches « assujetti ».'}</p>`;
+    <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Charges fixes matériel » = entretien imprimante UV (→ accessoires) + amortissement du matériel réparti sur la période (tagué mastication/accessoires directement, « commun » au prorata du CA). ${va ? '' : 'TVA non déduite (non assujetti) — affichée pour info seulement si tu coches « assujetti ».'}</p>`;
   },
 
   renderSales() {
@@ -735,7 +735,7 @@ const Stats = {
             <button class="btn-ghost btn-sm ${metric === 'ca' ? 'active' : ''}" onclick="Stats.setSalesMetric('ca')">Chiffre d'affaires</button>
           </div></div>
         </div>
-        <p class="muted" style="margin-top:8px;">Basé sur tes ventes enregistrées. ⚠️ Les ventes de marché <b>sans SKU</b> (non importées) n'apparaissent pas ici — le classement devient précis à mesure que tu remplis les SKU côté SumUp.</p>
+        <p class="muted help" style="margin-top:8px;">Basé sur tes ventes enregistrées. ⚠️ Les ventes de marché <b>sans SKU</b> (non importées) n'apparaissent pas ici — le classement devient précis à mesure que tu remplis les SKU côté SumUp.</p>
       </div>
       ${!hasSales ? '<div class="card empty"><span class="big">🛒</span>Aucune vente sur cette période.</div>' : `
       <div class="grid c4">
@@ -760,7 +760,7 @@ const Stats = {
       </div>
 
       <div class="card mt"><h2>📈 Détail par mois — CA & rentabilité</h2>
-        <p class="muted">Évolution réelle mois par mois (chronologique, années distinctes) — avec la même compta que le Tableau de bord.</p>
+        <p class="muted help">Évolution réelle mois par mois (chronologique, années distinctes) — avec la même compta que le Tableau de bord.</p>
         <div style="position:relative;height:190px;"><canvas id="salesTimelineChart"></canvas></div>
         ${(() => {
           const va = Store.state.settings.vatActive;
@@ -779,17 +779,17 @@ const Stats = {
             <tbody>${agg.months.slice().reverse().map(m => row(this._monthKeyLabel(m.key), m)).join('') || `<tr><td colspan="${uvM ? 14 : 13}" class="muted">Aucune vente.</td></tr>`}</tbody>
             <tfoot><tr><td class="col-name"><b>Total</b></td><td class="num">${T.n}</td><td class="num sensitive">${U.eur(T.ca)}</td>${cell(T.cogs, 'neg')}${margeCell(T.marge)}${cell(T.shipFee, 'pos')}${cell(T.fee, 'neg')}${cell(T.shipping, 'neg')}${cell(T.ev, 'neg')}${cell(T.box, 'neg')}${uvCell(T.uv)}<td class="num sensitive neg">− ${U.eur(T.cotis)}</td>${tvaCell(T.tva)}<td class="num sensitive ${T.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(T.net)}</b></td></tr></tfoot>
           </table></div>
-          <p class="muted" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand − coût cartons − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
+          <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand − coût cartons − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
         })()}
       </div>
 
       <div class="card mt"><h2>📊 Rentabilité par activité</h2>
-        <p class="muted">Mastication (achat-revente) vs accessoires (fait main), sur la période choisie. Chaque article compte dans son activité ; les frais et charges fixes communs sont répartis au prorata du CA (l'entretien/amortissement UV va aux accessoires). La somme des deux = le bénéfice net global.</p>
+        <p class="muted help">Mastication (achat-revente) vs accessoires (fait main), sur la période choisie. Chaque article compte dans son activité ; les frais et charges fixes communs sont répartis au prorata du CA (l'entretien/amortissement UV va aux accessoires). La somme des deux = le bénéfice net global.</p>
         ${this._activityTable(Pricing.activityPnL(agg.sales, Math.max(1, agg.months.length)))}
       </div>
 
       <div class="card mt"><h2>📅 Saisonnalité — ${mLabel} par mois</h2>
-        <p class="muted">Toutes années confondues sur la période : à quelle période de l'année ça se vend le plus.</p>
+        <p class="muted help">Toutes années confondues sur la période : à quelle période de l'année ça se vend le plus.</p>
         <div style="position:relative;height:200px;"><canvas id="salesMonthChart"></canvas></div>
         <div class="frow mt" style="align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div class="fg" style="max-width:340px;margin:0;"><label>Saisonnalité d'un produit précis</label>${U.customSelect({ value: this.seasonProduct, options: prodOpts, onPick: 'Stats.setSeasonProduct' })}</div>
@@ -803,7 +803,7 @@ const Stats = {
       </div>` : ''}
 
       ${hasAcc ? `<div class="card mt"><h2>🦮 Accessoires — performance</h2>
-        <p class="muted">Répartition de tes ventes d'accessoires par type et par largeur (${mLabel}). ℹ️ La couleur n'est pas encore suivie par vente (un seul SKU par modèle) — on pourra l'ajouter plus tard si tu veux le détail par couleur.</p>
+        <p class="muted help">Répartition de tes ventes d'accessoires par type et par largeur (${mLabel}). ℹ️ La couleur n'est pas encore suivie par vente (un seul SKU par modèle) — on pourra l'ajouter plus tard si tu veux le détail par couleur.</p>
         <div class="grid c2">
           <div><h3 style="font-size:.9rem;">Par type</h3><div style="position:relative;height:200px;"><canvas id="salesAccTypeChart"></canvas></div></div>
           <div><h3 style="font-size:.9rem;">Par largeur</h3><div style="position:relative;height:200px;"><canvas id="salesAccWidthChart"></canvas></div></div>
@@ -813,7 +813,7 @@ const Stats = {
       </div>` : ''}
 
       <div class="card mt"><h2>💤 Produits dormants <span class="muted">(${agg.dormant.length})</span></h2>
-        <p class="muted">Produits du catalogue jamais vendus sur cette période — candidats au déstockage / à ne pas racheter.</p>
+        <p class="muted help">Produits du catalogue jamais vendus sur cette période — candidats au déstockage / à ne pas racheter.</p>
         ${agg.dormant.length ? `<button class="btn-ghost btn-sm" onclick="Stats.toggleDormant()">${this._dormantOpen ? 'Masquer' : 'Afficher la liste'}</button>
         ${this._dormantOpen ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Catégorie</th><th>Dernière vente</th></tr></thead>
           <tbody>${agg.dormant.map(d => `<tr><td class="col-name">${U.esc(d.name)}</td><td>${U.esc(d.cat)}</td><td>${d.last ? U.frDate(new Date(d.last).toISOString().slice(0, 10)) : '<span class="muted">jamais</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}` : '<p class="muted">Aucun — tous tes produits se sont vendus au moins une fois. 🎉</p>'}
