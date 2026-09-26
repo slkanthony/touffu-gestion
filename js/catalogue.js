@@ -501,32 +501,36 @@ const Catalogue = {
     const box = document.getElementById('cp_sups');
     const list = this._d.suppliers || [];
     box.innerHTML = list.map((s, i) => `
-      <div class="frow" style="align-items:flex-end; border-bottom:1px dashed #e6d5c3; padding-bottom:8px; margin-bottom:8px;">
-        <div class="fg" style="flex:0 0 76px;"><label>Principal</label>
-          <input type="radio" name="cp_main" ${this._d.mainSupplierId === s.supplierId ? 'checked' : ''} onchange="Catalogue._d.mainSupplierId='${s.supplierId}'" style="width:20px;height:20px;"></div>
-        <div class="fg" style="flex:2;"><label>Fournisseur</label>
+      <div class="sup-block">
+      <div class="sup-grid">
+        <div class="fg"><label>Principal</label><div class="sup-cell">
+          <input type="radio" name="cp_main" ${this._d.mainSupplierId === s.supplierId ? 'checked' : ''} onchange="Catalogue._d.mainSupplierId='${s.supplierId}'" style="width:20px;height:20px;"></div></div>
+        <div class="fg"><label>Fournisseur</label>
           <select onchange="Catalogue._d.suppliers[${i}].supplierId=this.value">${App.supplierOptions(s.supplierId)}</select></div>
         <div class="fg"><label>Prix d'achat</label><input type="number" step="0.01" value="${s.price ?? ''}" onchange="Catalogue._d.suppliers[${i}].price=this.value;Catalogue.drawSuppliers()">
           <span class="muted" style="font-size:.78rem;">→ ${U.eur(this.supUnitHT(s), 3)}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</span></div>
         <div class="fg"><label>HT / TTC</label><select onchange="Catalogue._d.suppliers[${i}].taxType=this.value;Catalogue.drawSuppliers()">
           <option ${(s.taxType || 'HT') === 'HT' ? 'selected' : ''}>HT</option><option ${s.taxType === 'TTC' ? 'selected' : ''}>TTC</option></select></div>
-        <div class="fg"><label>TVA d'achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Store.state.settings.vatRate}" onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
+        <div class="fg"><label title="TVA d'achat (%)">TVA achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Store.state.settings.vatRate}" onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
         <div class="fg"><label>Acheté</label><select onchange="Catalogue._d.suppliers[${i}].unit=this.value;Catalogue.drawSuppliers()">
           <option value="kilo" ${(s.unit || 'kilo') === 'kilo' ? 'selected' : ''}>au kilo</option>
           <option value="piece" ${s.unit === 'piece' ? 'selected' : ''}>à la pièce</option></select></div>
         <div class="fg"><label>Poids (kg) / Qté</label><input type="number" step="0.001" value="${s.unit === 'piece' ? (s.quantity ?? 1) : (s.weight ?? 1)}" onchange="Catalogue.setSupDiv(${i},this.value)"></div>
-        <div class="fg"><label>Pièces par kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
-        <div class="fg" style="flex:2;${Store.hideSupplierInfo() ? 'display:none;' : ''}"><label>Lien page fournisseur (URL)</label>
+        <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
+        <div class="fg"><label>&nbsp;</label><div class="sup-cell"><button class="btn-icon" title="Retirer ce fournisseur" onclick="Catalogue.delSupplier(${i})">🗑️</button></div></div>
+      </div>
+      <div class="sup-grid2" style="${Store.hideSupplierInfo() ? 'display:none;' : ''}">
+        <div class="fg"><label>Réf. fournisseur</label><input value="${U.esc(s.ref || '')}" placeholder="ex : C-23012" onchange="Catalogue._d.suppliers[${i}].ref=this.value.trim()"></div>
+        <div class="fg"><label>Lien page fournisseur (URL)</label>
           <div style="display:flex;gap:6px;">
             <input type="url" id="sup_url_${i}" value="${U.esc(s.url || '')}" placeholder="https://…" style="flex:1;min-width:0;" onchange="Catalogue._d.suppliers[${i}].url=this.value;Catalogue.drawSuppliers()">
             <button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sup_url_${i}').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button>
           </div></div>
-        <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Catalogue.delSupplier(${i})">🗑️</button></div>
       </div>
       <div style="margin:-4px 0 8px;padding:0 4px;${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg mb0" style="flex:1;"><label>📝 Notes fournisseur <span class="muted" style="font-weight:400;">(visible dans la liste de commande)</span></label>
           <textarea rows="2" placeholder="Ex: acheter au minimum 5 kg sinon aller chez Cernunos…" style="width:100%;resize:vertical;font-size:.85rem;" onchange="Catalogue._d.suppliers[${i}].notes=this.value">${U.esc(s.notes || '')}</textarea></div>
-      </div>`).join('') || '<p class="muted">Aucun fournisseur — ajoute au moins un fournisseur avec son prix d\'achat.</p>';
+      </div></div>`).join('') || '<p class="muted">Aucun fournisseur — ajoute au moins un fournisseur avec son prix d\'achat.</p>';
     this.drawVars();
   },
   addSupplier() {

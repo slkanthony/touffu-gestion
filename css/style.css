@@ -721,3 +721,15 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
 .tax-tag { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 2px 8px; min-height: 0; font-size: .72rem; font-weight: 700; letter-spacing: .03em; border-radius: 6px; border: 1px solid rgba(166,113,83,.55); background: rgba(166,113,83,.15); color: var(--caramel); cursor: pointer; line-height: 1.4; }
 .tax-tag:hover { background: rgba(166,113,83,.3); }
 .tax-tag[data-tax="TTC"] { background: var(--caramel); color: #fff; }
+
+/* Fiche prix : ligne fournisseur alignée (grille, champs calés en haut) */
+.sup-block { border-bottom: 1px dashed rgba(166,113,83,.45); padding-bottom: 8px; margin-bottom: 10px; }
+.sup-grid { display: grid; grid-template-columns: 78px 1.4fr 1fr .8fr .8fr 1fr .9fr .9fr 40px; gap: 10px; align-items: start; }
+.sup-grid2 { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.sup-grid .fg, .sup-grid2 .fg { margin-bottom: 6px; min-width: 0; }
+.sup-grid label, .sup-grid2 label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sup-cell { height: 42px; display: flex; align-items: center; }
+@media (max-width: 900px) {
+  .sup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sup-grid2 { grid-template-columns: 1fr; }
+}
