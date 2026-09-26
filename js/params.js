@@ -1726,7 +1726,14 @@ const Params = {
     Store.state.stockM.forEach(p => {
       (p.variants || []).forEach(v => {
         const vLabel = Pricing.skuVariantLabel(v);
-        const suggested = Pricing.autoSku(p.name, p.meatType, vLabel);
+        let suggested = Pricing.autoSku(p.name, p.meatType, vLabel);
+        // Déclinaison (ex. 25CM LOT 2 ← 25CM) : SKU de sa taille + « -LOT<n> » → ROULEAUX-POR-25CM-LOT2
+        // (avant : ROULEAUX-POR-LOT2, la taille était perdue et 12CM/25CM LOT 2 entraient en collision).
+        const par = Stock.parentOf(p, v);
+        if (par) {
+          const parBase = (par.sku || '').trim() || Pricing.autoSku(p.name, p.meatType, Pricing.skuVariantLabel(par));
+          if (parBase) suggested = parBase.toUpperCase() + '-LOT' + Stock.packQtyOf(v);
+        }
         rows.push({ pId: p.id, vId: v.id, name: p.name, meat: p.meatType || '', variant: v.label || Pricing.labelVariant(v), sku: v.sku || '', suggested });
       });
     });
