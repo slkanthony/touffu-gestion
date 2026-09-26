@@ -640,6 +640,39 @@ const Catalogue = {
     App.rerender();
   },
 
+  /* Choix du sachet / blister d'une variante : liste maison en colonnes (nom · dimensions · coût), avec
+     titres de groupe, au lieu du <select> natif illisible (2026-09-28, demande d'Antho). */
+  packPicker(i, sel, mode) {
+    Params._renameSachets();
+    const all = Store.state.settings.sachets || [];
+    const sachets = all.filter(s => (s.type || 'sachet') === 'sachet').sort(Params._dimSort('sachet'));
+    const blisters = all.filter(s => (s.type || 'sachet') === 'blister').sort(Params._dimSort('blister'));
+    const cur = all.find(s => String(s.id) === String(sel));
+    const row = (id, a, b, cost, active) => `<div class="pp-row${active ? ' active' : ''}" onclick="this.closest('details').open=false;Catalogue._pickPack(${i},'${id}')"><span class="pp-a">${a}</span><span class="pp-b">${b}</span><span class="pp-c">${cost}</span></div>`;
+    const sachetBlock = sachets.length ? `<div class="pp-head">🛍️ Sachets</div>` + sachets.map(s => {
+      const dims = s.dims || '';
+      const name = dims && s.name.endsWith(' — ' + dims) ? s.name.slice(0, -(' — ' + dims).length) : s.name;
+      return row(s.id, U.esc(name), U.esc(dims || '—'), U.eur(s.cost, 3), String(s.id) === String(sel));
+    }).join('') : '';
+    const groups = {};
+    blisters.forEach(s => { const d = Params._blisterDims(s); const k = d ? d.widthStr : '?'; (groups[k] = groups[k] || []).push({ s, d }); });
+    const blisterBlock = Object.entries(groups).map(([w, items]) => `<div class="pp-head">🎞️ Blister ${U.esc(w)}</div>` +
+      items.map(({ s, d }) => row(s.id, 'Longueur', U.esc(d ? d.lengthStr : (s.dims || '?')), U.eur(s.cost, 3), String(s.id) === String(sel))).join('')).join('');
+    let label = 'Aucun';
+    if (cur) {
+      if ((cur.type || 'sachet') === 'blister') { const d = Params._blisterDims(cur); label = `Blister ${d ? d.widthStr + ' × ' + d.lengthStr : (cur.dims || '')}`; }
+      else label = cur.dims && !cur.name.includes(cur.dims) ? `${cur.name} — ${cur.dims}` : cur.name;
+      label += ` · ${U.eur(cur.cost, 3)}`;
+    }
+    return `<details class="multiselect custom-select pack-picker">
+      <summary>${U.esc(label)} ▾</summary>
+      <div class="multiselect-panel pp-panel">
+        ${row('0', '<i>Aucun</i>', '', '', !cur)}
+        ${mode === 'gram' ? sachetBlock + blisterBlock : blisterBlock + sachetBlock}
+      </div>
+    </details>`;
+  },
+  _pickPack(i, id) { Catalogue._d.variants[i].sachetId = id; Catalogue.drawVars(); },
   sachetOpts(sel, mode) {
     Params._renameSachets();
     const preferred = mode === 'gram' ? 'sachet' : 'blister';
@@ -739,7 +772,7 @@ const Catalogue = {
         <div class="mini-coeff"><label>Coeff${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</label>
           <input type="number" step="0.001" value="${c.coeff.toFixed(3)}" ${v.priceTTCManual ? 'disabled title="Ignoré tant qu\'un prix de vente fixe est renseigné"' : ''} onchange="Catalogue._d.variants[${i}].coeff=this.value;Catalogue.drawVars()"></div>
       </td>
-      <td><select onchange="Catalogue._d.variants[${i}].sachetId=this.value;Catalogue.drawVars()">${this.sachetOpts(v.sachetId, v.mode)}</select>
+      <td>${this.packPicker(i, v.sachetId, v.mode)}
         <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
       <td class="num sensitive">${U.eur(c.cost, 3)}</td>
       <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
