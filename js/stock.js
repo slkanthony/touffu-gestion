@@ -65,6 +65,7 @@ const Stock = {
     { value: 'soon',     label: 'DLUO proche',               badge: 'warn', icon: '⏳' },
     { value: 'low',      label: 'Stock bas (général)',        badge: 'info', icon: '📉' },
     { value: 'multilot', label: 'Plusieurs numéros de lots',  badge: 'info', icon: '🔢' },
+    { value: 'reminder', label: 'Rappels (pense-bête)',       badge: 'warn', icon: '🔔' },
     { value: 'nourl',    label: 'Sans lien fournisseur',      badge: 'info', icon: '🔗' },
     { value: 'nocat',    label: 'Sans lien catalogue prix',   badge: 'info', icon: '💰' },
     { value: 'hascat',   label: 'Lié au catalogue prix',      badge: 'ok',   icon: '💰' },
@@ -158,6 +159,7 @@ const Stock = {
       if (f.dluo === 'soon') return p.variants.some(v => v.lots.some(l => { const d = U.daysTo(l.dluo); return d !== null && d >= 0 && d <= U.num(S.dluoAlertDays) && (U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0; }));
       if (f.dluo === 'low') return p.variants.some(v => { const qg = v.lots.reduce((a,l)=>a+U.num(l.qtyGeneral),0); return U.num(v.low)>0 && qg<=U.num(v.low); });
       if (f.dluo === 'multilot') return p.variants.some(v => new Set(v.lots.filter(l => (U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0).map(l => (l.lotNumber||'').trim()).filter(Boolean)).size >= 2);
+      if (f.dluo === 'reminder') return p.variants.some(v => v.lots.some(l => l.reminder && l.reminder.date));
       if (f.dluo === 'nourl') return !p.url;
       if (f.dluo === 'nocat') return !p.catalogId || !Store.state.catalogM.some(c => c.id === p.catalogId);
       if (f.dluo === 'hascat') return p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId);
@@ -237,11 +239,11 @@ const Stock = {
         <span class="type-col">
           <span class="badge info">${U.esc(p.meatType||'—')}</span>
         </span>
+        ${p.variants.some(v => v.lots.some(l => this.reminderDue(l))) ? '<span class="badge warn" title="Un rappel (pense-bête) est arrivé à échéance sur un lot">🔔 Rappel</span>' : ''}
         <span class="meta"><b>${totalG+totalE}</b> unités · gén <b>${totalG}</b> · évén <b>${totalE}</b> · <span class="muted">${nv} variante(s)</span></span>
         <span class="prod-actions" style="white-space:nowrap;">
           ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${p.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>`}
           ${cat ? `<button class="btn-icon" title="Resynchroniser prix/variantes depuis le catalogue (ex: une taille ajoutée côté calcul de prix après coup)" onclick="event.preventDefault();event.stopPropagation();Stock.resyncFromCatalog('${p.id}')">🔄</button>` : `<button class="btn-icon" title="Créer la fiche de calcul de prix à partir de ce produit (reprend nom, viande et conditionnement — tu complètes fournisseur et prix)" onclick="event.preventDefault();event.stopPropagation();Stock.createCatalogFromStock('${p.id}')">📋</button>`}
-          <button class="btn-icon" title="Ajouter une variante" onclick="event.preventDefault();event.stopPropagation();Stock.addVariant('${p.id}')">➕</button>
           <button class="btn-icon" title="Modifier le produit" onclick="event.preventDefault();event.stopPropagation();Stock.editProduct('${p.id}')">✏️</button>
           <button class="btn-icon" title="Supprimer le produit" onclick="event.preventDefault();event.stopPropagation();Stock.delProduct('${p.id}')">🗑️</button>
         </span>
@@ -293,13 +295,13 @@ const Stock = {
             const tot = U.num(l.qtyGeneral)+U.num(l.qtyEvent);
             return `<tr class="${tot<=0?'dim':''}">
               <td class="col-name"><span class="tag">${U.esc(l.lotNumber||'sans n°')}</span></td>
-              <td>${l.dluo?U.dluoTag(l.dluo):'<span class="muted">—</span>'}</td>
-              <td class="num"><input type="number" step="0.001" value="${l.qtyGeneral}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyGeneral',this.value)"></td>
+              <td ondblclick="Stock.editReminder('${p.id}','${v.id}','${l.id}')" title="Double-clic : ajouter / modifier un rappel (pense-bête)" style="cursor:pointer;">${l.dluo?U.dluoTag(l.dluo):'<span class="muted">—</span>'}${this.reminderTag(l)}</td>
+              <td class="num"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyGeneral}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyGeneral',this.value)"></td>
               <td class="right" style="white-space:nowrap;">
                 <button class="btn-transfer" style="background:var(--ok);" title="Transférer vers Événement" onclick="Stock.transferLot('${p.id}','${v.id}','${l.id}','ge')">→</button>
                 <button class="btn-transfer" style="background:#3b6fa0;" title="Retour vers Stock Général" onclick="Stock.transferLot('${p.id}','${v.id}','${l.id}','eg')">←</button>
               </td>
-              <td class="num"><input type="number" step="0.001" value="${l.qtyEvent}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyEvent',this.value)"></td>
+              <td class="num"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyEvent}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyEvent',this.value)"></td>
               <td class="num muted">${U.qty(tot)}</td>
               <td class="right" style="white-space:nowrap;">
                 ${isVrac?`<button class="btn-ghost btn-sm" onclick="Stock.conditionner('${p.id}','${v.id}','${l.id}')">🎁 Conditionner</button>`:''}
@@ -1010,8 +1012,8 @@ const Stock = {
       body:`<div class="fg"><label>N° de lot</label><input id="nl_num" placeholder="lot fournisseur"></div>
       ${U.datePickerHTML('nl_dluo','DLUO')}
       <div class="frow">
-        <div class="fg"><label>Qté stock général</label><input id="nl_qg" type="number" step="0.001" value="0"></div>
-        <div class="fg"><label>Qté stock événement</label><input id="nl_qe" type="number" step="0.001" value="0"></div>
+        <div class="fg"><label>Qté stock général</label><input id="nl_qg" type="number" step="${v.mode==='vrac'?'0.001':'1'}" min="0" value="0"></div>
+        <div class="fg"><label>Qté stock événement</label><input id="nl_qe" type="number" step="${v.mode==='vrac'?'0.001':'1'}" min="0" value="0"></div>
       </div>`,
       onOk:()=>{
         // Le coût unitaire vient du prix d'achat déjà réglé sur la variante (colonne "Prix achat"
@@ -1234,6 +1236,48 @@ const Stock = {
     U.toast('Conditionnement enregistré' + (changeFiche ? ' — fiche prix passée sur cet emballage (prix TTC inchangé).' : '.'), false, entry.id);
   },
 
+  /* ─── Rappel / pense-bête sur un lot (2026-09-26) ───
+     Double-clic sur la cellule Péremption d'un lot → date + note libre (ex : « mettre en promo »,
+     « recommander »). lot.reminder = {date, note}. Affiché sous la DLUO (rouge quand l'échéance est
+     atteinte), badge « 🔔 Rappel » sur le produit, filtre « Rappels » dans Mastication. */
+  reminderDue(l) { return !!(l && l.reminder && l.reminder.date && l.reminder.date <= U.today() && (U.num(l.qtyGeneral) + U.num(l.qtyEvent)) > 0); },
+  reminderTag(l) {
+    const r = l && l.reminder; if (!r || !r.date) return '';
+    const due = r.date <= U.today();
+    return `<div style="margin-top:4px;font-size:.75rem;${due ? 'color:var(--alerte);font-weight:600;' : 'color:var(--caramel);'}" title="Rappel — double-clic pour modifier">🔔 ${U.frDate(r.date)}${r.note ? ' · ' + U.esc(r.note) : ''}</div>`;
+  },
+  editReminder(pId, vId, lId) {
+    const f = this.findLot(pId, vId, lId); if (!f) return;
+    const r = f.lot.reminder || {};
+    U.modal({
+      title: '🔔 Rappel — ' + U.esc(f.p.name) + ' › ' + U.esc(Pricing.labelVariant(f.v)) + ' (lot ' + U.esc(f.lot.lotNumber || 'sans n°') + ')',
+      okLabel: 'Enregistrer',
+      body: `<p class="muted mb0">Pense-bête daté : mise en promo, recommande, vérification…</p>
+        ${U.datePickerHTML('rm_date', 'Date du rappel')}
+        <div class="fg"><label>Note</label><input id="rm_note" value="${U.esc(r.note || '')}" placeholder="ex : mettre en réduction, recommander…"></div>
+        ${r.date ? `<button class="btn-ghost btn-sm" onclick="Stock._delReminder('${pId}','${vId}','${lId}')">🗑️ Supprimer ce rappel</button>` : ''}`,
+      onOk: () => {
+        const d = U.val('rm_date');
+        if (!d) { U.toast('Choisis une date (ou « Fermer »).', true); return false; }
+        const snap = Store.snapshot('stockM', f.p);
+        f.lot.reminder = { date: d, note: U.val('rm_note').trim() };
+        const entry = Store.commitSnapshot(snap, 'stock', `Rappel ${U.frDate(d)} — ${f.p.name}/${Pricing.labelVariant(f.v)}`);
+        Store.save('stockM'); U.closeModal(); App.rerender();
+        U.toast('Rappel enregistré.', false, entry.id);
+      }
+    });
+    const inp = document.getElementById('rm_date');
+    if (inp && r.date) { inp.value = r.date; U.datePickerSync('rm_date'); }
+  },
+  _delReminder(pId, vId, lId) {
+    const f = this.findLot(pId, vId, lId); if (!f) return;
+    const snap = Store.snapshot('stockM', f.p);
+    delete f.lot.reminder;
+    const entry = Store.commitSnapshot(snap, 'stock', `Rappel supprimé — ${f.p.name}/${Pricing.labelVariant(f.v)}`);
+    Store.save('stockM'); U.closeModal(); App.rerender();
+    U.toast('Rappel supprimé.', false, entry.id);
+  },
+
   delLot(pId,vId,lId){
     const f=this.findLot(pId,vId,lId); if(!f) return;
     if(!confirm('Supprimer ce lot ?')) return;
@@ -1276,7 +1320,7 @@ const Stock = {
       title: isGE ? '→ Transfert vers Événement' : '← Retour vers Stock Général', okLabel:'Confirmer le transfert',
       body:`<p class="muted"><b>${U.esc(f.p.name)}</b><br>${U.esc(Pricing.labelVariant(f.v))} · lot ${U.esc(f.lot.lotNumber||'—')}</p>
         <div class="fg"><label>${label}</label>
-          <input id="tl_qty" type="number" step="0.001" min="0" value="" oninput="Stock.updateTransferPreview(${genStart},${evtStart},'${dir}')"></div>
+          <input id="tl_qty" type="number" step="${f.v.mode==='vrac'?'0.001':'1'}" min="0" value="" oninput="Stock.updateTransferPreview(${genStart},${evtStart},'${dir}')"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           ${quickBtns}
           <button type="button" class="btn-ghost btn-sm" style="border-color:var(--ok);color:var(--ok);" onclick="document.getElementById('tl_qty').value='${avail}';Stock.updateTransferPreview(${genStart},${evtStart},'${dir}')">MAX</button>
