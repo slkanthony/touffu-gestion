@@ -118,8 +118,12 @@ const Stats = {
       const k = encodeURIComponent(e.name).replace(/'/g, '%27');
       return `<tr style="cursor:pointer;" onclick="Stats._toggleEv('${k}')"><td class="col-name" style="text-align:left;"><b>${open[e.name] ? '▾' : '▸'} ${U.esc(e.name)}</b></td><td class="num">${e.editions}</td><td class="num">${e.nDays}</td>${rowCells(e.tot)}<td class="num sensitive">${U.eur(e.perDay)}</td><td class="num sensitive">${U.eur(e.basket)}</td></tr>${open[e.name] ? yRows : ''}`;
     }).join('');
-    // Simulateur
-    const simName = this._evSim && list.some(e => e.name === this._evSim) ? this._evSim : (list[0] && list[0].name) || '';
+    // Simulateur — tous les événements du référentiel (même sans vente) + création directe.
+    const allNames = Store.eventList();
+    const simName = this._evSim && allNames.includes(this._evSim) ? this._evSim : (allNames[0] || '');
+    const encN = encodeURIComponent(simName).replace(/'/g, '%27');
+    const fi = simName ? Store.eventInfo(simName) : {};
+    const inp = (key, lbl, ph, step) => `<div class="fg"><label>${lbl}</label><input ${step ? `type="number" step="${step}" min="0"` : ''} value="${U.esc(fi[key] ?? '')}" placeholder="${ph}" onchange="Params.setEventInfo('${encN}','${key}',this.value)"></div>`;
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">rentabilité par événement</span></div>
       ${this.tabBar()}
@@ -130,38 +134,57 @@ const Stats = {
         <p class="muted" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
-      ${list.length ? `<div class="card">
-        <h2>🧮 Simuler une prochaine édition</h2>
-        <p class="muted">D'après la moyenne de tes éditions passées : combien tu peux espérer gagner avec le prix de stand prévu, et le CA minimum pour couvrir le stand.</p>
+      <div class="card">
+        <h2>🧮 Simuler / préparer un événement</h2>
+        <p class="muted">Prépare un marché à l'avance : sa fiche (stand, trajet…) est la même que dans Paramètres → Événements, et sera pré-remplie au retour d'événement.</p>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
-          <div class="fg" style="max-width:280px;"><label>Événement</label><select id="ev_sim_name" onchange="Stats._evSim=this.value;Stats._simEvent()">${list.slice().sort((a, b) => U.sortFr(a.name, b.name)).map(e => `<option ${e.name === simName ? 'selected' : ''}>${U.esc(e.name)}</option>`).join('')}</select></div>
-          <div class="fg" style="max-width:180px;"><label>Prix du stand prévu (€)</label><input id="ev_sim_fee" type="number" step="1" min="0" value="${this._evSimFee || ''}" placeholder="0" oninput="Stats._evSimFee=this.value;Stats._simEvent()"></div>
+          <div class="fg" style="max-width:300px;"><label>Événement</label>${Ventes.eventSelect(simName, 'Stats._evSim=v;Stats.render()', '', 'Stats.render()')}</div>
+          ${simName ? `<div class="fg" style="max-width:200px;"><label>CA espéré (€)</label><input id="ev_sim_ca" type="number" step="1" min="0" value="${(this._evSimCA || {})[simName] || ''}" placeholder="moyenne" oninput="(Stats._evSimCA=Stats._evSimCA||{})[Stats._evSimCur]=this.value;Stats._simEvent()"></div>` : ''}
         </div>
-        <div id="ev_sim_out" class="mt"></div>
-      </div>` : ''}`);
-    if (list.length) this._simEvent();
+        ${simName ? `<div class="grid c3 mt">
+          ${inp('place', 'Lieu', 'ex : Lyon, place Bellecour')}
+          ${inp('stand', 'Prix du stand prévu (€)', '0', '0.01')}
+          ${inp('km', 'Kilomètres aller-retour', '0', '1')}
+          ${inp('tolls', 'Péages / parking (€)', '0', '0.01')}
+          ${inp('other', 'Hébergement / autres (€)', '0', '0.01')}
+          <div class="fg"><label>Déplacement calculé</label><span class="sensitive" style="display:block;padding:8px 0;font-weight:600;">${U.eur(Store.eventTravelCost(simName))}</span></div>
+        </div>
+        <div id="ev_sim_out" class="mt"></div>` : '<p class="muted">Aucun événement : crée-en un avec « ＋ Nouvel événement… ».</p>'}
+      </div>`);
+    this._evSimCur = simName;
+    if (simName) this._simEvent();
   },
   _simEvent() {
     const out = document.getElementById('ev_sim_out'); if (!out) return;
-    const e = this._eventAgg().list.find(x => x.name === U.val('ev_sim_name')); if (!e) return;
-    const n = e.editions || 1;
-    const avgCA = e.tot.ca / n;
-    const travel = Store.eventTravelCost(e.name);                // déplacement prévu (fiche de l'événement)
-    const avgNetExStand = (e.tot.net + e.tot.stand + e.tot.travel) / n;   // bénéfice moyen AVANT stand et déplacement
-    const avgStand = e.tot.stand / n;
-    const fee = U.val('ev_sim_fee') === '' ? U.num(Store.eventInfo(e.name).stand) : U.num(U.val('ev_sim_fee'));
-    const est = avgNetExStand - fee - travel;
-    const rate = e.tot.ca > 0 ? (e.tot.net + e.tot.stand + e.tot.travel) / e.tot.ca : 0;  // ce qu'il reste par € de CA avant stand/déplacement
+    const name = this._evSimCur; if (!name) return;
+    const all = this._eventAgg().list;
+    const e = all.find(x => x.name === name);
+    const exFees = t => t.net + t.stand + t.travel;               // bénéfice AVANT stand et déplacement
+    const n = e ? (e.editions || 1) : 0;
+    // Taux « ce qu'il reste par € de CA avant stand/déplacement » : celui de l'événement s'il a un
+    // historique, sinon la moyenne de tous tes événements.
+    const gCA = all.reduce((a, x) => a + x.tot.ca, 0), gEx = all.reduce((a, x) => a + exFees(x.tot), 0);
+    const gEd = all.reduce((a, x) => a + (x.editions || 1), 0);
+    const own = !!(e && e.tot.ca > 0);
+    const rate = own ? exFees(e.tot) / e.tot.ca : (gCA > 0 ? gEx / gCA : 0);
+    const avgCA = own ? e.tot.ca / n : (gEd ? gCA / gEd : 0);
+    const typed = U.val('ev_sim_ca');
+    const ca = typed === '' ? avgCA : U.num(typed);
+    const fee = U.num(Store.eventInfo(name).stand), travel = Store.eventTravelCost(name);
+    const exF = ca * rate;
+    const est = exF - fee - travel;
     const breakEven = rate > 0 ? (fee + travel) / rate : null;
+    const caLbl = typed !== '' ? 'CA espéré (saisi)' : own ? `CA moyen de cet événement (${n} édition(s))` : 'CA moyen de tous tes événements';
+    if (!rate) { out.innerHTML = `<p class="muted">Pas encore assez de ventes d'événement pour estimer un taux de bénéfice. Stand + déplacement prévus : <b class="sensitive">${U.eur(fee + travel)}</b>.</p>`; return; }
     out.innerHTML = `<div class="recap-grid">
-      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgCA)}</div><div class="l">CA moyen par édition (${n})</div></div>
-      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgStand)}</div><div class="l">Stand payé en moyenne</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(ca)}</div><div class="l">${caLbl}</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(exF)}</div><div class="l">Bénéfice avant stand & déplacement (${Math.round(rate * 100)} % du CA)</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(fee)}</div><div class="l">Stand prévu (fiche)</div></div>
       <div class="kpi recap-tile sensitive"><div class="v">${U.eur(travel)}</div><div class="l">Déplacement prévu (fiche)</div></div>
-      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgNetExStand)}</div><div class="l">Bénéfice moyen avant stand & déplacement</div></div>
-      <div class="kpi recap-tile sensitive ${est >= 0 ? 'good' : 'bad'} recap-net"><div class="v ${est >= 0 ? 'pos' : 'neg'}">${U.eur(est)}</div><div class="l">Bénéfice estimé avec ce stand</div></div>
+      <div class="kpi recap-tile sensitive ${est >= 0 ? 'good' : 'bad'} recap-net"><div class="v ${est >= 0 ? 'pos' : 'neg'}">${U.eur(est)}</div><div class="l">Bénéfice estimé</div></div>
       <div class="kpi recap-tile sensitive"><div class="v">${breakEven === null ? '—' : U.eur(breakEven)}</div><div class="l">CA minimum pour couvrir stand + déplacement</div></div>
     </div>
-    <p class="muted" style="font-size:.82rem;margin-top:8px;">${est >= 0 ? '✅ Avec ce prix de stand, cet événement reste rentable si tu refais un CA proche de ta moyenne.' : '🔴 Avec ce prix de stand, tu serais en perte à CA égal à ta moyenne.'} Estimation basée sur ${n} édition(s) — à prendre comme un ordre de grandeur.</p>`;
+    <p class="muted" style="font-size:.82rem;margin-top:8px;">${est >= 0 ? '✅ Rentable avec ce CA.' : '🔴 En perte avec ce CA.'} ${own ? `Taux de bénéfice tiré de tes ${n} édition(s) de cet événement.` : "Pas encore d'historique pour cet événement : taux de bénéfice moyen de tous tes événements."} À prendre comme un ordre de grandeur.</p>`;
   },
 
   _packAgg() {

@@ -558,12 +558,12 @@ const Ventes = {
   eventNamesDatalist() { return ''; },
   /* Menu déroulant d'événement (référentiel Paramètres → Événements) + « ＋ Nouvel événement… »
      qui l'ajoute au référentiel sans quitter l'écran. `cb` = code JS appelé avec la valeur (v). */
-  eventSelect(cur, cb, style) {
+  eventSelect(cur, cb, style, after) {
     const names = this.eventNames();
     if (cur && !names.includes(cur)) names.unshift(cur);
-    return `<select style="${style || ''}" onchange="Ventes._pickEvent(this, v => { ${cb} })"><option value="">— choisir —</option>${names.map(n => `<option ${n === cur ? 'selected' : ''} value="${U.esc(n)}">${U.esc(n)}</option>`).join('')}<option value="__new">＋ Nouvel événement…</option></select>`;
+    return `<select style="${style || ''}" onchange="Ventes._pickEvent(this, v => { ${cb} }${after ? `, () => { ${after} }` : ''})"><option value="">— choisir —</option>${names.map(n => `<option ${n === cur ? 'selected' : ''} value="${U.esc(n)}">${U.esc(n)}</option>`).join('')}<option value="__new">＋ Nouvel événement…</option></select>`;
   },
-  _pickEvent(sel, cb) {
+  _pickEvent(sel, cb, after) {
     let v = sel.value;
     if (v === '__new') {
       /* Fenêtre de l'appli (DA caramel) au lieu du prompt() natif du navigateur. */
@@ -574,7 +574,7 @@ const Ventes = {
         U.closeModal();
         const name = Params.addEvent(n) || n;
         cb(name);
-        this.render();   // le nouvel événement apparaît aussitôt dans les autres menus (autres journées, espèces)
+        if (after) after(); else this.render();   // le nouvel événement apparaît aussitôt dans les autres menus (autres journées, espèces)
       };
       U.modal({
         title: '🎪 Nouvel événement', okLabel: 'Créer',
