@@ -1890,7 +1890,7 @@ const Stock = {
         <thead><tr><th class="col-name">${sortHead('name','Article')}</th><th>${sortHead('dim','Dimensions')}</th><th>${sortHead('cat','Catégorie')}</th><th style="text-align:center;">${sortHead('qty','En stock')}</th><th style="text-align:center;">${sortHead('low','Seuil')}</th><th style="text-align:center;">${sortHead('cost','Coût / unité')}</th><th></th></tr></thead>
         <tbody>${list.map(c=>{const cTotal=c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit);const cQper=U.num(c.costQtyPer)||1;return `<tr>
           <td class="col-name"><b>${U.esc(c.name)}</b>${this.replaceBadge(c)}</td>
-          <td class="muted" style="${c.category === 'Blisters' && U.num(c.blisterWidthMm) ? 'font-size:1rem;font-weight:600;' : ''}">${this.consoDims(c) ? U.esc(this.consoDims(c)) : '—'}</td>
+          <td class="muted" style="font-size:1.1rem;font-weight:600;">${this.consoDims(c) ? U.esc(this.consoDims(c)) : '—'}</td>
           <td><span class="badge info">${U.esc(c.category||'Autre')}</span></td>
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
