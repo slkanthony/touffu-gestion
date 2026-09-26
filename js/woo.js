@@ -178,6 +178,57 @@ const Woo = {
     const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()));
     return { matched, unknown, noSku, appOnly };
   },
+  /* Groupe « à relier » par viande : à gauche les articles SumUp sans SKU ou avec un SKU inconnu,
+     à droite les produits de l'appli (avec SKU) absents de SumUp — même viande côte à côte, triés par nom,
+     pour qu'Antho repère lui-même les correspondances et corrige le SKU dans SumUp. Aucun rapprochement
+     automatique par ressemblance de nom (règle du projet) : c'est un simple rangement. */
+  _sumupGroupKey(label) { return U.normSearch(label || '').replace(/[^a-z0-9]/g, ''); },
+  _sumupCatOf(l) {
+    const parts = String(l.cat || '').split('||').map(x => x.trim()).filter(Boolean);
+    const meat = parts.find(x => !x.startsWith('#'));
+    return meat || (parts.length ? 'Accessoires' : 'Sans catégorie');
+  },
+  _sumupOpen: {},
+  _copySku(t) {
+    const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    U.toast(ok ? `SKU copié : ${t}` : `SKU : ${t}`);
+  },
+  _renderSumupPairs(r) {
+    const groups = new Map();
+    const g = (label) => { const k = this._sumupGroupKey(label); if (!groups.has(k)) groups.set(k, { label, left: [], right: [] }); return groups.get(k); };
+    r.noSku.forEach(l => g(this._sumupCatOf(l)).left.push({ ...l, why: 'sans SKU' }));
+    r.unknown.forEach(l => g(this._sumupCatOf(l)).left.push({ ...l, why: 'inconnu' }));
+    r.appOnly.forEach(u => g(u.kind === 'A' ? 'Accessoires' : (u.type || 'Sans catégorie')).right.push(u));
+    // Catégories SumUp / viandes appli nommées un peu différemment (« CERF/ CHEVREUIL » ↔ « Cerf »,
+    // « CORNE » ↔ « Cornes ») : un groupe seulement SumUp et un groupe seulement appli dont l'un des noms
+    // commence par l'autre sont réunis.
+    [...groups.entries()].forEach(([k, x]) => {
+      if (!x.left.length || x.right.length) return;
+      const hit = [...groups.entries()].find(([k2, y]) => k2 !== k && !y.left.length && y.right.length && k2.length >= 4 && k.length >= 4 && (k.startsWith(k2) || k2.startsWith(k)));
+      if (hit) { x.right = hit[1].right; x.label = x.label + ' · ' + hit[1].label; groups.delete(hit[0]); }
+    });
+    const list = [...groups.values()].filter(x => x.left.length || x.right.length).sort((a, b) => (b.left.length > 0) - (a.left.length > 0) || U.sortFr(a.label, b.label));
+    const nL = r.noSku.length + r.unknown.length;
+    const sku = t => `<span class="tag" style="cursor:copy;" title="Cliquer pour copier" onclick="Woo._copySku('${U.esc(t).replace(/&#39;/g, "\\'")}')">${U.esc(t)} 📋</span>`;
+    return `<h3 class="mt">🔗 À relier, par viande <span class="muted" style="font-size:.85rem;font-weight:400;">— ${nL} article(s) SumUp à corriger · ${r.appOnly.length} produit(s) de l'appli absents de SumUp</span></h3>
+      <p class="muted help">À gauche, les articles SumUp sans SKU ou avec un SKU que l'appli ne connaît pas ; à droite, les produits de l'appli (avec leur SKU) qui ne sont pas dans SumUp, pour la même viande. Repère les correspondances, clique le SKU de l'appli pour le copier, et colle-le dans SumUp. Rien n'est relié automatiquement.</p>
+      ${list.map(x => {
+        const k = this._sumupGroupKey(x.label);
+        const open = this._sumupOpen[k] !== undefined ? this._sumupOpen[k] : false;
+        return `<details class="fold mt" ${open ? 'open' : ''} ontoggle="Woo._sumupOpen['${k}']=this.open"><summary><b>${U.esc(x.label)}</b> <span class="muted" style="font-size:.85rem;">— SumUp à corriger : ${x.left.length} · appli absent de SumUp : ${x.right.length}</span></summary>
+          <div class="sumup-pairs">
+            <div><div class="muted" style="font-size:.8rem;margin-bottom:4px;">💳 SumUp</div>
+              ${x.left.sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).map(l => `<div class="sp-row"><span><b>${U.esc(l.name)}</b>${l.variant ? ' — ' + U.esc(l.variant) : ''}</span><span>${l.why === 'sans SKU' ? '<span class="badge warn">sans SKU</span>' : `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(l.sku)}</span>`} <span class="muted">${l.price != null ? U.eur(l.price) : ''}</span></span></div>`).join('') || '<div class="muted">Rien à corriger</div>'}
+            </div>
+            <div><div class="muted" style="font-size:.8rem;margin-bottom:4px;">📦 Appli (pas dans SumUp)</div>
+              ${x.right.sort((a, b) => U.sortFr(a.name + a.label, b.name + b.label)).map(u => `<div class="sp-row"><span><b>${U.esc(u.name)}</b>${u.label ? ' — ' + U.esc(u.label) : ''}</span><span>${sku(u.sku)} <span class="muted">${U.eur(u.price)}</span></span></div>`).join('') || '<div class="muted">—</div>'}
+            </div>
+          </div></details>`;
+      }).join('')}`;
+  },
   exportSumupIssues() {
     const r = this._sumupReport();
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
@@ -234,19 +285,7 @@ const Woo = {
         </tr>`).join('') || `<tr><td colspan="8" class="muted">${this.sumupOnlyIssues ? 'Rien à corriger sur les produits reliés 🎉' : 'Aucun produit relié par SKU.'}</td></tr>`}</tbody>
       </table></div>
       <p class="muted help">« Prix appli » = prix de vente TTC de la variante dans le Stock (ou de l'accessoire). « Qté SumUp » n'est comparée que si le suivi de stock est activé sur l'article dans SumUp. « + » dans l'écart = l'appli est plus chère que SumUp.</p>
-      ${small(r.unknown.sort((a, b) => U.sortFr(a.name, b.name)), '❓ SKU présent dans SumUp mais introuvable dans l\'appli', [
-        { h: 'Article SumUp', f: x => `${U.esc(x.name)}${x.variant ? ' — ' + U.esc(x.variant) : ''}` },
-        { h: 'SKU', f: x => `<span class="tag">${U.esc(x.sku)}</span>` },
-        { h: 'Prix', n: 1, f: x => x.price != null ? U.eur(x.price) : '—' }], r.unknown.length > 0)}
-      ${small(r.noSku.sort((a, b) => U.sortFr(a.name, b.name)), '🏷️ Articles SumUp sans SKU (non comparables)', [
-        { h: 'Article SumUp', f: x => `${U.esc(x.name)}${x.variant ? ' — ' + U.esc(x.variant) : ''}` },
-        { h: 'Catégorie', f: x => U.esc(x.cat || '—') },
-        { h: 'Prix', n: 1, f: x => x.price != null ? U.eur(x.price) : '—' }], false)}
-      ${small(r.appOnly.sort((a, b) => U.sortFr(a.name + a.label, b.name + b.label)), '📋 Dans l\'appli (avec SKU) mais absent de SumUp', [
-        { h: 'Produit', f: x => `${U.esc(x.name)}${x.label ? ' — ' + U.esc(x.label) : ''}` },
-        { h: 'SKU', f: x => `<span class="tag">${U.esc(x.sku)}</span>` },
-        { h: 'Prix', n: 1, f: x => U.eur(x.price) },
-        { h: 'Stock total', n: 1, f: x => U.qty(x.availG + x.availE) }], false)}`;
+      ${this._renderSumupPairs(r)}`;
   },
   _renderCompare() {
     const c = this._cmp;

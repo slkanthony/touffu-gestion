@@ -794,3 +794,9 @@ td.var-cell .vc-name { white-space: nowrap; }
 td.var-cell .vc-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; }
 td.var-cell .vc-badges:empty { display: none; }
 td.var-cell .vc-badges .badge { white-space: nowrap; }
+
+/* Site → Comparer avec SumUp : paires « à relier » par viande (SumUp à gauche, appli à droite) */
+.sumup-pairs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 8px 4px; }
+.sumup-pairs .sp-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 6px; border-bottom: 1px solid var(--card-border); font-size: .88rem; text-align: left; }
+.sumup-pairs .sp-row > span:last-child { white-space: nowrap; }
+@media (max-width: 800px) { .sumup-pairs { grid-template-columns: 1fr; } }
