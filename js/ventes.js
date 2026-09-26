@@ -860,14 +860,22 @@ const Ventes = {
     }));
     // Safe vs ambigu (multi-lots partiels) calculés sur les buckets réels (respecte la fusion).
     let safeQty = 0, ambQty = 0;
-    const ambItems = [];
+    const ambItems = [], safeItems = [];
     this._retourBuckets(d, imported).forEach(b => {
       const ok = b.lines.filter(l => l.status === 'ok' && !imported.has(l.ref));
       const { safe, ambiguous } = this._retourSplit(ok);
       safeQty += safe.reduce((a, g) => a + g.qty, 0);
       ambQty += ambiguous.reduce((a, g) => a + g.qty, 0);
       ambItems.push(...ambiguous);
+      safeItems.push(...safe);
     });
+    // Récap détaillé de ce qui SERA déduit (demande d'Antho) : un produit par ligne, stock
+    // événement actuel → après (jamais négatif), en rouge si insuffisant.
+    const safeMap = {};
+    safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || ''); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0 }); x.qty += g.qty; x.ttc += g.ttc; });
+    const unitsByKey = {}; this.units().forEach(u => { unitsByKey[u.kind === 'A' ? 'A|' + u.pId + '|' : u.key] = u; });
+    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const cur = u ? U.num(u.availE) : 0; return { ...g, cur, after: Math.max(0, cur - g.qty), short: Math.max(0, g.qty - cur) }; })
+      .sort((a, b) => U.sortFr(a.name + ' ' + (a.label || ''), b.name + ' ' + (b.label || '')));
     // Regroupe l'affichage des ambigus par produit (une ligne par variante).
     const ambMap = {};
     ambItems.forEach(a => { const k = a.name + '||' + a.label; const g = ambMap[k] || (ambMap[k] = { name: a.name, label: a.label, qty: 0, total: a.total, nLots: a.nLots }); g.qty += a.qty; });
@@ -885,6 +893,11 @@ const Ventes = {
         <input type="checkbox" ${d.mergeOne ? 'checked' : ''} onclick="Ventes.setRetourMerge(this.checked)">
         Fusionner les journées cochées en un seul ticket (ex : marché sur un week-end)</label>
       <div class="mt">${d.days.map(g => this.retourDayCard(g, imported)).join('')}</div>
+      ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${this.retourDeduct ? 'qui seront déduits du stock événement' : 'enregistrés SANS déduction (import historique)'}</b> (${safeQty} article(s))${safeList.some(x => x.short) ? ' <span class="badge bad">⚠️ stock insuffisant sur ' + safeList.filter(x => x.short).length + '</span>' : ''}</summary><div class="fold-body">
+        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${this.retourDeduct ? 'Après validation' : 'Après (inchangé)'}</th></tr></thead>
+        <tbody>${safeList.map(x => `<tr${x.short && this.retourDeduct ? ' style="color:var(--alerte);"' : ''}><td class="col-name"><b>${U.esc(x.name)}</b></td><td>${U.esc(x.label || '')}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${U.qty(x.cur)}</td><td class="num">${this.retourDeduct ? `<b>${U.qty(x.after)}</b>${x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : ''}` : U.qty(x.cur)}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted" style="font-size:.82rem;">Déduction FEFO (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif. Les ventes espèces et consommables ajoutés plus bas sont déduits en plus.</p>
+      </div></details>` : ''}
       ${problems.length ? (() => { const gp = this._groupProblems(problems); return `<details class="fold" style="margin-top:12px;"><summary><b>⚠️ ${gp.length} produit(s) à traiter à la main</b> (${problems.reduce((a, l) => a + l.qty, 0)} article(s))</summary><div class="fold-body">
         <p class="muted">Non déduits automatiquement (sans SKU ou SKU absent de ton stock). Fais-les à la main dans la vente si nécessaire, ou complète le SKU côté SumUp et Stock puis réimporte.</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit (SumUp)</th><th>SKU</th><th class="num">Qté</th><th class="num">Montant</th><th>Motif</th></tr></thead>
