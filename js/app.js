@@ -499,8 +499,8 @@ const App = {
 
       <div class="card mt dash-scope-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
         <span class="muted" style="font-size:.85rem;margin-right:4px;">Afficher :</span>
-        ${[['Mastication', '🥩 Mastication'], ['Matières premières', '🧵 Matières premières'], ['Consommable', '📦 Consommables'], ['Accessoire', '🐕 Accessoires']].map(([k, l]) => `<button class="${dashScope.includes(k) ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App.toggleDashScope('${k}')" title="Cliquer pour ajouter / retirer cette catégorie">${l}</button>`).join('')}
-        <button class="btn-ghost btn-sm" style="margin-left:auto;" onclick="App.setAllDashScope(${dashScope.length === this.dashScopeAll.length ? 'false' : 'true'})">${dashScope.length === this.dashScopeAll.length ? 'Tout décocher' : 'Tout afficher'}</button>
+        ${[['Mastication', '🥩 Mastication'], ['Matières premières', '🧵 Matières premières'], ['Consommable', '📦 Consommables'], ['Accessoire', '🐕 Accessoires']].map(([k, l]) => `<button class="${dashScope.includes(k) ? 'btn-cta' : 'btn-ghost'} dash-scope-btn" onclick="App.toggleDashScope('${k}')" title="Cliquer pour ajouter / retirer cette catégorie">${l}</button>`).join('')}
+        <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="App.setAllDashScope(${dashScope.length === this.dashScopeAll.length ? 'false' : 'true'})">${dashScope.length === this.dashScopeAll.length ? 'Tout décocher' : 'Tout afficher'}</button>
       </div>
 
       <div class="grid c2 mt">
