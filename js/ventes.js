@@ -580,26 +580,30 @@ const Ventes = {
     const sortHead = (key, label) => `<span class="sortable ${this.historySort.field === key ? 'active' : ''}" onclick="Ventes.setHistorySort('${key}')">${label} ${this.historySort.field === key ? (this.historySort.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const today = Store.state.sales.filter(s => !s.cancelled && new Date(s.ts).toDateString() === new Date().toDateString());
     const caJour = today.reduce((a, s) => a + s.total, 0);
+    // Ordre des colonnes (retour d'Antho) : Date · Stock · articles (produit, variante, SKU, lot, qté, prix)
+    // à GAUCHE, puis les infos de la vente (paiement, remise, client, frais…) à droite, souvent vides.
+    // Cellules de la vente alignées en HAUT (rowspan) pour ne plus flotter au milieu d'une longue liste.
+    const rs = n => `rowspan="${n}" style="vertical-align:top;"`;
     const rowsHtml = sales.map(s => s.items.map((i, idx) => `<tr class="${s.cancelled ? 'dim' : ''}">
-        ${idx === 0 ? `<td style="white-space:nowrap;" rowspan="${s.items.length}">${U.frDateTime(s.ts)}</td>
-        <td rowspan="${s.items.length}"><span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span></td>
-        <td rowspan="${s.items.length}">${this.paymentLabel(s)}</td>
-        <td rowspan="${s.items.length}">${this.deliveryLabel(s)}</td>
-        <td rowspan="${s.items.length}">${s.customerName ? U.esc(s.customerName) : '—'}</td>
-        <td rowspan="${s.items.length}">${s.delivery === 'livraison' ? `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>` : '—'}</td>
-        <td rowspan="${s.items.length}">${s.delivery === 'livraison' ? `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">` : '—'}</td>
-        <td rowspan="${s.items.length}">${s.source === 'event' ? `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">` : '—'}</td>` : ''}
-        <td class="col-name"><b>${U.esc(i.name)}</b></td>
+        ${idx === 0 ? `<td ${rs(s.items.length).replace('style="', 'style="white-space:nowrap;')}>${U.frDateTime(s.ts)}</td>
+        <td ${rs(s.items.length)}><span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span></td>` : ''}
+        <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
         <td>${i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
         <td class="num">${U.qty(i.qty)}</td>
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
-        ${idx === 0 ? `<td rowspan="${s.items.length}" style="white-space:nowrap;">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Ajouter frais de stand / consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</td>` : ''}
+        ${idx === 0 ? `<td ${rs(s.items.length).replace('style="', 'style="border-left:2px solid var(--caramel);')}>${this.paymentLabel(s)}</td>
+        <td ${rs(s.items.length)}>${this.deliveryLabel(s)}</td>
+        <td ${rs(s.items.length)}>${s.customerName ? U.esc(s.customerName) : '—'}</td>
+        <td ${rs(s.items.length)}>${s.delivery === 'livraison' ? `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>` : '—'}</td>
+        <td ${rs(s.items.length)}>${s.delivery === 'livraison' ? `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">` : '—'}</td>
+        <td ${rs(s.items.length)}>${s.source === 'event' ? `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">` : '—'}</td>
+        <td ${rs(s.items.length).replace('style="', 'style="white-space:nowrap;')}>${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Ajouter frais de stand / consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</td>` : ''}
       </tr>`).join('')).join('');
     return `<p class="muted">Aujourd'hui : <b>${U.eur(caJour)}</b> (${today.length} sorties)</p>
-      <div class="table-wrap"><table><thead><tr><th>${sortHead('date', 'Date')}</th><th>Stock</th><th>${sortHead('payment', 'Paiement')}</th><th>Remise</th><th>Client</th><th>Port client</th><th>Frais d'envoi</th><th>Frais stand</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th></th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>${sortHead('date', 'Date')}</th><th>Stock</th><th class="col-name" style="text-align:left;">${sortHead('name', 'Produit')}</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th style="border-left:2px solid var(--caramel);">${sortHead('payment', 'Paiement')}</th><th>Remise</th><th>Client</th><th>Port client</th><th>Frais d'envoi</th><th>Frais stand</th><th></th></tr></thead>
       <tbody>${rowsHtml || '<tr><td colspan="16" class="muted">Aucune sortie enregistrée.</td></tr>'}</tbody></table></div>`;
   },
 
