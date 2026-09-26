@@ -2096,14 +2096,16 @@ const Stock = {
     });
     const sortHead = (key, label) => `<span class="sortable ${f.sort===key?'active':''}" onclick="Stock.setConsoSort('${key}')">${label} ${f.sort===key?(f.sortDir==='asc'?'▲':'▼'):'⇕'}</span>`;
     document.getElementById('stockBody').innerHTML=`
-      <div class="toolbar"><button class="btn-cta" onclick="Stock.editConso()">＋ Consommable</button>
-        <span class="muted">Cartons d'envoi, sachets, blisters, étiquettes, encre…</span></div>
-      <div class="card"><div class="grid c4">
+      <div class="card" style="padding:12px 16px;"><div class="grid c4">
         <div class="fg mb0"><label>Recherche</label><input id="conso_q" placeholder="nom, dimensions, réf…" value="${U.esc(f.q || '')}" oninput="Stock.consoFilters.q=this.value;Stock.renderConso();U.refocus('conso_q')"></div>
         <div class="fg mb0"><label>Catégorie</label>${U.customSelect({ value: f.cat || 'all', options: [{v:'all',l:'Toutes ('+all.length+')'}].concat(cats.map(c=>({v:c,l:c+' ('+cnt(x=>(x.category||'Autre')===c)+')'}))), onPick: 'Stock._setConsoCat' })}</div>
         <div class="fg mb0"><label>Lien fournisseur</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'},{v:'url',l:'Avec lien ('+cnt(c=>!!c.url)+')'},{v:'nourl',l:'Sans lien ('+cnt(c=>!c.url)+')'}], onPick: 'Stock._setConsoLink' })}</div>
         <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state || 'all', options: [{v:'all',l:'Tous'},{v:'low',l:'⚠️ Stock bas ('+cnt(isLow)+')'},{v:'out',l:'Rupture ('+cnt(c=>U.num(c.qty)<=0)+')'},{v:'replace',l:'🚩 À ne plus racheter ('+cnt(c=>!!c.toReplace)+')'}], onPick: 'Stock._setConsoState' })}</div>
-      </div>${list.length !== all.length ? `<p class="muted mb0" style="font-size:.82rem;margin-top:6px;">${list.length} / ${all.length} consommable(s) affiché(s)</p>` : ''}</div>
+      </div>
+        <div class="frow mt" style="gap:6px;align-items:center;">
+          <button class="btn-cta btn-sm" style="flex:0 0 calc(25% - 9px);" onclick="Stock.editConso()">＋ Nouveau consommable</button>
+          <span class="muted" style="margin-left:auto;flex:0 0 auto;">${list.length !== all.length ? `${list.length} / ${all.length}` : all.length} consommable(s)${list.length !== all.length ? ' affiché(s)' : ''}</span>
+        </div></div>
       ${list.length ? `<div class="card"><div class="table-wrap"><table>
         <thead><tr><th class="col-name">${sortHead('name','Article')}</th><th>${sortHead('dim','Dimensions')}</th><th>${sortHead('cat','Catégorie')}</th><th style="text-align:center;">${sortHead('qty','En stock')}</th><th style="text-align:center;">${sortHead('low','Seuil')}</th><th style="text-align:center;">${sortHead('cost','Coût / unité')}</th><th></th></tr></thead>
         <tbody>${list.map(c=>{const cTotal=c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit);const cQper=U.num(c.costQtyPer)||1;return `<tr>
