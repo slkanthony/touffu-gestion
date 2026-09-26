@@ -665,7 +665,7 @@ const Catalogue = {
       label += ` · ${U.eur(cur.cost, 3)}`;
     }
     return `<details class="multiselect custom-select pack-picker">
-      <summary>${U.esc(label)} ▾</summary>
+      <summary>${U.esc(label)}</summary>
       <div class="multiselect-panel pp-panel">
         ${row('0', '<i>Aucun</i>', '', '', !cur)}
         ${mode === 'gram' ? sachetBlock + blisterBlock : blisterBlock + sachetBlock}

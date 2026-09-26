@@ -260,7 +260,7 @@ const U = {
     const all = main.concat(autre);
     const curLabel = current === 'all' ? `Tous (${count})` : U.esc(current);
     return `<details class="multiselect meat-filter" ${openState ? 'open' : ''} ontoggle="${openSetter}=this.open">
-      <summary>${curLabel} ▾</summary>
+      <summary>${curLabel}</summary>
       <div class="multiselect-panel">
         <div class="dluo-opt${current==='all'?' active':''}" onclick="${setter}('all')">Tous (${count})</div>
         ${all.map(m => `<div class="dluo-opt${current.toLowerCase()===m.toLowerCase()?' active':''}" onclick="${setter}('${U.esc(m)}')">${U.esc(m)}</div>`).join('')}
@@ -272,9 +272,9 @@ const U = {
     const cur = options.find(o => String(o.v) === String(value)) || options[0];
     const label = cur ? cur.l : '—';
     return `<details class="multiselect custom-select${cls ? ' ' + cls : ''}">
-      <summary>${U.esc(label)} ▾</summary>
+      <summary>${U.esc(label)}</summary>
       <div class="multiselect-panel">
-        ${options.map(o => { const m = String(o.l).match(/^(.*\S)\s*\((\d+)\)$/); return `<div class="dluo-opt${String(o.v)===String(value)?' active':''}" onclick="this.closest('details').open=false;(${onPick})('${U.esc(String(o.v)).replace(/&#39;/g, "\\'")}')">${m ? `<span>${U.esc(m[1])}</span><span class="opt-n">${m[2]}</span>` : U.esc(o.l)}</div>`; }).join('')}
+        ${options.map(o => { const [a, b, c] = U.optParts(o.l); return `<div class="dluo-opt pp-row${String(o.v)===String(value)?' active':''}" onclick="this.closest('details').open=false;(${onPick})('${U.esc(String(o.v)).replace(/&#39;/g, "\\'")}')"><span class="pp-a">${U.esc(a)}</span><span class="pp-b">${U.esc(b)}</span><span class="pp-c">${U.esc(c)}</span></div>`; }).join('')}
       </div>
     </details>`;
   },
@@ -308,7 +308,7 @@ const U = {
       body = allItems.length ? allItems.map(chk).join('') : '<span class="muted">Aucune variante.</span>';
     }
     return `<details class="multiselect" ${open ? 'open' : ''} ontoggle="${onOpen}(this.open)">
-      <summary>${U.esc(label)} ▾</summary>
+      <summary>${U.esc(label)}</summary>
       <div class="multiselect-panel">
         <div class="frow" style="gap:6px;">
           <button type="button" class="btn-ghost btn-sm" onclick="${setAll}(true)">Tout cocher</button>
@@ -421,16 +421,34 @@ new MutationObserver(muts => {
    fonctionnent sans rien changer. Colonnes : data-a / data-b / data-c sur l'<option> si fournis,
    sinon découpage du texte sur « — » (1er morceau = nom, dernier = valeur à droite) et parenthèse
    finale contenant un chiffre (ex. « sachets XS (10*3*15) ») = détail. <select data-native> = exclu. */
+/* Découpe un libellé de menu en colonnes [nom, détail, valeur] : « — » sépare les morceaux (1er = nom,
+   dernier = valeur à droite, milieu = détail) ; une parenthèse finale contenant un chiffre = détail
+   (« Tous (141) », « sachets XS (10*3*15) »). Partagé par tous les menus de l'appli. */
+U.optParts = (text) => {
+  let ps = String(text ?? '').trim().split(' — ');
+  // « Poids — tous », « Dim. — toutes » : un seul libellé, pas de colonnes
+  if (ps.length === 2 && /^(tous|toutes|tout|aucun|aucune)$/i.test(ps[1].trim())) ps = [ps.join(' — ')];
+  let a = ps[0], b = ps.length > 2 ? ps.slice(1, -1).join(' · ') : '', c = ps.length > 1 ? ps[ps.length - 1] : '';
+  const m = !b && a.match(/^(.+?)\s*\(([^()]*\d[^()]*)\)$/);
+  if (m) { a = m[1]; b = m[2]; }
+  return [a, b, c];
+};
+/* Panneaux des menus maison (<details class="multiselect">) : s'ouvrent vers la gauche s'ils dépassent
+   de l'écran (ils prennent la largeur de leur contenu). */
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d.matches || !d.matches('details.multiselect') || !d.open) return;
+  const p = d.querySelector(':scope > .multiselect-panel'); if (!p) return;
+  p.style.left = ''; p.style.right = '';
+  const r = p.getBoundingClientRect();
+  if (r.right > window.innerWidth - 8) { p.style.left = 'auto'; p.style.right = '0'; }
+}, true);
 U.nsel = {
   cur: null,
   parts(o) {
     const d = o.dataset || {};
     if (d.a || d.b || d.c) return [d.a || o.textContent.trim(), d.b || '', d.c || ''];
-    const ps = o.textContent.trim().split(' — ');
-    let a = ps[0], b = ps.length > 2 ? ps.slice(1, -1).join(' · ') : '', c = ps.length > 1 ? ps[ps.length - 1] : '';
-    const m = !b && a.match(/^(.+?)\s*\(([^()]*\d[^()]*)\)$/);
-    if (m) { a = m[1]; b = m[2]; }
-    return [a, b, c];
+    return U.optParts(o.textContent);
   },
   labelHTML(sel) {
     const o = sel.options[sel.selectedIndex];

@@ -77,7 +77,7 @@ const Stock = {
     const cur = opts.find(o => o.value === current) || opts[0];
     const curLabel = cur.badge ? `<span class="badge ${cur.badge}">${cur.icon} ${cur.label}</span>` : cur.label;
     return `<details class="multiselect dluo-filter" ${this._dluoFilterOpen ? 'open' : ''} ontoggle="Stock._dluoFilterOpen=this.open">
-      <summary>${curLabel} ▾</summary>
+      <summary>${curLabel}</summary>
       <div class="multiselect-panel">
         ${opts.map(o => {
           const lb = o.badge ? `<span class="badge ${o.badge}">${o.icon} ${o.label}</span>` : o.label;
