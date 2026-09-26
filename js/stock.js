@@ -507,6 +507,7 @@ const Stock = {
     U.modal({
       title:'✏️ Modifier variante — '+U.esc(p.name), okLabel:'Enregistrer',
       body:`<div class="frow">
+        <div class="fg"><label>Nom de la variante</label><input id="ev_label" value="${U.esc(Pricing.labelVariant(v))}" placeholder="ex: 25CM, 100G, LOT 2…"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
       </div>
       ${_kids.length ? `<p class="muted" style="font-size:.8rem;margin:6px 0 0;">Déclinaisons de cette variante : <b>${_kids.map(k=>U.esc(Pricing.labelVariant(k))).join(', ')}</b> — elles héritent de sa fiche prix et de ses tags.</p>` : `<div class="frow" style="align-items:flex-end;">
@@ -582,7 +583,11 @@ const Stock = {
         </div>
       </div></div>` : ''}`,
       onOk:()=>{
+        const newLabel = U.val('ev_label').trim();
+        if (!newLabel) { U.toast('Le nom de la variante ne peut pas être vide.', true); return false; }
+        if (p.variants.some(x => x.id !== v.id && Pricing.labelVariant(x).trim().toUpperCase() === newLabel.toUpperCase())) { U.toast('Une autre variante de ce produit porte déjà ce nom.', true); return false; }
         const snap=Store.snapshot('stockM',p);
+        if (newLabel !== Pricing.labelVariant(v)) v.label = newLabel;
         v.sku=U.val('ev_sku');
         const parId = document.getElementById('ev_parent') ? U.val('ev_parent') : '';
         if (parId) {
@@ -1138,7 +1143,8 @@ const Stock = {
         if(!cv) return; // aucune correspondance existante côté stock : on ne crée rien
         const idx = enabledVars.indexOf(cv);
         const calc = Pricing.variantCalc(cat,cv,idx,base,enabledVars.length);
-        sv.catalogVariantId=cv.id; sv.label=Pricing.labelVariant(cv); sv.mode=cv.mode; sv.value=cv.value;
+        sv.catalogVariantId=cv.id; if (!sv.label) sv.label=Pricing.labelVariant(cv); // nom de variante : le stock est prioritaire (renommable dans « Modifier variante »)
+        sv.mode=cv.mode; sv.value=cv.value;
         // SKU : le Stock est prioritaire (écrase celui du Catalogue) ; sinon, si le
         // Stock n'en a pas, on reprend celui du Catalogue comme avant.
         if (sv.sku) { if (cv.sku !== sv.sku) { cv.sku = sv.sku; catChanged = true; } }
