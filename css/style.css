@@ -647,3 +647,13 @@ table.pack-tbl th { white-space: normal; font-size: .72rem; line-height: 1.2; }
 table.pack-tbl td, table.pack-tbl th { padding: 6px 8px; }
 table.pack-tbl td.num { white-space: nowrap; }
 table.pack-tbl td:nth-last-child(2) { min-width: 140px; }
+
+/* ── Tuiles KPI (2026-09-26, retour d'Antho) ──
+   Libellés plus lisibles (plus gros, plus gras) + en mode visite on ne floute QUE le chiffre :
+   le libellé (« Valeur stock (achat) »…) reste lisible pour savoir ce qui est masqué. */
+.kpi .l { font-size: 0.9rem; font-weight: 700; letter-spacing: 0.3px; margin-top: 2px; }
+.kpi .v { font-size: 1.7rem; }
+:root[data-theme="dark"] .kpi .l { color: #cdbfad; }
+body.visit-mode .kpi.sensitive { filter: none; pointer-events: auto; user-select: auto; }
+body.visit-mode .kpi.sensitive .v { filter: blur(8px); user-select: none; }
+body.visit-mode .kpi.sensitive .l::after { content: ' · masqué'; font-weight: 400; opacity: .7; text-transform: none; }
