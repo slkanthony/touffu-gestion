@@ -266,6 +266,7 @@ const App = {
       const wantRetour = sub === 'retour';
       if (wantRetour !== !!Ventes.retourOpen) { Ventes.retourOpen = wantRetour; if (!wantRetour) Ventes.retourData = null; }
     }
+    if (id === 'woo') Woo.tab = ['site', 'sumup'].includes(sub) ? sub : 'export';
     if (id === 'catalogue') {
       if (sub === 'new') { Catalogue.mode = 'new'; Catalogue.editId = null; }
       else if (sub === 'edit' && parts[2]) { Catalogue.mode = 'edit'; Catalogue.editId = parts[2]; }

@@ -804,3 +804,7 @@ td.var-cell .vc-badges .badge { white-space: nowrap; }
 /* Comparer avec SumUp : filtres en boutons (retour à la ligne propre, jamais de texte qui déborde) */
 .sumup-filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .sumup-filters button { flex: 0 0 auto; white-space: nowrap; }
+
+/* Page Site : onglets Export / Comparer avec le site / Comparer avec SumUp */
+.woo-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
+.woo-tabs button { flex: 1 1 200px; padding: 12px 16px; font-size: 1rem; }

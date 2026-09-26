@@ -7,6 +7,14 @@
    Le coût d'achat reste dans l'app (Woo ne le gère pas).
    ============================================================ */
 const Woo = {
+  /* Onglets de la page Site (2026-09-28, Antho : page interminable) : export / comparaison site / comparaison SumUp.
+     Porté par l'URL (#/woo, #/woo/site, #/woo/sumup) → survit à un F5. */
+  tab: 'export',
+  setTab(t) {
+    this.tab = t;
+    history.replaceState(null, '', '#/woo' + (t === 'export' ? '' : '/' + t));
+    this.render(); window.scrollTo(0, 0);
+  },
   stockScope: 'both',   // 'general' | 'both' — figé à 'both' : le site regroupe la totalité du stock
   includePrice: true,
   includeStock: true,
@@ -441,7 +449,12 @@ const Woo = {
         <p class="muted help mb0" data-help-anchor=".view-title h1">Le <b>SKU</b> (référence unique d'un produit sur ton site) relie chaque produit de l'app à sa fiche WooCommerce. L'app calcule le <b>prix de vente</b> et le <b>stock</b> ; tu les envoies vers le site via un fichier CSV que WooCommerce applique aux produits existants (il les retrouve par leur SKU). Ton <b>coût d'achat et tes marges restent dans l'app</b> — WooCommerce n'en a pas besoin.</p>
       </div>
 
-      <div class="card">
+
+      <div class="woo-tabs">
+        ${[['export', '📤 Export vers le site'], ['site', '🔄 Comparer avec le site'], ['sumup', '💳 Comparer avec SumUp']].map(([k, l]) => `<button class="${this.tab === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setTab('${k}')">${l}</button>`).join('')}
+      </div>
+
+      ${this.tab === 'export' ? `      <div class="card">
         <h2>⚙️ Ce que j'exporte</h2>
         <p class="muted" style="margin-top:0;margin-bottom:12px;">Le stock envoyé au site = <b>la totalité</b> (général + événement) — c'est l'ensemble de ta marchandise que ton site met en ligne.</p>
         <div class="frow" style="gap:18px;flex-wrap:wrap;margin-bottom:4px;">
@@ -465,7 +478,9 @@ const Woo = {
         <p class="muted help mb0" style="margin-top:4px;">Seule la <b>mastication</b> est envoyée. Les <b>accessoires</b> (modèles de calcul, sans SKU), <b>matières premières</b> et <b>consommables</b> ne sont <b>jamais</b> exportés ni comparés — ce ne sont pas des produits vendus en ligne. Pour un produit mastication que tu gardes dans l'appli mais ne vends pas en ligne (événement-only, test…), clique <b>🚫</b> dans la colonne « Envoi site » : il sera <b>exclu définitivement</b> de l'export.</p>
       </div>
 
-      <div class="card">
+` : ''}
+
+      ${this.tab === 'site' ? `      <div class="card">
         <h2>🔄 Comparer avec le site (import)</h2>
         <p class="muted help">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée.</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
@@ -476,7 +491,9 @@ const Woo = {
         ${this._cmp ? this._renderCompare() : ''}
       </div>
 
-      <div class="card">
+` : ''}
+
+      ${this.tab === 'sumup' ? `      <div class="card">
         <h2>💳 Comparer avec SumUp</h2>
         <p class="muted help">Dans SumUp (me.sumup.com) : <b>Articles → Exporter</b>. Dépose ici ce fichier « items-export » : l'appli compare, <b>par SKU</b>, le <b>prix TTC</b> et la <b>quantité</b> de chaque article SumUp avec ton stock, et sort la liste à corriger dans SumUp. <b>Lecture seule</b> — rien n'est modifié, ni dans l'appli ni dans SumUp.</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
@@ -487,7 +504,9 @@ const Woo = {
         ${this._sumup ? this._renderSumup() : ''}
       </div>
 
-      ${missing.length ? `<div class="card" style="border-left:4px solid var(--warn);">
+` : ''}
+
+      ${this.tab === 'export' ? `      ${missing.length ? `<div class="card" style="border-left:4px solid var(--warn);">
         <h2>⚠️ ${missing.length} produit(s) sans SKU — à relier</h2>
         <p class="muted help">Ces produits ne seront pas envoyés tant qu'ils n'ont pas de SKU. Renseigne le même SKU que sur ta fiche WooCommerce (Prix mastication → Modifier → colonne SKU, ou Accessoires → Modifier).</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Type</th></tr></thead>
@@ -513,7 +532,7 @@ const Woo = {
       <div class="card">
         <h2>🔄 Synchronisation automatique (plus tard)</h2>
         <p class="muted help mb0">L'export CSV ci-dessus est le moyen le plus sûr pour commencer. Pour une synchro automatique (l'app pousse prix et stock vers le site sans fichier), WooCommerce offre une API REST. Elle ne peut pas être appelée directement depuis cette app (les clés seraient exposées et le navigateur bloque ces appels) : il faut un petit relais côté serveur. Comme tu utilises déjà Supabase, ce relais peut être une « Edge Function » Supabase. C'est décrit dans le guide, section WooCommerce — à activer quand tu voudras. En attendant, l'export CSV fait le travail.</p>
-      </div>
+      </div>` : ''}
     `);
   },
 
