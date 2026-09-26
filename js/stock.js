@@ -1446,8 +1446,13 @@ const Stock = {
       Object.keys(byVar).forEach(k => { if (byVar[k].size >= 2) multiSet.add(k); });
     }
 
+    // Compte lecture seule (viewer) : les lots EXPIRÉS ne sont jamais montrés (demande d'Antho,
+    // 2026-09-26) ; le profil équipe et l'admin les voient normalement.
+    const hideExpired = !!(window.App && App.isViewer);
+    if (hideExpired && f.horizon === 'expired') f.horizon = '3';
     let rows = this.allLotRows().filter(r => {
       if (viewQty(r) <= 0) return false;
+      if (hideExpired && r.days < 0) return false;
       if (f.q && !r.p.name.toLowerCase().includes(f.q.toLowerCase())) return false;
       if (f.variants.length && !f.variants.includes(r.label)) return false;
       if (f.horizon === 'multi') return multiSet.has(r.p.id + '|' + r.v.id);
@@ -1483,7 +1488,7 @@ const Stock = {
         <div class="grid c3">
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_perem" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Stock.perem.q=this.value;Stock.renderPeremptions();U.refocus('stock_q_perem')"></div>
           <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ groups: varGroups, selected: f.variants, toggle: 'Stock.peremToggleVariant', setAll: 'Stock.peremSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.peremSetOpen' })}</div>
-          <div class="fg mb0"><label>Horizon</label>${U.customSelect({ value: f.horizon, options: [{v:'expired',l:'Lots expirés'},{v:'1',l:'Expire dans 1 mois'},{v:'3',l:'Expire dans 3 mois'},{v:'6',l:'Expire dans 6 mois'},{v:'9',l:'Expire dans 9 mois'},{v:'all',l:'Afficher tout (avec date)'},{v:'multi',l:'🔀 Plusieurs lots (même variante)'}], onPick: 'Stock._setPeremHorizon' })}</div>
+          <div class="fg mb0"><label>Horizon</label>${U.customSelect({ value: f.horizon, options: [...((window.App && App.isViewer) ? [] : [{v:'expired',l:'Lots expirés'}]),{v:'1',l:'Expire dans 1 mois'},{v:'3',l:'Expire dans 3 mois'},{v:'6',l:'Expire dans 6 mois'},{v:'9',l:'Expire dans 9 mois'},{v:'all',l:'Afficher tout (avec date)'},{v:'multi',l:'🔀 Plusieurs lots (même variante)'}], onPick: 'Stock._setPeremHorizon' })}</div>
         </div>
         ${f.horizon === 'multi'
           ? `<p class="muted mb0" style="border-left:3px solid var(--warn);padding-left:8px;">🔀 <b>Produits à plusieurs numéros de lot</b> dans le ${f.view==='event'?'stock ÉVÉNEMENT':f.view==='both'?'stock TOTAL (général + événement)':'stock général'} — pense à vendre la <b>DLUO la plus courte en premier</b>. Coche puis imprime pour ta feuille de marché.</p>`
