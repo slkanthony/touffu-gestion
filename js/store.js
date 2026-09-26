@@ -136,7 +136,33 @@ const Store = {
     this.migrateCatalogSuppliers(s);
     this.migrateSachetDims(s);
     this.migrateFabSegments(s);
+    this.migrateLabelTypes(s);
     return s;
+  },
+  /* Types d'étiquette (2026-09-27) : liste éditable {id,name,cost} dans Réglages → Consommables.
+     Une fiche prix pointe un type (p.labelTypeId → coût suivi en direct) ou '' = « Autre montant » (p.labelCost libre, vrac).
+     Migration unique : fiche au montant par défaut actuel → « Étiquette sachet », sinon « Autre montant » (valeur gardée). */
+  migrateLabelTypes(s) {
+    const S = s.settings; if (!S) return;
+    if (!Array.isArray(S.labelTypes)) {
+      S.labelTypes = [{ id: 'lt_sachet', name: 'Étiquette sachet', cost: U.num(S.labelCost ?? 0.10) }, { id: 'lt_elastique', name: 'Élastique + étiquette', cost: 0 }];
+      S.labelDefaultId = 'lt_sachet';
+    }
+    const def = U.num(S.labelCost ?? 0.10);
+    (s.catalogM || []).forEach(p => {
+      if (p.labelTypeId !== undefined) return;
+      const v = U.num(p.labelCost ?? def);
+      p.labelTypeId = Math.abs(v - def) < 1e-9 && S.labelTypes.some(t => t.id === 'lt_sachet') ? 'lt_sachet' : '';
+      p.labelCost = v;
+    });
+  },
+  labelTypes() { return (this.state.settings.labelTypes || []); },
+  labelType(id) { return id ? this.labelTypes().find(t => t.id === id) : null; },
+  labelDefault() { const S = this.state.settings; return this.labelType(S.labelDefaultId) || this.labelTypes()[0] || null; },
+  labelCostOf(p) {
+    const t = this.labelType(p && p.labelTypeId);
+    if (t) return U.num(t.cost);
+    return U.num(p && p.labelCost !== undefined && p.labelCost !== '' ? p.labelCost : this.state.settings.labelCost);
   },
 
   /* Si un état sauvegardé a déjà un variantPresets (donc pas remplacé par le

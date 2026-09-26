@@ -133,9 +133,7 @@ const Params = {
         </div>
         <div class="fin-block" style="order:${finPos('conso')}">${finTools('conso')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Consommables</div>
-        <div class="grid c3">
-          <div class="fg"><label>Coût étiquette par défaut (€)</label><input id="p_label" type="number" step="0.01" value="${S.labelCost}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-        </div>
+        ${this.labelTypesHTML()}
         </div>
         <div class="fin-block" style="order:${finPos('paniers')}">${finTools('paniers')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛒 Paniers & livraison</div>
@@ -657,7 +655,7 @@ const Params = {
     const S = Store.state.settings;
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
     if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
-    S.laborRate = U.numVal('p_labor'); S.labelCost = U.numVal('p_label'); S.bulkDiscount = U.numVal('p_bulk');
+    S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
     S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
     S.uvCartridgePrice = U.numVal('p_uv_price'); S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
     S.uvFilterPrice = U.numVal('p_uv_filter_price'); S.uvFilterPerYear = U.numVal('p_uv_filter_year');
@@ -1364,6 +1362,50 @@ const Params = {
 
   /* Liste des doublons : fiches prix liées à plusieurs produits stock + liens fournisseur
      partagés (mastication + consommables). Noms cliquables → produit dans le Stock. */
+  /* Types d'étiquette (Réglages → Consommables) : nom + coût, ★ = type par défaut des nouvelles fiches prix. */
+  labelTypesHTML() {
+    const S = Store.state.settings, list = Store.labelTypes(), def = Store.labelDefault();
+    const used = id => Store.state.catalogM.filter(p => p.labelTypeId === id).length;
+    return `<div class="label-types">
+      <div class="lt-row lt-head"><span>Défaut</span><span>Type d'étiquette</span><span>Coût (€)</span><span>Fiches</span><span></span></div>
+      ${list.map(t => `<div class="lt-row">
+        <span><input type="radio" name="lt_def" ${def && def.id === t.id ? 'checked' : ''} title="Type proposé pour les nouvelles fiches prix" onchange="Params.setLabelDefault('${t.id}')" style="width:18px;height:18px;"></span>
+        <input value="${U.esc(t.name)}" onchange="Params.setLabelType('${t.id}','name',this.value)">
+        <input type="number" step="0.001" min="0" value="${U.num(t.cost)}" onchange="Params.setLabelType('${t.id}','cost',this.value)">
+        <span class="muted">${used(t.id)}</span>
+        <button class="btn-icon" title="Supprimer ce type" onclick="Params.delLabelType('${t.id}')">🗑️</button>
+      </div>`).join('')}
+      <button class="btn-ghost btn-sm mt" onclick="Params.addLabelType()">＋ Ajouter un type d'étiquette</button>
+      <p class="muted" style="font-size:.8rem;margin:6px 0 0;">Chaque fiche prix choisit son type (ex. « Élastique + étiquette » pour les cornes et bois naturels). Changer un coût ici recalcule toutes les fiches qui l'utilisent. Le vrac se règle fiche par fiche avec « Autre montant ».</p>
+    </div>`;
+  },
+  setLabelType(id, field, val) {
+    const t = Store.labelType(id); if (!t) return;
+    t[field] = field === 'cost' ? U.num(val) : (String(val).trim() || t.name);
+    if (Store.state.settings.labelDefaultId === id && field === 'cost') Store.state.settings.labelCost = t.cost;
+    Store.state.catalogM.forEach(p => { if (p.labelTypeId === id) p.labelCost = U.num(t.cost); });
+    Store.save('settings', 'catalogM'); App.rerender();
+  },
+  setLabelDefault(id) {
+    const S = Store.state.settings, t = Store.labelType(id); if (!t) return;
+    S.labelDefaultId = id; S.labelCost = U.num(t.cost);
+    Store.save('settings'); App.rerender();
+  },
+  addLabelType() {
+    const S = Store.state.settings;
+    S.labelTypes = Store.labelTypes(); S.labelTypes.push({ id: 'lt_' + U.uid(), name: 'Nouveau type', cost: 0 });
+    Store.save('settings'); App.rerender();
+  },
+  delLabelType(id) {
+    const S = Store.state.settings, t = Store.labelType(id); if (!t) return;
+    if (S.labelTypes.length <= 1) { U.toast('Garde au moins un type d\'étiquette.', true); return; }
+    const users = Store.state.catalogM.filter(p => p.labelTypeId === id);
+    if (!confirm(`Supprimer « ${t.name} » ?` + (users.length ? `\n\n${users.length} fiche(s) prix l'utilisent : elles passeront sur « Autre montant » en gardant ${U.eur(t.cost)}.` : ''))) return;
+    users.forEach(p => { p.labelTypeId = ''; p.labelCost = U.num(t.cost); });
+    S.labelTypes = S.labelTypes.filter(x => x.id !== id);
+    if (S.labelDefaultId === id) { S.labelDefaultId = S.labelTypes[0].id; S.labelCost = U.num(S.labelTypes[0].cost); }
+    Store.save('settings', 'catalogM'); App.rerender();
+  },
   _renderDupCheck() {
     const link = o => o.kind === 'C' ? `<a href="#/stock/conso">${U.esc(o.name)}</a> <span class="muted">(consommable)</span>`
       : o.kind === 'T' ? `<a href="#/stock/matieres">${U.esc(o.name)}</a> <span class="muted">(matière)</span>`
@@ -2067,6 +2109,7 @@ const Params = {
         id: op.id || U.uid(), name: op.name || 'Sans nom', meatType: this.normMeatType(op.meatType),
         mainSupplierId, coefficient: U.num(s.coefficient) || 2,
         labelCost: U.num(s.labelCost ?? S.labelCost),
+        labelTypeId: (() => { const d = Store.labelDefault(); return d && Math.abs(U.num(s.labelCost ?? S.labelCost) - U.num(d.cost)) < 1e-9 ? d.id : ''; })(),
         suppliers: mainSupplierId ? [{
           id: U.uid(), supplierId: mainSupplierId,
           price: s.purchasePrice, taxType: s.purchaseTaxType || 'HT',

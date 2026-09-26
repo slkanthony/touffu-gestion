@@ -618,7 +618,7 @@ const Stock = {
         <div class="fg"><label>Mode</label><select id="av_mode">
           <option value="gram">Poids (g)</option><option value="piece">Pièce / lot</option>
           <option value="size">Taille (S/M/L…)</option><option value="vrac">Vrac (kg ou pc)</option></select></div>
-        <div class="fg"><label>Valeur / étiquette</label><input id="av_val" placeholder="ex: 100, S, 1…"></div>
+        <div class="fg"><label>Valeur / taille</label><input id="av_val" placeholder="ex: 100, S, 1…"></div>
       </div>
       <div class="frow">
         <div class="fg"><label>SKU WooCommerce</label><input id="av_sku" placeholder="optionnel"></div>

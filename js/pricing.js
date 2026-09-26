@@ -91,7 +91,7 @@ const Pricing = {
     const prodCost = this.variantProdCost(p, v, base);
     const sac = Store.sachet(v.sachetId);
     const sacCost = sac ? U.num(sac.cost) : 0;
-    const labelCost = U.num(p.labelCost ?? S.labelCost);
+    const labelCost = Store.labelCostOf(p);
     const cost = prodCost + sacCost + labelCost;
 
     const bulkPct = U.num(p.bulkDiscount !== undefined && p.bulkDiscount !== '' ? p.bulkDiscount : S.bulkDiscount);

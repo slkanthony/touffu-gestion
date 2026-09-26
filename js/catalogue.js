@@ -394,7 +394,7 @@ const Catalogue = {
       this._d = JSON.parse(JSON.stringify(found));
       return;
     }
-    this._d = { id: U.uid(), name: '', meatType: S.meatTypes[0], mainSupplierId: '', coefficient: 2.1, labelCost: S.labelCost, vatRate: '', bulkDiscount: '', suppliers: [], variants: [] };
+    this._d = { id: U.uid(), name: '', meatType: S.meatTypes[0], mainSupplierId: '', coefficient: 2.1, labelTypeId: (Store.labelDefault() || {}).id || '', labelCost: Store.labelDefault() ? U.num(Store.labelDefault().cost) : S.labelCost, vatRate: '', bulkDiscount: '', suppliers: [], variants: [] };
     // Pré-remplissage optionnel (ex: depuis Stock.createCatalogFromStock, "📋 Créer la fiche
     // de calcul de prix" sur un produit stock non relié) — reprend nom/viande/conditionnement
     // existants, à Antho de compléter fournisseur + prix. Jamais l'inverse (le stock ne doit
@@ -437,7 +437,13 @@ const Catalogue = {
           <button class="btn-ghost btn-sm mt" onclick="Params.addSachet()">＋ Ajouter un sachet / blister</button>
         </details>
         <hr class="sep">
-        <div class="fg" style="max-width:220px;"><label>Coût de l'étiquette (€)</label><input id="cp_label" type="number" step="0.01" value="${p.labelCost ?? S.labelCost}" oninput="Catalogue._d.labelCost=this.value;Catalogue.drawVars()"></div>
+        <div class="frow" style="align-items:flex-end;max-width:520px;">
+          <div class="fg"><label>Étiquette</label><select id="cp_labeltype" onchange="Catalogue.setLabelType(this.value)">
+            ${Store.labelTypes().map(t => `<option value="${t.id}" ${p.labelTypeId === t.id ? 'selected' : ''}>${U.esc(t.name)} — ${U.eur(t.cost)}</option>`).join('')}
+            <option value="" ${!Store.labelType(p.labelTypeId) ? 'selected' : ''}>Autre montant (vrac…)</option></select></div>
+          <div class="fg" style="max-width:160px;"><label>Coût (€)</label><input id="cp_label" type="number" step="0.01" value="${Store.labelCostOf(p)}" ${Store.labelType(p.labelTypeId) ? 'disabled title="Suit le coût réglé dans Paramètres → Réglages financiers → Consommables"' : ''} oninput="Catalogue._d.labelCost=this.value;Catalogue.drawVars()"></div>
+        </div>
+        <p class="muted" style="font-size:.78rem;margin:2px 0 0;">Les types d'étiquette (et leur coût) se gèrent dans Paramètres → Réglages financiers → Consommables.</p>
       </div>
 
       <div class="card" style="border-left:4px solid #c0564a;">
@@ -496,6 +502,13 @@ const Catalogue = {
     this.drawVars();
   },
 
+  setLabelType(id) {
+    const t = Store.labelType(id), inp = document.getElementById('cp_label');
+    this._d.labelTypeId = id;
+    if (t) this._d.labelCost = U.num(t.cost);
+    if (inp) { inp.disabled = !!t; if (t) inp.value = U.num(t.cost); else inp.focus(); }
+    this.drawVars();
+  },
   /* ---------- fournisseurs (fiche prix) ---------- */
   drawSuppliers() {
     const box = document.getElementById('cp_sups');
@@ -598,7 +611,7 @@ const Catalogue = {
         const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
         const base = Pricing.baseUnitCost(p);
         const baseCoeff = U.num(v.coeff) > 0 ? U.num(v.coeff) : (U.num(p.coefficient) || 2);
-        const cost = Pricing.variantProdCost(p, v, base) + (Store.sachet(v.sachetId) ? U.num(Store.sachet(v.sachetId).cost) : 0) + U.num(p.labelCost ?? S.labelCost);
+        const cost = Pricing.variantProdCost(p, v, base) + (Store.sachet(v.sachetId) ? U.num(Store.sachet(v.sachetId).cost) : 0) + Store.labelCostOf(p);
         if (cost > 0 && baseCoeff > 0) {
           const priceHT = ttc / (1 + vat);
           const newBulk = (1 - priceHT / (cost * baseCoeff)) * 100;
@@ -872,7 +885,7 @@ const Catalogue = {
     if (!(p.suppliers || []).length) { U.toast('Ajoute au moins un fournisseur avec son prix d\'achat.', true); return false; }
     p.meatType = U.val('cp_meat');
     p.coefficient = U.numVal('cp_coeff') || 2;
-    p.labelCost = U.numVal('cp_label');
+    p.labelTypeId = U.val('cp_labeltype'); p.labelCost = Store.labelType(p.labelTypeId) ? U.num(Store.labelType(p.labelTypeId).cost) : U.numVal('cp_label');
     p.vatRate = U.val('cp_vat');
     p.bulkDiscount = U.val('cp_bulk');
     if (!p.suppliers.some(s => s.supplierId === p.mainSupplierId)) p.mainSupplierId = p.suppliers[0].supplierId;
