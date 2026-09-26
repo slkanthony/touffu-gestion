@@ -278,6 +278,29 @@ const U = {
      est détaché puis recréé, donc `event.target.focus()` ne fait plus rien (un nœud détaché
      n'est pas focusable) — seule la 1re lettre tapée était prise en compte avant ce correctif.
      Il faut retrouver le nouvel élément (même id) dans le DOM fraîchement recréé et le refocaliser. */
+  /* Petite icône ⓘ + bulle d'explication (2026-09-27) : survol = affiche, souris qui part = efface ;
+     sur tactile, toucher = ouvre / toucher ailleurs = ferme. Une seule bulle globale (#tipBubble),
+     positionnée en fixed et gardée dans l'écran (jamais coupée par un bloc qui défile). */
+  info(html) {
+    return `<span class="info-tip" tabindex="0" onmouseenter="U.tipShow(this)" onmouseleave="U.tipHide()" onfocus="U.tipShow(this)" onblur="U.tipHide()" onclick="event.preventDefault();event.stopPropagation();U.tipToggle(this)">i<span class="info-src">${html}</span></span>`;
+  },
+  _tipEl() {
+    let b = document.getElementById('tipBubble');
+    if (!b) { b = document.createElement('div'); b.id = 'tipBubble'; b.className = 'info-bubble'; document.body.appendChild(b); }
+    return b;
+  },
+  tipShow(el) {
+    const b = this._tipEl(), src = el.querySelector('.info-src');
+    b.innerHTML = src ? src.innerHTML : ''; b._owner = el; b.classList.add('show');
+    const r = el.getBoundingClientRect(), bw = b.offsetWidth, bh = b.offsetHeight, m = 8;
+    let left = r.left + r.width / 2 - bw / 2;
+    left = Math.max(m, Math.min(left, window.innerWidth - bw - m));
+    let top = r.bottom + 8;
+    if (top + bh > window.innerHeight - m && r.top - bh - 8 > m) top = r.top - bh - 8;
+    b.style.left = left + 'px'; b.style.top = top + 'px';
+  },
+  tipHide() { const b = document.getElementById('tipBubble'); if (b) { b.classList.remove('show'); b._owner = null; } },
+  tipToggle(el) { const b = document.getElementById('tipBubble'); if (b && b._owner === el && b.classList.contains('show')) this.tipHide(); else this.tipShow(el); },
   refocus(id) {
     const el = document.getElementById(id);
     if (el) { el.focus(); el.setSelectionRange(999, 999); }
@@ -296,3 +319,6 @@ const U = {
     </div>`;
   }
 };
+
+document.addEventListener('click', (e) => { if (!e.target.closest || !e.target.closest('.info-tip')) U.tipHide(); });
+window.addEventListener('scroll', () => U.tipHide(), true);

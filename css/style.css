@@ -744,3 +744,16 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
 .lt-row { display: grid; grid-template-columns: 56px 1fr 110px 56px 36px; gap: 8px; align-items: center; margin-bottom: 6px; }
 .lt-head { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); margin-bottom: 2px; }
 .lt-row > span:first-child, .lt-row > span:nth-child(4) { text-align: center; }
+
+/* ⓘ info-bulle (U.info) */
+.info-tip { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin: 0 2px; border-radius: 50%;
+  border: 1.5px solid var(--caramel); color: var(--caramel); font: italic 700 10px/1 Georgia, serif; text-transform: none; letter-spacing: 0;
+  cursor: help; vertical-align: middle; flex: 0 0 auto; opacity: .8; }
+.info-tip:hover, .info-tip:focus { opacity: 1; background: var(--caramel); color: #fff; outline: none; }
+.info-src { display: none; }
+.info-bubble { position: fixed; z-index: 3000; max-width: min(340px, calc(100vw - 16px)); padding: 10px 12px; border-radius: 8px;
+  background: var(--card-bg); color: var(--texte); border: 1.5px solid var(--caramel); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  font-size: .82rem; line-height: 1.45; text-transform: none; letter-spacing: 0; font-weight: 400; text-align: left;
+  opacity: 0; pointer-events: none; transition: opacity .12s; }
+.info-bubble.show { opacity: 1; }
+.fin-block :is(.frow, .grid) > .fg > label { gap: 4px; }

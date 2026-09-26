@@ -43,11 +43,10 @@ const Params = {
         </div>
         <label class="vat-toggle ${S.vatActive ? 'on' : ''}">
           <input type="checkbox" id="p_vatActive" ${S.vatActive ? 'checked' : ''} onchange="Params.toggleVatActive(this.checked)">
-          <span class="vat-toggle-txt"><b>Je suis assujetti à la TVA</b> <span class="badge ${S.vatActive ? 'ok' : 'info'}">${S.vatActive ? '✅ ACTIVÉ — TVA reversée (déduite du bénéfice)' : '⚪ DÉSACTIVÉ — TVA conservée dans le bénéfice'}</span><br>
-          <span class="muted" style="text-transform:none;font-weight:400;">À cocher le jour venu. Les prix TTC affichés ne changent pas ; une fois coché, la TVA cesse d'être comptée comme bénéfice et passe en déduction dans la compta (Stats + Tableau de bord).</span></span></label>
+          <span class="vat-toggle-txt"><b>Je suis assujetti à la TVA</b> ${U.info("À cocher le jour venu. Les prix TTC affichés ne changent pas ; une fois coché, la TVA cesse d'être comptée comme bénéfice et passe en déduction dans la compta (Stats + Tableau de bord).")} <span class="badge ${S.vatActive ? 'ok' : 'info'}">${S.vatActive ? '✅ ACTIVÉ — TVA reversée (déduite du bénéfice)' : '⚪ DÉSACTIVÉ — TVA conservée dans le bénéfice'}</span></span></label>
         </div>
         <div class="fin-block" style="order:${finPos('amort')}">${finTools('amort')}
-        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛠️ Amortissement du matériel (tout l'atelier)</div>
+        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛠️ Amortissement du matériel (tout l'atelier) ${U.info("Charge fixe de l'atelier (imprimante, extracteur, scelleuse…), déduite du <b>bénéfice net mensuel</b> global (Tableau de bord + Stats, ligne « Entretien matériel »), <b>pas</b> du prix d'un produit.<br><br>⚠️ En micro-entreprise, l'amortissement n'est pas déductible fiscalement : c'est un indicateur pour toi (savoir si l'activité est rentable une fois le matériel payé).<br><br><b>Année d'achat</b> : l'amortissement s'arrête tout seul une fois la durée écoulée.<br><b>Catégorie</b> : sert seulement à ton suivi, le montant reste déduit du bénéfice net global.")}</div>
         ${(() => {
           const items = Pricing.equipItems(); const nowY = new Date().getFullYear();
           const rows = items.map(e => {
@@ -78,28 +77,26 @@ const Params = {
           if (byCat.commun) catParts.push(`commun ${U.eur(byCat.commun)}`);
           return `${rows || '<p class="muted" style="margin:2px 0;">Aucun équipement — ajoute ton imprimante UV, ton extracteur d\'air, ta scelleuse mastication…</p>'}
           <div style="margin-top:4px;"><button class="btn btn-ghost btn-sm" onclick="Params.addUvEquip()">＋ Ajouter un équipement</button></div>
-          <p style="margin:8px 0 0;font-size:1.02rem;">Amortissement total : <b>${U.eur(total)}/an</b> <span class="muted">soit ${U.eur(Pricing.equipAmortMonthly())}/mois${catParts.length ? ' — ' + catParts.join(' · ') : ''}</span></p>
-          <p class="muted" style="margin:4px 0 0;">Charge fixe de l'atelier (tous matériels : imprimante, extracteur, scelleuse…), déduite du <b>bénéfice net mensuel</b> global (Tableau de bord + Stats, ligne « Entretien matériel »), <b>pas</b> du prix d'un produit. ⚠️ En micro-entreprise, l'amortissement n'est pas déductible fiscalement — c'est un indicateur pour toi (savoir si l'activité est rentable une fois le matériel payé). Renseigne l'année d'achat pour que l'amortissement s'arrête tout seul une fois la durée écoulée. La <b>catégorie</b> (mastication / accessoires / commun) sert seulement à <b>ton suivi</b> (détail affiché ci-dessus) — le montant reste déduit du bénéfice net <b>global</b>, l'appli ne sépare pas encore la rentabilité par activité.</p>`;
+          <p style="margin:8px 0 0;font-size:1.02rem;">Amortissement total : <b>${U.eur(total)}/an</b> <span class="muted">soit ${U.eur(Pricing.equipAmortMonthly())}/mois${catParts.length ? ' — ' + catParts.join(' · ') : ''}</span></p>`;
         })()}
         </div>
 
         <div class="fin-block" style="order:${finPos('masti')}">${finTools('masti')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🥩 Mastication (achat-revente)</div>
         <div class="grid c3">
-          <div class="fg"><label>Cotisations sociales (%) <span class="muted" style="text-transform:none;font-weight:400;">— marchandises</span></label><input id="p_soc" type="number" step="0.1" value="${S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Décote paliers (%)</label><input id="p_bulk" type="number" step="1" value="${S.bulkDiscount}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label title="Badge « coeff critique » sur Prix mastication et Revente pro (mastication)">Seuil coeff critique</label><input id="p_thr" type="number" step="0.01" value="${S.b2bCoeffThreshold}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Alerte DLUO (jours avant)</label><input id="p_dluo" type="number" step="1" value="${S.dluoAlertDays}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Cotisations sociales (%) ${U.info('Taux URSSAF de la vente de marchandises (achat-revente) : mastication, et port encaissé.')}</label><input id="p_soc" type="number" step="0.1" value="${S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Décote paliers (%) ${U.info('Remise appliquée aux gros paliers (poids / lots) par défaut. Réglable aussi fiche par fiche dans Prix mastication.')}</label><input id="p_bulk" type="number" step="1" value="${S.bulkDiscount}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Seuil coeff critique ${U.info('Sous ce coefficient, un badge « coeff critique » s\'affiche sur Prix mastication et Revente pro (mastication).')}</label><input id="p_thr" type="number" step="0.01" value="${S.b2bCoeffThreshold}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Alerte DLUO (jours avant) ${U.info('Un lot passe en « proche péremption » ce nombre de jours avant sa DLUO (Stock, Tableau de bord).')}</label><input id="p_dluo" type="number" step="1" value="${S.dluoAlertDays}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
         </div>
         <div class="fin-block" style="order:${finPos('acc')}">${finTools('acc')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🐕 Accessoires (fait main)</div>
         <div class="grid c3">
           <div class="fg"><label>Taux main d'œuvre (€/h)</label><input id="p_labor" type="number" step="0.5" value="${S.laborRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Cotisations fait main (%)</label><input id="p_soc_hm" type="number" step="0.1" value="${S.socialTaxRateHandmade ?? S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label title="Badge « coeff critique » sur la page Accessoires et Revente pro (accessoires)">Seuil coeff critique</label><input id="p_acc_thr" type="number" step="0.01" value="${S.accCoeffThreshold || 2}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Cotisations fait main (%) ${U.info(`Les accessoires cousus main relèvent de l'artisanat (BIC prestation de services, 21,2 % par défaut), pas de la vente de marchandises (${U.pct(S.socialTaxRate)} pour la mastication). Utilisé dans le calcul de prix des accessoires et dans le bénéfice net du Tableau de bord.`)}</label><input id="p_soc_hm" type="number" step="0.1" value="${S.socialTaxRateHandmade ?? S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Seuil coeff critique ${U.info('Sous ce coefficient, un badge « coeff critique » s\'affiche sur la page Accessoires et Revente pro (accessoires).')}</label><input id="p_acc_thr" type="number" step="0.01" value="${S.accCoeffThreshold || 2}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
-        <p class="muted" style="margin-top:4px;">Les accessoires cousus main relèvent de l'artisanat (BIC prestation de services, 21,2 % par défaut), pas de la vente de marchandises (${U.pct(S.socialTaxRate)} pour la mastication ci-dessus). Utilisé dans le calcul de prix des accessoires et dans le bénéfice net du Tableau de bord.</p>
 
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:14px 0 6px;">🖨️ Impression UV</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
@@ -110,13 +107,12 @@ const Params = {
         <p class="muted" style="margin:4px 0 0;text-align:center;">Encre : <b>${U.eur(Pricing.uvInkPerMl())}/ml</b></p>
 
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;margin-top:12px;">
-          <div class="fg" style="margin:0;flex:0 0 auto;width:230px;text-align:center;"><label>+ Majoration entretien (% du coût encre)</label><input id="p_uv_maint_pct" type="number" step="1" min="0" value="${U.num(S.uvMaintPct) || ''}" placeholder="0" style="text-align:center;" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="muted" style="display:block;font-size:.72rem;margin-top:2px;">filtres, nettoyage, entretien — 0 = encre seule</span></div>
+          <div class="fg" style="margin:0;flex:0 0 auto;width:230px;text-align:center;"><label>+ Majoration entretien (%) ${U.info('Pourcentage ajouté au coût de l\'encre pour couvrir filtres, nettoyage et entretien. 0 = encre seule.')}</label><input id="p_uv_maint_pct" type="number" step="1" min="0" value="${U.num(S.uvMaintPct) || ''}" placeholder="0" style="text-align:center;" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
-        <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Coût UV tout compris : <b>${U.eur(Pricing.uvCostPerMl())}/ml</b> <span class="muted">(encre ${U.eur(Pricing.uvInkPerMl())}${U.num(S.uvMaintPct) ? ` + ${U.pct(U.num(S.uvMaintPct))} entretien = ${U.eur(Pricing.uvMaintPerMl())}` : ''})</span></p>
-        <p class="muted" style="margin:4px 0 0;text-align:center;">Renseigne les ml d'encre par accessoire dans sa fiche : le coût d'impression est alors intégré à son coût de revient (donc à sa marge/prix). La majoration reste optionnelle — laisse 0 si tu ne comptes que l'encre, ou mets-la plus tard pour couvrir filtres/nettoyage/entretien.</p>
+        <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Coût UV tout compris ${U.info("Renseigne les ml d'encre par accessoire dans sa fiche : le coût d'impression est alors intégré à son coût de revient (donc à sa marge et à son prix). La majoration reste optionnelle.")} : <b>${U.eur(Pricing.uvCostPerMl())}/ml</b> <span class="muted">(encre ${U.eur(Pricing.uvInkPerMl())}${U.num(S.uvMaintPct) ? ` + ${U.pct(U.num(S.uvMaintPct))} entretien = ${U.eur(Pricing.uvMaintPerMl())}` : ''})</span></p>
 
         ${(() => { const ma = Pricing.uvMaintenanceAnnual(); const _mh = U.num(S.uvMaintHoursPerYear); const _h = Math.floor(_mh); const _min = Math.round((_mh - _h) * 60); return `
-        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:16px 0 6px;">🛠️ Entretien imprimante (charges annuelles)</div>
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:16px 0 6px;">🛠️ Entretien imprimante (charges annuelles) ${U.info("Charge fixe de la machine, déduite du <b>bénéfice net mensuel</b> (Tableau de bord → CA par mois, ligne « Entretien matériel »), pas du prix de chaque accessoire.<br><br>Main d'œuvre = temps total sur l'année. L'<b>amortissement</b> du matériel se règle dans « 🛠️ Amortissement du matériel ».")}</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Filtre — prix × changements/an</label>
             <div class="cost-split" style="margin:0 auto;"><input id="p_uv_filter_price" type="number" step="0.01" min="0" value="${U.num(S.uvFilterPrice) || ''}" placeholder="0" title="Prix d'un filtre (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">€ ×</span><input id="p_uv_filter_year" type="number" step="1" min="0" value="${U.num(S.uvFilterPerYear) || ''}" placeholder="0" title="Nombre de changements par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">/an</span></div>
@@ -128,29 +124,26 @@ const Params = {
             <div class="cost-split" style="margin:0 auto;"><input id="p_uv_maint_h" type="number" step="1" min="0" value="${_h || ''}" placeholder="0" title="Heures par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">h</span><input id="p_uv_maint_min" type="number" step="5" min="0" max="59" value="${_min || ''}" placeholder="0" title="Minutes par an (en plus des heures)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">min</span></div>
           </div>
         </div>
-        <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Entretien imprimante : <b>${U.eur(ma.total)}/an</b> <span class="muted">soit ${U.eur(Pricing.uvMaintenanceMonthly())}/mois${ma.total ? ` — filtres ${U.eur(ma.filters)} + nettoyage ${U.eur(ma.clean)} + main d'œuvre ${U.eur(ma.labor)}` : ''}</span></p>
-        <p class="muted" style="margin:4px 0 0;text-align:center;">Charge fixe de la machine, déduite du <b>bénéfice net mensuel</b> (Tableau de bord → CA par mois, ligne « Entretien matériel »), pas du prix de chaque accessoire. L'<b>amortissement du matériel</b> (imprimante, extracteur, scelleuse…) se règle dans sa propre section « 🛠️ Amortissement du matériel », commune à tout l'atelier.</p>`; })()}
+        <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Entretien imprimante : <b>${U.eur(ma.total)}/an</b> <span class="muted">soit ${U.eur(Pricing.uvMaintenanceMonthly())}/mois${ma.total ? ` — filtres ${U.eur(ma.filters)} + nettoyage ${U.eur(ma.clean)} + main d'œuvre ${U.eur(ma.labor)}` : ''}</span></p>`; })()}
         </div>
         <div class="fin-block" style="order:${finPos('conso')}">${finTools('conso')}
-        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Consommables</div>
+        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Consommables ${U.info("Chaque fiche prix choisit son type d'étiquette (ex. « Élastique + étiquette » pour les cornes et bois naturels). Changer un coût ici recalcule toutes les fiches qui l'utilisent. Le vrac se règle fiche par fiche avec « Autre montant ».<br><br>● Défaut = type proposé pour les nouvelles fiches.")}</div>
         ${this.labelTypesHTML()}
         </div>
         <div class="fin-block" style="order:${finPos('paniers')}">${finTools('paniers')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛒 Paniers & livraison</div>
         <div class="grid c3">
           <div class="fg"><label>Frais de livraison facturés au client (€)</label><input id="p_shipping" type="number" step="0.01" value="${S.shippingCost ?? 6.8}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Seuil livraison offerte (€)</label><input id="p_freethr" type="number" step="1" value="${S.freeShippingThreshold ?? 69}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Seuil livraison offerte (€) ${U.info("Sous ce seuil, une vente en ligne livrée est considérée comme facturée au client (frais ci-contre) ; au-dessus, offerte (à ta charge). Modifiable au cas par cas sur chaque vente dans l'historique des sorties.")}</label><input id="p_freethr" type="number" step="1" value="${S.freeShippingThreshold ?? 69}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
-        <p class="muted" style="margin-top:4px;">Sous ce seuil, une vente en ligne livrée est considérée comme facturée au client (frais ci-dessus) ; au-dessus, offerte (à ta charge). Modifiable au cas par cas sur chaque vente dans l'historique des sorties.</p>
         </div>
         <div class="fin-block" style="order:${finPos('events')}">${finTools('events')}
-        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚗 Événements & déplacements</div>
+        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚗 Événements & déplacements ${U.info("Sert à calculer les frais de déplacement de chaque événement (km aller-retour de sa fiche × consommation × prix du litre), pré-remplis au retour d'événement. Les fiches se gèrent dans Paramètres → Référentiels → Événements.")}</div>
         <div class="grid c3">
           <div class="fg"><label>Consommation du véhicule (L / 100 km)</label><input id="p_fuel_cons" type="number" step="0.1" value="${S.fuelConsumption ?? 7}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Prix du carburant (€ / L)</label><input id="p_fuel_price" type="number" step="0.01" value="${S.fuelPrice ?? 1.85}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Coût carburant au km</label><span style="display:block;padding:8px 0;font-weight:600;">${U.eur(Store.fuelCostPerKm(), 3)} / km</span></div>
         </div>
-        <p class="muted" style="margin-top:4px;">Sert à calculer les frais de déplacement de chaque événement (kilomètres aller-retour de sa fiche, Paramètres → Référentiels → Événements), pré-remplis au retour d'événement.</p>
         </div>
         </div>
         <button class="btn-cta mt" onclick="Params.saveSettings()">Enregistrer les réglages</button>
@@ -1376,7 +1369,6 @@ const Params = {
         <button class="btn-icon" title="Supprimer ce type" onclick="Params.delLabelType('${t.id}')">🗑️</button>
       </div>`).join('')}
       <button class="btn-ghost btn-sm mt" onclick="Params.addLabelType()">＋ Ajouter un type d'étiquette</button>
-      <p class="muted" style="font-size:.8rem;margin:6px 0 0;">Chaque fiche prix choisit son type (ex. « Élastique + étiquette » pour les cornes et bois naturels). Changer un coût ici recalcule toutes les fiches qui l'utilisent. Le vrac se règle fiche par fiche avec « Autre montant ».</p>
     </div>`;
   },
   setLabelType(id, field, val) {
