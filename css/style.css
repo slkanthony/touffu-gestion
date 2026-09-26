@@ -817,3 +817,9 @@ table.sumup-table td { font-size: .88rem; line-height: 1.35; }
 table.sumup-table tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
 table.sumup-table .sub { font-size: .74rem; color: var(--gris); margin-top: 2px; }
 table.sumup-table .sku-txt { font-family: monospace; font-size: .78rem; color: var(--caramel); }
+
+/* Comparer avec SumUp : barre « Fichier d'import SumUp » */
+.sumup-import { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 12px; border: 1px dashed var(--caramel); border-radius: 10px; }
+.sumup-import label { flex: 0 0 auto; text-transform: none; }
+.sumup-import button { flex: 0 0 auto; }
+.sumup-import #sumup_exp_btn { margin-left: auto; }

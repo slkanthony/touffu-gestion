@@ -161,7 +161,75 @@ const Woo = {
     else { this.sumupSort = k; this.sumupSortDir = 'asc'; }
     this.render();
   },
-  clearSumup() { this._sumup = null; this.render(); },
+  clearSumup() { this._sumup = null; this._sumupSel = {}; this.render(); },
+
+  /* ───── Fichier d'IMPORT SumUp (2026-09-28, demande d'Antho) ─────
+     Repart du fichier SumUp déposé (toutes ses lignes, identifiants « Item id / Variant id (Do not change) »
+     intacts → SumUp met à jour l'existant au lieu de créer des doublons) et ne change QUE, pour les articles
+     cochés : la quantité (= stock événement de l'appli) et, si demandé, le prix TTC. Les autres lignes
+     sont recopiées telles quelles. Aucune sélection → tous les articles reliés (après confirmation). */
+  _sumupSel: {},
+  sumupExpQty: true,
+  sumupExpPrice: false,
+  toggleSumupSel(sku, on) { this._sumupSel[sku] = !!on; this._sumupSelInfo(); },
+  sumupSelectVisible(on) {
+    (this._sumupVisible || []).forEach(k => { this._sumupSel[k] = !!on; });
+    this.render();
+  },
+  clearSumupSel() { this._sumupSel = {}; this.render(); },
+  _sumupSelCount() { return Object.values(this._sumupSel).filter(Boolean).length; },
+  _sumupSelInfo() {
+    const n = this._sumupSelCount();
+    const el = document.getElementById('sumup_selinfo');
+    if (el) el.textContent = n ? `${n} article(s) sélectionné(s)` : 'Aucune sélection → tous les articles reliés';
+    const b = document.getElementById('sumup_exp_btn');
+    if (b) b.textContent = n ? `⬇ Fichier d'import SumUp (${n})` : '⬇ Fichier d\'import SumUp (tous)';
+  },
+  /* Découpe le texte CSV en enregistrements BRUTS (même découpage que _parseCSV, guillemets respectés) :
+     les lignes non modifiées sont recopiées caractère pour caractère dans le fichier d'import. */
+  _splitRecords(s) {
+    if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);
+    const out = []; let start = 0, inQ = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (c === '"') { if (inQ && s[i + 1] === '"') { i++; continue; } inQ = !inQ; continue; }
+      if (c === '\n' && !inQ) { out.push(s.slice(start, i).replace(/\r$/, '')); start = i + 1; }
+    }
+    if (start < s.length) out.push(s.slice(start).replace(/\r$/, ''));
+    return out;
+  },
+  _csvField(v) {
+    const t = String(v ?? '');
+    return /[",\n\r]/.test(t) || /^\s|\s$/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  },
+  async exportSumupImport() {
+    if (!this._sumup || !this._sumup.raw) { U.toast('Dépose d\'abord ton export d\'articles SumUp.', true); return; }
+    if (!this.sumupExpQty && !this.sumupExpPrice) { U.toast('Coche au moins « quantités » ou « prix ».', true); return; }
+    const r = this._sumupReport();
+    const n = this._sumupSelCount();
+    const chosen = n ? r.matched.filter(m => this._sumupSel[m.sku.toUpperCase()]) : r.matched;
+    if (!chosen.length) { U.toast('Aucun article relié par SKU à mettre à jour.', true); return; }
+    const untracked = this.sumupExpQty ? chosen.filter(m => !m.track).length : 0;
+    const changes = chosen.filter(m => (this.sumupExpQty && m.track && !m.qtyOk) || (this.sumupExpPrice && !m.priceOk)).length;
+    if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${this.sumupExpQty ? ' (quantités' + (this.sumupExpPrice ? ' + prix' : '') + ')' : ' (prix)'}.\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
+    const raw = this._sumup.raw.map(row => row.slice());
+    const lines = this._sumup.rawText.slice();
+    const sameCount = lines.length === raw.length;
+    const { iPrice, iQty } = this._sumup.cols;
+    const touched = new Set();
+    chosen.forEach(m => {
+      const row = raw[m.ri]; if (!row) return;
+      if (this.sumupExpQty) row[iQty] = String(Math.round(U.num(m.appQty)));
+      if (this.sumupExpPrice) row[iPrice] = U.num(m.appPrice).toFixed(2);
+      touched.add(m.ri);
+    });
+    // Lignes non cochées : texte d'origine tel quel ; lignes cochées : réécrites.
+    const text = (sameCount
+      ? lines.map((t, i) => touched.has(i) ? raw[i].map(f => this._csvField(f)).join(',') : t)
+      : raw.map(row => row.map(f => this._csvField(f)).join(','))).join('\n') + '\n';
+    U.download('sumup-import-' + U.today() + '.csv', text, 'text/csv;charset=utf-8');
+    U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.\n\nToutes les autres lignes sont identiques à ton export SumUp.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
+  },
   compareSumup() {
     const file = document.getElementById('woo_sumup_file')?.files[0];
     if (!file) { U.toast('Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', true); return; }
@@ -177,17 +245,20 @@ const Woo = {
       const num = v => { const n = parseFloat(String(v || '').replace(',', '.')); return isFinite(n) ? n : null; };
       const lines = [];
       let parent = null;
-      rows.slice(1).filter(r => r.length > 3).forEach(r => {
+      rows.forEach((r, ri) => {
+        if (ri === 0 || r.length <= 3) return;
         const name = (r[iName] || '').trim();
         if (name) {
           parent = { name, track: (r[iTrack] || '').trim() === 'Yes', cat: iCat >= 0 ? (r[iCat] || '').trim() : '' };
-          if ((r[iPrice] || '').trim() !== '') lines.push({ name, variant: '', sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
+          if ((r[iPrice] || '').trim() !== '') lines.push({ ri, name, variant: '', sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
           return;
         }
         if (!parent) return;
-        lines.push({ name: parent.name, variant: (r[iVar] || '').trim(), sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
+        lines.push({ ri, name: parent.name, variant: (r[iVar] || '').trim(), sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
       });
-      this._sumup = { lines, file: file.name };
+      // Fichier brut conservé : le fichier d'import SumUp repart de CE fichier (mêmes lignes, mêmes « Item id / Variant id »).
+      this._sumup = { lines, file: file.name, raw: rows, rawText: this._splitRecords(reader.result), cols: { iPrice, iQty } };
+      this._sumupSel = {};
       this.render();
       U.toast(`SumUp : ${lines.length} article(s)/variante(s) lus.`);
     };
@@ -323,6 +394,9 @@ const Woo = {
         return c * dir || U.sortFr(a.name, b.name) || this._fmtCmp(a.fmt, b.fmt);
       });
     const yes = '<span class="pos">✅</span>', no = '<span class="neg">❌</span>';
+    const selN = this._sumupSelCount();
+    const visKeys = rows.filter(m => m.st === 'matched').map(m => m.sku.toUpperCase());
+    this._sumupVisible = visKeys;
     const th = (k, l, num) => `<th class="sortable${this.sumupSort === k ? ' active' : ''}${num ? ' num' : ''}" style="cursor:pointer;" onclick="Woo._setSumupSort('${k}')">${l} ${this.sumupSort === k ? (this.sumupSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
     const sgn = v => (v > 0 ? '+' : '') ;
     return `
@@ -336,9 +410,18 @@ const Woo = {
         <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
         <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()">⬇ Liste à corriger (CSV)</button>
       </div>
+      <div class="sumup-import mt">
+        <b>📥 Fichier d'import SumUp</b>
+        <label class="ms-opt"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> quantités (stock événement)</label>
+        <label class="ms-opt"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> prix TTC de l'appli</label>
+        <span id="sumup_selinfo" class="muted">${selN ? `${selN} article(s) sélectionné(s)` : 'Aucune sélection → tous les articles reliés'}</span>
+        ${selN ? `<button class="btn-ghost btn-sm" onclick="Woo.clearSumupSel()">Vider la sélection</button>` : ''}
+        <button id="sumup_exp_btn" class="btn-cta btn-sm" onclick="Woo.exportSumupImport()">${selN ? `⬇ Fichier d'import SumUp (${selN})` : '⬇ Fichier d\'import SumUp (tous)'}</button>
+      </div>
+      <p class="muted help">Coche les articles à mettre à jour (1 seul pour un premier essai), puis « Fichier d'import SumUp ». Le fichier repart de ton export SumUp : mêmes lignes, mêmes identifiants SumUp — seuls la quantité (et le prix si coché) des articles cochés changent. Seuls les articles reliés par SKU peuvent être cochés.</p>
       <table class="sumup-table mt">
-        <colgroup><col style="width:27%"><col style="width:13%"><col style="width:10%"><col style="width:18%"><col style="width:16%"><col style="width:16%"></colgroup>
-        <thead><tr>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
+        <colgroup><col style="width:4%"><col style="width:25%"><col style="width:12%"><col style="width:9%"><col style="width:18%"><col style="width:16%"><col style="width:16%"></colgroup>
+        <thead><tr><th><input type="checkbox" title="Cocher tous les articles reliés affichés" ${visKeys.length && visKeys.every(k => this._sumupSel[k]) ? 'checked' : ''} onchange="Woo.sumupSelectVisible(this.checked)"></th>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
         <tbody>${rows.map(m => {
           const same = m.appName && U.normSearch(m.appName) === U.normSearch(m.name + (m.variant ? ' — ' + m.variant : ''));
           const price = m.priceOk === null
@@ -349,14 +432,16 @@ const Woo = {
             : m.qtyOk === null ? `<span class="muted">SumUp ${m.qty != null ? U.qty(m.qty) : '—'}</span>`
             : m.qtyOk ? `${yes} ${U.qty(m.qty)}`
             : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
+          const sk = m.st === 'matched' ? m.sku.toUpperCase() : '';
           return `<tr>
+          <td>${sk ? `<input type="checkbox" ${this._sumupSel[sk] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${U.esc(sk).replace(/&#39;/g, "\\'")}',this.checked)">` : ''}</td>
           <td><b>${U.esc(m.name)}</b>${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
           <td><span class="muted">${U.esc(m.meat || '—')}</span></td>
           <td><b>${U.esc(m.fmt)}</b></td>
           <td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>
           <td>${price}</td>
           <td>${qty}</td>
-        </tr>`; }).join('') || `<tr><td colspan="6" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+        </tr>`; }).join('') || `<tr><td colspan="7" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
       </table>
       <p class="muted help">Prix : ✅ = identique ; ❌ = écart (« + » = l'appli est plus chère que SumUp), avec les deux prix en dessous. Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l'appli a plus que SumUp). Clique « Prix TTC » ou « Quantité » pour trier par écart.</p>
       ${this._renderSumupPairs(r)}`;
