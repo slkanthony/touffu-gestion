@@ -733,3 +733,8 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
   .sup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sup-grid2 { grid-template-columns: 1fr; }
 }
+
+/* Réglages financiers : les cases d'une même ligne toujours au même niveau (libellé sur 2 lignes = poussé vers le haut) */
+.fin-block :is(.frow, .grid) { align-items: stretch; }
+.fin-block :is(.frow, .grid) > .fg { display: flex; flex-direction: column; }
+.fin-block :is(.frow, .grid) > .fg > label { flex: 1 0 auto; display: flex; align-items: flex-end; }

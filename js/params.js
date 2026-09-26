@@ -88,7 +88,7 @@ const Params = {
         <div class="grid c3">
           <div class="fg"><label>Cotisations sociales (%) <span class="muted" style="text-transform:none;font-weight:400;">— marchandises</span></label><input id="p_soc" type="number" step="0.1" value="${S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Décote paliers (%)</label><input id="p_bulk" type="number" step="1" value="${S.bulkDiscount}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Seuil coeff critique <span class="muted" style="text-transform:none;font-weight:400;">— mastication (Prix mastication + Revente pro)</span></label><input id="p_thr" type="number" step="0.01" value="${S.b2bCoeffThreshold}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label title="Badge « coeff critique » sur Prix mastication et Revente pro (mastication)">Seuil coeff critique</label><input id="p_thr" type="number" step="0.01" value="${S.b2bCoeffThreshold}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Alerte DLUO (jours avant)</label><input id="p_dluo" type="number" step="1" value="${S.dluoAlertDays}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
         </div>
@@ -97,7 +97,7 @@ const Params = {
         <div class="grid c3">
           <div class="fg"><label>Taux main d'œuvre (€/h)</label><input id="p_labor" type="number" step="0.5" value="${S.laborRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Cotisations fait main (%)</label><input id="p_soc_hm" type="number" step="0.1" value="${S.socialTaxRateHandmade ?? S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Seuil coeff critique <span class="muted" style="text-transform:none;font-weight:400;">— accessoires (page Accessoires + Revente pro)</span></label><input id="p_acc_thr" type="number" step="0.01" value="${S.accCoeffThreshold || 2}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label title="Badge « coeff critique » sur la page Accessoires et Revente pro (accessoires)">Seuil coeff critique</label><input id="p_acc_thr" type="number" step="0.01" value="${S.accCoeffThreshold || 2}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
         <p class="muted" style="margin-top:4px;">Les accessoires cousus main relèvent de l'artisanat (BIC prestation de services, 21,2 % par défaut), pas de la vente de marchandises (${U.pct(S.socialTaxRate)} pour la mastication ci-dessus). Utilisé dans le calcul de prix des accessoires et dans le bénéfice net du Tableau de bord.</p>
 
