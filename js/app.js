@@ -349,7 +349,7 @@ const App = {
     });
   },
 
-  dashScopeAll: ['Mastication', 'Accessoire', 'Matières premières', 'Consommable'],
+  dashScopeAll: ['Mastication', 'Matières premières', 'Consommable', 'Accessoire'],
 
   /* Lien de la Vue d'ensemble vers la fiche du produit — demande explicite d'Antho
      (cliquer un produit doit amener direct à sa ligne dans Stock). Mastication a un
@@ -497,6 +497,11 @@ const App = {
         <div class="kpi ${alerts.length ? 'bad' : 'good'}" onclick="Stock.tab='peremptions';App.go('stock')"><div class="v">${alerts.length}</div><div class="l">Dates critiques (DLUO ≤ ${S.dluoAlertDays} j)</div></div>
       </div>
 
+      <div class="card mt dash-scope-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <span class="muted" style="font-size:.85rem;margin-right:4px;">Afficher :</span>
+        ${[['Mastication', '🥩 Mastication'], ['Matières premières', '🧵 Matières premières'], ['Consommable', '📦 Consommables'], ['Accessoire', '🐕 Accessoires']].map(([k, l]) => `<button class="${dashScope.includes(k) ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App.toggleDashScope('${k}')" title="Cliquer pour ajouter / retirer cette catégorie">${l}</button>`).join('')}
+        <button class="btn-ghost btn-sm" style="margin-left:auto;" onclick="App.setAllDashScope(${dashScope.length === this.dashScopeAll.length ? 'false' : 'true'})">${dashScope.length === this.dashScopeAll.length ? 'Tout décocher' : 'Tout afficher'}</button>
+      </div>
 
       <div class="grid c2 mt">
         <div class="card">
@@ -514,7 +519,6 @@ const App = {
         <div class="fold-body">
         <div class="toolbar mb0">
           <div class="fg" style="max-width:300px;"><input id="dash_q" placeholder="🔍 Rechercher un produit, un type…" value="${U.esc(this._dashQ || '')}" oninput="App._dashQ=this.value;App.renderDashboard();U.refocus('dash_q')"></div>
-          <div class="fg" style="max-width:280px;">${U.multiSelect({ options: this.dashScopeAll, selected: dashScope, toggle: 'App.toggleDashScope', setAll: 'App.setAllDashScope', open: this._dashScopeOpen, onOpen: 'App.setDashScopeOpen', placeholder: 'Aucun' })}</div>
         </div>
         ${overview.length ? `<div class="table-wrap"><table><thead><tr>
             <th class="col-name">Produit</th><th>${dashSortHead('type', 'Catégorie / Type')}</th>
@@ -628,7 +632,7 @@ const App = {
   },
 
   toggleDashScope(cat) {
-    const cur = this._dashScope || [...this.dashScopeAll];
+    const cur = this._dashScope || ['Mastication'];
     const i = cur.indexOf(cat);
     this._dashScope = i >= 0 ? cur.filter(c => c !== cat) : [...cur, cat];
     this.renderDashboard();
