@@ -633,7 +633,12 @@ const Ventes = {
      journée retenue qui déduit le stock ÉVÉNEMENT. Anti-doublon par Réf. transaction.
      Rien n'est déduit sans validation manuelle ; les lignes sans SKU ou à SKU inconnu
      sont listées à part pour traitement à la main. */
-  toggleRetour() { this.retourOpen = !this.retourOpen; if (!this.retourOpen) this.retourData = null; this.render(); },
+  toggleRetour() {
+    this.retourOpen = !this.retourOpen; if (!this.retourOpen) this.retourData = null;
+    // L'état ouvert/fermé est porté par l'URL (#/ventes/retour) → un F5 garde le panneau ouvert.
+    history.replaceState(null, '', '#/ventes' + (this.retourOpen ? '/retour' : ''));
+    this.render();
+  },
   resetRetour() { this.retourData = null; this.render(); },
   setRetourMerge(b) { if (this.retourData) { this.retourData.mergeOne = b; this.render(); } },
   setRetourDeduct(b) { this.retourDeduct = b; this.render(); },
@@ -1189,7 +1194,7 @@ const Ventes = {
     if (!created && !allAmbig.length) { U.toast('Rien à valider (déjà importé ?).', true); return; }
     if (created) { if (deduct) Store.save('sales', 'stockM', 'catalogA', 'consumables'); else Store.save('sales'); }
     this.retourData = null;
-    this.retourOpen = false;
+    this.retourOpen = false; history.replaceState(null, '', '#/ventes');
     this.retourDeduct = true;   // retour au défaut sûr (déduction) après chaque import
     this.retourConsoId = ''; this.retourConsoQty = 1;
     this.render();
