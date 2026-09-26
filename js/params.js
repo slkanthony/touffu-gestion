@@ -1367,6 +1367,7 @@ const Params = {
   _renderDupCheck() {
     const link = o => o.kind === 'C' ? `<a href="#/stock/conso">${U.esc(o.name)}</a> <span class="muted">(consommable)</span>`
       : o.kind === 'T' ? `<a href="#/stock/matieres">${U.esc(o.name)}</a> <span class="muted">(matière)</span>`
+      : o.kind === 'P' ? `<a href="#/catalogue/edit/${o.id}">${U.esc(o.name)}</a> <span class="muted">(prix mastication)</span>`
       : `<a href="#/stock/mastication/${o.pId || o.id}">${U.esc(o.name)}</a>`;
     const byCat = {};
     Store.state.stockM.forEach(sp => { if (sp.catalogId) (byCat[sp.catalogId] = byCat[sp.catalogId] || []).push(sp); });
@@ -1378,6 +1379,7 @@ const Params = {
     const group = (list, norm) => { const g = {}; list.forEach(o => { const k = norm(o.val); if (k) (g[k] = g[k] || { url: o.val, items: [] }).items.push(o); }); return Object.values(g).filter(x => x.items.length > 1); };
     const urlDups = group(ent.urls, u => Stock.normUrl(u));
     const refDups = group(ent.refs, r => Stock.normRef(r));
+    const siteDups = group(ent.siteUrls, u => Stock.normUrl(u));
     const table = (rows, head) => `<div class="table-wrap"><table><thead><tr><th>${head}</th><th>Produits concernés</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
     const catHTML = catDups.length
       ? table(catDups.map(d => `<tr><td>${U.esc(d.name)}</td><td>${d.items.map(link).join(' · ')}</td></tr>`), 'Fiche prix')
@@ -1388,10 +1390,14 @@ const Params = {
     const refHTML = refDups.length
       ? table(refDups.map(g => `<tr><td><span class="tag">${U.esc(g.url)}</span></td><td>${g.items.map(link).join(' · ')}</td></tr>`), 'Réf. fournisseur')
       : '<p class="muted">✅ Aucune référence fournisseur en double.</p>';
-    return `<p class="muted mb0">Mastication, matières premières et consommables. Les alertes ne bloquent rien : un doublon peut être voulu (ex. une page qui sert à plusieurs couleurs). Clique un nom pour ouvrir le produit et corriger.</p>
+    const siteHTML = siteDups.length
+      ? table(siteDups.map(g => `<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${U.esc(g.url)}"><a href="${U.esc(g.url)}" target="_blank" rel="noopener">${U.esc(g.url)}</a></td><td>${g.items.map(link).join(' · ')}</td></tr>`), 'Lien site Touffu')
+      : '<p class="muted">✅ Aucun lien site Touffu en double.</p>';
+    return `<p class="muted mb0">Liens et réf. fournisseur : Prix mastication, matières premières et consommables. Liens site Touffu : produits du stock mastication. Les alertes ne bloquent rien : un doublon peut être voulu (ex. une page qui sert à plusieurs couleurs). Clique un nom pour ouvrir le produit et corriger.</p>
       <h3 class="mt">🔗 Fiches prix liées à plusieurs produits stock (${catDups.length})</h3>${catHTML}
       <h3 class="mt">🌐 Liens fournisseur en double (${urlDups.length})</h3>${urlHTML}
-      <h3 class="mt">🏷️ Références fournisseur en double (${refDups.length})</h3>${refHTML}`;
+      <h3 class="mt">🏷️ Références fournisseur en double (${refDups.length})</h3>${refHTML}
+      <h3 class="mt">🏠 Liens site Touffu en double (${siteDups.length})</h3>${siteHTML}`;
   },
 
   relink() {

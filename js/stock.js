@@ -66,7 +66,7 @@ const Stock = {
     { value: 'low',      label: 'Stock bas (général)',        badge: 'info', icon: '📉' },
     { value: 'multilot', label: 'Plusieurs numéros de lots',  badge: 'info', icon: '🔢' },
     { value: 'reminder', label: 'Rappels (pense-bête)',       badge: 'warn', icon: '🔔' },
-    { value: 'nourl',    label: 'Sans lien fournisseur',      badge: 'info', icon: '🔗' },
+    { value: 'nourl',    label: 'Sans lien site Touffu',      badge: 'info', icon: '🔗' },
     { value: 'nocat',    label: 'Sans lien catalogue prix',   badge: 'info', icon: '💰' },
     { value: 'hascat',   label: 'Lié au catalogue prix',      badge: 'ok',   icon: '💰' },
   ],
@@ -248,7 +248,7 @@ const Stock = {
         ${p.variants.some(v => v.lots.some(l => this.reminderDue(l))) ? '<span class="badge warn" title="Un rappel (pense-bête) est arrivé à échéance sur un lot">🔔 Rappel</span>' : ''}
         <span class="meta"><b>${totalG+totalE}</b> unités · gén <b>${totalG}</b> · évén <b>${totalE}</b> · <span class="muted">${nv} variante(s)</span></span>
         <span class="prod-actions" style="white-space:nowrap;">
-          ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${p.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>`}
+          ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${p.url ? 'Ouvrir la page sur le site Touffu' : 'Ajouter le lien site Touffu'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>`}
           ${cat ? `<button class="btn-icon" title="Resynchroniser prix/variantes depuis le catalogue (ex: une taille ajoutée côté calcul de prix après coup)" onclick="event.preventDefault();event.stopPropagation();Stock.resyncFromCatalog('${p.id}')">🔄</button>` : `<button class="btn-icon" title="Créer la fiche de calcul de prix à partir de ce produit (reprend nom, viande et conditionnement — tu complètes fournisseur et prix)" onclick="event.preventDefault();event.stopPropagation();Stock.createCatalogFromStock('${p.id}')">📋</button>`}
           <button class="btn-icon" title="Modifier le produit" onclick="event.preventDefault();event.stopPropagation();Stock.editProduct('${p.id}')">✏️</button>
           <button class="btn-icon" title="Supprimer le produit" onclick="event.preventDefault();event.stopPropagation();Stock.delProduct('${p.id}')">🗑️</button>
@@ -440,7 +440,6 @@ const Stock = {
       title:'✏️ Modifier variante — '+U.esc(p.name), okLabel:'Enregistrer',
       body:`<div class="frow">
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
-        <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="ev_ref" value="${U.esc(v.ref||'')}"></div>
       </div>
       <hr class="sep">
       <div class="fg" data-onclose="Stock.closeEvCatPick">
@@ -503,10 +502,8 @@ const Stock = {
         </div>
       </div>` : ''}`,
       onOk:()=>{
-        const dupV = this.dupWarnings({ ref: U.val('ev_ref'), self: { kind: 'M', id: p.id + ':' + v.id } });
-        if (dupV.length && !confirm(dupV.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
         const snap=Store.snapshot('stockM',p);
-        v.sku=U.val('ev_sku'); v.ref=U.val('ev_ref');
+        v.sku=U.val('ev_sku');
         const pickedCatId = Stock._evCatPickId || '';
         const typed = U.val('ev_cat_q').trim();
         let finalCatId = pickedCatId;
@@ -624,7 +621,6 @@ const Stock = {
         <div class="fg"><label>Valeur / étiquette</label><input id="av_val" placeholder="ex: 100, S, 1…"></div>
       </div>
       <div class="frow">
-        <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur</label><input id="av_ref" placeholder="optionnel"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="av_sku" placeholder="optionnel"></div>
       </div>
       <div class="frow">
@@ -636,7 +632,7 @@ const Stock = {
         const snap=Store.snapshot('stockM',p);
         const mode=U.val('av_mode'), raw=U.val('av_val').trim();
         const value=mode==='gram'||mode==='piece'?U.num(raw)||0:raw;
-        p.variants.push({id:U.uid(),catalogVariantId:'',mode,value,label:mode==='size'?raw:'',ref:U.val('av_ref'),sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]});
+        p.variants.push({id:U.uid(),catalogVariantId:'',mode,value,label:mode==='size'?raw:'',sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]});
         const entry=Store.commitSnapshot(snap,'stock','Variante ajoutée — '+p.name+' ('+raw+')');
         Store.save('stockM'); U.closeModal(); App.rerender();
         U.toast('Variante ajoutée.', false, entry.id);
@@ -652,12 +648,19 @@ const Stock = {
   normRef(r) { return String(r || '').trim().toUpperCase().replace(/\s+/g, ''); },
   /* Tous les liens / réf. fournisseur de l'appli (2026-09-27 : mastication + matières + consommables).
      kind M = produit mastication (lien au niveau produit, réf. au niveau variante), T = matière, C = consommable. */
+  /* 2026-09-27 : le lien d'un produit MASTICATION du stock = sa page sur le site Touffu (pas un fournisseur)
+     → liste à part (siteUrls), comparée seulement entre produits mastication. Les liens/réf. fournisseur
+     de la mastication vivent dans Prix mastication (kind P, une entrée par fournisseur de la fiche). */
   supplierEntries() {
-    const urls = [], refs = [];
+    const urls = [], refs = [], siteUrls = [];
     Store.state.stockM.forEach(p => {
-      if (p.url) urls.push({ kind: 'M', id: p.id, pId: p.id, name: p.name, val: p.url });
-      (p.variants || []).forEach(v => { if (v.ref) refs.push({ kind: 'M', id: p.id + ':' + v.id, pId: p.id, name: p.name + ' ' + Pricing.labelVariant(v), val: v.ref }); });
+      if (p.url) siteUrls.push({ kind: 'M', id: p.id, pId: p.id, name: p.name, val: p.url });
     });
+    Store.state.catalogM.forEach(cp => (cp.suppliers || []).forEach(s => {
+      const nm = cp.name + ' — ' + Store.supplierName(s.supplierId);
+      if (s.url) urls.push({ kind: 'P', id: cp.id, name: nm, val: s.url });
+      if (s.ref) refs.push({ kind: 'P', id: cp.id, name: nm, val: s.ref });
+    }));
     (Store.state.materials || []).forEach(m => {
       if (m.url) urls.push({ kind: 'T', id: m.id, name: m.name, val: m.url });
       if (m.ref) refs.push({ kind: 'T', id: m.id, name: m.name, val: m.ref });
@@ -667,17 +670,17 @@ const Stock = {
       if (c.url) urls.push({ kind: 'C', id: c.id, name: nm, val: c.url });
       if (c.ref) refs.push({ kind: 'C', id: c.id, name: nm, val: c.ref });
     });
-    return { urls, refs };
+    return { urls, refs, siteUrls };
   },
-  urlOwners(url) {
+  urlOwners(url, site) {
     const k = this.normUrl(url); if (!k) return [];
-    return this.supplierEntries().urls.filter(o => this.normUrl(o.val) === k);
+    return this.supplierEntries()[site ? 'siteUrls' : 'urls'].filter(o => this.normUrl(o.val) === k);
   },
   refOwners(ref) {
     const k = this.normRef(ref); if (!k) return [];
     return this.supplierEntries().refs.filter(o => this.normRef(o.val) === k);
   },
-  _kindTxt(k) { return k === 'C' ? ' (consommable)' : k === 'T' ? ' (matière)' : ' (mastication)'; },
+  _kindTxt(k) { return k === 'C' ? ' (consommable)' : k === 'T' ? ' (matière)' : k === 'P' ? ' (prix mastication)' : ' (mastication)'; },
   /* self = {kind, id} de l'élément en cours d'édition (exclu des doublons). */
   dupWarnings({ pId, consoId, catId, url, ref, self }) {
     const msgs = [];
@@ -690,8 +693,9 @@ const Stock = {
     }
     const me = self || (pId ? { kind: 'M', id: pId } : consoId ? { kind: 'C', id: consoId } : null);
     const notMe = o => !(me && o.kind === me.kind && (o.id === me.id || (o.kind === 'M' && me.kind === 'M' && o.pId === me.id && !String(me.id).includes(':'))));
-    const owners = this.urlOwners(url).filter(notMe);
-    if (owners.length) msgs.push('⚠️ Ce lien fournisseur est déjà utilisé par : ' + owners.map(o => o.name + this._kindTxt(o.kind)).join(', '));
+    const site = me && me.kind === 'M';
+    const owners = this.urlOwners(url, site).filter(notMe);
+    if (owners.length) msgs.push((site ? '⚠️ Ce lien site Touffu est déjà utilisé par : ' : '⚠️ Ce lien fournisseur est déjà utilisé par : ') + owners.map(o => o.name + this._kindTxt(o.kind)).join(', '));
     const rOwners = this.refOwners(ref).filter(notMe);
     if (rOwners.length) msgs.push('⚠️ Cette référence fournisseur « ' + ref + ' » est déjà utilisée par : ' + rOwners.map(o => o.name + this._kindTxt(o.kind)).join(', '));
     return msgs;
@@ -716,7 +720,7 @@ const Stock = {
         <div class="fg" style="flex:2;"><label>Nom</label><input id="sp_name" value="${U.esc(p.name)}"></div>
         <div class="fg"><label>Viande</label><select id="sp_meat" onchange="Stock.refreshCatPick()">${(p.meatType && !S.meatTypes.some(m=>m.toLowerCase()===p.meatType.toLowerCase()) ? `<option value="${U.esc(p.meatType)}" selected>${U.esc(p.meatType)} (hors liste)</option>` : '')}${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
       </div>
-      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
+      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien site Touffu (optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Poil</label><select id="sp_poil">
           <option value="" ${!(p.tags||{}).poil?'selected':''}>— non renseigné —</option>
@@ -1748,7 +1752,7 @@ const Stock = {
             });
             if (!supNotes.length && cat.notes) supNotes.push({ name: 'Produit', text: cat.notes, isMain: false });
             const main = (cat.suppliers || []).find(s => s.supplierId === cat.mainSupplierId) || (cat.suppliers || [])[0];
-          if (main) { supplier = Store.supplierName(main.supplierId); supplierUrl = main.url || ''; }
+          if (main) { supplier = Store.supplierName(main.supplierId); supplierUrl = main.url || ''; if (main.ref) ref = main.ref; }
           }
         }
       } else if (kind === 'MT') {
