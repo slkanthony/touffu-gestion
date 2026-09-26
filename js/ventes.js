@@ -34,7 +34,7 @@ const Ventes = {
       const availG = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
       const availE = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
       const lots = v.lots.map(l => ({ id: l.id, lotNumber: l.lotNumber, dluo: l.dluo, qtyG: U.num(l.qtyGeneral), qtyE: U.num(l.qtyEvent) }));
-      out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: v.mode || 'size', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', price: U.num(v.priceTTC), availG, availE, lots });
+      out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: v.mode || 'size', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', value: v.value, price: U.num(v.priceTTC), availG, availE, lots });
     }));
     Store.state.catalogA.forEach(a => {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';

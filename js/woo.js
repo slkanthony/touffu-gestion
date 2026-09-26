@@ -122,6 +122,14 @@ const Woo = {
     reader.readAsText(file);
   },
   clearCompare() { this._cmp = null; this.render(); },
+  cmpFilter: 'issues', cmpQ: '', cmpSort: 'name', cmpSortDir: 'asc',
+  _setCmpFilter(v) { this.cmpFilter = v; this.render(); },
+  _setCmpQ(v) { this.cmpQ = v; this.render(); U.refocus('woo_cmp_q'); },
+  _setCmpSort(k) {
+    if (this.cmpSort === k) this.cmpSortDir = this.cmpSortDir === 'asc' ? 'desc' : 'asc';
+    else { this.cmpSort = k; this.cmpSortDir = 'asc'; }
+    this.render();
+  },
 
   /* ───── Comparaison avec SumUp (2026-09-28, demande d'Antho) ─────
      Fichier = export de la bibliothèque d'articles SumUp (« items-export » : Item name, Variations,
@@ -188,7 +196,9 @@ const Woo = {
       const qtyOk = !l.track ? null : (l.qty != null && Math.abs(l.qty - appQty) < 0.0005);
       matched.push({ ...l, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind });
     });
-    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()));
+    // 500 g et plus : réservés aux ventes en ligne, jamais emmenés sur les marchés (Antho, 2026-09-28) → normal qu'ils manquent dans SumUp.
+    const bigBag = u => u.kind === 'M' && u.mode === 'gram' && U.num(u.value) >= 500;
+    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()) && !bigBag(u));
     return { matched, unknown, noSku, appOnly };
   },
   /* Groupe « à relier » par viande : à gauche les articles SumUp sans SKU ou avec un SKU inconnu,
@@ -226,7 +236,7 @@ const Woo = {
     const list = [...groups.values()].filter(x => x.left.length || x.right.length).sort((a, b) => (b.left.length > 0) - (a.left.length > 0) || U.sortFr(a.label, b.label));
     const nL = r.noSku.length + r.unknown.length;
     const sku = t => `<span class="tag" style="cursor:copy;" title="Cliquer pour copier" onclick="Woo._copySku('${U.esc(t).replace(/&#39;/g, "\\'")}')">${U.esc(t)} 📋</span>`;
-    return `<h3 class="mt">🔗 À relier, par viande <span class="muted" style="font-size:.85rem;font-weight:400;">— ${nL} article(s) SumUp à corriger · ${r.appOnly.length} produit(s) de l'appli absents de SumUp</span></h3>
+    return `<h3 class="mt">🔗 À relier, par viande <span class="muted" style="font-size:.85rem;font-weight:400;">— ${nL} article(s) SumUp à corriger · ${r.appOnly.length} produit(s) de l'appli absents de SumUp (hors 500 g et plus, jamais sur les marchés)</span></h3>
       <p class="muted help">À gauche, les articles SumUp sans SKU ou avec un SKU que l'appli ne connaît pas ; à droite, les produits de l'appli (avec leur SKU) qui ne sont pas dans SumUp, pour la même viande. Repère les correspondances, clique le SKU de l'appli pour le copier, et colle-le dans SumUp. Rien n'est relié automatiquement.</p>
       ${list.map(x => {
         const k = this._sumupGroupKey(x.label);
@@ -323,54 +333,60 @@ const Woo = {
   },
   _renderCompare() {
     const c = this._cmp;
-    const priceDiffs = c.matched.filter(m => m.priceDiff != null && Math.abs(m.priceDiff) >= 0.01);
-    const stockDiffs = c.matched.filter(m => m.stockDiff != null && m.stockDiff !== 0);
-    const cap = (arr, n) => arr.length > n ? `<p class="muted">… et ${arr.length - n} autres.</p>` : '';
-    const tbl = (rows, cols, cap0) => `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th${c.num ? ' class="num"' : ''}>${c.h}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 100).map(r => `<tr>${cols.map(c => `<td${c.num ? ' class="num"' : ''}>${c.f(r)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="muted">Aucun</td></tr>`}</tbody></table></div>${cap0}`;
+    const all = [
+      ...c.matched.map(m => ({ ...m, st: 'matched', priceOk: m.priceDiff == null ? null : Math.abs(m.priceDiff) < 0.01, stockOk: m.stockDiff == null ? null : m.stockDiff === 0 })),
+      ...c.appOnly.map(m => ({ ...m, st: 'appOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null })),
+      ...c.siteOnly.map(m => ({ ...m, st: 'siteOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null }))
+    ];
+    const isOk = m => m.st === 'matched' && m.priceOk !== false && m.stockOk !== false;
+    const F = {
+      issues: { l: '⚠️ À corriger', f: m => !isOk(m) },
+      all: { l: 'Tout', f: () => true },
+      ok: { l: '✅ Identiques', f: isOk },
+      price: { l: '💶 Prix différent', f: m => m.priceOk === false },
+      stock: { l: '📦 Stock différent', f: m => m.stockOk === false },
+      appOnly: { l: '⚠️ Absent du site', f: m => m.st === 'appOnly' },
+      siteOnly: { l: 'ℹ️ Absent de l\'appli', f: m => m.st === 'siteOnly' }
+    };
+    const cur = F[this.cmpFilter] ? this.cmpFilter : 'issues';
+    const q = U.normSearch(this.cmpQ || '').trim();
+    const key = { name: m => m.name || '', sku: m => m.sku || '', dPrice: m => m.priceDiff, dStock: m => m.stockDiff }[this.cmpSort] || (m => m.name || '');
+    const dir = this.cmpSortDir === 'desc' ? -1 : 1;
+    const rows = all.filter(F[cur].f)
+      .filter(m => !q || U.normSearch((m.name || '') + ' ' + (m.sku || '')).includes(q))
+      .sort((a, b) => {
+        const x = key(a), y = key(b);
+        if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+        return (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y))) * dir || U.sortFr(a.name || '', b.name || '');
+      });
+    const yes = '<span class="pos">✅</span>';
+    const sgn = v => (v > 0 ? '+' : '');
+    const th = (k, l) => `<th class="sortable${this.cmpSort === k ? ' active' : ''}" style="cursor:pointer;" onclick="Woo._setCmpSort('${k}')">${l} ${this.cmpSort === k ? (this.cmpSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
+    const cell = (ok, d, a, b, fmt, lb) => ok === null ? '<span class="muted">—</span>'
+      : ok ? `${yes} ${fmt(a)}`
+      : `<span class="neg">❌ ${d != null ? sgn(d) + fmt(d) : ''}</span><div class="sub">site ${b != null ? fmt(b) : '—'} · ${lb} ${fmt(a)}</div>`;
     return `
-      <div class="frow mt" style="gap:10px;flex-wrap:wrap;">
-        <span class="tag">${c.matched.length} reliés (SKU des 2 côtés)</span>
-        <span class="tag" style="border-color:var(--warn);">${priceDiffs.length} écart(s) de prix</span>
-        <span class="tag" style="border-color:var(--warn);">${stockDiffs.length} écart(s) de stock</span>
-        <span class="tag" style="border-color:var(--alerte);">${c.appOnly.length} dans l'appli, absent du site</span>
-        <span class="tag">${c.siteOnly.length} sur le site, absent de l'appli</span>
-        ${c.siteNoSku ? `<span class="tag muted">${c.siteNoSku} ligne(s) site sans SKU (non comparables)</span>` : ''}
+      ${c.siteRows === 0 ? '<p class="warn-txt mt">Aucune ligne du site n\'a de SKU (UGS) rempli — impossible de comparer tant que tu n\'as pas mis les SKU sur ton site.</p>' : ''}
+      <div class="sumup-filters mt">
+        ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
+        ${c.siteNoSku ? `<span class="muted" style="align-self:center;font-size:.82rem;">· ${c.siteNoSku} ligne(s) du site sans SKU (non comparables)</span>` : ''}
       </div>
-      ${c.siteRows === 0 ? '<p class="warn-txt">Aucune ligne du site n\'a de SKU (UGS) rempli — impossible de comparer tant que tu n\'as pas mis les SKU sur ton site.</p>' : ''}
-
-      <details class="fold mt" open><summary><b>💶 Écarts de prix (${priceDiffs.length})</b></summary>
-        ${tbl(priceDiffs.sort((a, b) => Math.abs(b.priceDiff) - Math.abs(a.priceDiff)), [
-          { h: 'SKU', f: r => `<span class="tag">${U.esc(r.sku)}</span>` },
-          { h: 'Produit', f: r => U.esc(r.name) },
-          { h: 'Prix appli', num: true, f: r => U.eur(r.appPrice) },
-          { h: 'Prix site', num: true, f: r => r.sitePrice != null ? U.eur(r.sitePrice) : '—' },
-          { h: 'Écart', num: true, f: r => `<b class="${r.priceDiff > 0 ? 'pos' : 'neg'}">${r.priceDiff > 0 ? '+' : ''}${U.eur(r.priceDiff)}</b>` }
-        ], cap(priceDiffs, 100))}
-      </details>
-
-      <details class="fold mt"><summary><b>📦 Écarts de stock (${stockDiffs.length})</b></summary>
-        ${tbl(stockDiffs.sort((a, b) => Math.abs(b.stockDiff) - Math.abs(a.stockDiff)), [
-          { h: 'SKU', f: r => `<span class="tag">${U.esc(r.sku)}</span>` },
-          { h: 'Produit', f: r => U.esc(r.name) },
-          { h: 'Stock appli', num: true, f: r => U.qty(r.appStock) },
-          { h: 'Stock site', num: true, f: r => r.siteStock != null ? U.qty(r.siteStock) : '—' },
-          { h: 'Écart', num: true, f: r => `<b class="${r.stockDiff > 0 ? 'pos' : 'neg'}">${r.stockDiff > 0 ? '+' : ''}${r.stockDiff}</b>` }
-        ], cap(stockDiffs, 100))}
-      </details>
-
-      <details class="fold mt"><summary><b>⚠️ Dans l'appli, absent du site (${c.appOnly.length}) — créeraient un doublon à l'export</b></summary>
-        ${tbl(c.appOnly.sort((a, b) => U.sortFr(a.name, b.name)), [
-          { h: 'SKU', f: r => `<span class="tag">${U.esc(r.sku)}</span>` },
-          { h: 'Produit', f: r => U.esc(r.name) }
-        ], cap(c.appOnly, 100))}
-      </details>
-
-      <details class="fold mt"><summary><b>ℹ️ Sur le site, absent de l'appli (${c.siteOnly.length})</b></summary>
-        ${tbl(c.siteOnly.sort((a, b) => U.sortFr(a.name || '', b.name || '')), [
-          { h: 'SKU', f: r => `<span class="tag">${U.esc(r.sku)}</span>` },
-          { h: 'Produit (site)', f: r => U.esc(r.name || '—') }
-        ], cap(c.siteOnly, 100))}
-      </details>`;
+      <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
+        <input id="woo_cmp_q" style="flex:1 1 240px;" placeholder="Rechercher un produit, un SKU…" value="${U.esc(this.cmpQ || '')}" oninput="Woo._setCmpQ(this.value)">
+        <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
+      </div>
+      <table class="sumup-table mt">
+        <colgroup><col style="width:38%"><col style="width:24%"><col style="width:19%"><col style="width:19%"></colgroup>
+        <thead><tr>${th('name', 'Produit')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dStock', 'Stock')}</tr></thead>
+        <tbody>${rows.slice(0, 400).map(m => `<tr>
+          <td><b>${U.esc(m.name || '—')}</b>${m.st === 'appOnly' ? '<div class="sub">⚠️ absent du site — créerait un doublon à l\'export</div>' : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}</td>
+          <td><span class="sku-txt">${U.esc(m.sku)}</span></td>
+          <td>${cell(m.priceOk, m.priceDiff, m.appPrice, m.sitePrice, U.eur, 'appli')}</td>
+          <td>${cell(m.stockOk, m.stockDiff, m.appStock, m.siteStock, U.qty, 'appli')}</td>
+        </tr>`).join('') || `<tr><td colspan="4" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+      </table>
+      ${rows.length > 400 ? `<p class="muted">… et ${rows.length - 400} autres (affine avec la recherche).</p>` : ''}
+      <p class="muted help">Prix / Stock : ✅ = identique ; ❌ = écart (« + » = l'appli a plus que le site : prix plus cher / plus de stock), avec les deux valeurs en dessous. Clique « Prix TTC » ou « Stock » pour trier par écart.</p>`;
   },
   /* Met à jour le compteur + le libellé du bouton d'export SANS re-render
      (snappy quand on coche/décoche plein de cases). */
