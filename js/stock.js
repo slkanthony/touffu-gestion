@@ -70,13 +70,16 @@ const Stock = {
     { value: 'nocat',    label: 'Sans lien catalogue prix',   badge: 'info', icon: '💰' },
     { value: 'hascat',   label: 'Lié au catalogue prix',      badge: 'ok',   icon: '💰' },
   ],
+  /* Compte lecture seule (viewer) : produits/lots expirés jamais montrés (2026-09-26). */
+  _hideExpired() { return !!(window.App && App.isViewer); },
   dluoFilterHTML(current, setter) {
-    const cur = this._dluoOptions.find(o => o.value === current) || this._dluoOptions[0];
+    const opts = this._dluoOptions.filter(o => !(this._hideExpired() && o.value === 'expired'));
+    const cur = opts.find(o => o.value === current) || opts[0];
     const curLabel = cur.badge ? `<span class="badge ${cur.badge}">${cur.icon} ${cur.label}</span>` : cur.label;
     return `<details class="multiselect dluo-filter" ${this._dluoFilterOpen ? 'open' : ''} ontoggle="Stock._dluoFilterOpen=this.open">
       <summary>${curLabel} ▾</summary>
       <div class="multiselect-panel">
-        ${this._dluoOptions.map(o => {
+        ${opts.map(o => {
           const lb = o.badge ? `<span class="badge ${o.badge}">${o.icon} ${o.label}</span>` : o.label;
           return `<div class="dluo-opt${o.value===current?' active':''}" onclick="${setter}('${o.value}')">${lb}</div>`;
         }).join('')}
@@ -155,6 +158,7 @@ const Stock = {
       if (f.q && !p.name.toLowerCase().includes(f.q.toLowerCase())) return false;
       if (f.meat !== 'all' && (p.meatType || '').toLowerCase() !== f.meat.toLowerCase()) return false;
       if (f.variants.length && !p.variants.some(v => f.variants.includes(Pricing.labelVariant(v)))) return false;
+      if (f.dluo === 'expired' && this._hideExpired()) return true;
       if (f.dluo === 'expired') return p.variants.some(v => v.lots.some(l => { const d = U.daysTo(l.dluo); return d !== null && d < 0 && (U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0; }));
       if (f.dluo === 'soon') return p.variants.some(v => v.lots.some(l => { const d = U.daysTo(l.dluo); return d !== null && d >= 0 && d <= U.num(S.dluoAlertDays) && (U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0; }));
       if (f.dluo === 'low') return p.variants.some(v => { const qg = v.lots.reduce((a,l)=>a+U.num(l.qtyGeneral),0); return U.num(v.low)>0 && qg<=U.num(v.low); });
@@ -220,7 +224,7 @@ const Stock = {
     const hasAnyCatLink = !!cat || p.variants.some(v => v.catalogId && Store.state.catalogM.some(c => c.id === v.catalogId));
     const totalG = p.variants.reduce((a,v)=>a+v.lots.reduce((b,l)=>b+U.num(l.qtyGeneral),0),0);
     const totalE = p.variants.reduce((a,v)=>a+v.lots.reduce((b,l)=>b+U.num(l.qtyEvent),0),0);
-    const hasAlert = p.variants.some(v => v.lots.some(l => { const d=U.daysTo(l.dluo); return d!==null&&d<0&&(U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0; }));
+    const hasAlert = !this._hideExpired() && p.variants.some(v => v.lots.some(l => { const d=U.daysTo(l.dluo); return d!==null&&d<0&&(U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0; }));
     const hasSoon = !hasAlert && p.variants.some(v => v.lots.some(l => { const d=U.daysTo(l.dluo); const S=Store.state.settings; return d!==null&&d>=0&&d<=U.num(S.dluoAlertDays)&&(U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0; }));
 
     // filtre variantes selon le filtre actif (multi-sélection)
@@ -265,7 +269,8 @@ const Stock = {
   },
 
   variantRow(p, v) {
-    const lots = [...v.lots].sort((a,b)=>(a.dluo||'9999').localeCompare(b.dluo||'9999'));
+    // Viewer : les lots expirés ne sont jamais affichés (ni lots, ni badges « périmé »).
+    const lots = [...v.lots].filter(l => !this._hideExpired() || !(U.daysTo(l.dluo) < 0)).sort((a,b)=>(a.dluo||'9999').localeCompare(b.dluo||'9999'));
     const qg = lots.reduce((a,l)=>a+U.num(l.qtyGeneral),0);
     const qe = lots.reduce((a,l)=>a+U.num(l.qtyEvent),0);
     const isVrac = v.mode === 'vrac';
