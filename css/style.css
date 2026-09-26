@@ -764,3 +764,13 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
 summary .prod-actions.act-grid { display: inline-flex; }
 .act-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .act-row:empty { display: none; }
+
+/* Sachets & blisters (Paramètres + fiche Prix mastication) : texte plus grand, largeur exploitée */
+table.pack-table { width: 100%; table-layout: fixed; font-size: 1rem; }
+table.pack-table td { padding-top: 10px; padding-bottom: 10px; }
+table.pack-table td.col-name { text-align: left; font-weight: 600; }
+table.pack-table th.col-name { text-align: left; }
+table.pack-table td.pack-dims { font-size: 1.1rem; font-weight: 600; }
+table.pack-table td.num { font-size: 1.02rem; }
+table.pack-table input { font-size: 1rem; width: 100px; }
+details.sachet-group > summary b { font-size: 1.1rem !important; }

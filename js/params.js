@@ -815,12 +815,12 @@ const Params = {
     if (type === 'blister') return this._blisterGroupedHTML(items, isOpen);
     return `<details class="fold sachet-group" style="margin:10px 0;" ${isOpen ? 'open' : ''} ontoggle="Params._sachetTypeOpen['${type}']=this.open">
       <summary style="cursor:pointer;padding:8px 0;"><b style="font-size:1rem;color:var(--texte);">${title}</b> <span class="muted" style="font-size:.85rem;">(${items.length}) — ${subtitle}</span></summary>
-      <div class="table-wrap"><table><thead><tr><th class="col-name">Nom</th><th>Dimensions</th><th class="num">Coût</th><th></th></tr></thead>
+      <div class="table-wrap"><table class="pack-table"><colgroup><col style="width:34%"><col style="width:28%"><col style="width:20%"><col></colgroup><thead><tr><th class="col-name">Nom</th><th>Dimensions</th><th class="num">Coût</th><th></th></tr></thead>
       <tbody>${items.map(s => {
         const conso = s.consumableId ? Store.state.consumables.find(c => c.id === s.consumableId) : null;
         return `<tr>
         <td class="col-name">${U.esc(s.name)}${conso ? ` <span class="badge ok" style="font-size:.7rem;" title="Lié à ${U.esc(conso.name)} — ${U.eur(conso.costUnit, 3)}/${U.esc(!conso.unit || conso.unit === 'pc' ? 'PCS' : conso.unit)}">🔗 lié</span>` : ''}</td>
-        <td>${U.esc(s.dims || '—')}</td>
+        <td class="pack-dims">${U.esc(s.dims || '—')}</td>
         <td class="num">${conso
           ? U.eur(s.cost, 3) + ' <span class="muted" style="font-size:.75rem;">(auto)</span>'
           : `<input type="number" step="0.001" value="${s.cost}" style="width:80px;text-align:right;" onchange="Params.editSachetCost('${s.id}',this.value)">`}</td>
@@ -859,9 +859,9 @@ const Params = {
             <b>${groupName}</b> <span class="muted">(${g.items.length} longueur${g.items.length > 1 ? 's' : ''})</span>
             ${conso ? `<span class="badge ok" style="margin-left:8px;" title="Coût : ${U.eur(conso.costUnit)}/${U.esc(conso.unit||'m')}">🔗 lié</span>` : ''}
           </summary>
-          <div class="table-wrap"><table><thead><tr><th>Longueur</th><th class="num">Coût${isLinked ? ' <span class="muted" style="font-weight:normal;font-size:.75rem;">(auto)</span>' : ''}</th><th></th></tr></thead>
+          <div class="table-wrap"><table class="pack-table"><colgroup><col style="width:40%"><col style="width:30%"><col></colgroup><thead><tr><th>Longueur</th><th class="num">Coût${isLinked ? ' <span class="muted" style="font-weight:normal;font-size:.75rem;">(auto)</span>' : ''}</th><th></th></tr></thead>
           <tbody>${g.items.map(({ s, d }) => `<tr>
-            <td><input value="${d ? U.esc(d.lengthStr) : U.esc(s.dims || '')}" style="width:80px;" onchange="Params.editBlisterLength('${s.id}',this.value)"></td>
+            <td><input value="${d ? U.esc(d.lengthStr) : U.esc(s.dims || '')}" style="width:110px;" onchange="Params.editBlisterLength('${s.id}',this.value)"></td>
             <td class="num">${isLinked
               ? U.eur(s.cost, 3)
               : `<input type="number" step="0.001" value="${s.cost}" style="width:80px;text-align:right;" onchange="Params.editBlisterCost('${s.id}',this.value)">`}</td>
