@@ -114,6 +114,140 @@ const Woo = {
     reader.readAsText(file);
   },
   clearCompare() { this._cmp = null; this.render(); },
+
+  /* ───── Comparaison avec SumUp (2026-09-28, demande d'Antho) ─────
+     Fichier = export de la bibliothèque d'articles SumUp (« items-export » : Item name, Variations,
+     Price, Track inventory?, Quantity, SKU…). Une ligne « article » (Item name rempli) sans prix est
+     un parent ; ses variantes suivent (Item name vide). Un article avec prix et sans variante = article
+     simple. Comparaison PAR SKU (jamais par nom) avec le stock mastication + les accessoires de l'appli :
+     prix TTC et quantité (stock choisi : événement / général / total). LECTURE SEULE. */
+  _sumup: null,
+  sumupScope: 'event',
+  sumupOnlyIssues: true,
+  _setSumupScope(v) { this.sumupScope = v; this.render(); },
+  _setSumupIssues(v) { this.sumupOnlyIssues = v; this.render(); },
+  clearSumup() { this._sumup = null; this.render(); },
+  compareSumup() {
+    const file = document.getElementById('woo_sumup_file')?.files[0];
+    if (!file) { U.toast('Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', true); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      let rows; try { rows = this._parseCSV(reader.result); } catch (e) { U.toast('CSV illisible : ' + e.message, true); return; }
+      if (rows.length < 2) { U.toast('Fichier vide.', true); return; }
+      const head = rows[0].map(h => h.trim());
+      const col = n => head.indexOf(n);
+      const iName = col('Item name'), iVar = col('Variations'), iPrice = col('Price'), iTrack = col('Track inventory? (Yes/No)'),
+        iQty = col('Quantity'), iSku = col('SKU'), iCat = col('Category');
+      if (iName < 0 || iSku < 0 || iPrice < 0) { U.toast('Ce fichier ne ressemble pas à un export d\'articles SumUp (colonnes Item name / Price / SKU introuvables).', true); return; }
+      const num = v => { const n = parseFloat(String(v || '').replace(',', '.')); return isFinite(n) ? n : null; };
+      const lines = [];
+      let parent = null;
+      rows.slice(1).filter(r => r.length > 3).forEach(r => {
+        const name = (r[iName] || '').trim();
+        if (name) {
+          parent = { name, track: (r[iTrack] || '').trim() === 'Yes', cat: iCat >= 0 ? (r[iCat] || '').trim() : '' };
+          if ((r[iPrice] || '').trim() !== '') lines.push({ name, variant: '', sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
+          return;
+        }
+        if (!parent) return;
+        lines.push({ name: parent.name, variant: (r[iVar] || '').trim(), sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
+      });
+      this._sumup = { lines, file: file.name };
+      this.render();
+      U.toast(`SumUp : ${lines.length} article(s)/variante(s) lus.`);
+    };
+    reader.readAsText(file);
+  },
+  _sumupReport() {
+    const units = Ventes.units();
+    const bySku = new Map();
+    units.forEach(u => { if (u.sku) bySku.set(u.sku.trim().toUpperCase(), u); });
+    const qOf = u => this.sumupScope === 'event' ? u.availE : this.sumupScope === 'general' ? u.availG : u.availG + u.availE;
+    const seen = new Set();
+    const matched = [], unknown = [], noSku = [];
+    this._sumup.lines.forEach(l => {
+      if (!l.sku) { noSku.push(l); return; }
+      const u = bySku.get(l.sku.toUpperCase());
+      if (!u) { unknown.push(l); return; }
+      seen.add(l.sku.toUpperCase());
+      const appQty = qOf(u);
+      const priceOk = l.price != null && Math.round(l.price * 100) === Math.round(u.price * 100);
+      const qtyOk = !l.track ? null : (l.qty != null && Math.abs(l.qty - appQty) < 0.0005);
+      matched.push({ ...l, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind });
+    });
+    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()));
+    return { matched, unknown, noSku, appOnly };
+  },
+  exportSumupIssues() {
+    const r = this._sumupReport();
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const f = v => v == null ? '' : String(v.toFixed ? v.toFixed(2) : v).replace('.', ',');
+    const out = [['Article SumUp', 'Variante', 'SKU', 'Problème', 'Prix SumUp', 'Prix appli', 'Qté SumUp', 'Qté appli'].map(q).join(';')];
+    r.matched.filter(m => !m.priceOk || m.qtyOk === false).forEach(m => out.push([m.name, m.variant, m.sku,
+      [!m.priceOk ? 'prix différent' : '', m.qtyOk === false ? 'quantité différente' : ''].filter(Boolean).join(' + '),
+      f(m.price), f(m.appPrice), m.track ? m.qty : 'non suivi', m.appQty].map(q).join(';')));
+    r.unknown.forEach(l => out.push([l.name, l.variant, l.sku, 'SKU inconnu dans l\'appli', f(l.price), '', l.track ? l.qty : '', ''].map(q).join(';')));
+    r.noSku.forEach(l => out.push([l.name, l.variant, '', 'pas de SKU dans SumUp', f(l.price), '', l.track ? l.qty : '', ''].map(q).join(';')));
+    U.download('sumup-a-corriger-' + U.today() + '.csv', '\ufeff' + out.join('\n'), 'text/csv;charset=utf-8');
+  },
+  _renderSumup() {
+    const r = this._sumupReport();
+    const priceKo = r.matched.filter(m => !m.priceOk).length;
+    const qtyKo = r.matched.filter(m => m.qtyOk === false).length;
+    const okAll = r.matched.filter(m => m.priceOk && m.qtyOk !== false).length;
+    const rows = r.matched.filter(m => !this.sumupOnlyIssues || !m.priceOk || m.qtyOk === false)
+      .sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant));
+    const yes = '<span class="pos">✅</span>', no = '<span class="neg">❌</span>';
+    const scopeLbl = { event: 'événement', general: 'général', total: 'total' }[this.sumupScope];
+    const small = (list, title, cols, open) => `<details class="fold mt"${open ? ' open' : ''}><summary><b>${title} (${list.length})</b></summary>
+      <div class="table-wrap"><table><thead><tr>${cols.map(c => `<th${c.n ? ' class="num"' : ''}>${c.h}</th>`).join('')}</tr></thead><tbody>
+      ${list.slice(0, 200).map(x => `<tr>${cols.map(c => `<td${c.n ? ' class="num"' : ''}>${c.f(x)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="muted">Aucun</td></tr>`}
+      </tbody></table></div>${list.length > 200 ? `<p class="muted">… et ${list.length - 200} autres.</p>` : ''}</details>`;
+    return `
+      <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
+        <span class="tag">${r.matched.length} reliés par SKU</span>
+        <span class="tag" style="border-color:var(--ok);">✅ ${okAll} identiques</span>
+        <span class="tag" style="border-color:var(--alerte);">💶 ${priceKo} prix différent(s)</span>
+        <span class="tag" style="border-color:var(--warn);">📦 ${qtyKo} quantité(s) différente(s)</span>
+        <span class="tag" style="border-color:var(--alerte);">❓ ${r.unknown.length} SKU inconnu(s) dans l'appli</span>
+        <span class="tag">${r.noSku.length} sans SKU dans SumUp</span>
+      </div>
+      <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
+        <span class="muted">Quantité appli comparée :</span>
+        ${[['event', '🎪 Stock événement'], ['general', '🏬 Stock général'], ['total', '🧺 Total']].map(([k, l]) => `<button class="${this.sumupScope === k ? 'btn-cta' : 'btn-ghost'} btn-sm" style="flex:0 0 auto;" onclick="Woo._setSumupScope('${k}')">${l}</button>`).join('')}
+        <label class="ms-opt" style="flex:0 0 auto;margin-left:auto;"><input type="checkbox" ${this.sumupOnlyIssues ? 'checked' : ''} onchange="Woo._setSumupIssues(this.checked)"> Seulement les lignes à corriger</label>
+        <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()">⬇ Liste à corriger (CSV)</button>
+      </div>
+      <div class="table-wrap mt"><table>
+        <thead><tr><th class="col-name" style="text-align:left;">Article SumUp</th><th>SKU</th>
+          <th class="num">Prix SumUp</th><th class="num">Prix appli</th><th>Prix</th>
+          <th class="num">Qté SumUp</th><th class="num">Qté appli (${scopeLbl})</th><th>Qté</th></tr></thead>
+        <tbody>${rows.map(m => `<tr>
+          <td style="text-align:left;"><b>${U.esc(m.name)}</b>${m.variant ? ` <span class="muted">— ${U.esc(m.variant)}</span>` : ''}<div class="muted" style="font-size:.75rem;">appli : ${U.esc(m.appName)}</div></td>
+          <td><span class="tag">${U.esc(m.sku)}</span></td>
+          <td class="num">${m.price != null ? U.eur(m.price) : '—'}</td>
+          <td class="num">${U.eur(m.appPrice)}</td>
+          <td>${m.priceOk ? yes : no + (m.price != null ? ` <span class="muted" style="font-size:.75rem;">${m.appPrice - m.price > 0 ? '+' : ''}${U.eur(m.appPrice - m.price)}</span>` : '')}</td>
+          <td class="num">${m.track ? (m.qty != null ? U.qty(m.qty) : '—') : '<span class="muted">non suivi</span>'}</td>
+          <td class="num">${U.qty(m.appQty)}</td>
+          <td>${m.qtyOk === null ? '<span class="muted">—</span>' : m.qtyOk ? yes : no}</td>
+        </tr>`).join('') || `<tr><td colspan="8" class="muted">${this.sumupOnlyIssues ? 'Rien à corriger sur les produits reliés 🎉' : 'Aucun produit relié par SKU.'}</td></tr>`}</tbody>
+      </table></div>
+      <p class="muted help">« Prix appli » = prix de vente TTC de la variante dans le Stock (ou de l'accessoire). « Qté SumUp » n'est comparée que si le suivi de stock est activé sur l'article dans SumUp. « + » dans l'écart = l'appli est plus chère que SumUp.</p>
+      ${small(r.unknown.sort((a, b) => U.sortFr(a.name, b.name)), '❓ SKU présent dans SumUp mais introuvable dans l\'appli', [
+        { h: 'Article SumUp', f: x => `${U.esc(x.name)}${x.variant ? ' — ' + U.esc(x.variant) : ''}` },
+        { h: 'SKU', f: x => `<span class="tag">${U.esc(x.sku)}</span>` },
+        { h: 'Prix', n: 1, f: x => x.price != null ? U.eur(x.price) : '—' }], r.unknown.length > 0)}
+      ${small(r.noSku.sort((a, b) => U.sortFr(a.name, b.name)), '🏷️ Articles SumUp sans SKU (non comparables)', [
+        { h: 'Article SumUp', f: x => `${U.esc(x.name)}${x.variant ? ' — ' + U.esc(x.variant) : ''}` },
+        { h: 'Catégorie', f: x => U.esc(x.cat || '—') },
+        { h: 'Prix', n: 1, f: x => x.price != null ? U.eur(x.price) : '—' }], false)}
+      ${small(r.appOnly.sort((a, b) => U.sortFr(a.name + a.label, b.name + b.label)), '📋 Dans l\'appli (avec SKU) mais absent de SumUp', [
+        { h: 'Produit', f: x => `${U.esc(x.name)}${x.label ? ' — ' + U.esc(x.label) : ''}` },
+        { h: 'SKU', f: x => `<span class="tag">${U.esc(x.sku)}</span>` },
+        { h: 'Prix', n: 1, f: x => U.eur(x.price) },
+        { h: 'Stock total', n: 1, f: x => U.qty(x.availG + x.availE) }], false)}`;
+  },
   _renderCompare() {
     const c = this._cmp;
     const priceDiffs = c.matched.filter(m => m.priceDiff != null && Math.abs(m.priceDiff) >= 0.01);
@@ -280,6 +414,17 @@ const Woo = {
           ${this._cmp ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearCompare()">Effacer le rapport</button>` : ''}
         </div>
         ${this._cmp ? this._renderCompare() : ''}
+      </div>
+
+      <div class="card">
+        <h2>💳 Comparer avec SumUp</h2>
+        <p class="muted help">Dans SumUp (me.sumup.com) : <b>Articles → Exporter</b>. Dépose ici ce fichier « items-export » : l'appli compare, <b>par SKU</b>, le <b>prix TTC</b> et la <b>quantité</b> de chaque article SumUp avec ton stock, et sort la liste à corriger dans SumUp. <b>Lecture seule</b> — rien n'est modifié, ni dans l'appli ni dans SumUp.</p>
+        <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="woo_sumup_file" accept=".csv,text/csv">
+          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Comparer</button>
+          ${this._sumup ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearSumup()">Effacer le rapport</button><span class="muted" style="font-size:.8rem;">${U.esc(this._sumup.file)}</span>` : ''}
+        </div>
+        ${this._sumup ? this._renderSumup() : ''}
       </div>
 
       ${missing.length ? `<div class="card" style="border-left:4px solid var(--warn);">
