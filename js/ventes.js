@@ -897,10 +897,10 @@ const Ventes = {
       </div></details>` : ''}
       ${this.cashSection()}
       ${this.retourConsoSection()}
-      <label class="mt" style="display:flex;gap:8px;align-items:center;justify-content:center;text-align:center;text-transform:none;cursor:pointer;border:1.5px solid ${this.retourDeduct ? 'var(--input-border)' : 'var(--warn)'};border-radius:8px;padding:8px 12px;">
-        <input type="checkbox" style="margin-top:3px;" ${this.retourDeduct ? 'checked' : ''} onclick="Ventes.setRetourDeduct(this.checked)">
-        <span><b>Déduire le stock événement</b> ${this.retourDeduct
-          ? '<span class="muted" style="text-transform:none;font-weight:400;">— comportement normal (coché).</span>'
+      <label class="mt retour-deduct ${this.retourDeduct ? 'on' : 'off'}">
+        <input type="checkbox" ${this.retourDeduct ? 'checked' : ''} onclick="Ventes.setRetourDeduct(this.checked)">
+        <span><b>${this.retourDeduct ? '📉 Déduire le stock événement' : '📚 Ne PAS déduire le stock (import historique)'}</b> ${this.retourDeduct
+          ? '<span style="text-transform:none;font-weight:400;opacity:.9;">— coché : le stock événement sera déduit à la validation. Décoche pour un import historique (stats seulement).</span>'
           : '<br><span class="warn-txt" style="text-transform:none;">📚 DÉCOCHÉ = import historique : les ventes sont ajoutées aux statistiques (avec leur date d\'origine) mais le stock <b>n\'est PAS déduit</b>. À utiliser pour rentrer tes anciens marchés (2024, 2025…) sans toucher à ton stock actuel.</span>'}</span></label>
       <div class="frow mt" style="gap:8px;">
         <button class="btn-ok" onclick="Ventes.validateRetour()">${this.retourDeduct ? '✅ Valider et déduire le stock événement' : '📚 Valider en historique (sans déduire le stock)'}</button>
