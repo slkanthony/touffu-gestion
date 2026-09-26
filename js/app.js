@@ -293,7 +293,7 @@ const App = {
     Params._financeOpen = false; Params._refsOpen = false; Params._skuOpen = false;
     Params._mergeOpen = false; Params._importOpen = false; Params._sachetTypeOpen = {};
     this._dashOverviewOpen = false; this._dashValMeatOpen = false;
-    this._dashValCatOpen = false; this._dashCAOpen = false; this._dashScopeOpen = false;
+    this._dashValCatOpen = false; this._dashCAOpen = false;
   },
   rerender() {
     document.getElementById('main').innerHTML = '';
@@ -732,8 +732,7 @@ const App = {
     this._dashScope = i >= 0 ? cur.filter(c => c !== cat) : [...cur, cat];
     this.renderDashboard();
   },
-  setAllDashScope(all) { this._dashScope = all ? [...this.dashScopeAll] : []; this.renderDashboard(); },
-  setDashScopeOpen(open) { this._dashScopeOpen = open; }
+  setAllDashScope(all) { this._dashScope = all ? [...this.dashScopeAll] : []; this.renderDashboard(); }
 };
 window.App = App;
 document.addEventListener('DOMContentLoaded', () => App.boot());

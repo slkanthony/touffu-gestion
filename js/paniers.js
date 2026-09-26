@@ -719,7 +719,7 @@ const Paniers = {
       const isOver = diff > 0.005;
       const remain = available - total;
       const label = idx === 0 ? '🎯 Pile budget' : '📈 Un peu au-dessus';
-      const border = idx === 0 ? 'var(--primary, #c9955d)' : '#e9a820';
+      const border = idx === 0 ? 'var(--caramel)' : '#e9a820';
 
       html += `<div style="border:2px solid ${border};border-radius:8px;padding:12px 16px;margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">

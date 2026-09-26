@@ -665,7 +665,6 @@ const Ventes = {
     const el = document.getElementById('tw_' + target.replace(/[^\w-]/g, '_'));
     if (el) el.textContent = U.eur(cost);
   },
-  setTravel(key, val) { if (this.retourData) (this.retourData.travel = this.retourData.travel || {})[key] = U.num(val); },
   setCashEventName(val) {
     const d = this.retourData; if (!d) return;
     d.cashEventName = String(val || '').trim();
@@ -680,15 +679,6 @@ const Ventes = {
       }
     }
     this.render();
-  },
-  setCashTravel(val) { if (this.retourData) this.retourData.cashTravel = U.num(val); },
-  setTravelCost(id, val) {
-    const s = Store.state.sales.find(x => x.id === id); if (!s) return;
-    const snap = Store.snapshot('sales', s);
-    s.travelCost = U.num(val);
-    const entry = Store.commitSnapshot(snap, 'vente', `Frais de déplacement — ${U.frDateTime(s.ts)} : ${U.eur(s.travelCost)}`);
-    U.toast('Frais de déplacement mis à jour.', false, entry.id);
-    Store.save('sales');
   },
 
   toggleShippingCharged(id) {

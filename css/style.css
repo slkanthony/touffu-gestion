@@ -877,9 +877,6 @@ select.nsel-native { position: absolute !important; opacity: 0 !important; point
 .ac-list { min-width: 340px; }
 .ac-item.pp-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; }
 .ac-item.pp-row .pp-b:empty, .ac-item.pp-row .pp-c:empty { display: none; }
-.dluo-opt:has(.opt-n) { display: flex; justify-content: space-between; gap: 12px; }
-.dluo-opt .opt-n { color: var(--gris); font-variant-numeric: tabular-nums; font-size: .82rem; }
-.dluo-opt.active .opt-n { color: inherit; }
 .nsel-panel { width: max-content; }
 .nsel-panel .pp-row .pp-a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .nsel-panel .pp-row { gap: 18px; }

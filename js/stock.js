@@ -2008,7 +2008,7 @@ const Stock = {
     },
 
     _orderFilterBarHTML() {
-      const chip = (key, label, count, active) => `<button type="button" class="btn-sm" style="border-radius:16px;padding:5px 12px;margin:2px;border:1px solid var(--card-border);background:${active ? 'var(--caramel)' : 'transparent'};color:${active ? '#1a1a1a' : 'var(--txt)'};font-weight:${active ? '700' : '400'};cursor:pointer;" onclick="Stock.filterOrderBySupplier('${U.esc(key).replace(/'/g, "\\'")}')">${U.esc(label)} (${count})</button>`;
+      const chip = (key, label, count, active) => `<button type="button" class="btn-sm" style="border-radius:16px;padding:5px 12px;margin:2px;border:1px solid var(--card-border);background:${active ? 'var(--caramel)' : 'transparent'};color:${active ? '#1a1a1a' : 'var(--texte)'};font-weight:${active ? '700' : '400'};cursor:pointer;" onclick="Stock.filterOrderBySupplier('${U.esc(key).replace(/'/g, "\\'")}')">${U.esc(label)} (${count})</button>`;
       const total = this._orderItems.length;
       return `<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:10px;">
         ${chip('__ALL__', 'Tous', total, !this._orderFilter)}

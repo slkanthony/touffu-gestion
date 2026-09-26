@@ -673,44 +673,6 @@ const Catalogue = {
     </details>`;
   },
   _pickPack(i, id) { Catalogue._d.variants[i].sachetId = id; Catalogue.drawVars(); },
-  sachetOpts(sel, mode) {
-    Params._renameSachets();
-    const preferred = mode === 'gram' ? 'sachet' : 'blister';
-    const sachets = Store.state.settings.sachets.filter(s => (s.type || 'sachet') === 'sachet').sort(Params._dimSort('sachet'));
-    const blisters = Store.state.settings.sachets.filter(s => (s.type || 'sachet') === 'blister').sort(Params._dimSort('blister'));
-    let html = '<option value="0">Aucun</option>';
-    const renderSachets = (list) => {
-      list.forEach(s => {
-        const label = `${s.name}${s.dims ? ' — ' + s.dims : ''} (${U.eur(s.cost, 3)})`;
-        html += `<option value="${s.id}" ${String(s.id) === String(sel) ? 'selected' : ''}>${U.esc(label)}</option>`;
-      });
-    };
-    const renderBlisters = (list) => {
-      const groups = {};
-      list.forEach(s => {
-        const d = Params._blisterDims(s);
-        const key = d ? d.widthStr : '?';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push({ s, d });
-      });
-      Object.entries(groups).forEach(([wStr, items]) => {
-        html += `<optgroup label="Blister ${U.esc(wStr)}">`;
-        items.forEach(({ s, d }) => {
-          const label = d ? `${d.lengthStr} (${U.eur(s.cost, 3)})` : `${s.dims || '?'} (${U.eur(s.cost, 3)})`;
-          html += `<option value="${s.id}" ${String(s.id) === String(sel) ? 'selected' : ''}>${U.esc(label)}</option>`;
-        });
-        html += '</optgroup>';
-      });
-    };
-    if (preferred === 'sachet') {
-      renderSachets(sachets);
-      if (blisters.length) { html += '<option disabled>──────────</option>'; renderBlisters(blisters); }
-    } else {
-      renderBlisters(blisters);
-      if (sachets.length) { html += '<option disabled>──────────</option>'; renderSachets(sachets); }
-    }
-    return html;
-  },
 
   /* ---------- variantes de vente : 3 tableaux (poids / lots / tailles),
      colorés comme l'ancien calculateur (marge verte, cotisations rouges,
