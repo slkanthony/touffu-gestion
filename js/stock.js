@@ -933,6 +933,7 @@ const Stock = {
         const dupMsgs = this.dupWarnings({ pId: p.id, catId, url: U.val('sp_url') });
         if (!U.dupGate(dupMsgs, () => document.getElementById('modalOk').click())) return false;
         const oldCatId = p.catalogId || '';
+        const oldName = p.name || '';
         const before = id ? { name: p.name, meatType: p.meatType, catalogId: p.catalogId, url: p.url, tags: JSON.parse(JSON.stringify(p.tags || {})), variants: JSON.parse(JSON.stringify(p.variants)) } : null;
         p.catalogId=catId;
         const cat=Store.state.catalogM.find(c=>c.id===p.catalogId);
@@ -970,8 +971,54 @@ const Stock = {
         } else {
           U.toast(id?'Modification enregistrée.':'Produit créé.', false, entry.id);
         }
+        if (id && oldName && oldName !== p.name) setTimeout(() => Stock.proposeSkuRename(p.id, oldName), 350);
       }
     });
+  },
+
+  /* Après un renommage de produit (demande d'Antho, 2026-09-28) : propose de mettre à jour les SKU des
+     variantes dont le début correspond à l'ancien nom (ROULEAUX-POR-25CM → NOUVEAU-NOM-25CM).
+     Rien si seule la casse/les accents changent (même début de SKU). SKU personnalisés (autre début)
+     ou nouveau SKU déjà utilisé ailleurs → laissés tels quels. Jamais sans confirmation ; annulable. */
+  async proposeSkuRename(pId, oldName) {
+    const p = Store.state.stockM.find(x => x.id === pId); if (!p) return;
+    const oldPre = Pricing.autoSku(oldName, p.meatType, '').toUpperCase();
+    const newPre = Pricing.autoSku(p.name, p.meatType, '').toUpperCase();
+    if (!oldPre || !newPre || oldPre === newPre) return;
+    const others = new Set();
+    Store.state.stockM.forEach(sp => sp.variants.forEach(sv => { if (sp.id !== p.id && sv.sku) others.add(sv.sku.trim().toUpperCase()); }));
+    const rows = [], kept = [];
+    this.orderedVariants(p).forEach(v => {
+      const sku = (v.sku || '').trim(); if (!sku) return;
+      const up = sku.toUpperCase();
+      if (up === oldPre || up.startsWith(oldPre + '-')) {
+        const nsku = newPre + up.slice(oldPre.length);
+        rows.push({ v, old: sku, nsku, clash: others.has(nsku) });
+      } else kept.push(sku);
+    });
+    if (!rows.length) return;
+    const ok = rows.filter(r => !r.clash);
+    const html = `<p style="margin:0 0 8px;">Tu as renommé <b>${U.esc(oldName)}</b> en <b>${U.esc(p.name)}</b>. Mettre à jour les SKU de ses variantes ?</p>
+      <table style="width:100%;font-size:.85rem;"><thead><tr><th>Variante</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${U.esc(Pricing.labelVariant(r.v))}</td><td><code>${U.esc(r.old)}</code></td><td>${r.clash ? `<span class="warn-txt">⚠ ${U.esc(r.nsku)} déjà utilisé — gardé</span>` : `<code>${U.esc(r.nsku)}</code>`}</td></tr>`).join('')}
+      </tbody></table>
+      ${kept.length ? `<p class="muted" style="margin:8px 0 0;font-size:.8rem;">SKU personnalisés non touchés : ${kept.map(U.esc).join(', ')}</p>` : ''}
+      <p class="muted" style="margin:8px 0 0;font-size:.8rem;">⚠️ Pense à mettre les mêmes SKU sur ton site, sinon le lien avec WooCommerce est perdu.</p>`;
+    if (!ok.length) { U.alert('Les nouveaux SKU seraient déjà utilisés par d\'autres produits : rien n\'a été changé.', '🏷️ SKU'); return; }
+    if (!await U.ask({ title: '🏷️ Mettre à jour les SKU ?', html, okLabel: `Mettre à jour (${ok.length})`, cancelLabel: 'Garder les SKU' })) return;
+    const snaps = [Store.snapshot('stockM', p)];
+    const catSnapped = new Set();
+    ok.forEach(r => {
+      r.v.sku = r.nsku;
+      const cId = r.v.catalogId || p.catalogId;
+      const cp = cId && r.v.catalogVariantId ? Store.state.catalogM.find(c => c.id === cId) : null;
+      const cv = cp?.variants?.find(x => x.id === r.v.catalogVariantId);
+      if (cv && cv.sku !== r.nsku) { if (!catSnapped.has(cp.id)) { snaps.push(Store.snapshot('catalogM', cp)); catSnapped.add(cp.id); } cv.sku = r.nsku; }
+    });
+    const entry = Store.log('stock', `SKU mis à jour après renommage — ${p.name} (${ok.length})`, { type: 'restoreBatch', data: snaps });
+    Store.save('stockM'); if (catSnapped.size) Store.save('catalogM');
+    App.rerender();
+    U.toast(`${ok.length} SKU mis à jour — pense à les reporter sur ton site.`, false, entry.id);
   },
 
   /* Liste de suggestions pour "Lier au catalogue prix" — recherche texte plutôt
