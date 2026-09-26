@@ -714,3 +714,10 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
 .travel-split .muted { font-size:.8rem; white-space:nowrap; }
 
 @media (max-width: 700px) { .sale-head-in { flex-wrap: wrap; } .sale-head-in .sh-right { width: 100%; justify-content: flex-end; } }
+
+/* Prix d'achat consommable : étiquette HT/TTC cliquable DANS le champ (garde l'alignement de la ligne) */
+.tax-in { position: relative; }
+.tax-in input { padding-right: 52px; }
+.tax-tag { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 2px 8px; min-height: 0; font-size: .72rem; font-weight: 700; letter-spacing: .03em; border-radius: 6px; border: 1px solid rgba(166,113,83,.55); background: rgba(166,113,83,.15); color: var(--caramel); cursor: pointer; line-height: 1.4; }
+.tax-tag:hover { background: rgba(166,113,83,.3); }
+.tax-tag[data-tax="TTC"] { background: var(--caramel); color: #fff; }

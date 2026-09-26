@@ -1938,8 +1938,7 @@ const Stock = {
         <div class="fg"><label>Seuil</label><input id="c_low" type="number" step="1" value="${c.low}"></div>
       </div>
       <div class="frow" style="align-items:flex-end;">
-        <div class="fg"><label>Prix d'achat (€)</label><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()">
-          <div style="display:flex;gap:12px;margin-top:5px;font-size:.85rem;">${['HT','TTC'].map(t => `<label style="display:flex;align-items:center;gap:4px;text-transform:none;cursor:pointer;margin:0;"><input type="radio" name="c_tax" value="${t}" ${(c.costTax||'HT')===t?'checked':''} style="width:auto;" onchange="Stock._calcConsoUnit()"> ${t}</label>`).join('')}</div></div>
+        <div class="fg"><label>Prix d'achat (€)</label><div class="tax-in"><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"><button type="button" id="c_tax" class="tax-tag" data-tax="${c.costTax==='TTC'?'TTC':'HT'}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleConsoTax()">${c.costTax==='TTC'?'TTC':'HT'}</button></div></div>
         <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} HT /u</span></div>
       </div>
@@ -1959,7 +1958,7 @@ const Stock = {
         c.dimensions=U.val('c_dim').trim();
         c.category=U.val('c_cat');c.unit=U.val('c_unit');c.qty=U.numVal('c_qty');c.low=U.numVal('c_low');
         c.costTotal=U.numVal('c_costTotal'); c.costQtyPer=Math.max(0.01,U.numVal('c_costQty'));
-        c.costTax=(document.querySelector('input[name="c_tax"]:checked')||{}).value||'HT';
+        c.costTax=(document.getElementById('c_tax')||{dataset:{}}).dataset.tax||'HT';
         c.costUnit=this.consoUnitCost(c.costTotal,c.costQtyPer,c.costTax);
         c.url=U.val('c_url').trim();
         c.ref=U.val('c_ref').trim();
@@ -2027,8 +2026,14 @@ const Stock = {
     const q = U.num(qper) > 0 ? U.num(qper) : 1;
     return U.num(total) / q / (tax === 'TTC' ? vat : 1);
   },
+  _toggleConsoTax() {
+    const b = document.getElementById('c_tax'); if (!b) return;
+    b.dataset.tax = b.dataset.tax === 'TTC' ? 'HT' : 'TTC';
+    b.textContent = b.dataset.tax;
+    this._calcConsoUnit();
+  },
   _calcConsoUnit() {
-    const tax = (document.querySelector('input[name="c_tax"]:checked') || {}).value || 'HT';
+    const tax = (document.getElementById('c_tax') || { dataset: {} }).dataset.tax || 'HT';
     const unit = this.consoUnitCost(U.numVal('c_costTotal'), U.numVal('c_costQty'), tax);
     const el = document.getElementById('c_costResult');
     if (el) el.textContent = U.eur(unit, 3) + ' HT /u';
