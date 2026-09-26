@@ -784,3 +784,13 @@ details.sachet-group > summary b { font-size: 1.1rem !important; }
 /* Fenêtre : clic à côté = petit rebond (elle ne se ferme plus) */
 @keyframes modalNudge { 0%,100% { transform: scale(1); } 40% { transform: scale(1.015); } }
 .modal.nudge { animation: modalNudge .18s ease; }
+
+/* Stock → variantes : colonne Variante alignée (2026-09-28) — repère ↳ et chevron dans des cases fixes,
+   nom toujours au même endroit, badges (DLUO, 💰, 📦…) rangés APRÈS le nom. */
+td.var-cell, th.var-cell { text-align: left; }
+td.var-cell .vc { display: flex; align-items: center; gap: 4px; min-width: 190px; }
+td.var-cell .vc-ind { flex: 0 0 16px; width: 16px; text-align: center; }
+td.var-cell .vc-name { white-space: nowrap; }
+td.var-cell .vc-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; }
+td.var-cell .vc-badges:empty { display: none; }
+td.var-cell .vc-badges .badge { white-space: nowrap; }
