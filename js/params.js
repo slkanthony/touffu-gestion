@@ -931,6 +931,24 @@ const Params = {
     this._renameSachets();
     Store.save('settings'); App.rerender();
   },
+  /* Liste de choix d'un consommable dans une fenêtre (lier un sachet / un rouleau de blister) :
+     même présentation que le choix du sachet du bloc 5 de Prix mastication (nom · dimensions · valeur),
+     au lieu d'un <select> natif illisible. La valeur choisie va dans un champ caché #<id>. */
+  _consoPickList(id, list, current, colC, headLabel) {
+    const unitOf = c => (!c.unit || c.unit === 'pc') ? 'PCS' : c.unit;
+    const sorted = list.slice().sort((a, b) => (Stock._dimVolume(Stock.consoDims(a)) - Stock._dimVolume(Stock.consoDims(b))) || U.sortFr(a.name, b.name));
+    const row = (cid, a, b, c) => `<div class="pp-row${String(cid) === String(current || '') ? ' active' : ''}" data-v="${cid}" onclick="Params._pickConsoRow(this,'${id}')"><span class="pp-a">${a}</span><span class="pp-b">${b}</span><span class="pp-c">${c}</span></div>`;
+    return `<input type="hidden" id="${id}" value="${U.esc(current || '')}">
+      <div class="pp-list">
+        ${row('', '<i>Aucun</i>', '', '')}
+        <div class="pp-head">${headLabel}</div>
+        ${sorted.map(c => row(c.id, U.esc(c.name), U.esc(Stock.consoDims(c) || '—'), colC(c, unitOf(c)))).join('')}
+      </div>`;
+  },
+  _pickConsoRow(el, id) {
+    el.parentElement.querySelectorAll('.pp-row').forEach(r => r.classList.toggle('active', r === el));
+    const inp = document.getElementById(id); if (inp) inp.value = el.dataset.v || '';
+  },
   linkBlisterRoll(widthKey) {
     const all = Store.state.consumables;
     if (!all.length) { U.toast('Aucun consommable en stock — ajoute d\'abord le rouleau dans Stock > Consommables.', true); return; }
@@ -938,10 +956,10 @@ const Params = {
     const list = consos.length ? consos : all;
     const S = Store.state.settings;
     const current = (S.blisterRolls || {})[widthKey]?.consumableId || '';
-    const opts = list.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.qty(c.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
+    const picker = this._consoPickList('bl_conso', list, current, (c, u) => `${U.qty(c.qty)} ${U.esc(u)}`, '🎞️ Rouleaux' + (consos.length ? '' : ' (tous les consommables)'));
     U.modal({
       title: 'Lier Blister ' + widthKey + 'mm au consommable', okLabel: 'Enregistrer',
-      body: `<div class="fg"><label>Consommable (rouleau en stock)</label><select id="bl_conso"><option value="">— Aucun —</option>${opts}</select></div>
+      body: `<div class="fg"><label>Consommable (rouleau en stock)</label>${picker}</div>
       <p class="muted">Sélectionne le rouleau de blister correspondant dans le stock Consommables.<br>La longueur sera déduite du stock quand un lot utilisant ce blister est créé.${consos.length ? '' : ' <br>⚠️ Aucun consommable de catégorie « Blisters » trouvé — tous les consommables sont affichés.'}</p>`,
       onOk: () => {
         if (!S.blisterRolls) S.blisterRolls = {};
@@ -999,10 +1017,10 @@ const Params = {
     const consos = all.filter(c => c.category === 'Sachets');
     const list = consos.length ? consos : all;
     const current = s.consumableId || '';
-    const opts = list.map(c => `<option value="${c.id}" ${c.id === current ? 'selected' : ''}>${U.esc(c.name)}${c.dimensions ? ' (' + U.esc(c.dimensions) + ')' : ''} — ${U.eur(c.costUnit, 3)}/${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</option>`).join('');
+    const picker = this._consoPickList('sac_conso', list, current, (c, u) => `${U.eur(c.costUnit, 3)} / ${U.esc(u)}`, '🛍️ Sachets' + (consos.length ? '' : ' (tous les consommables)'));
     U.modal({
       title: 'Lier ' + (s.name || 'ce sachet') + ' au consommable', okLabel: 'Enregistrer',
-      body: `<div class="fg"><label>Consommable (sachet en stock)</label><select id="sac_conso"><option value="">— Aucun —</option>${opts}</select></div>
+      body: `<div class="fg"><label>Consommable (sachet en stock)</label>${picker}</div>
       <p class="muted">Le coût de ce sachet reprendra automatiquement le coût / unité du consommable choisi.${consos.length ? '' : ' <br>⚠️ Aucun consommable de catégorie « Sachets » trouvé — tous les consommables sont affichés.'}</p>`,
       onOk: () => {
         const cid = U.val('sac_conso');

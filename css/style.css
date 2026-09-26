@@ -842,3 +842,7 @@ tr:has(details.pack-picker[open]), td:has(details.pack-picker[open]) { position:
 details.pack-picker[open] { position: relative; z-index: 100; }
 .pp-panel { right: auto !important; min-width: 360px; background: var(--card-bg) !important; opacity: 1; padding: 4px 0 !important; }
 tr.dim:has(details.pack-picker[open]) { opacity: 1; }
+
+/* Fenêtres « Lier au consommable » : liste en colonnes (même style que le choix du sachet, bloc 5) */
+.pp-list { max-height: 340px; overflow-y: auto; border: 1px solid var(--card-border); border-radius: 10px; padding: 4px 0; background: var(--card-bg); }
+.pp-list .pp-row { grid-template-columns: 1fr auto 110px; }
