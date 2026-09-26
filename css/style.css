@@ -680,3 +680,8 @@ body.visit-mode .kpi.kpi-fullblur { filter: blur(6px); user-select: none; }
 :root[data-theme="dark"] .kpi.info2 { border-left-color: #7fc4e8; }
 /* Chiffre : taille qui s'adapte à la largeur pour ne plus être coupé (« 10 622,42… ») */
 .grid.c4 > .kpi .v { font-size: clamp(1.1rem, 1.55vw, 1.7rem); text-overflow: clip; }
+/* Alertes stock (orange ambré) bien distinctes de Dates critiques (rouge) */
+:root[data-theme="dark"] .kpi.warn .v { color: #f5b041; }
+:root[data-theme="dark"] .kpi.warn { border-left-color: #f5b041; }
+:root[data-theme="dark"] .kpi.bad .v { color: #ef5a4c; }
+:root[data-theme="dark"] .kpi.bad { border-left-color: #ef5a4c; }

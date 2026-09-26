@@ -577,7 +577,7 @@ const App = {
         <div class="kpi sensitive" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${U.eur(valAchat)}</div><div class="l">Valeur stock (achat)</div></div>
         <div class="kpi good sensitive" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${U.eur(valVente)}</div><div class="l">Valeur stock (vente TTC)</div></div>
         <div class="kpi info2" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${nbProduits}</div><div class="l">Produits (${enStock} en stock)</div></div>
-        <div class="kpi ${lowCount ? 'bad' : 'good'}" onclick="Stock.tab='faible';App.go('stock')"><div class="v">${lowCount}</div><div class="l">Alertes stock (seuils atteints)</div></div>
+        <div class="kpi ${lowCount ? 'warn' : 'good'}" onclick="Stock.tab='faible';App.go('stock')"><div class="v">${lowCount}</div><div class="l">Alertes stock (seuils atteints)</div></div>
         <div class="kpi kpi-fullblur ${!dluoScope ? '' : alerts.length ? 'bad' : 'good'}" onclick="Stock.tab='peremptions';App.go('stock')"><div class="v">${dluoScope ? alerts.length : '—'}</div><div class="l">Dates critiques (DLUO ≤ ${S.dluoAlertDays} j)</div></div>
       </div>
 
