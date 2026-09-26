@@ -207,7 +207,7 @@ const Store = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, async () => {
           if (this._flushing || this._dirty.size) return;
           if (this._justSynced && Date.now() - this._justSynced < 2000) return; // echo de notre propre sauvegarde : rien a recharger
-          if (this._modalOpen()) { this._pendingReload = true; return; }
+          if (this._modalOpen() || this._fileBusy()) { this._pendingReload = true; return; }
           await this.loadRemote();
           window.App?.rerender?.();
         }).subscribe();
@@ -220,9 +220,10 @@ const Store = {
     // cliqué "Lier" plusieurs fois de suite) écrasait silencieusement les
     // changements pas encore envoyés par l'état encore ancien du serveur —
     // ça donnait l'impression que la 2e/3e action "ne faisait rien".
+    document.addEventListener('click', e => { if (e.target && e.target.matches && e.target.matches('input[type=file]')) this._filePickUntil = Date.now() + 120000; }, true);
+    document.addEventListener('change', e => { if (e.target && e.target.matches && e.target.matches('input[type=file]')) this._filePickUntil = 0; }, true);
     window.addEventListener('focus', async () => {
-      const pendingFile = document.getElementById('importFile');
-      if (pendingFile && pendingFile.files && pendingFile.files.length) return; // ne pas ecraser une selection de fichier en cours (ex: retour du selecteur de fichier)
+      if (this._fileBusy()) return; // ne pas écraser une sélection de fichier en cours (retour du sélecteur de fichier)
       if (this.remote && !this._flushing && !this._dirty.size) {
         if (this._modalOpen()) { this._pendingReload = true; return; }
         await this.loadRemote(); window.App?.rerender?.();
@@ -237,6 +238,16 @@ const Store = {
      sans message. On diffère donc tout rechargement tant qu'une fenêtre est ouverte ;
      U.closeModal() appelle _afterModal() pour le rattraper ensuite. */
   _modalOpen() { return !!document.getElementById('modalBg'); },
+  /* ⚠️ Piège corrigé (2026-09-26, « le fichier choisi ne reste pas ») : ouvrir le sélecteur de
+     fichier fait perdre le focus à la fenêtre ; au retour, l'événement `focus` déclenchait
+     loadRemote() + re-rendu → le champ <input type=file> était recréé VIDE. Valable pour TOUS
+     les champs fichier (retour d'événement, imports Paramètres, Site…). On ne recharge donc pas
+     pendant 2 min après un clic sur un champ fichier, ni tant qu'un champ fichier contient un fichier. */
+  _filePickUntil: 0,
+  _fileBusy() {
+    if (Date.now() < this._filePickUntil) return true;
+    return [...document.querySelectorAll('input[type=file]')].some(i => i.files && i.files.length);
+  },
   _afterModal() {
     if (!this._pendingReload) return;
     this._pendingReload = false;
