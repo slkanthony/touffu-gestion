@@ -611,16 +611,28 @@ const Ventes = {
       if (this.historySort.field === 'payment') return hDir * U.sortFr(this.paymentLabel(a), this.paymentLabel(b));
       return hDir * (a.ts - b.ts);
     });
-    const sortHead = (key, label) => `<span class="sortable ${this.historySort.field === key ? 'active' : ''}" onclick="Ventes.setHistorySort('${key}')">${label} ${this.historySort.field === key ? (this.historySort.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
+    const sortBtn = (key, label) => `<button class="${this.historySort.field === key ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistorySort('${key}')">${label} ${this.historySort.field === key ? (this.historySort.dir === 'asc' ? '▲' : '▼') : ''}</button>`;
     const today = Store.state.sales.filter(s => !s.cancelled && new Date(s.ts).toDateString() === new Date().toDateString());
     const caJour = today.reduce((a, s) => a + s.total, 0);
-    // Ordre des colonnes (retour d'Antho) : Date · Stock · articles (produit, variante, SKU, lot, qté, prix)
-    // à GAUCHE, puis les infos de la vente (paiement, remise, client, frais…) à droite, souvent vides.
-    // Cellules de la vente alignées en HAUT (rowspan) pour ne plus flotter au milieu d'une longue liste.
-    const rs = n => `rowspan="${n}" style="vertical-align:top;"`;
-    const rowsHtml = sales.map(s => s.items.map((i, idx) => `<tr class="${s.cancelled ? 'dim' : ''}">
-        ${idx === 0 ? `<td ${rs(s.items.length).replace('style="', 'style="white-space:nowrap;')}>${U.frDateTime(s.ts)}</td>
-        <td ${rs(s.items.length)}><span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span>${s.eventName ? `<div style="font-size:.78rem;margin-top:4px;color:var(--caramel);font-weight:600;">🎪 ${U.esc(s.eventName)}</div>` : ''}</td>` : ''}
+    /* Mise en page (2026-09-27, retour d'Antho) : chaque vente = une BANDE d'en-tête pleine largeur
+       (date, stock, événement, paiement, remise, client, port, frais, total, actions), puis ses
+       articles en dessous. Fini les cellules fusionnées perdues au milieu de longues listes. */
+    const field = (label, html) => `<span class="sh-field"><span class="sh-lbl">${label}</span>${html}</span>`;
+    const rowsHtml = sales.map(s => {
+      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sale-head-in">
+          <span class="sh-date">${U.frDateTime(s.ts)}</span>
+          <span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span>
+          ${s.eventName ? `<span class="sh-event">🎪 ${U.esc(s.eventName)}</span>` : ''}
+          ${field('Paiement', this.paymentLabel(s))}
+          ${field('Remise', this.deliveryLabel(s))}
+          ${s.customerName ? field('Client', U.esc(s.customerName)) : ''}
+          ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
+          ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
+          ${s.source === 'event' ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
+          <span class="sh-total">${s.items.length} article(s) · <b>${U.eur(s.total)}</b></span>
+          <span class="sh-actions">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span>
+        </div></td></tr>`;
+      const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
@@ -628,17 +640,13 @@ const Ventes = {
         <td class="num">${U.qty(i.qty)}</td>
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
-        ${idx === 0 ? `<td ${rs(s.items.length).replace('style="', 'style="border-left:2px solid var(--caramel);')}>${this.paymentLabel(s)}</td>
-        <td ${rs(s.items.length)}>${this.deliveryLabel(s)}</td>
-        <td ${rs(s.items.length)}>${s.customerName ? U.esc(s.customerName) : '—'}</td>
-        <td ${rs(s.items.length)}>${s.delivery === 'livraison' ? `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>` : '—'}</td>
-        <td ${rs(s.items.length)}>${s.delivery === 'livraison' ? `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">` : '—'}</td>
-        <td ${rs(s.items.length)}>${s.source === 'event' ? `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">` : '—'}</td>
-        <td ${rs(s.items.length).replace('style="', 'style="white-space:nowrap;')}>${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Ajouter frais de stand / consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</td>` : ''}
-      </tr>`).join('')).join('');
+      </tr>`).join('');
+      return head + items;
+    }).join('');
     return `<p class="muted">Aujourd'hui : <b>${U.eur(caJour)}</b> (${today.length} sorties)</p>
-      <div class="table-wrap"><table><thead><tr><th>${sortHead('date', 'Date')}</th><th>Stock</th><th class="col-name" style="text-align:left;">${sortHead('name', 'Produit')}</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th style="border-left:2px solid var(--caramel);">${sortHead('payment', 'Paiement')}</th><th>Remise</th><th>Client</th><th>Port client</th><th>Frais d'envoi</th><th>Frais stand</th><th></th></tr></thead>
-      <tbody>${rowsHtml || '<tr><td colspan="16" class="muted">Aucune sortie enregistrée.</td></tr>'}</tbody></table></div>`;
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><span class="muted" style="font-size:.85rem;">Trier :</span>${sortBtn('date', 'Date')}${sortBtn('name', 'Produit')}${sortBtn('payment', 'Paiement')}</div>
+      <div class="table-wrap"><table class="sales-hist"><thead><tr><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr></thead>
+      <tbody>${rowsHtml || '<tr><td colspan="7" class="muted">Aucune sortie enregistrée.</td></tr>'}</tbody></table></div>`;
   },
 
   exportSales() {
