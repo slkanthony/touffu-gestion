@@ -274,7 +274,7 @@ summary .prod-actions { display: flex; gap: 2px; justify-self: end; }
    Le chevron ▸ est sorti du flux (position:absolute) pour ne pas décaler les colonnes de la grille :
    sans ça, le pseudo-élément ::before compte comme un item de grille en plus et décale tout d'une colonne. */
 .prod-list-header, details.fold.prod-fold > summary {
-  display: grid; grid-template-columns: minmax(180px, 2fr) 140px 150px 1fr 120px; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: minmax(180px, 2fr) 140px 150px 1fr 130px; gap: 10px; align-items: center;
 }
 details.fold.prod-fold > summary { position: relative; padding: 13px 16px 13px 30px; }
 details.fold.prod-fold > summary::before { position: absolute; left: 16px; top: 50%; margin-top: -7px; }
@@ -757,3 +757,10 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
   opacity: 0; pointer-events: none; transition: opacity .12s; }
 .info-bubble.show { opacity: 1; }
 .fin-block :is(.frow, .grid) > .fg > label { gap: 4px; }
+
+/* Actions uniformes partout dans Stock (modèle Consommables) : 1re ligne = icônes (lien, dupliquer, ↑↓…),
+   2e ligne = bouton « Modifier » + 🗑, le tout calé à droite. */
+.act-grid { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+summary .prod-actions.act-grid { display: inline-flex; }
+.act-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.act-row:empty { display: none; }

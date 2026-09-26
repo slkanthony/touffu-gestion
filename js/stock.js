@@ -247,12 +247,13 @@ const Stock = {
         </span>
         ${p.variants.some(v => v.lots.some(l => this.reminderDue(l))) ? '<span class="badge warn" title="Un rappel (pense-bête) est arrivé à échéance sur un lot">🔔 Rappel</span>' : ''}
         <span class="meta"><b>${totalG+totalE}</b> unités · gén <b>${totalG}</b> · évén <b>${totalE}</b> · <span class="muted">${nv} variante(s)</span></span>
-        <span class="prod-actions" style="white-space:nowrap;">
+        <span class="prod-actions act-grid"><span class="act-row">
           ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${p.url ? 'Ouvrir la page sur le site Touffu' : 'Ajouter le lien site Touffu'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>`}
           ${cat ? `<button class="btn-icon" title="Resynchroniser prix/variantes depuis le catalogue (ex: une taille ajoutée côté calcul de prix après coup)" onclick="event.preventDefault();event.stopPropagation();Stock.resyncFromCatalog('${p.id}')">🔄</button>` : `<button class="btn-icon" title="Créer la fiche de calcul de prix à partir de ce produit (reprend nom, viande et conditionnement — tu complètes fournisseur et prix)" onclick="event.preventDefault();event.stopPropagation();Stock.createCatalogFromStock('${p.id}')">📋</button>`}
-          <button class="btn-icon" title="Modifier le produit" onclick="event.preventDefault();event.stopPropagation();Stock.editProduct('${p.id}')">✏️</button>
+          </span><span class="act-row">
+          <button class="btn-ghost btn-sm" title="Modifier le produit" onclick="event.preventDefault();event.stopPropagation();Stock.editProduct('${p.id}')">Modifier</button>
           <button class="btn-icon" title="Supprimer le produit" onclick="event.preventDefault();event.stopPropagation();Stock.delProduct('${p.id}')">🗑️</button>
-        </span>
+        </span></span>
       </summary>
       <div class="fold-body">
         <div class="table-wrap"><table>
@@ -310,12 +311,13 @@ const Stock = {
               </td>
               <td class="num"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyEvent}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyEvent',this.value)"></td>
               <td class="num muted">${U.qty(tot)}</td>
-              <td class="right" style="white-space:nowrap;">
+              <td class="right"><div class="act-grid"><span class="act-row">
                 ${isVrac?`<button class="btn-ghost btn-sm" onclick="Stock.conditionner('${p.id}','${v.id}','${l.id}')">🎁 Conditionner</button>`:''}
                 ${l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost,3)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
-                <button class="btn-icon" title="Modifier le lot" onclick="Stock.editLot('${p.id}','${v.id}','${l.id}')">✏️</button>
+                </span><span class="act-row">
+                <button class="btn-ghost btn-sm" title="Modifier le lot" onclick="Stock.editLot('${p.id}','${v.id}','${l.id}')">Modifier</button>
                 <button class="btn-icon" title="Supprimer le lot" onclick="Stock.delLot('${p.id}','${v.id}','${l.id}')">🗑️</button>
-              </td></tr>`;
+              </span></div></td></tr>`;
           }).join('') : '<tr><td colspan="7" class="muted">Aucun lot pour le moment.</td></tr>'}</tbody>
         </table></div>
         <button class="btn-cta btn-sm mt" onclick="Stock.addLot('${p.id}','${v.id}')">＋ Ajouter un lot</button>
@@ -333,12 +335,13 @@ const Stock = {
       <td class="num sensitive"><input type="number" step="0.001" value="${U.num(v.costUnit).toFixed(3)}" style="width:78px;" title="Prix d'achat / coût unitaire de référence" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>
       <td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="Prix de vente TTC" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>
       <td class="num muted">${lots.length}</td>
-      <td class="right" style="white-space:nowrap;">
+      <td class="right"><div class="act-grid"><span class="act-row">
         <button class="btn-icon" title="Monter" ${vi<=0?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${vi>=p.variants.length-1?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',1)">↓</button>
-        <button class="btn-icon" title="Modifier la variante" onclick="Stock.editVariant('${p.id}','${v.id}')">✏️</button>
+        </span><span class="act-row">
+        <button class="btn-ghost btn-sm" title="Modifier la variante" onclick="Stock.editVariant('${p.id}','${v.id}')">Modifier</button>
         <button class="btn-icon" title="Supprimer la variante" onclick="Stock.delVariant('${p.id}','${v.id}')">🗑️</button>
-      </td>
+      </span></div></td>
     </tr>${lotsBox}`;
   },
 
@@ -1896,10 +1899,10 @@ const Stock = {
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
           <td style="text-align:center;">${U.num(c.low)||'—'}</td>
           <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${(cQper !== 1 || c.costTax === 'TTC') ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">${c.costTax === 'TTC' ? '<span class="badge warn" style="font-size:.68rem;">saisi TTC</span> ' : ''}= ${U.eur(c.costUnit, 3)} HT / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''}</td>
-          <td class="right">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
-            <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button>
+          <td class="right"><div class="act-grid"><span class="act-row">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
+            <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button></span><span class="act-row">
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
-            <button class="btn-icon" onclick="Stock.delConso('${c.id}')">🗑️</button></td></tr>`;}).join('')}
+            <button class="btn-icon" title="Supprimer" onclick="Stock.delConso('${c.id}')">🗑️</button></span></div></td></tr>`;}).join('')}
         </tbody></table></div></div>` : '<div class="card empty"><span class="big">📦</span>Aucun consommable.</div>'}`;
   },
   setConsoQty(id,val){
@@ -2145,10 +2148,10 @@ const Stock = {
           ${hasAlert ? '<span class="badge warn">Stock bas</span>' : ''}
         </span>
         <span class="meta">${items.length} référence(s) · ${U.qty(totalQty)} ${unit} au total</span>
-        <span class="prod-actions">
-          <button class="btn-icon" title="Renommer ce groupe" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">✏️</button>
+        <span class="prod-actions act-grid"><span class="act-row">
+          <button class="btn-ghost btn-sm" title="Renommer ce groupe" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
-        </span>
+        </span></span>
       </summary>
       <div class="fold-body"><div class="table-wrap"><table class="mat-table">
         <thead><tr><th class="col-name">Variante</th><th>SKU</th><th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
@@ -2215,13 +2218,14 @@ const Stock = {
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
       <td><input type="number" step="0.01" value="${low}" title="Seuil d'alerte" onchange="Stock.setMatField('${m.id}','low',this.value)"></td>
-      <td class="right" style="white-space:nowrap;">
+      <td class="right"><div class="act-grid"><span class="act-row">
         ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${m.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openMatLink('${m.id}')">${m.url ? '🔗' : '🔗＋'}</button>`}
         <button class="btn-icon" title="Monter" ${i <= 0 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${i >= items.length - 1 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',1)">↓</button>
-        <button class="btn-icon" title="Modifier" onclick="Stock.editMat('${m.id}')">✏️</button>
+        </span><span class="act-row">
+        <button class="btn-ghost btn-sm" title="Modifier" onclick="Stock.editMat('${m.id}')">Modifier</button>
         <button class="btn-icon" title="Supprimer" onclick="Stock.delMat('${m.id}')">🗑️</button>
-      </td>
+      </span></div></td>
     </tr>${rollsBox}`;
   },
 
