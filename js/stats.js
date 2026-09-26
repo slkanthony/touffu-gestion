@@ -38,6 +38,7 @@ const Stats = {
       <button class="${t === 'price' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('price')">📊 Prix &amp; marges</button>
       <button class="${t === 'sales' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('sales')">🛒 Ventes</button>
       <button class="${t === 'pack' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('pack')">📦 Emballages</button>
+      <button class="${t === 'events' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('events')">🎪 Événements</button>
     </div></div>`;
   },
 
@@ -45,6 +46,7 @@ const Stats = {
     U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesMetric', 'seasonProduct']);
     if ((this.tab || 'price') === 'sales') return this.renderSales();
     if (this.tab === 'pack') return this.renderPack();
+    if (this.tab === 'events') return this.renderEvents();
     return this.renderPrice();
   },
 
@@ -52,6 +54,114 @@ const Stats = {
      Sachets : historique de conditionnement des lots (v.packHistory, posé par Stock._packApply).
      Cartons : lignes consommables (kind 'C') des ventes dont le consommable est de catégorie « Cartons ».
      But (Antho) : voir ce qui sert le plus / le moins pour réduire le nombre de formats. */
+  /* ═══════════ Onglet « 🎪 Événements » (2026-09-27) ═══════════
+     Rentabilité par événement nommé (sale.eventName, saisi au retour d'événement ou via
+     « 🎪 Modifier » dans l'historique). Une édition = une année de cet événement.
+     Mêmes formules que la compta du Tableau de bord (coût de revient figé/estimé, frais
+     SumUp/Stripe, frais de stand, consommables, cotisations par nature, TVA si assujetti). */
+  _eventAgg() {
+    const S = Store.state.settings;
+    const socStd = U.num(S.socialTaxRate) / 100, socHM = Pricing.socialRateHandmade() / 100;
+    const cardRate = U.num(S.cardFeeRate) / 100, stripeRate = U.num(S.stripeFeeRate) / 100;
+    const vr = U.num(S.vatRate);
+    const saleCalc = s => {
+      const items = s.items || [];
+      const ca = U.num(s.total);
+      const caAcc = items.filter(i => i.kind === 'A').reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0);
+      const cogs = items.filter(i => i.kind === 'M' || i.kind === 'A').reduce((a, i) => a + Pricing.saleItemCost(i), 0);
+      const conso = items.filter(i => i.kind === 'C').reduce((a, i) => a + Pricing.saleItemCost(i), 0);
+      const base = (s.payment === 'sumup' || s.payment === 'stripe') ? ca + U.num(s.shippingFeeCollected) : 0;
+      const fee = s.payment === 'sumup' ? base * cardRate : s.payment === 'stripe' ? base * stripeRate : 0;
+      const cotis = caAcc * socHM + (ca - caAcc + U.num(s.shippingFeeCollected)) * socStd;
+      const tva = S.vatActive && vr > 0 ? ca * vr / (100 + vr) : 0;
+      const stand = U.num(s.eventFee);
+      const tx = (s.sumupRefs && s.sumupRefs.length) || 1;
+      return { ca, cogs, conso, fee, cotis, tva, stand, tx, net: ca - cogs - conso - fee - cotis - tva - stand + U.num(s.shippingFeeCollected) - U.num(s.shippingCost) };
+    };
+    const zero = () => ({ ca: 0, cogs: 0, conso: 0, fee: 0, cotis: 0, tva: 0, stand: 0, tx: 0, net: 0, days: new Set() });
+    const add = (t, c, day) => { Object.keys(c).forEach(k => { t[k] += c[k]; }); t.days.add(day); };
+    const byName = {};
+    Store.state.sales.filter(s => !s.cancelled && s.eventName).forEach(s => {
+      const d = new Date(s.ts), day = d.toISOString().slice(0, 10), y = d.getFullYear();
+      const e = byName[s.eventName] || (byName[s.eventName] = { name: s.eventName, tot: zero(), years: {} });
+      const c = saleCalc(s);
+      add(e.tot, c, day);
+      add(e.years[y] || (e.years[y] = zero()), c, day);
+    });
+    const unnamed = Store.state.sales.filter(s => !s.cancelled && s.source === 'event' && !s.eventName).length;
+    const list = Object.values(byName).map(e => ({ ...e, editions: Object.keys(e.years).length, nDays: e.tot.days.size, perDay: e.tot.net / (e.tot.days.size || 1), basket: e.tot.ca / (e.tot.tx || 1) }));
+    return { list, unnamed };
+  },
+  _toggleEv(enc) { const k = decodeURIComponent(enc); const o = this._evOpen || (this._evOpen = {}); o[k] = !o[k]; this.render(); },
+  setEventSort(k) {
+    const cur = this._evSort || { k: 'net', dir: 'desc' };
+    this._evSort = cur.k === k ? { k, dir: cur.dir === 'asc' ? 'desc' : 'asc' } : { k, dir: k === 'name' ? 'asc' : 'desc' };
+    this.render();
+  },
+  renderEvents() {
+    const { list, unnamed } = this._eventAgg();
+    const so = this._evSort || { k: 'net', dir: 'desc' };
+    const dir = so.dir === 'asc' ? 1 : -1;
+    const val = (e, k) => k === 'name' ? e.name : k === 'editions' ? e.editions : k === 'days' ? e.nDays : k === 'perDay' ? e.perDay : k === 'basket' ? e.basket : e.tot[k];
+    list.sort((a, b) => so.k === 'name' ? dir * U.sortFr(a.name, b.name) : dir * (val(a, so.k) - val(b, so.k)));
+    const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Stats.setEventSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
+    const neg = v => v ? '− ' + U.eur(v) : '—';
+    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive neg">${neg(t.cogs)}</td><td class="num sensitive neg">${neg(t.stand)}</td><td class="num sensitive neg">${neg(t.fee)}</td><td class="num sensitive neg">${neg(t.conso)}</td><td class="num sensitive neg">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
+    const open = this._evOpen || (this._evOpen = {});
+    const rows = list.map(e => {
+      const years = Object.keys(e.years).sort().reverse();
+      const yRows = years.map((y, i) => {
+        const t = e.years[y], prev = e.years[years[i + 1]];
+        const evo = prev && prev.net ? (t.net - prev.net) / Math.abs(prev.net) * 100 : null;
+        return `<tr class="ev-year"><td class="col-name" style="padding-left:28px;">${y} ${evo === null ? '' : `<span class="${evo >= 0 ? 'pos' : 'neg'}" style="font-size:.78rem;font-weight:600;">${evo >= 0 ? '▲ +' : '▼ '}${Math.round(evo)} %</span>`}</td><td class="num">1</td><td class="num">${t.days.size}</td>${rowCells(t)}<td class="num sensitive">${U.eur(t.net / (t.days.size || 1))}</td><td class="num sensitive">${U.eur(t.ca / (t.tx || 1))}</td></tr>`;
+      }).join('');
+      const k = encodeURIComponent(e.name).replace(/'/g, '%27');
+      return `<tr style="cursor:pointer;" onclick="Stats._toggleEv('${k}')"><td class="col-name" style="text-align:left;"><b>${open[e.name] ? '▾' : '▸'} ${U.esc(e.name)}</b></td><td class="num">${e.editions}</td><td class="num">${e.nDays}</td>${rowCells(e.tot)}<td class="num sensitive">${U.eur(e.perDay)}</td><td class="num sensitive">${U.eur(e.basket)}</td></tr>${open[e.name] ? yRows : ''}`;
+    }).join('');
+    // Simulateur
+    const simName = this._evSim && list.some(e => e.name === this._evSim) ? this._evSim : (list[0] && list[0].name) || '';
+    App.mount(`
+      <div class="view-title"><h1>Statistiques</h1><span class="sub">rentabilité par événement</span></div>
+      ${this.tabBar()}
+      ${unnamed ? `<div class="card" style="border-left:4px solid #f5b041;"><p class="mb0">⚠️ <b>${unnamed}</b> vente(s) d'événement sans nom ne sont pas comptées ici. Nomme-les via <b>Ventes → historique → 🎪 Modifier</b>.</p></div>` : ''}
+      <div class="card">
+        <h2>🎪 Rentabilité par événement</h2>
+        ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="muted" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
+        : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
+      </div>
+      ${list.length ? `<div class="card">
+        <h2>🧮 Simuler une prochaine édition</h2>
+        <p class="muted">D'après la moyenne de tes éditions passées : combien tu peux espérer gagner avec le prix de stand prévu, et le CA minimum pour couvrir le stand.</p>
+        <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="fg" style="max-width:280px;"><label>Événement</label><select id="ev_sim_name" onchange="Stats._evSim=this.value;Stats._simEvent()">${list.slice().sort((a, b) => U.sortFr(a.name, b.name)).map(e => `<option ${e.name === simName ? 'selected' : ''}>${U.esc(e.name)}</option>`).join('')}</select></div>
+          <div class="fg" style="max-width:180px;"><label>Prix du stand prévu (€)</label><input id="ev_sim_fee" type="number" step="1" min="0" value="${this._evSimFee || ''}" placeholder="0" oninput="Stats._evSimFee=this.value;Stats._simEvent()"></div>
+        </div>
+        <div id="ev_sim_out" class="mt"></div>
+      </div>` : ''}`);
+    if (list.length) this._simEvent();
+  },
+  _simEvent() {
+    const out = document.getElementById('ev_sim_out'); if (!out) return;
+    const e = this._eventAgg().list.find(x => x.name === U.val('ev_sim_name')); if (!e) return;
+    const n = e.editions || 1;
+    const avgCA = e.tot.ca / n;
+    const avgNetExStand = (e.tot.net + e.tot.stand) / n;        // bénéfice moyen AVANT frais de stand
+    const avgStand = e.tot.stand / n;
+    const fee = U.num(U.val('ev_sim_fee'));
+    const est = avgNetExStand - fee;
+    const rate = e.tot.ca > 0 ? (e.tot.net + e.tot.stand) / e.tot.ca : 0;  // ce qu'il reste par € de CA avant stand
+    const breakEven = rate > 0 ? fee / rate : null;
+    out.innerHTML = `<div class="recap-grid">
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgCA)}</div><div class="l">CA moyen par édition (${n})</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgStand)}</div><div class="l">Stand payé en moyenne</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgNetExStand)}</div><div class="l">Bénéfice moyen avant stand</div></div>
+      <div class="kpi recap-tile sensitive ${est >= 0 ? 'good' : 'bad'} recap-net"><div class="v ${est >= 0 ? 'pos' : 'neg'}">${U.eur(est)}</div><div class="l">Bénéfice estimé avec ce stand</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${breakEven === null ? '—' : U.eur(breakEven)}</div><div class="l">CA minimum pour couvrir le stand</div></div>
+    </div>
+    <p class="muted" style="font-size:.82rem;margin-top:8px;">${est >= 0 ? '✅ Avec ce prix de stand, cet événement reste rentable si tu refais un CA proche de ta moyenne.' : '🔴 Avec ce prix de stand, tu serais en perte à CA égal à ta moyenne.'} Estimation basée sur ${n} édition(s) — à prendre comme un ordre de grandeur.</p>`;
+  },
+
   _packAgg() {
     const period = this.salesPeriod || 'all';
     const now = Date.now();

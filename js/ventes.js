@@ -552,6 +552,25 @@ const Ventes = {
     Store.save('sales');
   },
 
+  /* ─── Nom d'événement (2026-09-27) : sale.eventName, pour les stats par événement ───
+     Suggestions = noms déjà utilisés (datalist), pour taper toujours le même nom. */
+  eventNames() {
+    const set = new Set();
+    Store.state.sales.forEach(x => { if (x.eventName) set.add(x.eventName); });
+    return [...set].sort(U.sortFr);
+  },
+  eventNamesDatalist() { return `<datalist id="dl_event_names">${this.eventNames().map(n => `<option value="${U.esc(n)}"></option>`).join('')}</datalist>`; },
+  setEventName(id, val) {
+    const s = Store.state.sales.find(x => x.id === id); if (!s) return;
+    const snap = Store.snapshot('sales', s);
+    s.eventName = String(val || '').trim();
+    const entry = Store.commitSnapshot(snap, 'vente', `Nom d'événement — ${U.frDateTime(s.ts)} : ${s.eventName || '(aucun)'}`);
+    U.toast('Nom de l\'événement enregistré.', false, entry.id);
+    Store.save('sales');
+  },
+  setDayEventName(key, val) { if (this.retourData) (this.retourData.eventNames = this.retourData.eventNames || {})[key] = String(val || '').trim(); },
+  setCashEventName(val) { if (this.retourData) this.retourData.cashEventName = String(val || '').trim(); },
+
   toggleShippingCharged(id) {
     const s = Store.state.sales.find(x => x.id === id); if (!s || s.delivery !== 'livraison') return;
     const snap = Store.snapshot('sales', s);
@@ -586,7 +605,7 @@ const Ventes = {
     const rs = n => `rowspan="${n}" style="vertical-align:top;"`;
     const rowsHtml = sales.map(s => s.items.map((i, idx) => `<tr class="${s.cancelled ? 'dim' : ''}">
         ${idx === 0 ? `<td ${rs(s.items.length).replace('style="', 'style="white-space:nowrap;')}>${U.frDateTime(s.ts)}</td>
-        <td ${rs(s.items.length)}><span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span></td>` : ''}
+        <td ${rs(s.items.length)}><span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span>${s.eventName ? `<div style="font-size:.78rem;margin-top:4px;color:var(--caramel);font-weight:600;">🎪 ${U.esc(s.eventName)}</div>` : ''}</td>` : ''}
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
@@ -608,7 +627,7 @@ const Ventes = {
   },
 
   exportSales() {
-    const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
+    const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Evenement', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
     Store.state.sales.forEach(s => s.items.forEach((i, idx) => {
       rows.push([U.frDateTime(s.ts), s.source === 'event' ? 'Evenement' : 'General',
         s.channel === 'online' ? 'En ligne' : s.channel === 'direct' ? 'Directe' : '', s.payment || '',
@@ -617,6 +636,7 @@ const Ventes = {
         idx === 0 && s.delivery === 'livraison' ? U.num(s.shippingFeeCollected).toFixed(2) : '',
         idx === 0 ? U.num(s.shippingCost).toFixed(2) : '',
         idx === 0 ? U.num(s.eventFee).toFixed(2) : '',
+        s.eventName || '',
         idx === 0 ? U.num(s.items.filter(x => x.kind === 'C').reduce((a, x) => a + U.num(x.cost), 0)).toFixed(2) : '',
         i.name, i.label || '', i.sku || '', i.lotLabel || '',
         U.num(i.qty), U.num(i.price).toFixed(2), (U.num(i.price) * U.num(i.qty)).toFixed(2), s.cancelled ? 'oui' : 'non']);
@@ -901,6 +921,7 @@ const Ventes = {
       <label class="mt" style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;">
         <input type="checkbox" ${d.mergeOne ? 'checked' : ''} onclick="Ventes.setRetourMerge(this.checked)">
         Fusionner les journées cochées en un seul ticket (ex : marché sur un week-end)</label>
+      ${this.eventNamesDatalist()}
       <div class="mt">${d.days.map(g => this.retourDayCard(g, imported)).join('')}</div>
       ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${this.retourDeduct ? 'qui seront déduits du stock événement' : 'enregistrés SANS déduction (import historique)'}</b> (${safeQty} article(s))${safeList.some(x => x.short) ? ' <span class="badge bad">⚠️ stock insuffisant sur ' + safeList.filter(x => x.short).length + '</span>' : ''}</summary><div class="fold-body">
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${this.retourDeduct ? 'Après validation' : 'Après (inchangé)'}</th></tr></thead>
@@ -949,6 +970,7 @@ const Ventes = {
         </div>
         <div class="fg"><label>Date de l'événement</label><input type="date" value="${d.cashDate}" onchange="Ventes.setCashDate(this.value)"></div>
       </div>
+      <div class="fg"><label>🎪 Événement (ventes espèces)</label><input list="dl_event_names" placeholder="même nom que la journée SumUp si c'est le même marché" value="${U.esc(this.retourData && this.retourData.cashEventName || '')}" onchange="Ventes.setCashEventName(this.value)"></div>
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="0.001" min="0" value="${this.cashQty || 1}" onchange="Ventes.cashQty=U.num(this.value)"></div>
@@ -1052,7 +1074,13 @@ const Ventes = {
       </div>
       ${s.source !== 'event' ? '<div class="card"><p class="muted">Ce ticket n\'est pas un événement — rien à modifier ici.</p></div>' : `
       <div class="card">
-        <h2>🎪 Frais de stand</h2>
+        <h2>🎪 Événement & frais de stand</h2>
+        ${this.eventNamesDatalist()}
+        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <label style="margin:0;text-transform:none;">Nom de l'événement</label>
+          <input list="dl_event_names" style="width:280px;" value="${U.esc(s.eventName || '')}" placeholder="ex : Marché de Noël Lyon" onchange="Ventes.setEventName('${s.id}',this.value)">
+          <span class="muted" style="font-size:.82rem;">sert aux statistiques par événement (Statistiques → 🎪 Événements)</span>
+        </div>
         <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;">
           <label style="margin:0;text-transform:none;">Frais de stand (€)</label>
           <input type="number" step="0.01" min="0" style="width:130px;" value="${U.num(s.eventFee) || ''}" placeholder="0" onchange="Ventes.setEventFee('${s.id}',this.value)">
@@ -1099,6 +1127,8 @@ const Ventes = {
         <span class="sensitive"><b>${U.eur(okTotal)}</b>${okTotal.toFixed(2) !== dayTotal.toFixed(2) ? ` <span class="muted">/ ${U.eur(dayTotal)} total</span>` : ''}</span>
       </label>
       ${allDup ? '' : `<div class="frow" style="margin-top:7px;gap:8px;align-items:center;">
+        <label style="margin:0;text-transform:none;font-size:.85rem;">🎪 Événement</label>
+        <input list="dl_event_names" placeholder="ex : Marché de Noël Lyon" style="width:230px;" value="${U.esc((this.retourData.eventNames || {})[g.key] || '')}" onchange="Ventes.setDayEventName('${g.key}',this.value)">
         <label style="margin:0;text-transform:none;font-size:.85rem;">🏪 Frais de stand (€)</label>
         <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.standFees || {})[g.key]) || ''}" onchange="Ventes.setStandFee('${g.key}',this.value)">
         <span class="muted" style="font-size:.78rem;">coût du stand pour cette journée (métrage, emplacement…)</span>
@@ -1129,7 +1159,8 @@ const Ventes = {
         const items = grouped.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, variant: g.label, sku: g.sku, qty: g.qty, price: g.unit }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
         const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
-        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
+        const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
+        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique ${b.label} — ${U.eur(total)} (${items.length} produit(s), stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += items.reduce((a, i) => a + i.qty, 0); refs.forEach(r => seen.add(r));
@@ -1145,7 +1176,8 @@ const Ventes = {
       if (!safe.length) return;
       const lines = safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty }));
       const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
-      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
+      const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
+      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
       const short = this._deductSale(sale, lines, 'event');
       Store.state.sales.unshift(sale);
       Store.log('vente', `Retour événement ${b.label} — ${U.eur(sale.total)} (${lines.length} produit(s))`, { type: 'sale', data: { saleId: sale.id } });
@@ -1158,12 +1190,12 @@ const Ventes = {
       if (!deduct) {
         const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
         const short = this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
         Store.state.sales.unshift(sale);
         Store.log('vente', `Retour événement (espèces) — ${U.eur(sale.total)}`, { type: 'sale', data: { saleId: sale.id } });
