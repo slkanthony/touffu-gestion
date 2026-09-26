@@ -808,3 +808,12 @@ td.var-cell .vc-badges .badge { white-space: nowrap; }
 /* Page Site : onglets Export / Comparer avec le site / Comparer avec SumUp */
 .woo-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
 .woo-tabs button { flex: 1 1 200px; padding: 12px 16px; font-size: 1rem; }
+
+/* Comparer avec SumUp : tableau compact, largeur fixe → jamais de défilement horizontal (la molette reste verticale) */
+table.sumup-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+table.sumup-table th, table.sumup-table td { text-align: left; padding: 7px 10px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+table.sumup-table th { white-space: nowrap; font-size: .75rem; }
+table.sumup-table td { font-size: .88rem; line-height: 1.35; }
+table.sumup-table tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
+table.sumup-table .sub { font-size: .74rem; color: var(--gris); margin-top: 2px; }
+table.sumup-table .sku-txt { font-family: monospace; font-size: .78rem; color: var(--caramel); }

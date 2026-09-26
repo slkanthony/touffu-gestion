@@ -287,7 +287,7 @@ const Woo = {
         return (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y))) * dir || U.sortFr(a.name + a.variant, b.name + b.variant);
       });
     const yes = '<span class="pos">✅</span>', no = '<span class="neg">❌</span>';
-    const th = (k, l, num) => `<th class="sortable${this.sumupSort === k ? ' active' : ''}${num ? ' num' : ''}" style="cursor:pointer;${k === 'name' ? 'text-align:left;' : ''}" onclick="Woo._setSumupSort('${k}')">${l} ${this.sumupSort === k ? (this.sumupSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
+    const th = (k, l, num) => `<th class="sortable${this.sumupSort === k ? ' active' : ''}${num ? ' num' : ''}" style="cursor:pointer;" onclick="Woo._setSumupSort('${k}')">${l} ${this.sumupSort === k ? (this.sumupSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
     const sgn = v => (v > 0 ? '+' : '') ;
     return `
       <div class="sumup-filters mt">
@@ -298,22 +298,27 @@ const Woo = {
         <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
         <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()">⬇ Liste à corriger (CSV)</button>
       </div>
-      <div class="table-wrap mt"><table>
-        <thead><tr>${th('name', 'Article SumUp')}${th('sku', 'SKU')}
-          ${th('price', 'Prix SumUp', 1)}${th('appPrice', 'Prix appli', 1)}${th('dPrice', 'Écart prix', 1)}
-          ${th('qty', 'Qté SumUp', 1)}${th('appQty', 'Qté événement', 1)}${th('dQty', 'Écart qté', 1)}</tr></thead>
-        <tbody>${rows.map(m => `<tr>
-          <td style="text-align:left;"><b>${U.esc(m.name)}</b>${m.variant ? ` <span class="muted">— ${U.esc(m.variant)}</span>` : ''}${m.appName ? `<div class="muted" style="font-size:.75rem;">appli : ${U.esc(m.appName)}</div>` : ''}</td>
-          <td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="tag">${U.esc(m.sku)}</span>`}</td>
-          <td class="num">${m.price != null ? U.eur(m.price) : '—'}</td>
-          <td class="num">${m.appPrice != null ? U.eur(m.appPrice) : '—'}</td>
-          <td class="num">${m.priceOk === null ? '<span class="muted">—</span>' : m.priceOk ? yes : `${no} <span class="muted" style="font-size:.78rem;">${m.dPrice != null ? sgn(m.dPrice) + U.eur(m.dPrice) : ''}</span>`}</td>
-          <td class="num">${m.track ? (m.qty != null ? U.qty(m.qty) : '—') : '<span class="muted">non suivi</span>'}</td>
-          <td class="num">${m.appQty != null ? U.qty(m.appQty) : '—'}</td>
-          <td class="num">${m.qtyOk === null ? '<span class="muted">—</span>' : m.qtyOk ? yes : `${no} <span class="muted" style="font-size:.78rem;">${sgn(m.dQty)}${U.qty(m.dQty)}</span>`}</td>
-        </tr>`).join('') || `<tr><td colspan="8" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
-      </table></div>
-      <p class="muted help">« Prix appli » = prix de vente TTC de la variante dans le Stock (ou de l'accessoire). La quantité SumUp est comparée à ton <b>stock événement</b>, et seulement si le suivi de stock est activé sur l'article dans SumUp. Écart « + » = l'appli a plus (prix plus cher / plus de stock) que SumUp. Clique un en-tête pour trier.</p>
+      <table class="sumup-table mt">
+        <colgroup><col style="width:38%"><col style="width:24%"><col style="width:19%"><col style="width:19%"></colgroup>
+        <thead><tr>${th('name', 'Article')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
+        <tbody>${rows.map(m => {
+          const same = m.appName && U.normSearch(m.appName) === U.normSearch(m.name + (m.variant ? ' — ' + m.variant : ''));
+          const price = m.priceOk === null
+            ? `<span class="muted">SumUp ${m.price != null ? U.eur(m.price) : '—'}</span>`
+            : m.priceOk ? `${yes} ${U.eur(m.price)}`
+            : `<span class="neg">❌ ${m.dPrice != null ? sgn(m.dPrice) + U.eur(m.dPrice) : ''}</span><div class="sub">SumUp ${m.price != null ? U.eur(m.price) : '—'} · appli ${U.eur(m.appPrice)}</div>`;
+          const qty = !m.track ? '<span class="muted">non suivi</span>'
+            : m.qtyOk === null ? `<span class="muted">SumUp ${m.qty != null ? U.qty(m.qty) : '—'}</span>`
+            : m.qtyOk ? `${yes} ${U.qty(m.qty)}`
+            : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
+          return `<tr>
+          <td><b>${U.esc(m.name)}</b>${m.variant ? ` <span class="muted">— ${U.esc(m.variant)}</span>` : ''}${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
+          <td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>
+          <td>${price}</td>
+          <td>${qty}</td>
+        </tr>`; }).join('') || `<tr><td colspan="4" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+      </table>
+      <p class="muted help">Prix : ✅ = identique ; ❌ = écart (« + » = l'appli est plus chère que SumUp), avec les deux prix en dessous. Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l'appli a plus que SumUp). Clique « Prix TTC » ou « Quantité » pour trier par écart.</p>
       ${this._renderSumupPairs(r)}`;
   },
   _renderCompare() {
