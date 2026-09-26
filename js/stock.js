@@ -1822,7 +1822,7 @@ const Stock = {
       let v = 0;
       switch(f.sort) {
         case 'name': v = U.sortFr(a.name,b.name); break;
-        case 'dim': v = this._dimVolume(a.dimensions)-this._dimVolume(b.dimensions); break;
+        case 'dim': v = this._dimVolume(this.consoDims(a))-this._dimVolume(this.consoDims(b)); break;
         case 'cat': v = U.sortFr(a.category||'',b.category||''); break;
         case 'qty': v = U.num(a.qty)-U.num(b.qty); break;
         case 'low': v = U.num(a.low)-U.num(b.low); break;
@@ -1839,12 +1839,12 @@ const Stock = {
         <thead><tr><th class="col-name">${sortHead('name','Article')}</th><th>${sortHead('dim','Dimensions')}</th><th>${sortHead('cat','Catégorie')}</th><th style="text-align:center;">${sortHead('qty','En stock')}</th><th style="text-align:center;">${sortHead('low','Seuil')}</th><th style="text-align:center;">${sortHead('cost','Coût / unité')}</th><th></th></tr></thead>
         <tbody>${list.map(c=>{const cTotal=c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit);const cQper=U.num(c.costQtyPer)||1;return `<tr>
           <td class="col-name"><b>${U.esc(c.name)}</b>${this.replaceBadge(c)}</td>
-          <td class="muted">${c.dimensions ? U.esc(c.dimensions) : '—'}</td>
+          <td class="muted">${this.consoDims(c) ? U.esc(this.consoDims(c)) : '—'}</td>
           <td><span class="badge info">${U.esc(c.category||'Autre')}</span></td>
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
           <td style="text-align:center;">${U.num(c.low)||'—'}</td>
-          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div></td>
+          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${cQper !== 1 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(c.costUnit, 3)} / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''}</td>
           <td class="right">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
             <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button>
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
@@ -1882,18 +1882,17 @@ const Stock = {
       <div id="c_blister_fields" style="display:${isBl?'':'none'};margin-bottom:8px;">
         <div class="frow">
           <div class="fg"><label>Largeur du rouleau (mm)</label><input id="c_bwidth" type="number" step="1" value="${c.blisterWidthMm||''}" placeholder="ex: 60"></div>
-          <div class="fg"><label>Longueur du rouleau</label><input id="c_blen" value="${U.esc(c.blisterLength||'')}" placeholder="ex: 100m ou 5000cm"></div>
         </div>
-        <p class="muted" style="margin:0;">Renseigne la largeur pour pré-remplir le nom et faciliter le lien avec les fiches prix.</p>
+        <p class="muted" style="margin:0;">La longueur restante se saisit dans « En stock » (en mètres), et la longueur achetée dans « Pour » à côté du prix.</p>
       </div>
       <div class="frow">
         <div class="fg"><label>Unité</label><input id="c_unit" value="${U.esc(isBl && !c.unit ? 'm' : (c.unit||'PCS'))}"></div>
-        <div class="fg"><label>Quantité</label><input id="c_qty" type="number" step="1" value="${c.qty}"></div>
+        <div class="fg"><label id="c_qty_lbl">${isBl?'En stock (longueur restante)':'Quantité'}</label><input id="c_qty" type="number" step="1" value="${c.qty}"></div>
         <div class="fg"><label>Seuil</label><input id="c_low" type="number" step="1" value="${c.low}"></div>
       </div>
       <div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Prix d'achat (€)</label><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"></div>
-        <div class="fg"><label>Pour (qté achetée)</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
+        <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} /u</span></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
@@ -1920,7 +1919,6 @@ const Stock = {
         c.replaceNote = U.val('c_replaceNote').trim();
         if (c.category === 'Blisters') {
           c.blisterWidthMm = U.numVal('c_bwidth') || null;
-          c.blisterLength = U.val('c_blen').trim() || null;
         }
         if(!id) Store.state.consumables.push(c);
         const entry = Store.log('stock',(id?'Consommable modifié':'Consommable créé')+' — '+c.name,
@@ -1937,6 +1935,8 @@ const Stock = {
     const dw = document.getElementById('c_dim_wrap');
     if (bl) bl.style.display = isBl ? '' : 'none';
     if (dw) dw.style.display = isBl ? 'none' : '';
+    const ql = document.getElementById('c_qty_lbl'); if (ql) ql.textContent = isBl ? 'En stock (longueur restante)' : 'Quantité';
+    const cl = document.getElementById('c_costQty_lbl'); if (cl) cl.textContent = isBl ? 'Pour (longueur achetée)' : 'Pour (qté achetée)';
     if (isBl) {
       const unitEl = document.getElementById('c_unit');
       if (unitEl && unitEl.value === 'PCS') unitEl.value = 'm';
@@ -1951,6 +1951,11 @@ const Stock = {
     Store.save('consumables'); App.rerender();
     U.toast('Consommable dupliqué.', false, entry.id);
     this.editConso(dup.id);
+  },
+  /* Dimensions affichées : un rouleau de blister n'a pas de L×l×h mais une LARGEUR (mm). */
+  consoDims(c) {
+    if (c.category === 'Blisters' && U.num(c.blisterWidthMm)) return U.num(c.blisterWidthMm) + ' mm de large';
+    return c.dimensions || '';
   },
   _dimVolume(dim) {
     if (!dim) return 0;

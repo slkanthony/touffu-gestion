@@ -705,3 +705,8 @@ table.sales-hist tr.sale-head td { background: rgba(166,113,83,.16); border-top:
 .sale-head-in .sh-total { margin-left: auto; font-size: .9rem; }
 .sale-head-in .sh-actions { white-space: nowrap; }
 table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(255,255,255,.035); }
+
+/* Déplacement détaillé : km × €/L + péages = total (2026-09-27) */
+.travel-split { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.travel-split input { padding:5px 6px; }
+.travel-split .muted { font-size:.8rem; white-space:nowrap; }
