@@ -780,3 +780,7 @@ details.sachet-group > summary b { font-size: 1.1rem !important; }
 .ask-modal { max-width: 460px; }
 .ask-list { margin: 4px 0 0; padding-left: 18px; line-height: 1.5; }
 .ask-list li { margin-bottom: 6px; }
+
+/* Fenêtre : clic à côté = petit rebond (elle ne se ferme plus) */
+@keyframes modalNudge { 0%,100% { transform: scale(1); } 40% { transform: scale(1.015); } }
+.modal.nudge { animation: modalNudge .18s ease; }

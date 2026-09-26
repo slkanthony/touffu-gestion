@@ -164,7 +164,8 @@ const U = {
         ${hideOk ? '' : `<button class="${danger ? 'btn-danger' : 'btn-cta'}" id="modalOk">${okLabel}</button>`}
       </div></div>`;
     document.body.appendChild(bg);
-    bg.addEventListener('click', (e) => { if (e.target === bg) { U.closeModal(); if (onCancel) onCancel(); } });
+    // Un clic à côté NE FERME PLUS la fenêtre (Antho perdait ses saisies) : seul « Fermer » ferme. Petit rebond visuel.
+    bg.addEventListener('mousedown', (e) => { if (e.target === bg) { const m = bg.querySelector('.modal'); m.classList.remove('nudge'); void m.offsetWidth; m.classList.add('nudge'); } });
     document.getElementById('modalCancel').onclick = () => { U.closeModal(); if (onCancel) onCancel(); };
     if (!hideOk) document.getElementById('modalOk').onclick = () => { if (onOk && onOk() === false) return; };
     return bg;
@@ -177,16 +178,31 @@ const U = {
       const bg = document.createElement('div');
       bg.className = 'modal-bg ask-bg'; bg.id = 'askBg';
       bg.innerHTML = `<div class="modal ask-modal"><h2>${title}</h2><div>${html}</div>
-        <div class="actions"><button class="btn-ghost" id="askNo">${cancelLabel}</button><button class="${danger ? 'btn-danger' : 'btn-cta'}" id="askYes">${okLabel}</button></div></div>`;
+        <div class="actions">${cancelLabel ? `<button class="btn-ghost" id="askNo">${cancelLabel}</button>` : ''}<button class="${danger ? 'btn-danger' : 'btn-cta'}" id="askYes">${okLabel}</button></div></div>`;
       document.body.appendChild(bg);
       const done = v => { bg.remove(); document.removeEventListener('keydown', key, true); resolve(v); };
       const key = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); } };
       document.addEventListener('keydown', key, true);
       bg.addEventListener('click', e => { if (e.target === bg) done(false); });
-      bg.querySelector('#askNo').onclick = () => done(false);
+      if (bg.querySelector('#askNo')) bg.querySelector('#askNo').onclick = () => done(false);
       bg.querySelector('#askYes').onclick = () => done(true);
       bg.querySelector('#askYes').focus();
     });
+  },
+  /* Remplace window.confirm() partout : même question, fenêtre de l'appli. Suppression / effacement → bouton rouge. */
+  confirm(msg, o = {}) {
+    const txt = String(msg || '');
+    const m = txt.match(/^\s*(Supprimer|Effacer|Vider)/i);
+    const verb = m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : '';
+    return U.ask({
+      title: o.title || (verb ? '🗑️ ' + verb + ' ?' : '⚠️ Confirmer'),
+      html: `<p style="margin:0;line-height:1.5;">${U.esc(txt).replace(/\n/g, '<br>')}</p>`,
+      okLabel: o.okLabel || (verb || 'Confirmer'), cancelLabel: o.cancelLabel || 'Annuler', danger: o.danger ?? !!verb
+    });
+  },
+  /* Message simple (remplace window.alert). */
+  alert(msg, title = 'ℹ️ Information') {
+    return U.ask({ title, html: `<p style="margin:0;line-height:1.5;">${U.esc(String(msg)).replace(/\n/g, '<br>')}</p>`, okLabel: 'OK', cancelLabel: '' });
   },
   /* Alerte de doublons (lien / réf. fournisseur, liaison fiche prix) : jamais bloquante.
      Renvoie true s'il n'y a rien à signaler (ou si on revient après « Enregistrer quand même ») ;

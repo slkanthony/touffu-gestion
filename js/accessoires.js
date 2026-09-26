@@ -938,9 +938,9 @@ const Accessoires = {
     setTimeout(() => this._updateCustomPreview(), 50);
   },
 
-  delAcc(id) {
+  async delAcc(id) {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
-    if (!confirm(`Supprimer "${a.name}" ?`)) return;
+    if (!await U.confirm(`Supprimer "${a.name}" ?`)) return;
     const snap = Store.snapshot('catalogA', a);
     Store.state.catalogA = Store.state.catalogA.filter(x => x.id !== id);
     const entry = Store.commitSnapshot(snap, 'accessoires', 'Accessoire supprimé — ' + a.name);

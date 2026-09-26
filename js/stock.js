@@ -582,9 +582,9 @@ const Stock = {
     return catChanged;
   },
 
-  delVariant(pId, vId) {
+  async delVariant(pId, vId) {
     const p=Store.state.stockM.find(x=>x.id===pId); const v=p?.variants.find(x=>x.id===vId); if(!v) return;
-    if(!confirm(`Supprimer la variante "${Pricing.labelVariant(v)}" et tous ses lots ?`)) return;
+    if(!await U.confirm(`Supprimer la variante "${Pricing.labelVariant(v)}" et tous ses lots ?`)) return;
     const snap=Store.snapshot('stockM',p);
     p.variants=p.variants.filter(x=>x.id!==vId);
     const entry=Store.commitSnapshot(snap,'stock','Variante supprimée — '+p.name+' ('+Pricing.labelVariant(v)+')');
@@ -935,9 +935,9 @@ const Stock = {
     this.closeEvCatPick();
   },
 
-  delProduct(id) {
+  async delProduct(id) {
     const p=Store.state.stockM.find(x=>x.id===id);
-    if(!confirm(`Supprimer "${p.name}" et tous ses lots ?`)) return;
+    if(!await U.confirm(`Supprimer "${p.name}" et tous ses lots ?`)) return;
     const snap=Store.snapshot('stockM',p);
     Store.state.stockM=Store.state.stockM.filter(x=>x.id!==id);
     const entry=Store.commitSnapshot(snap,'stock','Produit supprimé — '+p.name);
@@ -1323,9 +1323,9 @@ const Stock = {
     U.toast('Rappel supprimé.', false, entry.id);
   },
 
-  delLot(pId,vId,lId){
+  async delLot(pId,vId,lId){
     const f=this.findLot(pId,vId,lId); if(!f) return;
-    if(!confirm('Supprimer ce lot ?')) return;
+    if(!await U.confirm('Supprimer ce lot ?')) return;
     const snap=Store.snapshot('stockM',f.p);
     f.v.lots=f.v.lots.filter(l=>l.id!==lId);
     const entry=Store.commitSnapshot(snap,'stock',`Lot supprimé — ${f.p.name}/${Pricing.labelVariant(f.v)}`);
@@ -2045,9 +2045,9 @@ const Stock = {
     const el = document.getElementById('c_costResult');
     if (el) el.textContent = U.eur(unit, 3) + ' HT /u';
   },
-  delConso(id){
-    if(!confirm('Supprimer ?')) return;
+  async delConso(id){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
+    if(!await U.confirm(`Supprimer le consommable « ${c.name} » ?`)) return;
     const snap=Store.snapshot('consumables',c);
     Store.state.consumables=Store.state.consumables.filter(x=>x.id!==id);
     const entry=Store.commitSnapshot(snap,'stock','Consommable supprimé — '+c.name);
@@ -2256,10 +2256,10 @@ const Stock = {
     U.toast('Rouleau mis à jour.', false, entry.id);
     Store.save('materials'); App.rerender();
   },
-  delMatRoll(mId, rId) {
+  async delMatRoll(mId, rId) {
     const m = Store.state.materials.find(x => x.id === mId); if (!m || !m.rolls) return;
     const isLast = m.rolls.length <= 1;
-    if (!confirm(isLast ? 'Supprimer le dernier rouleau et revenir au champ simple ?' : 'Supprimer ce rouleau ?')) return;
+    if (!await U.confirm(isLast ? 'Supprimer le dernier rouleau et revenir au champ simple ?' : 'Supprimer ce rouleau ?')) return;
     const snap = Store.snapshot('materials', m);
     if (isLast) {
       const r = m.rolls.find(x => x.id === rId);
@@ -2360,11 +2360,11 @@ const Stock = {
       }
     });
   },
-  delMat(id) {
+  async delMat(id) {
     const used = Store.state.catalogA.some(a => (a.bom || []).some(l => l.materialId === id));
     if (used) { U.toast('Impossible : cette matière est utilisée dans une fiche accessoire.', true); return; }
     const m = Store.state.materials.find(x => x.id === id); if (!m) return;
-    if (!confirm('Supprimer cette matière ?')) return;
+    if (!await U.confirm('Supprimer cette matière ?')) return;
     const snap = Store.snapshot('materials', m);
     Store.state.materials = Store.state.materials.filter(x => x.id !== id);
     const entry = Store.commitSnapshot(snap, 'stock', 'Matière supprimée — ' + m.name);
@@ -2394,12 +2394,12 @@ const Stock = {
     });
   },
 
-  delMatGroup(key) {
+  async delMatGroup(key) {
     const items = Store.state.materials.filter(m => (m.product || m.name) === key);
     if (!items.length) return;
     const usedIds = items.filter(m => Store.state.catalogA.some(a => (a.bom || []).some(l => l.materialId === m.id)));
     if (usedIds.length) { U.toast('Impossible : certaines matières de ce groupe sont utilisées dans des fiches accessoires.', true); return; }
-    if (!confirm(`Supprimer le groupe "${key}" et ses ${items.length} matière(s) ?`)) return;
+    if (!await U.confirm(`Supprimer le groupe "${key}" et ses ${items.length} matière(s) ?`)) return;
     const snaps = items.map(m => Store.snapshot('materials', m));
     Store.state.materials = Store.state.materials.filter(m => (m.product || m.name) !== key);
     snaps.forEach(s => Store.commitSnapshot(s, 'stock', 'Matière supprimée (groupe) — ' + s.item.name));

@@ -28,7 +28,7 @@ const App = {
   async boot() {
     let status;
     try { status = await Store.init(); }
-    catch (e) { alert('Erreur de connexion aux données : ' + e.message); return; }
+    catch (e) { U.alert('Erreur de connexion aux données : ' + e.message, '⚠️ Erreur'); return; }
     if (status === 'login') { this.showLogin(); return; }
     if (status === 'recovery') { this.showRecovery(); return; }
     this.showApp();

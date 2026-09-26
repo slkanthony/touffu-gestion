@@ -480,10 +480,10 @@ const Ventes = {
     else if (op.kind === 'C') { const co = Store.state.consumables.find(x => x.id === op.pId); if (co) co.qty = U.num(op.qty) + U.num(co.qty); }
   },
 
-  cancelSale(id) {
+  async cancelSale(id) {
     const s = Store.state.sales.find(x => x.id === id);
     if (!s || s.cancelled) return;
-    if (!confirm('Annuler cette sortie et re-créditer le stock ?')) return;
+    if (!await U.confirm('Annuler cette sortie et re-créditer le stock ?')) return;
     (s.undoOps || []).forEach(op => this.applyUndoOp(op));
     s.cancelled = true;
     Store.log('vente', `Sortie annulée — ${U.eur(s.total)} du ${U.frDateTime(s.ts)}`);
@@ -492,12 +492,12 @@ const Ventes = {
     U.toast('Sortie annulée, stock re-crédité.');
   },
 
-  restoreAll() {
+  async restoreAll() {
     // Les ventes HISTORIQUES (import stats, jamais déduites) sont exclues : rien à re-créditer,
     // et il ne faut surtout pas les marquer annulées (elles disparaîtraient des statistiques).
     const active = Store.state.sales.filter(s => !s.cancelled && !s.historical);
     if (!active.length) { U.toast('Aucune sortie active à restaurer.', true); return; }
-    if (!confirm(`Annuler TOUTES les ${active.length} sortie(s) actives et re-créditer le stock ?`)) return;
+    if (!await U.confirm(`Annuler TOUTES les ${active.length} sortie(s) actives et re-créditer le stock ?`)) return;
     active.forEach(s => {
       (s.undoOps || []).forEach(op => this.applyUndoOp(op));
       s.cancelled = true;
@@ -508,9 +508,9 @@ const Ventes = {
     U.toast('Toutes les sorties ont été restaurées.');
   },
 
-  clearHistory() {
+  async clearHistory() {
     if (!Store.state.sales.length) { U.toast('Historique déjà vide.', true); return; }
-    if (!confirm(`Supprimer définitivement les ${Store.state.sales.length} entrée(s) de l'historique des sorties ? Le stock n'est pas modifié — utilise "Restaurer Tout" avant si tu veux aussi re-créditer le stock des ventes actives.`)) return;
+    if (!await U.confirm(`Supprimer définitivement les ${Store.state.sales.length} entrée(s) de l'historique des sorties ? Le stock n'est pas modifié — utilise "Restaurer Tout" avant si tu veux aussi re-créditer le stock des ventes actives.`)) return;
     Store.state.sales = [];
     Store.log('vente', 'Historique des sorties vidé');
     Store.save('sales');

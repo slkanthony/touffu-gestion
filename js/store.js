@@ -264,7 +264,7 @@ const Store = {
      ou modif d'un autre appareil), l'enregistrement s'appliquait à l'ANCIENNE copie → perdu
      sans message. On diffère donc tout rechargement tant qu'une fenêtre est ouverte ;
      U.closeModal() appelle _afterModal() pour le rattraper ensuite. */
-  _modalOpen() { return !!document.getElementById('modalBg'); },
+  _modalOpen() { return !!(document.getElementById('modalBg') || document.getElementById('askBg')); },
   /* ⚠️ Piège corrigé (2026-09-26, « le fichier choisi ne reste pas ») : ouvrir le sélecteur de
      fichier fait perdre le focus à la fenêtre ; au retour, l'événement `focus` déclenchait
      loadRemote() + re-rendu → le champ <input type=file> était recréé VIDE. Valable pour TOUS

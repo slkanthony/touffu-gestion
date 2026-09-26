@@ -476,20 +476,20 @@ const Params = {
     if (name === undefined) App.rerender();
     return n;
   },
-  renameEvent(enc, val) {
+  async renameEvent(enc, val) {
     const old = decodeURIComponent(enc), n = String(val || '').trim();
     if (!n || n === old) return;
-    if (Store.eventList().some(x => x !== old && x.toLowerCase() === n.toLowerCase()) && !confirm('« ' + n + ' » existe déjà : fusionner les deux événements ?')) { App.rerender(); return; }
+    if (Store.eventList().some(x => x !== old && x.toLowerCase() === n.toLowerCase()) && !await U.confirm('« ' + n + ' » existe déjà : fusionner les deux événements ?')) { App.rerender(); return; }
     const S = Store.state.settings; S.events = (S.events || []).filter(x => x !== old && x.toLowerCase() !== n.toLowerCase()); S.events.push(n);
     if (S.eventInfo && S.eventInfo[old]) { S.eventInfo[n] = Object.assign({}, S.eventInfo[old], S.eventInfo[n] || {}); delete S.eventInfo[old]; }
     let cnt = 0; Store.state.sales.forEach(s => { if (s.eventName === old) { s.eventName = n; cnt++; } });
     Store.save('settings', 'sales'); App.rerender();
     U.toast('Événement renommé' + (cnt ? ' (' + cnt + ' vente(s) mises à jour)' : '') + '.');
   },
-  delEvent(enc) {
+  async delEvent(enc) {
     const n = decodeURIComponent(enc);
     const cnt = Store.state.sales.filter(s => s.eventName === n).length;
-    if (cnt && !confirm('« ' + n + ' » est utilisé par ' + cnt + ' vente(s). Le retirer de la liste enlève aussi ce nom de ces ventes (elles ne seront plus comptées dans les statistiques par événement). Continuer ?')) return;
+    if (cnt && !await U.confirm('« ' + n + ' » est utilisé par ' + cnt + ' vente(s). Le retirer de la liste enlève aussi ce nom de ces ventes (elles ne seront plus comptées dans les statistiques par événement). Continuer ?')) return;
     const S = Store.state.settings; S.events = (S.events || []).filter(x => x !== n);
     if (S.eventInfo) delete S.eventInfo[n];
     Store.state.sales.forEach(s => { if (s.eventName === n) s.eventName = ''; });
@@ -519,11 +519,11 @@ const Params = {
     S.productTypes.push({ value, label });
     Store.save('settings'); App.rerender();
   },
-  delProductType(value) {
+  async delProductType(value) {
     const S = Store.state.settings;
     if (!Array.isArray(S.productTypes)) S.productTypes = Store.productTypes().slice();
     const used = Store.state.stockM.some(p => (p.tags || {}).type === value || (p.variants || []).some(v => (v.tags || {}).type === value));
-    if (used && !confirm('Ce type est utilisé sur des produits. Le supprimer quand même ? (les produits concernés perdront ce type)')) return;
+    if (used && !await U.confirm('Ce type est utilisé sur des produits. Le supprimer quand même ? (les produits concernés perdront ce type)')) return;
     S.productTypes = S.productTypes.filter(t => t.value !== value);
     Store.save('settings'); App.rerender();
   },
@@ -552,11 +552,11 @@ const Params = {
     Store.save('settings'); App.rerender();
     U.toast('Catégorie « ' + label + ' » ajoutée.');
   },
-  delMaterialKind(value) {
+  async delMaterialKind(value) {
     const S = Store.state.settings;
     if (!Array.isArray(S.materialKinds)) S.materialKinds = Store.materialKinds().slice();
     const used = Store.state.materials.some(m => (m.kind || 'autre') === value);
-    if (used && !confirm('Cette catégorie est utilisée par des matières. La supprimer quand même ? (les matières concernées gardent leur catégorie, mais elle n\'apparaîtra plus dans les listes tant qu\'aucune matière ne l\'utilise)')) return;
+    if (used && !await U.confirm('Cette catégorie est utilisée par des matières. La supprimer quand même ? (les matières concernées gardent leur catégorie, mais elle n\'apparaîtra plus dans les listes tant qu\'aucune matière ne l\'utilise)')) return;
     S.materialKinds = S.materialKinds.filter(k => k.value !== value);
     if (S.calcRefMode) delete S.calcRefMode[value];
     Store.save('settings'); App.rerender();
@@ -675,12 +675,12 @@ const Params = {
     }
     Store.save('settings'); App.rerender();
   },
-  delItem(key, val, isSupplier) {
+  async delItem(key, val, isSupplier) {
     const S = Store.state.settings;
     if (isSupplier) {
       const s = S.suppliers.find(x => x.name === val);
       if (s && Store.state.catalogM.some(p => p.mainSupplierId === s.id)) {
-        if (!confirm('Ce fournisseur est utilisé. Le supprimer quand même ?')) return;
+        if (!await U.confirm('Ce fournisseur est utilisé. Le supprimer quand même ?')) return;
       }
       S.suppliers = S.suppliers.filter(x => x.name !== val);
     } else {
@@ -1214,7 +1214,7 @@ const Params = {
     if (toEl) toEl.innerHTML = html;
   },
 
-  migratePackaging() {
+  async migratePackaging() {
     const fromId = U.val('mig_from');
     const toId = U.val('mig_to');
     if (!fromId) { U.toast('Sélectionne un conditionnement source.', true); return; }
@@ -1233,7 +1233,7 @@ const Params = {
     const toSac = toId === '0' ? null : sachets.find(s => String(s.id) === String(toId));
     const toLabel = toSac ? toSac.name : 'Aucun';
 
-    if (!confirm(`Migrer ${count} variante${count > 1 ? 's' : ''} de « ${from.name} » vers « ${toLabel} » ?`)) return;
+    if (!await U.confirm(`Migrer ${count} variante${count > 1 ? 's' : ''} de « ${from.name} » vers « ${toLabel} » ?`)) return;
 
     let migrated = 0;
     cats.forEach(p => {
@@ -1267,14 +1267,14 @@ const Params = {
     const file = this._pendingImportFile || document.getElementById('importFile').files[0];
     if (!file) { U.toast('Choisis d\u2019abord un fichier à importer.', true); return; }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       let data;
       try { data = JSON.parse(reader.result); }
       catch (e) { U.toast('Ce fichier n\u2019est pas un JSON lisible.', true); return; }
       const fmt = this.detectFormat(data);
       try {
         if (fmt === 'backup') {
-          if (!confirm('Ce fichier est une sauvegarde complète. La restaurer va REMPLACER toutes tes données actuelles. Continuer ?')) return;
+          if (!await U.confirm('Ce fichier est une sauvegarde complète. La restaurer va REMPLACER toutes tes données actuelles. Continuer ?')) return;
           Store.state = Store.merge(data);
           Store.log('restauration', 'Restauration depuis une sauvegarde complète');
           Store.save(...Store.DOMAINS);
@@ -1290,7 +1290,7 @@ const Params = {
         }
         if (fmt === 'stock') {
           const existing = Store.state.stockM.length + Store.state.materials.length;
-          if (existing > 0 && !confirm(`Tu as déjà ${existing} article(s) en stock. Les produits déjà importés (même nom) seront mis à jour, les nouveaux ajoutés. Continuer ?`)) return;
+          if (existing > 0 && !await U.confirm(`Tu as déjà ${existing} article(s) en stock. Les produits déjà importés (même nom) seront mis à jour, les nouveaux ajoutés. Continuer ?`)) return;
           const r = this.mapStockData(data);
           const nl = this.linkStockToCatalog();
           Store.log('import', `Import stock : ${r.stockM} mastication + ${r.materials} matières + ${r.consumables} conso`);
@@ -1299,7 +1299,7 @@ const Params = {
           App.go('stock'); return;
         }
         if (fmt === 'saleshistory') {
-          if (!confirm('Ce fichier est un HISTORIQUE DE VENTES de ton ancienne appli.\n\nIl sera ajout\u00e9 aux statistiques (ventes historiques, avec leur date d\'origine) SANS toucher \u00e0 ton stock actuel.\nLes prix sont estim\u00e9s d\'apr\u00e8s tes prix de vente ACTUELS (le fichier n\'en contient pas).\n\nContinuer ?')) return;
+          if (!await U.confirm('Ce fichier est un HISTORIQUE DE VENTES de ton ancienne appli.\n\nIl sera ajout\u00e9 aux statistiques (ventes historiques, avec leur date d\'origine) SANS toucher \u00e0 ton stock actuel.\nLes prix sont estim\u00e9s d\'apr\u00e8s tes prix de vente ACTUELS (le fichier n\'en contient pas).\n\nContinuer ?')) return;
           const r = this.mapSalesHistory(data);
           Store.log('import', `Import historique de ventes : ${r.created} ticket(s), ${r.entries} lignes`);
           Store.save('sales');
@@ -1388,11 +1388,11 @@ const Params = {
     S.labelTypes = Store.labelTypes(); S.labelTypes.push({ id: 'lt_' + U.uid(), name: 'Nouveau type', cost: 0 });
     Store.save('settings'); App.rerender();
   },
-  delLabelType(id) {
+  async delLabelType(id) {
     const S = Store.state.settings, t = Store.labelType(id); if (!t) return;
     if (S.labelTypes.length <= 1) { U.toast('Garde au moins un type d\'étiquette.', true); return; }
     const users = Store.state.catalogM.filter(p => p.labelTypeId === id);
-    if (!confirm(`Supprimer « ${t.name} » ?` + (users.length ? `\n\n${users.length} fiche(s) prix l'utilisent : elles passeront sur « Autre montant » en gardant ${U.eur(t.cost)}.` : ''))) return;
+    if (!await U.confirm(`Supprimer « ${t.name} » ?` + (users.length ? `\n\n${users.length} fiche(s) prix l'utilisent : elles passeront sur « Autre montant » en gardant ${U.eur(t.cost)}.` : ''))) return;
     users.forEach(p => { p.labelTypeId = ''; p.labelCost = U.num(t.cost); });
     S.labelTypes = S.labelTypes.filter(x => x.id !== id);
     if (S.labelDefaultId === id) { S.labelDefaultId = S.labelTypes[0].id; S.labelCost = U.num(S.labelTypes[0].cost); }
@@ -1445,10 +1445,10 @@ const Params = {
      stock DÉJÀ reliés à une fiche catalogue — jamais de nouvelle liaison ni de création
      de variante (Stock.syncPricesFromCatalog garde ses garde-fous habituels), juste un
      rattrapage en masse au cas où un produit aurait été manqué. Annulable en un clic. */
-  resyncAllFromCatalog() {
+  async resyncAllFromCatalog() {
     const linked = Store.state.stockM.filter(p => p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId));
     if (!linked.length) { U.toast('Aucun produit relié au catalogue à resynchroniser.', true); return; }
-    if (!confirm(`Resynchroniser ${linked.length} produit(s) déjà reliés au catalogue prix (prix, variantes, SKU) ?`)) return;
+    if (!await U.confirm(`Resynchroniser ${linked.length} produit(s) déjà reliés au catalogue prix (prix, variantes, SKU) ?`)) return;
     const snaps = linked.map(p => Store.snapshot('stockM', p));
     const catIds = [...new Set(linked.map(p => p.catalogId))];
     catIds.forEach(id => {
@@ -1522,7 +1522,7 @@ const Params = {
     Store.save('settings'); App.rerender();
   },
 
-  regenMatSkus() {
+  async regenMatSkus() {
     const mats = Store.state.materials;
     const changed = [];
     mats.forEach(m => {
@@ -1530,7 +1530,7 @@ const Params = {
       if (m.sku !== newSku) { changed.push({ m, old: m.sku, new: newSku }); }
     });
     if (!changed.length) { U.toast('Tous les SKU matières sont déjà à jour.'); return; }
-    if (!confirm(`Régénérer ${changed.length} SKU matières ?`)) return;
+    if (!await U.confirm(`Régénérer ${changed.length} SKU matières ?`)) return;
     changed.forEach(c => { c.m.sku = c.new; });
     Store.log('paramètres', `${changed.length} SKU matières régénérés`);
     Store.save('materials'); App.rerender();
@@ -1857,7 +1857,7 @@ const Params = {
     this.renderSkuAll();
   },
 
-  applySkuRegen() {
+  async applySkuRegen() {
     const { rows } = this._filteredSkuData();
     // Même critère que « À mettre à jour » : on ne touche QUE les SKU manquants ou en doublon.
     // Les SKU personnalisés uniques (choix délibéré d'Antho) ne sont JAMAIS écrasés.
@@ -1869,7 +1869,7 @@ const Params = {
     if (!diffRows.length) { U.toast('Aucun SKU manquant, en doublon ou à normaliser — rien à corriger.'); return; }
     const meat = this._skuMeat || 'all';
     const meatLabel = meat !== 'all' ? ` pour ${meat}` : '';
-    if (!confirm(`Attribuer/corriger ${diffRows.length} SKU${meatLabel} (manquants ou en doublon) ? Tes SKU déjà personnalisés (uniques) ne sont pas touchés.`)) return;
+    if (!await U.confirm(`Attribuer/corriger ${diffRows.length} SKU${meatLabel} (manquants ou en doublon) ? Tes SKU déjà personnalisés (uniques) ne sont pas touchés.`)) return;
     const snaps = [];
     const touched = new Set();
     diffRows.forEach(r => {
@@ -1971,8 +1971,8 @@ const Params = {
     const rc = mergeFlat(Store.state.consumables); Store.state.consumables = rc.out; counts.consumables = rc.n;
     return counts;
   },
-  mergeDuplicatesPrompt() {
-    if (!confirm('Fusionner tous les doublons détectés (même nom) ? Les quantités et lots seront additionnés, cette action est irréversible.')) return;
+  async mergeDuplicatesPrompt() {
+    if (!await U.confirm('Fusionner tous les doublons détectés (même nom) ? Les quantités et lots seront additionnés, cette action est irréversible.')) return;
     const r = this.mergeDuplicates();
     const total = r.stockM + r.materials + r.consumables;
     Store.log('stock', `Doublons fusionnés : ${r.stockM} mastication, ${r.materials} matières, ${r.consumables} conso`);
@@ -2324,11 +2324,11 @@ const Params = {
     U.download(`touffu-export-${suffix}-${U.today()}.json`, JSON.stringify(dump, null, 2));
     U.toast('Export téléchargé.');
   },
-  importProducts(mode) {
+  async importProducts(mode) {
     const file = document.getElementById('importFile').files[0];
     if (!file) { U.toast('Choisis d\'abord un fichier à importer.', true); return; }
     const label = mode === 'replace' ? 'REMPLACER toutes les données par ce fichier' : 'FUSIONNER les quantités de ce fichier avec les données existantes';
-    if (!confirm(label + ' ?\nCette action est irréversible.')) return;
+    if (!await U.confirm(label + ' ?\nCette action est irréversible.')) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -2371,10 +2371,10 @@ const Params = {
     };
     reader.readAsText(file);
   },
-  importAll() {
+  async importAll() {
     const file = document.getElementById('restoreFile').files[0];
     if (!file) { U.toast('Choisis un fichier de sauvegarde', true); return; }
-    if (!confirm('Remplacer TOUTES les données actuelles par cette sauvegarde ?')) return;
+    if (!await U.confirm('Remplacer TOUTES les données actuelles par cette sauvegarde ?')) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -2406,19 +2406,19 @@ const Params = {
     const days = U.num(Store.state.settings.snapRetentionDays) || 30;
     const old = await Store.oldSnapshotDays(days);
     if (!old.length) { U.toast('Aucun instantané de plus de ' + days + ' jours.'); return; }
-    if (!confirm(old.length + ' instantané(s) de plus de ' + days + ' jours vont être supprimés.\n\nTes données actuelles ne sont pas touchées. Pense à télécharger une sauvegarde avant (bouton « Exporter la sauvegarde »).\n\nContinuer ?')) return;
+    if (!await U.confirm(old.length + ' instantané(s) de plus de ' + days + ' jours vont être supprimés.\n\nTes données actuelles ne sont pas touchées. Pense à télécharger une sauvegarde avant (bouton « Exporter la sauvegarde »).\n\nContinuer ?')) return;
     await Store.purgeOldSnapshots(days);
     U.toast(old.length + ' ancien(s) instantané(s) supprimé(s).');
     this.loadSnaps();
   },
   async clearSnapshots() {
-    if (!confirm('Effacer TOUS les instantanés de retour arrière ?\n\nÇa supprime uniquement les sauvegardes automatiques quotidiennes accumulées — tes produits, stock et ventes actuels ne sont PAS touchés.\n\nUtile pour repartir propre à la mise en service. Action irréversible.')) return;
+    if (!await U.confirm('Effacer TOUS les instantanés de retour arrière ?\n\nÇa supprime uniquement les sauvegardes automatiques quotidiennes accumulées — tes produits, stock et ventes actuels ne sont PAS touchés.\n\nUtile pour repartir propre à la mise en service. Action irréversible.')) return;
     await Store.clearSnapshots();
     U.toast('Tous les instantanés ont été effacés.');
     this.loadSnaps();
   },
-  clearJournal() {
-    if (!confirm('Vider le journal des mouvements ?\n\nÇa efface l\'historique des actions (et donc les boutons « Annuler » récents). Tes produits, stock et ventes ne sont PAS touchés.\n\nAction irréversible.')) return;
+  async clearJournal() {
+    if (!await U.confirm('Vider le journal des mouvements ?\n\nÇa efface l\'historique des actions (et donc les boutons « Annuler » récents). Tes produits, stock et ventes ne sont PAS touchés.\n\nAction irréversible.')) return;
     Store.clearJournal();
     U.toast('Journal des mouvements vidé.');
     App.rerender();

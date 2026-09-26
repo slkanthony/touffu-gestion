@@ -354,14 +354,14 @@ const Catalogue = {
     App.rerender();
   },
 
-  deleteSelected() {
+  async deleteSelected() {
     const sel = [...this._sel];
     const products = sel.map(id => Store.state.catalogM.find(p => String(p.id) === String(id))).filter(Boolean);
     if (!products.length) return;
     const msg = products.length === 1
       ? 'Supprimer "' + products[0].name + '" du catalogue ?'
       : 'Supprimer ' + products.length + ' produits du catalogue ?\n\n' + products.map(p => '• ' + p.name).join('\n');
-    if (!confirm(msg + '\n\nLe stock existant est conservé.')) return;
+    if (!await U.confirm(msg + '\n\nLe stock existant est conservé.')) return;
     const snapshots = products.map(p => JSON.parse(JSON.stringify(p)));
     const selStr = new Set(sel.map(String));
     Store.state.catalogM = Store.state.catalogM.filter(p => !selStr.has(String(p.id)));
@@ -772,10 +772,10 @@ const Catalogue = {
 
   /* Supprime d'un coup toutes les variantes d'un groupe (poids/lots/tailles),
      pour ne pas avoir à vider une génération de paliers ligne par ligne. */
-  removeVarGroup(mode) {
+  async removeVarGroup(mode) {
     const label = { gram: 'les poids', piece: 'les lots (pièces)', size: 'les tailles' }[mode] || mode;
     const n = (this._d.variants || []).filter(v => v.mode === mode).length;
-    if (!confirm(`Supprimer ${label} (${n} ligne${n > 1 ? 's' : ''}) de ce produit ?`)) return;
+    if (!await U.confirm(`Supprimer ${label} (${n} ligne${n > 1 ? 's' : ''}) de ce produit ?`)) return;
     this._d.variants = this._d.variants.filter(v => v.mode !== mode);
     this.drawVars();
   },
@@ -916,9 +916,9 @@ peekBenefTVA(active) {
     });
   },
 
-  remove(id) {
+  async remove(id) {
     const p = Store.state.catalogM.find(x => x.id === id);
-    if (!confirm(`Supprimer "${p.name}" du catalogue ? (le stock existant est conservé)`)) return;
+    if (!await U.confirm(`Supprimer "${p.name}" du catalogue ? (le stock existant est conservé)`)) return;
     const snap = Store.snapshot('catalogM', p);
     Store.state.catalogM = Store.state.catalogM.filter(x => x.id !== id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Produit supprimé — ' + p.name);
