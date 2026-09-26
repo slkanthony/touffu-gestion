@@ -691,3 +691,7 @@ body.visit-mode .kpi.kpi-fullblur { filter: blur(6px); user-select: none; }
 .retour-deduct.on { background: var(--caramel); color: #fff; border: 2px solid var(--caramel); box-shadow: 0 3px 10px rgba(166,113,83,.35); }
 .retour-deduct.off { background: rgba(245,176,65,.12); color: var(--texte); border: 2px dashed #f5b041; }
 .retour-deduct.off input { accent-color: #f5b041; }
+/* Case « Déduire le stock » : taille d'un petit bouton (comme « ＋ Ajouter une variante »), pas un gros bloc */
+.retour-deduct { display: flex !important; width: fit-content; margin: 12px auto 0; padding: 6px 14px; font-size: .85rem; gap: 8px; border-radius: 8px; box-shadow: none; }
+.retour-deduct input { width: 16px; height: 16px; }
+label.retour-deduct.on, label.retour-deduct.off { max-width: 100%; }
