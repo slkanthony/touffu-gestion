@@ -807,7 +807,7 @@ const Stock = {
           else { U.toast('Choisis un produit catalogue dans la liste déroulante (ou vide le champ pour ne pas relier).', true); return false; }
         }
         const dupMsgs = this.dupWarnings({ pId: p.id, catId, url: U.val('sp_url') });
-        if (dupMsgs.length && !confirm(dupMsgs.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
+        if (!U.dupGate(dupMsgs, () => document.getElementById('modalOk').click())) return false;
         const oldCatId = p.catalogId || '';
         const before = id ? { name: p.name, meatType: p.meatType, catalogId: p.catalogId, url: p.url, tags: JSON.parse(JSON.stringify(p.tags || {})), variants: JSON.parse(JSON.stringify(p.variants)) } : null;
         p.catalogId=catId;
@@ -1959,7 +1959,7 @@ const Stock = {
       onOk:()=>{
         if(!U.val('c_name').trim()){U.toast('Nom obligatoire',true);return false;}
         const dupMsgs = this.dupWarnings({ url: U.val('c_url'), ref: U.val('c_ref'), self: { kind: 'C', id: c.id } });
-        if (dupMsgs.length && !confirm(dupMsgs.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
+        if (!U.dupGate(dupMsgs, () => document.getElementById('modalOk').click())) return false;
         const snap = id ? Store.snapshot('consumables',c) : null;
         c.name=U.val('c_name').trim();
         c.dimensions=U.val('c_dim').trim();
@@ -2344,7 +2344,7 @@ const Stock = {
         const product = U.val('m_product').trim(), variant = U.val('m_variant').trim();
         if (!variant) { U.toast('Indique au moins la variante (ou le nom si pas de produit).', true); return false; }
         const dupM = this.dupWarnings({ url: U.val('m_url'), ref: U.val('m_ref'), self: { kind: 'T', id: m.id } });
-        if (dupM.length && !confirm(dupM.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
+        if (!U.dupGate(dupM, () => document.getElementById('modalOk').click())) return false;
         m.product = product; m.variant = product ? variant : '';
         m.name = product ? (product + ' ' + variant).trim() : variant;
         m.kind = U.val('m_kind'); m.unit = U.val('m_unit');

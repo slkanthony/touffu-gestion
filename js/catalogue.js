@@ -892,7 +892,7 @@ const Catalogue = {
     // Doublons lien / réf. fournisseur (alerte, jamais blocage) — hors cette même fiche
     const dup = [];
     p.suppliers.forEach(s => Stock.dupWarnings({ url: s.url, ref: s.ref, self: { kind: 'P', id: p.id } }).forEach(m => { if (!dup.includes(m)) dup.push(m); }));
-    if (dup.length && !confirm(dup.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
+    if (!U.dupGate(dup, () => Catalogue.save())) return false;
     const wasNew = this.mode === 'new';
     const idx = Store.state.catalogM.findIndex(x => x.id === p.id);
     // Instantané avant écrasement (Annulation) — ne couvre que la fiche catalogue elle-même,

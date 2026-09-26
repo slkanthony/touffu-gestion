@@ -169,6 +169,37 @@ const U = {
     if (!hideOk) document.getElementById('modalOk').onclick = () => { if (onOk && onOk() === false) return; };
     return bg;
   },
+  /* Confirmation aux couleurs de l'appli (remplace le confirm() natif du navigateur), posée AU-DESSUS
+     d'une éventuelle fenêtre U.modal déjà ouverte (sans la fermer). Renvoie une promesse → true / false. */
+  ask({ title = 'Confirmer', html = '', okLabel = 'Valider', cancelLabel = 'Annuler', danger = false } = {}) {
+    return new Promise(resolve => {
+      document.getElementById('askBg')?.remove();
+      const bg = document.createElement('div');
+      bg.className = 'modal-bg ask-bg'; bg.id = 'askBg';
+      bg.innerHTML = `<div class="modal ask-modal"><h2>${title}</h2><div>${html}</div>
+        <div class="actions"><button class="btn-ghost" id="askNo">${cancelLabel}</button><button class="${danger ? 'btn-danger' : 'btn-cta'}" id="askYes">${okLabel}</button></div></div>`;
+      document.body.appendChild(bg);
+      const done = v => { bg.remove(); document.removeEventListener('keydown', key, true); resolve(v); };
+      const key = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); } };
+      document.addEventListener('keydown', key, true);
+      bg.addEventListener('click', e => { if (e.target === bg) done(false); });
+      bg.querySelector('#askNo').onclick = () => done(false);
+      bg.querySelector('#askYes').onclick = () => done(true);
+      bg.querySelector('#askYes').focus();
+    });
+  },
+  /* Alerte de doublons (lien / réf. fournisseur, liaison fiche prix) : jamais bloquante.
+     Renvoie true s'il n'y a rien à signaler (ou si on revient après « Enregistrer quand même ») ;
+     sinon ouvre la confirmation et renvoie false — si l'utilisateur confirme, retry() relance l'enregistrement. */
+  dupGate(msgs, retry) {
+    if (!msgs || !msgs.length || U._dupPass) return true;
+    U.ask({
+      title: '⚠️ Doublon détecté',
+      html: `<ul class="ask-list">${msgs.map(m => `<li>${U.esc(String(m).replace(/^⚠️\s*/, ''))}</li>`).join('')}</ul><p class="muted" style="margin:8px 0 0;">Ce n'est qu'une alerte : tu peux enregistrer quand même si c'est voulu.</p>`,
+      okLabel: 'Enregistrer quand même', cancelLabel: 'Revenir'
+    }).then(ok => { if (!ok) return; U._dupPass = true; try { retry(); } finally { U._dupPass = false; } });
+    return false;
+  },
   closeModal() { document.getElementById('modalBg')?.remove(); if (typeof Store !== 'undefined' && Store._afterModal) Store._afterModal(); },
 
   download(filename, text, mime = 'application/json') {

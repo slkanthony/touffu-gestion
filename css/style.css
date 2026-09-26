@@ -774,3 +774,9 @@ table.pack-table td.pack-dims { font-size: 1.1rem; font-weight: 600; }
 table.pack-table td.num { font-size: 1.02rem; }
 table.pack-table input { font-size: 1rem; width: 100px; }
 details.sachet-group > summary b { font-size: 1.1rem !important; }
+
+/* Confirmation (U.ask) au-dessus des fenêtres */
+.modal-bg.ask-bg { z-index: 200; }
+.ask-modal { max-width: 460px; }
+.ask-list { margin: 4px 0 0; padding-left: 18px; line-height: 1.5; }
+.ask-list li { margin-bottom: 6px; }
