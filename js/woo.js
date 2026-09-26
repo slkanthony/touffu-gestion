@@ -139,7 +139,21 @@ const Woo = {
      prix TTC et quantité (stock choisi : événement / général / total). LECTURE SEULE. */
   _sumup: null,
   // La quantité SumUp = le stock ÉVÉNEMENT d'Antho (confirmé 2026-09-28) → comparée uniquement à celui-là.
-  sumupFilter: 'issues', sumupQ: '', sumupSort: 'name', sumupSortDir: 'asc',
+  sumupFilter: 'issues', sumupQ: '', sumupSort: 'name', sumupSortDir: 'asc', sumupMeat: 'all', sumupFmt: 'all',
+  _setSumupMeat(v) { this.sumupMeat = v; this.render(); },
+  _setSumupFmt(v) { this.sumupFmt = v; this.render(); },
+  /* Format d'une ligne (poids / taille / lot) : variante SumUp normalisée (« 100g » → « 100G »). */
+  _fmtKey(v) { return String(v || '').toUpperCase().replace(/\s+/g, '') || '—'; },
+  /* Ordre naturel des formats : poids croissants, puis tailles XS→XXL, puis le reste A→Z. */
+  _fmtRank(f) {
+    const g = f.match(/^(\d+(?:[.,]\d+)?)(G|KG)$/);
+    if (g) return [0, parseFloat(g[1].replace(',', '.')) * (g[2] === 'KG' ? 1000 : 1), ''];
+    const sizes = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+    const i = sizes.indexOf(f);
+    if (i >= 0) return [1, i, ''];
+    return [2, 0, f];
+  },
+  _fmtCmp(a, b) { const x = Woo._fmtRank(a), y = Woo._fmtRank(b); return x[0] - y[0] || x[1] - y[1] || U.sortFr(x[2], y[2]); },
   _setSumupFilter(v) { this.sumupFilter = v; this.render(); },
   _setSumupQ(v) { this.sumupQ = v; this.render(); U.refocus('woo_sumup_q'); },
   _setSumupSort(k) {
@@ -194,7 +208,7 @@ const Woo = {
       const appQty = qOf(u);
       const priceOk = l.price != null && Math.round(l.price * 100) === Math.round(u.price * 100);
       const qtyOk = !l.track ? null : (l.qty != null && Math.abs(l.qty - appQty) < 0.0005);
-      matched.push({ ...l, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind });
+      matched.push({ ...l, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind, appType: u.kind === 'A' ? 'Accessoires' : (u.type || '') });
     });
     // 500 g et plus : réservés aux ventes en ligne, jamais emmenés sur les marchés (Antho, 2026-09-28) → normal qu'ils manquent dans SumUp.
     const bigBag = u => u.kind === 'M' && u.mode === 'gram' && U.num(u.value) >= 500;
@@ -283,18 +297,30 @@ const Woo = {
       nosku: { l: '🏷️ Sans SKU dans SumUp', f: m => m.st === 'nosku' }
     };
     const cur = F[this.sumupFilter] ? this.sumupFilter : 'issues';
+    all.forEach(m => { m.meat = m.appType || this._sumupCatOf(m); m.fmt = this._fmtKey(m.variant); });
+    const meatK = v => this._sumupGroupKey(v);
     const q = U.normSearch(this.sumupQ || '').trim();
+    const base = all.filter(F[cur].f);
+    const meats = [...new Map(base.map(m => [meatK(m.meat), m.meat])).entries()].sort((a, b) => U.sortFr(a[1], b[1]));
+    const fmts = [...new Set(base.filter(m => this.sumupMeat === 'all' || meatK(m.meat) === this.sumupMeat).map(m => m.fmt))].sort((a, b) => this._fmtCmp(a, b));
+    const cnt = (f) => base.filter(f).length;
+    const meatOpts = [{ v: 'all', l: `Toutes les viandes (${base.length})` }].concat(meats.map(([k, l]) => ({ v: k, l: `${l} (${cnt(m => meatK(m.meat) === k)})` })));
+    const fmtOpts = [{ v: 'all', l: 'Tous les formats' }].concat(fmts.map(f => ({ v: f, l: f === '—' ? '— (sans variante)' : f })));
     const key = {
+      meat: m => m.meat || '', fmt: m => m.fmt,
       name: m => m.name + ' ' + m.variant, sku: m => m.sku || '', price: m => m.price, appPrice: m => m.appPrice,
       dPrice: m => m.dPrice, qty: m => m.track ? m.qty : null, appQty: m => m.appQty, dQty: m => m.dQty
     }[this.sumupSort] || (m => m.name);
     const dir = this.sumupSortDir === 'desc' ? -1 : 1;
-    const rows = all.filter(F[cur].f)
+    const rows = base
+      .filter(m => this.sumupMeat === 'all' || meatK(m.meat) === this.sumupMeat)
+      .filter(m => this.sumupFmt === 'all' || m.fmt === this.sumupFmt)
       .filter(m => !q || U.normSearch(m.name + ' ' + m.variant + ' ' + (m.sku || '') + ' ' + (m.appName || '')).includes(q))
       .sort((a, b) => {
         const x = key(a), y = key(b);
         if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
-        return (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y))) * dir || U.sortFr(a.name + a.variant, b.name + b.variant);
+        const c = this.sumupSort === 'fmt' ? this._fmtCmp(x, y) : (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y)));
+        return c * dir || U.sortFr(a.name, b.name) || this._fmtCmp(a.fmt, b.fmt);
       });
     const yes = '<span class="pos">✅</span>', no = '<span class="neg">❌</span>';
     const th = (k, l, num) => `<th class="sortable${this.sumupSort === k ? ' active' : ''}${num ? ' num' : ''}" style="cursor:pointer;" onclick="Woo._setSumupSort('${k}')">${l} ${this.sumupSort === k ? (this.sumupSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
@@ -305,12 +331,14 @@ const Woo = {
       </div>
       <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
         <input id="woo_sumup_q" style="flex:1 1 240px;" placeholder="Rechercher un article, un SKU…" value="${U.esc(this.sumupQ || '')}" oninput="Woo._setSumupQ(this.value)">
+        <div style="flex:0 1 220px;min-width:170px;">${U.customSelect({ value: this.sumupMeat, options: meatOpts, onPick: 'Woo._setSumupMeat' })}</div>
+        <div style="flex:0 1 180px;min-width:150px;">${U.customSelect({ value: this.sumupFmt, options: fmtOpts, onPick: 'Woo._setSumupFmt' })}</div>
         <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
         <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()">⬇ Liste à corriger (CSV)</button>
       </div>
       <table class="sumup-table mt">
-        <colgroup><col style="width:38%"><col style="width:24%"><col style="width:19%"><col style="width:19%"></colgroup>
-        <thead><tr>${th('name', 'Article')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
+        <colgroup><col style="width:27%"><col style="width:13%"><col style="width:10%"><col style="width:18%"><col style="width:16%"><col style="width:16%"></colgroup>
+        <thead><tr>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
         <tbody>${rows.map(m => {
           const same = m.appName && U.normSearch(m.appName) === U.normSearch(m.name + (m.variant ? ' — ' + m.variant : ''));
           const price = m.priceOk === null
@@ -322,11 +350,13 @@ const Woo = {
             : m.qtyOk ? `${yes} ${U.qty(m.qty)}`
             : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
           return `<tr>
-          <td><b>${U.esc(m.name)}</b>${m.variant ? ` <span class="muted">— ${U.esc(m.variant)}</span>` : ''}${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
+          <td><b>${U.esc(m.name)}</b>${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
+          <td><span class="muted">${U.esc(m.meat || '—')}</span></td>
+          <td><b>${U.esc(m.fmt)}</b></td>
           <td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>
           <td>${price}</td>
           <td>${qty}</td>
-        </tr>`; }).join('') || `<tr><td colspan="4" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+        </tr>`; }).join('') || `<tr><td colspan="6" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
       </table>
       <p class="muted help">Prix : ✅ = identique ; ❌ = écart (« + » = l'appli est plus chère que SumUp), avec les deux prix en dessous. Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l'appli a plus que SumUp). Clique « Prix TTC » ou « Quantité » pour trier par écart.</p>
       ${this._renderSumupPairs(r)}`;
