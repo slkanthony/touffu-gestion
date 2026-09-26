@@ -659,7 +659,7 @@ body.visit-mode .kpi.sensitive .v { filter: blur(8px); user-select: none; }
 body.visit-mode .kpi.sensitive .l::after { content: ' · masqué'; font-weight: 400; opacity: .7; text-transform: none; }
 /* Tuiles KPI alignées : chiffre sur une seule ligne, libellés tous au même niveau ; « masqué » sous le libellé */
 .kpi .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
-body.visit-mode .kpi.sensitive .l::after { content: 'masqué'; display: block; font-size: .75rem; }
+body.visit-mode .kpi.sensitive .l::after { content: none; }
 /* Barre « Afficher » du tableau de bord : les 4 boutons occupent toute la largeur */
 .dash-scope-bar .dash-scope-btn { flex: 1 1 0; min-width: 150px; padding: 10px 14px; font-size: .95rem; font-weight: 600; }
 /* Récapitulatif du tableau de bord (période + comparaison N-1) */

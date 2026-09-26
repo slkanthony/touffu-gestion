@@ -1715,7 +1715,7 @@ const Stock = {
         supplierUrl = m.url || '';
       } else {
         const c = Store.state.consumables.find(x => x.id === id); if (!c) return;
-        prodName = c.name; missing++;
+        prodName = c.name; ref = c.ref || ''; supplierUrl = c.url || '';
         const ri = this.replaceInfo(c); if (ri) prodName += ' — ' + ri.txt;
       }
       const ukey = kind + '|' + id + '|' + (vId || '');
@@ -1886,6 +1886,7 @@ const Stock = {
         <div class="fg"><label>Pour (qté achetée)</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} /u</span></div>
       </div>
+      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="fg" style="margin-top:6px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;"><input type="checkbox" id="c_toReplace" ${c.toReplace?'checked':''} style="width:auto;"> 🚩 À ne plus racheter (à remplacer ou supprimer)</label></div>
       <div class="frow">
@@ -1903,6 +1904,7 @@ const Stock = {
         c.costTotal=U.numVal('c_costTotal'); c.costQtyPer=Math.max(0.01,U.numVal('c_costQty'));
         c.costUnit=c.costTotal/c.costQtyPer;
         c.url=U.val('c_url').trim();
+        c.ref=U.val('c_ref').trim();
         c.toReplace = !!(document.getElementById('c_toReplace')||{}).checked;
         c.replaceBy = U.val('c_replaceBy') || '';
         c.replaceNote = U.val('c_replaceNote').trim();
