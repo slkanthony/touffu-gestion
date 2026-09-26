@@ -42,7 +42,7 @@ const Store = {
         widths: ['10mm', '16mm', '20mm', '25mm'],
         consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre', 'Autre'],
         suppliers: [{ id: 's1', name: 'Cernunos' }, { id: 's2', name: 'Kuaurtikel' }],
-        events: [],
+        events: [], eventInfo: {}, fuelConsumption: 7, fuelPrice: 1.85,
         sachets: [],   // {id, name, cost, type}
         meatAbbrev: {}, // {meatType: 'ABBR'} — surcharge l'auto-abréviation
         matAbbrev: {},  // {matKind: 'ABBR'} — abréviations catégories matières (Sangle→SAN)
@@ -466,6 +466,11 @@ const Store = {
   },
   /* Référentiel des événements (marchés, salons…) — Paramètres → Référentiels.
      Inclut aussi les noms déjà présents sur des ventes (anciens imports), pour ne rien perdre. */
+  /* Fiche d'un événement (Paramètres → Événements) : {stand, km (aller-retour), tolls, other, place, note}. */
+  eventInfo(name) { return ((this.state.settings.eventInfo || {})[name]) || {}; },
+  fuelCostPerKm() { const S = this.state.settings; return U.num(S.fuelConsumption) / 100 * U.num(S.fuelPrice); },
+  /* Coût de déplacement pré-calculé d'un événement = km A/R × (conso L/100 × prix du litre) + péages/parking + autres frais. */
+  eventTravelCost(name) { const e = this.eventInfo(name); return Math.round((U.num(e.km) * this.fuelCostPerKm() + U.num(e.tolls) + U.num(e.other)) * 100) / 100; },
   eventList() {
     const set = new Set((this.state.settings.events || []).filter(Boolean));
     (this.state.sales || []).forEach(s => { if (s.eventName) set.add(s.eventName); });

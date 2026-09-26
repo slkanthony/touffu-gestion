@@ -74,11 +74,11 @@ const Stats = {
       const fee = s.payment === 'sumup' ? base * cardRate : s.payment === 'stripe' ? base * stripeRate : 0;
       const cotis = caAcc * socHM + (ca - caAcc + U.num(s.shippingFeeCollected)) * socStd;
       const tva = S.vatActive && vr > 0 ? ca * vr / (100 + vr) : 0;
-      const stand = U.num(s.eventFee);
+      const stand = U.num(s.eventFee), travel = U.num(s.travelCost);
       const tx = (s.sumupRefs && s.sumupRefs.length) || 1;
-      return { ca, cogs, conso, fee, cotis, tva, stand, tx, net: ca - cogs - conso - fee - cotis - tva - stand + U.num(s.shippingFeeCollected) - U.num(s.shippingCost) };
+      return { ca, cogs, conso, fee, cotis, tva, stand, travel, tx, net: ca - cogs - conso - fee - cotis - tva - stand - travel + U.num(s.shippingFeeCollected) - U.num(s.shippingCost) };
     };
-    const zero = () => ({ ca: 0, cogs: 0, conso: 0, fee: 0, cotis: 0, tva: 0, stand: 0, tx: 0, net: 0, days: new Set() });
+    const zero = () => ({ ca: 0, cogs: 0, conso: 0, fee: 0, cotis: 0, tva: 0, stand: 0, travel: 0, tx: 0, net: 0, days: new Set() });
     const add = (t, c, day) => { Object.keys(c).forEach(k => { t[k] += c[k]; }); t.days.add(day); };
     const byName = {};
     Store.state.sales.filter(s => !s.cancelled && s.eventName).forEach(s => {
@@ -106,7 +106,7 @@ const Stats = {
     list.sort((a, b) => so.k === 'name' ? dir * U.sortFr(a.name, b.name) : dir * (val(a, so.k) - val(b, so.k)));
     const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Stats.setEventSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const neg = v => v ? '− ' + U.eur(v) : '—';
-    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive neg">${neg(t.cogs)}</td><td class="num sensitive neg">${neg(t.stand)}</td><td class="num sensitive neg">${neg(t.fee)}</td><td class="num sensitive neg">${neg(t.conso)}</td><td class="num sensitive neg">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
+    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive neg">${neg(t.cogs)}</td><td class="num sensitive neg">${neg(t.stand)}</td><td class="num sensitive neg">${neg(t.travel)}</td><td class="num sensitive neg">${neg(t.fee)}</td><td class="num sensitive neg">${neg(t.conso)}</td><td class="num sensitive neg">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
     const open = this._evOpen || (this._evOpen = {});
     const rows = list.map(e => {
       const years = Object.keys(e.years).sort().reverse();
@@ -126,7 +126,7 @@ const Stats = {
       ${unnamed ? `<div class="card" style="border-left:4px solid #f5b041;"><p class="mb0">⚠️ <b>${unnamed}</b> vente(s) d'événement sans nom ne sont pas comptées ici. Nomme-les via <b>Ventes → historique → 🎪 Modifier</b>.</p></div>` : ''}
       <div class="card">
         <h2>🎪 Rentabilité par événement</h2>
-        ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
         <p class="muted" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
@@ -146,18 +146,20 @@ const Stats = {
     const e = this._eventAgg().list.find(x => x.name === U.val('ev_sim_name')); if (!e) return;
     const n = e.editions || 1;
     const avgCA = e.tot.ca / n;
-    const avgNetExStand = (e.tot.net + e.tot.stand) / n;        // bénéfice moyen AVANT frais de stand
+    const travel = Store.eventTravelCost(e.name);                // déplacement prévu (fiche de l'événement)
+    const avgNetExStand = (e.tot.net + e.tot.stand + e.tot.travel) / n;   // bénéfice moyen AVANT stand et déplacement
     const avgStand = e.tot.stand / n;
-    const fee = U.num(U.val('ev_sim_fee'));
-    const est = avgNetExStand - fee;
-    const rate = e.tot.ca > 0 ? (e.tot.net + e.tot.stand) / e.tot.ca : 0;  // ce qu'il reste par € de CA avant stand
-    const breakEven = rate > 0 ? fee / rate : null;
+    const fee = U.val('ev_sim_fee') === '' ? U.num(Store.eventInfo(e.name).stand) : U.num(U.val('ev_sim_fee'));
+    const est = avgNetExStand - fee - travel;
+    const rate = e.tot.ca > 0 ? (e.tot.net + e.tot.stand + e.tot.travel) / e.tot.ca : 0;  // ce qu'il reste par € de CA avant stand/déplacement
+    const breakEven = rate > 0 ? (fee + travel) / rate : null;
     out.innerHTML = `<div class="recap-grid">
       <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgCA)}</div><div class="l">CA moyen par édition (${n})</div></div>
       <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgStand)}</div><div class="l">Stand payé en moyenne</div></div>
-      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgNetExStand)}</div><div class="l">Bénéfice moyen avant stand</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(travel)}</div><div class="l">Déplacement prévu (fiche)</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${U.eur(avgNetExStand)}</div><div class="l">Bénéfice moyen avant stand & déplacement</div></div>
       <div class="kpi recap-tile sensitive ${est >= 0 ? 'good' : 'bad'} recap-net"><div class="v ${est >= 0 ? 'pos' : 'neg'}">${U.eur(est)}</div><div class="l">Bénéfice estimé avec ce stand</div></div>
-      <div class="kpi recap-tile sensitive"><div class="v">${breakEven === null ? '—' : U.eur(breakEven)}</div><div class="l">CA minimum pour couvrir le stand</div></div>
+      <div class="kpi recap-tile sensitive"><div class="v">${breakEven === null ? '—' : U.eur(breakEven)}</div><div class="l">CA minimum pour couvrir stand + déplacement</div></div>
     </div>
     <p class="muted" style="font-size:.82rem;margin-top:8px;">${est >= 0 ? '✅ Avec ce prix de stand, cet événement reste rentable si tu refais un CA proche de ta moyenne.' : '🔴 Avec ce prix de stand, tu serais en perte à CA égal à ta moyenne.'} Estimation basée sur ${n} édition(s) — à prendre comme un ordre de grandeur.</p>`;
   },
@@ -586,7 +588,7 @@ const Stats = {
       const mk = new Date(s.ts).toISOString().slice(0, 7);
       const my = monthMap[mk] || (monthMap[mk] = { key: mk, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0 });
       my.ca += U.num(s.total); my.nSales++;
-      my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += U.num(s.eventFee);
+      my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += Pricing.eventCost(s);
       (s.items || []).forEach(i => {
         if (i.kind === 'C') { my.boxCost += Pricing.saleItemCost(i); return; } // consommables (carton…) : coût compté à part, pas en produit vendu
         const qty = U.num(i.qty), rev = U.num(i.price) * qty;
@@ -653,7 +655,7 @@ const Stats = {
         ${line('Port encaissé', 'shipFee', '+')}
         ${line('Frais paiement', 'fee', '-')}
         ${line('Frais d\'envoi réel', 'shipping', '-')}
-        ${line('Frais stand', 'eventFee', '-')}
+        ${line('Stand & déplacement', 'eventFee', '-')}
         ${line('Coût cartons', 'box', '-')}
         ${line('Cotisations URSSAF', 'cotis', '-')}
         ${va ? line('TVA (reversée)', 'tva', '-') : ''}
@@ -732,7 +734,7 @@ const Stats = {
           const uvCell = (v) => uvM ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel (imprimante, extracteur, scelleuse…) réparti par mois">− ${U.eur(v)}</td>` : '';
           const row = (label, m) => `<tr><td class="col-name"><b>${label}</b></td><td class="num">${m.nSales}</td><td class="num sensitive">${U.eur(m.ca)}</td>${cell(m.cogs, 'neg')}${margeCell(m.marge)}${cell(m.shipFee, 'pos')}${cell(m.fee, 'neg')}${cell(m.shipping, 'neg')}${cell(m.eventFee, 'neg')}${cell(m.boxCost, 'neg')}${uvCell(m.uvMaint)}<td class="num sensitive neg">− ${U.eur(m.cotis)}</td>${tvaCell(m.tva)}<td class="num sensitive ${m.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(m.net)}</b></td></tr>`;
           return `<div class="table-wrap mt"><table>
-            <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Frais stand</th><th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
+            <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Stand & déplac.</th><th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
             <tbody>${agg.months.slice().reverse().map(m => row(this._monthKeyLabel(m.key), m)).join('') || `<tr><td colspan="${uvM ? 14 : 13}" class="muted">Aucune vente.</td></tr>`}</tbody>
             <tfoot><tr><td class="col-name"><b>Total</b></td><td class="num">${T.n}</td><td class="num sensitive">${U.eur(T.ca)}</td>${cell(T.cogs, 'neg')}${margeCell(T.marge)}${cell(T.shipFee, 'pos')}${cell(T.fee, 'neg')}${cell(T.shipping, 'neg')}${cell(T.ev, 'neg')}${cell(T.box, 'neg')}${uvCell(T.uv)}<td class="num sensitive neg">− ${U.eur(T.cotis)}</td>${tvaCell(T.tva)}<td class="num sensitive ${T.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(T.net)}</b></td></tr></tfoot>
           </table></div>

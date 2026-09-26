@@ -19,7 +19,7 @@ const Params = {
     const S = Store.state.settings;
     const vp = S.variantPresets || { gram: [], piece: [], size: [] };
     // Ordre déplaçable des blocs de Réglages financiers (↑↓). Stocké dans S.finOrder ; les blocs absents/nouveaux sont ajoutés à la fin.
-    const finDef = ['general', 'amort', 'masti', 'acc', 'conso', 'paniers'];
+    const finDef = ['general', 'amort', 'masti', 'acc', 'conso', 'paniers', 'events'];
     let finOrder = Array.isArray(S.finOrder) ? S.finOrder.filter(k => finDef.includes(k)) : [];
     finDef.forEach(k => { if (!finOrder.includes(k)) finOrder.push(k); });
     const finPos = k => finOrder.indexOf(k);
@@ -144,6 +144,15 @@ const Params = {
           <div class="fg"><label>Seuil livraison offerte (€)</label><input id="p_freethr" type="number" step="1" value="${S.freeShippingThreshold ?? 69}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
         <p class="muted" style="margin-top:4px;">Sous ce seuil, une vente en ligne livrée est considérée comme facturée au client (frais ci-dessus) ; au-dessus, offerte (à ta charge). Modifiable au cas par cas sur chaque vente dans l'historique des sorties.</p>
+        </div>
+        <div class="fin-block" style="order:${finPos('events')}">${finTools('events')}
+        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚗 Événements & déplacements</div>
+        <div class="grid c3">
+          <div class="fg"><label>Consommation du véhicule (L / 100 km)</label><input id="p_fuel_cons" type="number" step="0.1" value="${S.fuelConsumption ?? 7}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Prix du carburant (€ / L)</label><input id="p_fuel_price" type="number" step="0.01" value="${S.fuelPrice ?? 1.85}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Coût carburant au km</label><span style="display:block;padding:8px 0;font-weight:600;">${U.eur(Store.fuelCostPerKm(), 3)} / km</span></div>
+        </div>
+        <p class="muted" style="margin-top:4px;">Sert à calculer les frais de déplacement de chaque événement (kilomètres aller-retour de sa fiche, Paramètres → Référentiels → Événements), pré-remplis au retour d'événement.</p>
         </div>
         </div>
         <button class="btn-cta mt" onclick="Params.saveSettings()">Enregistrer les réglages</button>
@@ -440,13 +449,33 @@ const Params = {
     const enc = n => encodeURIComponent(n).replace(/'/g, '%27');
     return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">🎪 Événements <span class="muted" style="font-weight:400;font-size:.8rem;">(marchés, salons…)</span></h3>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        ${list.map(n => `<div style="display:flex;gap:6px;align-items:center;">
-          <input value="${U.esc(n)}" style="flex:1;" title="Modifier le nom (mis à jour sur toutes les ventes de cet événement)" onchange="Params.renameEvent('${enc(n)}',this.value)">
-          <span class="muted" style="font-size:.75rem;white-space:nowrap;">${used(n)} vente(s)</span>
-          <button class="btn-icon" title="Retirer de la liste" onclick="Params.delEvent('${enc(n)}')">×</button></div>`).join('') || '<span class="muted">Aucun événement.</span>'}
+        ${list.map(n => { const e = Store.eventInfo(n); const open = !!(this._evFicheOpen || {})[n]; const tc = Store.eventTravelCost(n);
+          return `<details class="fold sachet-group" style="margin:0;" ${open ? 'open' : ''} ontoggle="(Params._evFicheOpen=Params._evFicheOpen||{})[decodeURIComponent('${enc(n)}')]=this.open">
+          <summary style="cursor:pointer;padding:6px 0;"><b>${U.esc(n)}</b> <span class="muted" style="font-size:.78rem;">${used(n)} vente(s)${U.num(e.stand) ? ' · stand ' + U.eur(e.stand) : ''}${tc ? ' · trajet ' + U.eur(tc) : ''}${e.place ? ' · ' + U.esc(e.place) : ''}</span></summary>
+          <div class="fold-body" style="padding:6px 0 10px;">
+            <div class="grid c3">
+              <div class="fg"><label>Nom</label><input value="${U.esc(n)}" onchange="Params.renameEvent('${enc(n)}',this.value)"></div>
+              <div class="fg"><label>Lieu</label><input value="${U.esc(e.place || '')}" placeholder="ex : Lyon, place Bellecour" onchange="Params.setEventInfo('${enc(n)}','place',this.value)"></div>
+              <div class="fg"><label>Prix du stand habituel (€)</label><input type="number" step="0.01" min="0" value="${e.stand ?? ''}" onchange="Params.setEventInfo('${enc(n)}','stand',this.value)"></div>
+              <div class="fg"><label>Kilomètres aller-retour</label><input type="number" step="1" min="0" value="${e.km ?? ''}" onchange="Params.setEventInfo('${enc(n)}','km',this.value)"></div>
+              <div class="fg"><label>Péages / parking (€)</label><input type="number" step="0.01" min="0" value="${e.tolls ?? ''}" onchange="Params.setEventInfo('${enc(n)}','tolls',this.value)"></div>
+              <div class="fg"><label>Hébergement / autres (€)</label><input type="number" step="0.01" min="0" value="${e.other ?? ''}" onchange="Params.setEventInfo('${enc(n)}','other',this.value)"></div>
+            </div>
+            <div class="fg"><label>Note</label><input value="${U.esc(e.note || '')}" placeholder="ex : installation 7h, prévoir tonnelle" onchange="Params.setEventInfo('${enc(n)}','note',this.value)"></div>
+            <p class="muted" style="font-size:.8rem;margin:4px 0;">🚗 Déplacement calculé : ${U.num(e.km)} km × ${U.eur(Store.fuelCostPerKm(), 3)}/km + péages + autres = <b>${U.eur(tc)}</b> — pré-rempli au retour d'événement (modifiable).</p>
+            <button class="btn-ghost btn-sm" onclick="Params.delEvent('${enc(n)}')">🗑️ Retirer cet événement</button>
+          </div></details>`; }).join('') || '<span class="muted">Aucun événement.</span>'}
       </div>
       <div class="frow mt"><input id="add_event" placeholder="ex : Marché de Noël Lyon" onkeydown="if(event.key==='Enter')Params.addEvent()"><button class="btn-ghost btn-sm" onclick="Params.addEvent()">＋</button></div>
     </div>`;
+  },
+  setEventInfo(enc, key, val) {
+    const n = decodeURIComponent(enc), S = Store.state.settings;
+    S.eventInfo = S.eventInfo || {};
+    const e = S.eventInfo[n] = S.eventInfo[n] || {};
+    e[key] = (key === 'place' || key === 'note') ? String(val || '').trim() : (val === '' ? '' : U.num(val));
+    if (!(S.events || []).includes(n)) (S.events = S.events || []).push(n);
+    Store.save('settings'); App.rerender();
   },
   addEvent(name) {
     const n = String(name !== undefined ? name : U.val('add_event')).trim(); if (!n) return false;
@@ -461,6 +490,7 @@ const Params = {
     if (!n || n === old) return;
     if (Store.eventList().some(x => x !== old && x.toLowerCase() === n.toLowerCase()) && !confirm('« ' + n + ' » existe déjà : fusionner les deux événements ?')) { App.rerender(); return; }
     const S = Store.state.settings; S.events = (S.events || []).filter(x => x !== old && x.toLowerCase() !== n.toLowerCase()); S.events.push(n);
+    if (S.eventInfo && S.eventInfo[old]) { S.eventInfo[n] = Object.assign({}, S.eventInfo[old], S.eventInfo[n] || {}); delete S.eventInfo[old]; }
     let cnt = 0; Store.state.sales.forEach(s => { if (s.eventName === old) { s.eventName = n; cnt++; } });
     Store.save('settings', 'sales'); App.rerender();
     U.toast('Événement renommé' + (cnt ? ' (' + cnt + ' vente(s) mises à jour)' : '') + '.');
@@ -470,6 +500,7 @@ const Params = {
     const cnt = Store.state.sales.filter(s => s.eventName === n).length;
     if (cnt && !confirm('« ' + n + ' » est utilisé par ' + cnt + ' vente(s). Le retirer de la liste enlève aussi ce nom de ces ventes (elles ne seront plus comptées dans les statistiques par événement). Continuer ?')) return;
     const S = Store.state.settings; S.events = (S.events || []).filter(x => x !== n);
+    if (S.eventInfo) delete S.eventInfo[n];
     Store.state.sales.forEach(s => { if (s.eventName === n) s.eventName = ''; });
     Store.save('settings', 'sales'); App.rerender();
   },
@@ -608,7 +639,7 @@ const Params = {
   /* Réordonnancement des blocs de Réglages financiers (↑↓). L'ordre est stocké dans S.finOrder ; l'affichage suit via CSS flex `order`. */
   moveFin(key, dir) {
     const S = Store.state.settings;
-    const def = ['general', 'amort', 'masti', 'acc', 'conso', 'paniers'];
+    const def = ['general', 'amort', 'masti', 'acc', 'conso', 'paniers', 'events'];
     let order = (Array.isArray(S.finOrder) ? S.finOrder.filter(k => def.includes(k)) : []);
     def.forEach(k => { if (!order.includes(k)) order.push(k); });
     const i = order.indexOf(key), j = i + dir;
@@ -625,6 +656,7 @@ const Params = {
   saveSettings() {
     const S = Store.state.settings;
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
+    if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
     S.laborRate = U.numVal('p_labor'); S.labelCost = U.numVal('p_label'); S.bulkDiscount = U.numVal('p_bulk');
     S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
     S.uvCartridgePrice = U.numVal('p_uv_price'); S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');

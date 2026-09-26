@@ -440,7 +440,7 @@ const App = {
     const shipFee30 = recent.reduce((a, s) => a + U.num(s.shippingFeeCollected), 0);
     const boxCost30 = recent.reduce((a, s) => a + saleConsoCost(s), 0);
     const caAcc30 = recent.reduce((a, s) => a + saleAccCA(s), 0);
-    const eventFee30 = recent.reduce((a, s) => a + U.num(s.eventFee), 0);
+    const eventFee30 = recent.reduce((a, s) => a + Pricing.eventCost(s), 0);
     const cogs30 = recent.reduce((a, s) => a + saleCogs(s), 0);
 
     // Tri par colonne de la vue d'ensemble (comme l'ancienne appli).
@@ -486,7 +486,7 @@ const App = {
       byMonth[k].ca += U.num(s.total); byMonth[k].caAcc += saleAccCA(s); byMonth[k].n++;
       byMonth[k].cogs += saleCogs(s);
       byMonth[k].cb += saleCardBase(s); byMonth[k].fee += saleProcFee(s);
-      byMonth[k].eventFee += U.num(s.eventFee);
+      byMonth[k].eventFee += Pricing.eventCost(s);
       byMonth[k].shipping += U.num(s.shippingCost);
       byMonth[k].shipFee += U.num(s.shippingFeeCollected);
       byMonth[k].boxCost += saleConsoCost(s);
@@ -504,7 +504,7 @@ const App = {
       list.forEach(s => {
         m.n++; m.ca += U.num(s.total); m.caAcc += saleAccCA(s); m.cogs += saleCogs(s);
         m.fee += saleProcFee(s); m.caCB += saleCardBase(s); m.shipFee += U.num(s.shippingFeeCollected);
-        m.shipping += U.num(s.shippingCost); m.boxCost += saleConsoCost(s); m.eventFee += U.num(s.eventFee);
+        m.shipping += U.num(s.shippingCost); m.boxCost += saleConsoCost(s); m.eventFee += Pricing.eventCost(s);
       });
       return m;
     };
@@ -554,7 +554,7 @@ const App = {
           ${tile('Frais de paiement', R.fee, 'fee', { lowerIsGood: true })}
           ${tile('Port encaissé', R.shipFee, 'shipFee')}
           ${tile('Frais d\'envoi', R.shipping, 'shipping', { lowerIsGood: true })}
-          ${tile('Frais de stand', R.eventFee, 'eventFee', { lowerIsGood: true })}
+          ${tile('Stand & déplacement', R.eventFee, 'eventFee', { lowerIsGood: true })}
           ${tile('Cartons & conso.', R.boxCost, 'boxCost', { lowerIsGood: true })}
           ${uvMaint ? tile('Entretien / amortissement', R.fixed, 'fixed', { lowerIsGood: true }) : ''}
           ${tile('Cotisations URSSAF', R.cotis, 'cotis', { lowerIsGood: true })}
@@ -656,9 +656,9 @@ const App = {
           <button class="${caView === 'month' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App._caView='month';App.renderDashboard()">Par mois</button>
           <button class="${caView === 'year' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App._caView='year';App.renderDashboard()">Par an</button>
         </div>
-        <div class="table-wrap"><table><thead><tr><th class="col-name">${caView === 'year' ? 'Année' : 'Mois'}</th><th class="num">Ventes</th><th class="num">CA total</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Frais paiement</th><th class="num">Port encaissé</th><th class="num">Frais d'envoi réel</th><th class="num">Frais stand</th><th class="num">Coût cartons</th>${uvMaint ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF (${U.pct(S.socialTaxRate)} / ${U.pct(Pricing.socialRateHandmade())})</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
+        <div class="table-wrap"><table><thead><tr><th class="col-name">${caView === 'year' ? 'Année' : 'Mois'}</th><th class="num">Ventes</th><th class="num">CA total</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Frais paiement</th><th class="num">Port encaissé</th><th class="num">Frais d'envoi réel</th><th class="num">Stand & déplac.</th><th class="num">Coût cartons</th>${uvMaint ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF (${U.pct(S.socialTaxRate)} / ${U.pct(Pricing.socialRateHandmade())})</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
         <tbody>${caRows.map(x => caRow(caView === 'year' ? x.k : x.k.split('-').reverse().join('/'), x.r)).join('') || `<tr><td colspan="${uvMaint ? 14 : 13}" class="muted">Aucune vente enregistrée.</td></tr>`}${caRows.length > 1 ? caRow('Total', caTotal, true) : ''}</tbody></table></div>
-        <p class="muted mt">"Coût revient" = coût d'achat/de fabrication des produits vendus (mastication : coût réel des lots ; accessoires : matières + main d'œuvre), figé à la vente ou estimé au coût actuel pour les ventes antérieures. "Marge brute" = CA − coût revient. "Frais paiement" = commission ${U.pct(S.cardFeeRate)} SumUp (ventes directes CB + marchés / retours d'événement) et ${U.pct(S.stripeFeeRate)} Stripe (ventes en ligne du site) ; virement et espèces = 0 frais. "Cotisations URSSAF" = ${U.pct(S.socialTaxRate)} sur la mastication (vente de marchandises) + ${U.pct(Pricing.socialRateHandmade())} sur les accessoires (fait main / artisanat), calculées ligne par ligne selon la nature du produit ; le port encaissé cotise au taux marchandises. Reste à déclarer/payer réellement à l'URSSAF, déjà déduit ici du bénéfice net. "TVA" = TVA contenue dans le CA (au taux ${U.pct(S.vatRate)}) : ${S.vatActive ? '<b>reversée</b> (assujetti) → déduite du bénéfice net.' : '<b>conservée</b> dans ton bénéfice (non assujetti) — elle sera déduite automatiquement le jour où tu coches « Je suis assujetti à la TVA » ci-dessus.'} "Port encaissé" = frais de livraison facturés au client (sous le seuil réglé en Paramètres) ; "Frais d'envoi réel" = ce que tu as payé au transporteur ; "Frais stand" = coût de l'emplacement d'un marché/événement (saisi au retour d'événement, modifiable dans l'historique des ventes) ; "Coût cartons" = coût des consommables utilisés dans le ticket.${uvMaint ? ` "Entretien matériel" = entretien de l'imprimante UV (filtres + cartouches de nettoyage + main d'œuvre) + amortissement de tout le matériel de l'atelier (imprimante, extracteur, scelleuse… réglés en Paramètres → Réglages financiers), réparti par mois (${U.eur(uvMaint)}/mois) — charge fixe indépendante du volume vendu.` : ''}</p>
+        <p class="muted mt">"Coût revient" = coût d'achat/de fabrication des produits vendus (mastication : coût réel des lots ; accessoires : matières + main d'œuvre), figé à la vente ou estimé au coût actuel pour les ventes antérieures. "Marge brute" = CA − coût revient. "Frais paiement" = commission ${U.pct(S.cardFeeRate)} SumUp (ventes directes CB + marchés / retours d'événement) et ${U.pct(S.stripeFeeRate)} Stripe (ventes en ligne du site) ; virement et espèces = 0 frais. "Cotisations URSSAF" = ${U.pct(S.socialTaxRate)} sur la mastication (vente de marchandises) + ${U.pct(Pricing.socialRateHandmade())} sur les accessoires (fait main / artisanat), calculées ligne par ligne selon la nature du produit ; le port encaissé cotise au taux marchandises. Reste à déclarer/payer réellement à l'URSSAF, déjà déduit ici du bénéfice net. "TVA" = TVA contenue dans le CA (au taux ${U.pct(S.vatRate)}) : ${S.vatActive ? '<b>reversée</b> (assujetti) → déduite du bénéfice net.' : '<b>conservée</b> dans ton bénéfice (non assujetti) — elle sera déduite automatiquement le jour où tu coches « Je suis assujetti à la TVA » ci-dessus.'} "Port encaissé" = frais de livraison facturés au client (sous le seuil réglé en Paramètres) ; "Frais d'envoi réel" = ce que tu as payé au transporteur ; "Stand & déplac." = coût de l'emplacement (+ trajet : km × carburant + péages) d'un marché/événement (saisi au retour d'événement, modifiable dans l'historique des ventes) ; "Coût cartons" = coût des consommables utilisés dans le ticket.${uvMaint ? ` "Entretien matériel" = entretien de l'imprimante UV (filtres + cartouches de nettoyage + main d'œuvre) + amortissement de tout le matériel de l'atelier (imprimante, extracteur, scelleuse… réglés en Paramètres → Réglages financiers), réparti par mois (${U.eur(uvMaint)}/mois) — charge fixe indépendante du volume vendu.` : ''}</p>
         </div>
       </details>
 

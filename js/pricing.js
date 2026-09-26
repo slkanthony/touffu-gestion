@@ -82,6 +82,9 @@ const Pricing = {
      Si v.priceTTCManual est renseigné, le prix de vente est FIXE (ne
      bouge pas quand le coût change, ex: changement de fournisseur
      principal) et le coefficient affiché devient une valeur dérivée. */
+  /* Coûts d'un événement portés par une vente : frais de stand + frais de déplacement (2026-09-27). */
+  eventCost(s) { return U.num(s && s.eventFee) + U.num(s && s.travelCost); },
+
   variantCalc(p, v, idxActive, base, nActive) {
     const S = Store.state.settings;
     const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
@@ -201,7 +204,7 @@ const Pricing = {
       });
       const ca = mCA + aCA;
       const mSh = ca > 0 ? mCA / ca : 0.5, aSh = 1 - mSh;
-      const shipFee = U.num(s.shippingFeeCollected), shipping = U.num(s.shippingCost), eventFee = U.num(s.eventFee);
+      const shipFee = U.num(s.shippingFeeCollected), shipping = U.num(s.shippingCost), eventFee = Pricing.eventCost(s);
       const cardBase = (s.payment === 'sumup' || s.payment === 'stripe') ? ca + shipFee : 0;
       const fee = s.payment === 'sumup' ? cardBase * cardRate : s.payment === 'stripe' ? cardBase * stripeRate : 0;
       const tva = vatRate > 0 ? ca * vatRate / (100 + vatRate) : 0;

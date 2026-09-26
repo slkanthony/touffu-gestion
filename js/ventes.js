@@ -583,8 +583,43 @@ const Ventes = {
     U.toast('Nom de l\'événement enregistré.', false, entry.id);
     Store.save('sales');
   },
-  setDayEventName(key, val) { if (this.retourData) (this.retourData.eventNames = this.retourData.eventNames || {})[key] = String(val || '').trim(); },
-  setCashEventName(val) { if (this.retourData) this.retourData.cashEventName = String(val || '').trim(); },
+  /* Choix d'un événement sur une journée → pré-remplit stand + déplacement depuis sa fiche
+     (Paramètres → Événements). Si l'événement est déjà sur une autre journée de ce retour
+     (marché sur 2 jours), on ne double pas : stand et trajet restent sur la 1re journée. */
+  setDayEventName(key, val) {
+    const d = this.retourData; if (!d) return;
+    const name = String(val || '').trim();
+    d.eventNames = d.eventNames || {}; d.standFees = d.standFees || {}; d.travel = d.travel || {};
+    d.eventNames[key] = name;
+    const already = name && Object.keys(d.eventNames).some(k => k !== key && d.eventNames[k] === name);
+    if (name && !already) {
+      const e = Store.eventInfo(name);
+      if (!U.num(d.standFees[key]) && U.num(e.stand)) d.standFees[key] = U.num(e.stand);
+      if (!U.num(d.travel[key])) d.travel[key] = Store.eventTravelCost(name);
+    }
+    this.render();
+  },
+  setTravel(key, val) { if (this.retourData) (this.retourData.travel = this.retourData.travel || {})[key] = U.num(val); },
+  setCashEventName(val) {
+    const d = this.retourData; if (!d) return;
+    d.cashEventName = String(val || '').trim();
+    const onDay = d.cashEventName && Object.values(d.eventNames || {}).includes(d.cashEventName);
+    if (d.cashEventName && !onDay) {
+      const e = Store.eventInfo(d.cashEventName);
+      if (!U.num(d.cashStandFee) && U.num(e.stand)) d.cashStandFee = U.num(e.stand);
+      if (!U.num(d.cashTravel)) d.cashTravel = Store.eventTravelCost(d.cashEventName);
+    }
+    this.render();
+  },
+  setCashTravel(val) { if (this.retourData) this.retourData.cashTravel = U.num(val); },
+  setTravelCost(id, val) {
+    const s = Store.state.sales.find(x => x.id === id); if (!s) return;
+    const snap = Store.snapshot('sales', s);
+    s.travelCost = U.num(val);
+    const entry = Store.commitSnapshot(snap, 'vente', `Frais de déplacement — ${U.frDateTime(s.ts)} : ${U.eur(s.travelCost)}`);
+    U.toast('Frais de déplacement mis à jour.', false, entry.id);
+    Store.save('sales');
+  },
 
   toggleShippingCharged(id) {
     const s = Store.state.sales.find(x => x.id === id); if (!s || s.delivery !== 'livraison') return;
@@ -629,6 +664,7 @@ const Ventes = {
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
           ${s.source === 'event' ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
+          ${s.source === 'event' ? field('Déplacement', `<input type="number" step="0.01" min="0" value="${U.num(s.travelCost)}" style="width:80px;" onchange="Ventes.setTravelCost('${s.id}',this.value)">`) : ''}
           <span class="sh-total">${s.items.length} article(s) · <b>${U.eur(s.total)}</b></span>
           <span class="sh-actions">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span>
         </div></td></tr>`;
@@ -650,7 +686,7 @@ const Ventes = {
   },
 
   exportSales() {
-    const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Evenement', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
+    const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Frais_deplacement', 'Evenement', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
     Store.state.sales.forEach(s => s.items.forEach((i, idx) => {
       rows.push([U.frDateTime(s.ts), s.source === 'event' ? 'Evenement' : 'General',
         s.channel === 'online' ? 'En ligne' : s.channel === 'direct' ? 'Directe' : '', s.payment || '',
@@ -659,6 +695,7 @@ const Ventes = {
         idx === 0 && s.delivery === 'livraison' ? U.num(s.shippingFeeCollected).toFixed(2) : '',
         idx === 0 ? U.num(s.shippingCost).toFixed(2) : '',
         idx === 0 ? U.num(s.eventFee).toFixed(2) : '',
+        idx === 0 ? U.num(s.travelCost).toFixed(2) : '',
         s.eventName || '',
         idx === 0 ? U.num(s.items.filter(x => x.kind === 'C').reduce((a, x) => a + U.num(x.cost), 0)).toFixed(2) : '',
         i.name, i.label || '', i.sku || '', i.lotLabel || '',
@@ -995,6 +1032,7 @@ const Ventes = {
       </div>
       <div class="fg"><label>🎪 Événement (ventes espèces)</label>${this.eventSelect(this.retourData && this.retourData.cashEventName || '', 'Ventes.setCashEventName(v)')}</div>
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
+      <div class="fg"><label>🚗 Déplacement (€) <span class="muted" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:140px;" value="${U.num(this.retourData && this.retourData.cashTravel) || ''}" onchange="Ventes.setCashTravel(this.value)"></div>
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="0.001" min="0" value="${this.cashQty || 1}" onchange="Ventes.cashQty=U.num(this.value)"></div>
         <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : cashSel.price}" onchange="Ventes.cashPrice=U.num(this.value)"></div>
@@ -1109,6 +1147,11 @@ const Ventes = {
           <input type="number" step="0.01" min="0" style="width:130px;" value="${U.num(s.eventFee) || ''}" placeholder="0" onchange="Ventes.setEventFee('${s.id}',this.value)">
           <span class="muted" style="font-size:.82rem;">coût de l'emplacement (métrage…) — imputé au bénéfice de cet événement</span>
         </div>
+        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <label style="margin:0;text-transform:none;">🚗 Déplacement (€)</label>
+          <input type="number" step="0.01" min="0" style="width:130px;" value="${U.num(s.travelCost) || ''}" placeholder="0" onchange="Ventes.setTravelCost('${s.id}',this.value)">
+          <span class="muted" style="font-size:.82rem;">carburant + péages + autres${s.eventName && Store.eventTravelCost(s.eventName) ? ` — fiche : ${U.eur(Store.eventTravelCost(s.eventName))}` : ''}</span>
+        </div>
       </div>
 
       <div class="card" style="border-left:3px solid var(--caramel);">
@@ -1154,6 +1197,8 @@ const Ventes = {
         ${this.eventSelect((this.retourData.eventNames || {})[g.key] || '', `Ventes.setDayEventName('${g.key}',v)`, 'width:240px;')}
         <label style="margin:0;text-transform:none;font-size:.85rem;">🏪 Frais de stand (€)</label>
         <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.standFees || {})[g.key]) || ''}" onchange="Ventes.setStandFee('${g.key}',this.value)">
+        <label style="margin:0;text-transform:none;font-size:.85rem;">🚗 Déplacement (€)</label>
+        <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.travel || {})[g.key]) || ''}" onchange="Ventes.setTravel('${g.key}',this.value)">
         <span class="muted" style="font-size:.78rem;">coût du stand pour cette journée (métrage, emplacement…)</span>
       </div>`}
     </div>`;
@@ -1183,7 +1228,8 @@ const Ventes = {
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
         const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
         const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
-        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
+        const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
+        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, travelCost, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique ${b.label} — ${U.eur(total)} (${items.length} produit(s), stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += items.reduce((a, i) => a + i.qty, 0); refs.forEach(r => seen.add(r));
@@ -1200,7 +1246,8 @@ const Ventes = {
       const lines = safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty }));
       const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
       const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
-      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
+      const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
+      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, travelCost, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
       const short = this._deductSale(sale, lines, 'event');
       Store.state.sales.unshift(sale);
       Store.log('vente', `Retour événement ${b.label} — ${U.eur(sale.total)} (${lines.length} produit(s))`, { type: 'sale', data: { saleId: sale.id } });
@@ -1213,12 +1260,12 @@ const Ventes = {
       if (!deduct) {
         const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
         const short = this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
         Store.state.sales.unshift(sale);
         Store.log('vente', `Retour événement (espèces) — ${U.eur(sale.total)}`, { type: 'sale', data: { saleId: sale.id } });
