@@ -672,3 +672,11 @@ body.visit-mode .kpi.sensitive .l::after { content: none; }
 body.visit-mode .kpi.sensitive .cmp { filter: blur(6px); }
 /* Tuile « Dates critiques » : entièrement floutée (chiffre + intitulé) en mode visite */
 body.visit-mode .kpi.kpi-fullblur { filter: blur(6px); user-select: none; }
+/* Barre latérale colorée sur CHAQUE tuile KPI, de la couleur de son chiffre (thème sombre) — avant, seule la bleue se voyait */
+:root[data-theme="dark"] .kpi { border-left-color: var(--caramel); }
+:root[data-theme="dark"] .kpi.good { border-left-color: #6fcf8e; }
+:root[data-theme="dark"] .kpi.bad { border-left-color: #f2887a; }
+:root[data-theme="dark"] .kpi.warn { border-left-color: #f2b76a; }
+:root[data-theme="dark"] .kpi.info2 { border-left-color: #7fc4e8; }
+/* Chiffre : taille qui s'adapte à la largeur pour ne plus être coupé (« 10 622,42… ») */
+.grid.c4 > .kpi .v { font-size: clamp(1.1rem, 1.55vw, 1.7rem); text-overflow: clip; }
