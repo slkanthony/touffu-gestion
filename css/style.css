@@ -950,3 +950,7 @@ select.nsel-native { position: absolute !important; opacity: 0 !important; point
 /* titres de groupe */
 :is(.multiselect-panel, .ac-list, .nsel-panel, .pp-list) .pp-head { padding: 8px 12px 4px; font-size: .74rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--caramel); }
 .multiselect > summary { white-space: normal; overflow: visible; }
+/* Alignement des champs sur une même ligne (2026-09-29) : quand un libellé passe sur 2 lignes, les cases
+   de la ligne restent au même niveau (le champ est poussé en bas de sa colonne, libellés calés en haut). */
+:is(.frow, .grid) > .fg:has(> label:first-child) { display: flex; flex-direction: column; }
+:is(.frow, .grid) > .fg > label:first-child + * { margin-top: auto; }
