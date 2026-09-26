@@ -71,12 +71,11 @@ const Paniers = {
       if (this.poilFilter === 'sans' && pTags.poil !== 'sans' && pTags.poil !== 'les_deux') return;
       if (this.hypoOnly && !pTags.hypo) return;
 
-      const cat = Store.state.catalogM.find(c => c.id === p.catalogId);
-
       p.variants.forEach(v => {
         if (v.mode === 'vrac') return;
+        const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
 
-        const tags = this._mergeTags(pTags, v.mode === 'size' ? v.tags : null);
+        const tags = this._mergeTags(pTags, Stock.variantTags(p, v));
 
         if (this.resistanceInclude.length) {
           const r = tags.resistance;
@@ -122,7 +121,8 @@ const Paniers = {
             dluo: l.dluo || '', daysLeft: daysLeft !== null ? daysLeft : 9999,
             lotNumber: l.lotNumber || '',
             tags,
-            mode: v.mode || '', value: v.value
+            mode: v.mode || '', value: v.value,
+            ...this._famInfo(p, v)
           });
         });
       });
@@ -131,7 +131,26 @@ const Paniers = {
   },
 
   /* ---------- Algorithme de composition ---------- */
+  /* Déclinaisons (ex. 25CM et 25CM LOT 2) : même « famille » → jamais proposées ensemble dans un panier. */
+  _famInfo(p, v) {
+    const par = Stock.parentOf(p, v);
+    return { family: Stock.familyKey(p, v), packQty: par ? Stock.packQtyOf(v) : 1, hasPack: !!par || Stock.childrenOf(p, v).length > 0 };
+  },
+  _famOf(b) {
+    if (b.family) return b.family;
+    const sp = Store.state.stockM.find(x => x.id === b.pId); const sv = sp?.variants.find(x => x.id === b.vId);
+    return sp && sv ? Stock.familyKey(sp, sv) : b.pId + ':' + b.vId;
+  },
+  /* true si une AUTRE variante de la même famille est déjà dans le panier (hors créneau `skipIdx`). */
+  _famTaken(c, basket, skipIdx = -1) {
+    return basket.some((b, i) => i !== skipIdx && this._famOf(b) === c.family && b.vId !== c.vId);
+  },
   _sizePrefScore(c) {
+    // Taille déclinée en lots : plusieurs chiens → le lot, un seul chien → la pièce.
+    if (c.hasPack) {
+      if (c.packQty > 1) return this.nbChiens > 1 ? 1.0 : 0.25;
+      return this.nbChiens > 1 ? 0.3 : 0.8;
+    }
     if (c.mode !== 'gram') return 0.5;
     const v = U.num(c.value);
     if (this.nbChiens > 1) {
@@ -258,12 +277,12 @@ const Paniers = {
 
       const productQties = {};
       basket.forEach(b => { productQties[b.pId] = (productQties[b.pId] || 0) + b.qty; });
-      let eligible = affordable.filter(c => (productQties[c.pId] || 0) < maxPer);
+      let eligible = affordable.filter(c => (productQties[c.pId] || 0) < maxPer && !this._famTaken(c, basket));
       const hardInBasket = basket.some(b => {
         const sp = Store.state.stockM.find(x => x.id === b.pId);
         if (!sp) return false;
         const sv = sp.variants.find(x => x.id === b.vId);
-        const mt = this._mergeTags(sp.tags, sv?.tags);
+        const mt = this._mergeTags(sp.tags, sv ? Stock.variantTags(sp, sv) : null);
         return ['forte', 'tres-forte'].includes(mt.resistance);
       });
       if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
@@ -280,7 +299,7 @@ const Paniers = {
           pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
           name: pick.name, meat: pick.meat, variant: pick.variant,
           price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false
+          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family
         });
       }
 
@@ -391,13 +410,13 @@ const Paniers = {
       if (c) c.avail = Math.max(0, c.avail - b.qty);
     });
 
-    let eligible = cands.filter(c => c.price <= maxPrice && c.avail > 0);
+    let eligible = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !this._famTaken(c, this.basket, idx));
     const otherHard = this.basket.some((b, j) => {
       if (j === idx) return false;
       const sp = Store.state.stockM.find(x => x.id === b.pId);
       if (!sp) return false;
       const sv = sp.variants.find(x => x.id === b.vId);
-      const mt = this._mergeTags(sp.tags, sv?.tags);
+      const mt = this._mergeTags(sp.tags, sv ? Stock.variantTags(sp, sv) : null);
       return ['forte', 'tres-forte'].includes(mt.resistance);
     });
     if (otherHard) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
@@ -434,7 +453,7 @@ const Paniers = {
       pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
       name: pick.name, meat: pick.meat, variant: pick.variant,
       price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false
+      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family
     };
     this.render();
     U.toast(`${oldName} exclu → ${pick.name}`);
@@ -466,11 +485,11 @@ const Paniers = {
       const sp = Store.state.stockM.find(x => x.id === b.pId);
       if (!sp) return false;
       const sv = sp.variants.find(x => x.id === b.vId);
-      const mt = this._mergeTags(sp.tags, sv?.tags);
+      const mt = this._mergeTags(sp.tags, sv ? Stock.variantTags(sp, sv) : null);
       return ['forte', 'tres-forte'].includes(mt.resistance);
     });
     const eligibleFor = rej => {
-      let e = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !rej.includes(c.pId));
+      let e = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !rej.includes(c.pId) && !this._famTaken(c, this.basket, idx));
       if (otherHard) e = e.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
       return e;
     };
@@ -507,7 +526,7 @@ const Paniers = {
       pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
       name: pick.name, meat: pick.meat, variant: pick.variant,
       price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false,
+      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family,
       _swapRejected: rejected // mémorise la série de refus pour les prochains 🔄 sur ce créneau
     };
     this.render();
@@ -529,9 +548,9 @@ const Paniers = {
   allCandidates() {
     const out = [];
     Store.state.stockM.forEach(p => {
-      const cat = Store.state.catalogM.find(c => c.id === p.catalogId);
       p.variants.forEach(v => {
         if (v.mode === 'vrac') return;
+        const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
         const lots = v.lots.filter(l => {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           if (q <= 0) return false;
@@ -551,7 +570,7 @@ const Paniers = {
             coeff = calc.effCoeff || 0;
           }
         }
-        const tags = this._mergeTags(p.tags || {}, v.mode === 'size' ? v.tags : null);
+        const tags = this._mergeTags(p.tags || {}, Stock.variantTags(p, v));
         lots.forEach(l => {
           const avail = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           const daysLeft = U.daysTo(l.dluo);
@@ -564,7 +583,8 @@ const Paniers = {
             dluo: l.dluo || '', daysLeft: daysLeft !== null ? daysLeft : 9999,
             lotNumber: l.lotNumber || '',
             tags,
-            mode: v.mode || '', value: v.value
+            mode: v.mode || '', value: v.value,
+            ...this._famInfo(p, v)
           });
         });
       });
