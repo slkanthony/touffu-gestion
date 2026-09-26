@@ -1365,19 +1365,19 @@ const Params = {
   /* Liste des doublons : fiches prix liées à plusieurs produits stock + liens fournisseur
      partagés (mastication + consommables). Noms cliquables → produit dans le Stock. */
   _renderDupCheck() {
-    const link = o => o.kind === 'C'
-      ? `<a href="#/stock/conso">${U.esc(o.name)}</a> <span class="muted">(consommable)</span>`
-      : `<a href="#/stock/mastication/${o.id}">${U.esc(o.name)}</a>`;
+    const link = o => o.kind === 'C' ? `<a href="#/stock/conso">${U.esc(o.name)}</a> <span class="muted">(consommable)</span>`
+      : o.kind === 'T' ? `<a href="#/stock/matieres">${U.esc(o.name)}</a> <span class="muted">(matière)</span>`
+      : `<a href="#/stock/mastication/${o.pId || o.id}">${U.esc(o.name)}</a>`;
     const byCat = {};
     Store.state.stockM.forEach(sp => { if (sp.catalogId) (byCat[sp.catalogId] = byCat[sp.catalogId] || []).push(sp); });
     const catDups = Object.entries(byCat).filter(([, l]) => l.length > 1).map(([cid, l]) => {
       const cat = Store.state.catalogM.find(c => c.id === cid);
       return { name: cat ? cat.name : '(fiche supprimée)', items: l.map(sp => ({ kind: 'M', id: sp.id, name: sp.name })) };
     }).sort((a, b) => U.sortFr(a.name, b.name));
-    const byUrl = {};
-    Store.state.stockM.forEach(sp => { const k = Stock.normUrl(sp.url); if (k) (byUrl[k] = byUrl[k] || { url: sp.url, items: [] }).items.push({ kind: 'M', id: sp.id, name: sp.name }); });
-    Store.state.consumables.forEach(c => { const k = Stock.normUrl(c.url); if (k) (byUrl[k] = byUrl[k] || { url: c.url, items: [] }).items.push({ kind: 'C', id: c.id, name: c.name }); });
-    const urlDups = Object.values(byUrl).filter(g => g.items.length > 1);
+    const ent = Stock.supplierEntries();
+    const group = (list, norm) => { const g = {}; list.forEach(o => { const k = norm(o.val); if (k) (g[k] = g[k] || { url: o.val, items: [] }).items.push(o); }); return Object.values(g).filter(x => x.items.length > 1); };
+    const urlDups = group(ent.urls, u => Stock.normUrl(u));
+    const refDups = group(ent.refs, r => Stock.normRef(r));
     const table = (rows, head) => `<div class="table-wrap"><table><thead><tr><th>${head}</th><th>Produits concernés</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
     const catHTML = catDups.length
       ? table(catDups.map(d => `<tr><td>${U.esc(d.name)}</td><td>${d.items.map(link).join(' · ')}</td></tr>`), 'Fiche prix')
@@ -1385,9 +1385,13 @@ const Params = {
     const urlHTML = urlDups.length
       ? table(urlDups.map(g => `<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${U.esc(g.url)}"><a href="${U.esc(g.url)}" target="_blank" rel="noopener">${U.esc(g.url)}</a></td><td>${g.items.map(link).join(' · ')}</td></tr>`), 'Lien fournisseur')
       : '<p class="muted">✅ Aucun lien fournisseur en double.</p>';
-    return `<p class="muted mb0">Les alertes ne bloquent rien : un doublon peut être voulu. Clique un nom pour ouvrir le produit et corriger. (Matières premières non contrôlées : une même page fournisseur sert souvent à plusieurs couleurs/largeurs.)</p>
+    const refHTML = refDups.length
+      ? table(refDups.map(g => `<tr><td><span class="tag">${U.esc(g.url)}</span></td><td>${g.items.map(link).join(' · ')}</td></tr>`), 'Réf. fournisseur')
+      : '<p class="muted">✅ Aucune référence fournisseur en double.</p>';
+    return `<p class="muted mb0">Mastication, matières premières et consommables. Les alertes ne bloquent rien : un doublon peut être voulu (ex. une page qui sert à plusieurs couleurs). Clique un nom pour ouvrir le produit et corriger.</p>
       <h3 class="mt">🔗 Fiches prix liées à plusieurs produits stock (${catDups.length})</h3>${catHTML}
-      <h3 class="mt">🌐 Liens fournisseur en double (${urlDups.length})</h3>${urlHTML}`;
+      <h3 class="mt">🌐 Liens fournisseur en double (${urlDups.length})</h3>${urlHTML}
+      <h3 class="mt">🏷️ Références fournisseur en double (${refDups.length})</h3>${refHTML}`;
   },
 
   relink() {

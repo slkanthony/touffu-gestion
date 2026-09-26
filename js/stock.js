@@ -503,6 +503,8 @@ const Stock = {
         </div>
       </div>` : ''}`,
       onOk:()=>{
+        const dupV = this.dupWarnings({ ref: U.val('ev_ref'), self: { kind: 'M', id: p.id + ':' + v.id } });
+        if (dupV.length && !confirm(dupV.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
         const snap=Store.snapshot('stockM',p);
         v.sku=U.val('ev_sku'); v.ref=U.val('ev_ref');
         const pickedCatId = Stock._evCatPickId || '';
@@ -647,12 +649,37 @@ const Stock = {
      - un lien fournisseur partagé entre produits mastication et/ou consommables
        (matières premières exclues : une même page sert souvent plusieurs couleurs/largeurs). */
   normUrl(u) { return String(u || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, ''); },
+  normRef(r) { return String(r || '').trim().toUpperCase().replace(/\s+/g, ''); },
+  /* Tous les liens / réf. fournisseur de l'appli (2026-09-27 : mastication + matières + consommables).
+     kind M = produit mastication (lien au niveau produit, réf. au niveau variante), T = matière, C = consommable. */
+  supplierEntries() {
+    const urls = [], refs = [];
+    Store.state.stockM.forEach(p => {
+      if (p.url) urls.push({ kind: 'M', id: p.id, pId: p.id, name: p.name, val: p.url });
+      (p.variants || []).forEach(v => { if (v.ref) refs.push({ kind: 'M', id: p.id + ':' + v.id, pId: p.id, name: p.name + ' ' + Pricing.labelVariant(v), val: v.ref }); });
+    });
+    (Store.state.materials || []).forEach(m => {
+      if (m.url) urls.push({ kind: 'T', id: m.id, name: m.name, val: m.url });
+      if (m.ref) refs.push({ kind: 'T', id: m.id, name: m.name, val: m.ref });
+    });
+    (Store.state.consumables || []).forEach(c => {
+      const nm = c.name + (this.consoDims(c) ? ' ' + this.consoDims(c) : '');
+      if (c.url) urls.push({ kind: 'C', id: c.id, name: nm, val: c.url });
+      if (c.ref) refs.push({ kind: 'C', id: c.id, name: nm, val: c.ref });
+    });
+    return { urls, refs };
+  },
   urlOwners(url) {
     const k = this.normUrl(url); if (!k) return [];
-    return Store.state.stockM.filter(x => this.normUrl(x.url) === k).map(x => ({ kind: 'M', id: x.id, name: x.name }))
-      .concat(Store.state.consumables.filter(c => this.normUrl(c.url) === k).map(c => ({ kind: 'C', id: c.id, name: c.name })));
+    return this.supplierEntries().urls.filter(o => this.normUrl(o.val) === k);
   },
-  dupWarnings({ pId, consoId, catId, url }) {
+  refOwners(ref) {
+    const k = this.normRef(ref); if (!k) return [];
+    return this.supplierEntries().refs.filter(o => this.normRef(o.val) === k);
+  },
+  _kindTxt(k) { return k === 'C' ? ' (consommable)' : k === 'T' ? ' (matière)' : ' (mastication)'; },
+  /* self = {kind, id} de l'élément en cours d'édition (exclu des doublons). */
+  dupWarnings({ pId, consoId, catId, url, ref, self }) {
     const msgs = [];
     if (catId) {
       const others = Store.state.stockM.filter(x => x.catalogId === catId && x.id !== pId);
@@ -661,8 +688,12 @@ const Stock = {
         msgs.push('⚠️ La fiche prix « ' + (cat ? cat.name : '?') + ' » est déjà liée à : ' + others.map(x => x.name).join(', '));
       }
     }
-    const owners = this.urlOwners(url).filter(o => !((o.kind === 'M' && o.id === pId) || (o.kind === 'C' && o.id === consoId)));
-    if (owners.length) msgs.push('⚠️ Ce lien fournisseur est déjà utilisé par : ' + owners.map(o => o.name + (o.kind === 'C' ? ' (consommable)' : '')).join(', '));
+    const me = self || (pId ? { kind: 'M', id: pId } : consoId ? { kind: 'C', id: consoId } : null);
+    const notMe = o => !(me && o.kind === me.kind && (o.id === me.id || (o.kind === 'M' && me.kind === 'M' && o.pId === me.id && !String(me.id).includes(':'))));
+    const owners = this.urlOwners(url).filter(notMe);
+    if (owners.length) msgs.push('⚠️ Ce lien fournisseur est déjà utilisé par : ' + owners.map(o => o.name + this._kindTxt(o.kind)).join(', '));
+    const rOwners = this.refOwners(ref).filter(notMe);
+    if (rOwners.length) msgs.push('⚠️ Cette référence fournisseur « ' + ref + ' » est déjà utilisée par : ' + rOwners.map(o => o.name + this._kindTxt(o.kind)).join(', '));
     return msgs;
   },
 
@@ -1860,7 +1891,7 @@ const Stock = {
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
           <td style="text-align:center;">${U.num(c.low)||'—'}</td>
-          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${cQper !== 1 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(c.costUnit, 3)} / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''}</td>
+          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${(cQper !== 1 || c.costTax === 'TTC') ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">${c.costTax === 'TTC' ? '<span class="badge warn" style="font-size:.68rem;">saisi TTC</span> ' : ''}= ${U.eur(c.costUnit, 3)} HT / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''}</td>
           <td class="right">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
             <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button>
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
@@ -1879,8 +1910,7 @@ const Stock = {
     const snap = Store.snapshot('consumables', c);
     c[field] = U.num(val);
     const total = U.num(c.costTotal != null ? c.costTotal : c.costUnit);
-    const qper = U.num(c.costQtyPer) || 1;
-    c.costUnit = qper > 0 ? total / qper : 0;
+    c.costUnit = this.consoUnitCost(total, c.costQtyPer, c.costTax);
     const entry = Store.commitSnapshot(snap, 'stock', 'Coût modifié — ' + c.name);
     U.toast('Coût mis à jour.', false, entry.id);
     Store.save('consumables'); App.rerender();
@@ -1908,9 +1938,10 @@ const Stock = {
         <div class="fg"><label>Seuil</label><input id="c_low" type="number" step="1" value="${c.low}"></div>
       </div>
       <div class="frow" style="align-items:flex-end;">
-        <div class="fg"><label>Prix d'achat (€)</label><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"></div>
+        <div class="fg"><label>Prix d'achat (€)</label><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()">
+          <div style="display:flex;gap:12px;margin-top:5px;font-size:.85rem;">${['HT','TTC'].map(t => `<label style="display:flex;align-items:center;gap:4px;text-transform:none;cursor:pointer;margin:0;"><input type="radio" name="c_tax" value="${t}" ${(c.costTax||'HT')===t?'checked':''} style="width:auto;" onchange="Stock._calcConsoUnit()"> ${t}</label>`).join('')}</div></div>
         <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
-        <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} /u</span></div>
+        <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} HT /u</span></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
@@ -1921,14 +1952,15 @@ const Stock = {
       </div>`,
       onOk:()=>{
         if(!U.val('c_name').trim()){U.toast('Nom obligatoire',true);return false;}
-        const dupMsgs = this.dupWarnings({ consoId: c.id, url: U.val('c_url') });
+        const dupMsgs = this.dupWarnings({ url: U.val('c_url'), ref: U.val('c_ref'), self: { kind: 'C', id: c.id } });
         if (dupMsgs.length && !confirm(dupMsgs.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
         const snap = id ? Store.snapshot('consumables',c) : null;
         c.name=U.val('c_name').trim();
         c.dimensions=U.val('c_dim').trim();
         c.category=U.val('c_cat');c.unit=U.val('c_unit');c.qty=U.numVal('c_qty');c.low=U.numVal('c_low');
         c.costTotal=U.numVal('c_costTotal'); c.costQtyPer=Math.max(0.01,U.numVal('c_costQty'));
-        c.costUnit=c.costTotal/c.costQtyPer;
+        c.costTax=(document.querySelector('input[name="c_tax"]:checked')||{}).value||'HT';
+        c.costUnit=this.consoUnitCost(c.costTotal,c.costQtyPer,c.costTax);
         c.url=U.val('c_url').trim();
         c.ref=U.val('c_ref').trim();
         c.toReplace = !!(document.getElementById('c_toReplace')||{}).checked;
@@ -1988,11 +2020,18 @@ const Stock = {
     if (!nums || !nums.length) return 0;
     return nums.reduce((a, n) => a * parseFloat(n.replace(',', '.')), 1);
   },
+  /* Prix d'achat consommable saisi HT ou TTC (c.costTax, défaut HT) : le coût unitaire est toujours
+     ramené en HT (même convention que les fiches fournisseur du calcul de prix). */
+  consoUnitCost(total, qper, tax) {
+    const vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100;
+    const q = U.num(qper) > 0 ? U.num(qper) : 1;
+    return U.num(total) / q / (tax === 'TTC' ? vat : 1);
+  },
   _calcConsoUnit() {
-    const total = U.numVal('c_costTotal'), qty = Math.max(1, U.numVal('c_costQty'));
-    const unit = total / qty;
+    const tax = (document.querySelector('input[name="c_tax"]:checked') || {}).value || 'HT';
+    const unit = this.consoUnitCost(U.numVal('c_costTotal'), U.numVal('c_costQty'), tax);
     const el = document.getElementById('c_costResult');
-    if (el) el.textContent = U.eur(unit, 3) + ' /u';
+    if (el) el.textContent = U.eur(unit, 3) + ' HT /u';
   },
   delConso(id){
     if(!confirm('Supprimer ?')) return;
@@ -2285,17 +2324,21 @@ const Stock = {
         <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>
       </div>
+      <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="m_ref" value="${U.esc(m.ref || '')}" placeholder="ex : BT-16-NOIR"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="m_url" value="${U.esc(m.url || '')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('m_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
       onOk: () => {
         const snap = id ? Store.snapshot('materials', m) : null;
         const product = U.val('m_product').trim(), variant = U.val('m_variant').trim();
         if (!variant) { U.toast('Indique au moins la variante (ou le nom si pas de produit).', true); return false; }
+        const dupM = this.dupWarnings({ url: U.val('m_url'), ref: U.val('m_ref'), self: { kind: 'T', id: m.id } });
+        if (dupM.length && !confirm(dupM.join('\n\n') + '\n\nEnregistrer quand même ?')) return false;
         m.product = product; m.variant = product ? variant : '';
         m.name = product ? (product + ' ' + variant).trim() : variant;
         m.kind = U.val('m_kind'); m.unit = U.val('m_unit');
         m.sku = U.val('m_sku') || Pricing.autoSkuMat(m.name, m.kind, m.variant);
         m.costUnit = U.numVal('m_cost'); m.qty = U.numVal('m_qty'); m.low = U.numVal('m_low');
         m.url = U.val('m_url').trim();
+        m.ref = U.val('m_ref').trim();
         if (!id) Store.state.materials.push(m);
         const entry = Store.log('stock', (id ? 'Matière modifiée' : 'Matière créée') + ' — ' + m.name,
           id ? { type:'restoreItem', data:snap } : { type:'deleteCreated', data:{ domain:'materials', id:m.id } });
