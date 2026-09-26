@@ -123,7 +123,8 @@ const Stats = {
     const simName = this._evSim && allNames.includes(this._evSim) ? this._evSim : (allNames[0] || '');
     const encN = encodeURIComponent(simName).replace(/'/g, '%27');
     const fi = simName ? Store.eventInfo(simName) : {};
-    const inp = (key, lbl, ph, step) => `<div class="fg"><label>${lbl}</label><input ${step ? `type="number" step="${step}" min="0"` : ''} value="${U.esc(fi[key] ?? '')}" placeholder="${ph}" onchange="Params.setEventInfo('${encN}','${key}',this.value)"></div>`;
+    const inp = (key, lbl, ph, step) => `<div class="fg"><label>${lbl}</label><input id="evf_${key}" ${step ? `type="number" step="${step}" min="0"` : ''} value="${U.esc(fi[key] ?? '')}" placeholder="${ph}" oninput="Stats._evFicheDirty()"></div>`;
+    const Sx = Store.state.settings, consX = U.num(Sx.fuelConsumption ?? 7), priceX = U.num(Sx.fuelPrice ?? 1.85);
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">rentabilité par événement</span></div>
       ${this.tabBar()}
@@ -135,24 +136,41 @@ const Stats = {
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
       <div class="card">
-        <h2>🧮 Simuler / préparer un événement</h2>
-        <p class="muted">Prépare un marché à l'avance : sa fiche (stand, trajet…) est la même que dans Paramètres → Événements, et sera pré-remplie au retour d'événement.</p>
+        <h2>🎪 Mes événements — fiche & simulation</h2>
+        <p class="muted">Choisis (ou crée) un marché, enregistre sa fiche habituelle (stand, km, péages…) : elle sera pré-remplie à chaque retour d'événement. La simulation en bas se met à jour avec.</p>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:300px;"><label>Événement</label>${Ventes.eventSelect(simName, 'Stats._evSim=v;Stats.render()', '', 'Stats.render()')}</div>
           ${simName ? `<div class="fg" style="max-width:200px;"><label>CA espéré (€)</label><input id="ev_sim_ca" type="number" step="1" min="0" value="${(this._evSimCA || {})[simName] || ''}" placeholder="moyenne" oninput="(Stats._evSimCA=Stats._evSimCA||{})[Stats._evSimCur]=this.value;Stats._simEvent()"></div>` : ''}
         </div>
-        ${simName ? `<div class="grid c3 mt">
+        ${simName ? `<div class="mt" style="border:1px solid rgba(166,113,83,.45);border-radius:10px;padding:12px 14px;">
+          <h3 style="margin:0 0 8px;">📋 Fiche « ${U.esc(simName)} »</h3>
+          <div class="grid c3">
           ${inp('place', 'Lieu', 'ex : Lyon, place Bellecour')}
-          ${inp('stand', 'Prix du stand prévu (€)', '0', '0.01')}
+          ${inp('stand', 'Prix du stand habituel (€)', '0', '0.01')}
           ${inp('km', 'Kilomètres aller-retour', '0', '1')}
           ${inp('tolls', 'Péages / parking (€)', '0', '0.01')}
           ${inp('other', 'Hébergement / autres (€)', '0', '0.01')}
-          <div class="fg"><label>Déplacement calculé</label><span class="sensitive" style="display:block;padding:8px 0;font-weight:600;">${U.eur(Store.eventTravelCost(simName))}</span></div>
+          ${inp('note', 'Note', 'ex : installation 7h, prévoir tonnelle')}
+          </div>
+          <p class="muted" style="font-size:.82rem;margin:4px 0 8px;">🚗 Déplacement : ${U.num(fi.km)} km × ${String(consX).replace('.', ',')} L/100 km × ${U.eur(priceX)}/L + péages + autres = <b class="sensitive">${U.eur(Store.eventTravelCost(simName))}</b> <span style="font-size:.78rem;">(consommation et prix du litre : Paramètres → Réglages financiers)</span></p>
+          <button class="btn-cta btn-sm" id="evf_save" onclick="Stats.saveEventFiche()">💾 Enregistrer la fiche</button> <span id="evf_state" class="muted" style="font-size:.82rem;">${Object.keys(fi).length ? '✅ Fiche enregistrée' : 'Fiche vide'}</span>
         </div>
+        <h3 class="mt" style="margin-bottom:0;">🧮 Simulation</h3>
         <div id="ev_sim_out" class="mt"></div>` : '<p class="muted">Aucun événement : crée-en un avec « ＋ Nouvel événement… ».</p>'}
       </div>`);
     this._evSimCur = simName;
     if (simName) this._simEvent();
+  },
+  _evFicheDirty() { const e = document.getElementById('evf_state'); if (e) { e.textContent = '● Modifications non enregistrées'; e.style.color = '#f5b041'; } },
+  saveEventFiche() {
+    const name = this._evSimCur; if (!name) return;
+    const S = Store.state.settings; S.eventInfo = S.eventInfo || {};
+    const e = S.eventInfo[name] = S.eventInfo[name] || {};
+    ['place', 'note'].forEach(k => { e[k] = U.val('evf_' + k).trim(); });
+    ['stand', 'km', 'tolls', 'other'].forEach(k => { const v = U.val('evf_' + k); e[k] = v === '' ? '' : U.num(v); });
+    if (!(S.events || []).includes(name)) (S.events = S.events || []).push(name);
+    Store.save('settings'); this.render();
+    U.toast('Fiche « ' + name + ' » enregistrée — pré-remplie au prochain retour d\'événement.');
   },
   _simEvent() {
     const out = document.getElementById('ev_sim_out'); if (!out) return;

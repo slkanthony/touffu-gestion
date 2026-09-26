@@ -617,27 +617,29 @@ const Ventes = {
   },
   /* Déplacement détaillé (2026-09-27, retour d'Antho) : on saisit km aller-retour, prix du litre et
      péages/parking — l'appli fait le calcul avec la consommation du véhicule (Réglages financiers).
-     det = {km, fuel (€/L), tolls (€)}. Le montant en € (travelCost) reste ce qui est compté en compta. */
+     det = {km, cons (L/100 km), fuel (€/L), tolls (€)}. Le montant en € (travelCost) reste ce qui est compté.
+     Coût carburant = km × conso/100 × prix du litre (la conso est visible et modifiable, défaut = réglages). */
+  _defDet() { const S = Store.state.settings; return { km: '', cons: U.num(S.fuelConsumption ?? 7), fuel: U.num(S.fuelPrice ?? 1.85), tolls: '' }; },
   travelOf(det) {
     if (!det) return 0;
-    const cons = U.num(Store.state.settings.fuelConsumption ?? 7);
+    const cons = det.cons === '' || det.cons == null ? U.num(Store.state.settings.fuelConsumption ?? 7) : U.num(det.cons);
     return Math.round((U.num(det.km) * cons / 100 * U.num(det.fuel) + U.num(det.tolls)) * 100) / 100;
   },
   _travelFromFiche(name) {
     const e = name ? Store.eventInfo(name) : {};
-    return { km: U.num(e.km) || '', fuel: U.num(Store.state.settings.fuelPrice ?? 1.85), tolls: (U.num(e.tolls) + U.num(e.other)) || '' };
+    return Object.assign(this._defDet(), { km: U.num(e.km) || '', tolls: (U.num(e.tolls) + U.num(e.other)) || '' });
   },
   /* target : 'd:<journée>' (retour), 'cash' (ventes espèces), 's:<id vente>' (ticket déjà validé). */
   travelWidget(det, target, fallbackTotal) {
-    det = det || { km: '', fuel: U.num(Store.state.settings.fuelPrice ?? 1.85), tolls: '' };
+    det = det || this._defDet();
     const tid = 'tw_' + target.replace(/[^\w-]/g, '_');
     const empty = !U.num(det.km) && !U.num(det.tolls);
     const total = empty && U.num(fallbackTotal) ? U.num(fallbackTotal) : this.travelOf(det);
+    if (det.cons === '' || det.cons == null) det = Object.assign({}, det, { cons: this._defDet().cons });
     const inp = (f, w, step) => `<input type="number" min="0" step="${step}" value="${det[f] === '' || det[f] == null ? '' : U.num(det[f])}" placeholder="0" style="width:${w}px;text-align:center;" onchange="Ventes.setTravelPart('${target}','${f}',this.value)">`;
-    const cons = U.num(Store.state.settings.fuelConsumption ?? 7);
-    return `<span class="travel-split" title="Véhicule : ${String(cons).replace('.', ',')} L/100 km (Paramètres → Réglages financiers)">
-      ${inp('km', 70, 1)}<span class="muted">km A/R ×</span>${inp('fuel', 64, 0.01)}<span class="muted">€/L +</span>${inp('tolls', 64, 0.01)}<span class="muted">€ péages =</span>
-      <b class="sensitive" id="${tid}">${U.eur(total)}</b></span>`;
+    return `<span class="travel-split">
+      ${inp('km', 70, 1)}<span class="muted">km A/R ·</span>${inp('cons', 58, 0.1)}<span class="muted">L/100 km ×</span>${inp('fuel', 64, 0.01)}<span class="muted">€/L +</span>${inp('tolls', 64, 0.01)}<span class="muted">€ péages</span>
+      <span style="white-space:nowrap;"><span class="muted">=</span> <b class="sensitive" id="${tid}">${U.eur(total)}</b></span></span>`;
   },
   setTravelPart(target, field, val) {
     const v = val === '' ? '' : U.num(val);
@@ -645,7 +647,7 @@ const Ventes = {
     if (target.startsWith('s:')) {
       const s = Store.state.sales.find(x => x.id === target.slice(2)); if (!s) return;
       const snap = Store.snapshot('sales', s);
-      s.travelDet = s.travelDet || { km: '', fuel: U.num(Store.state.settings.fuelPrice ?? 1.85), tolls: '' };
+      s.travelDet = s.travelDet || this._defDet();
       s.travelDet[field] = v;
       s.travelCost = cost = this.travelOf(s.travelDet);
       const entry = Store.commitSnapshot(snap, 'vente', `Frais de déplacement — ${U.frDateTime(s.ts)} : ${U.eur(cost)}`);
@@ -655,7 +657,7 @@ const Ventes = {
       const d = this.retourData; if (!d) return;
       d.travelDet = d.travelDet || {};
       const k = target === 'cash' ? '__cash' : target.slice(2);
-      d.travelDet[k] = d.travelDet[k] || { km: '', fuel: U.num(Store.state.settings.fuelPrice ?? 1.85), tolls: '' };
+      d.travelDet[k] = d.travelDet[k] || this._defDet();
       d.travelDet[k][field] = v;
       cost = this.travelOf(d.travelDet[k]);
       if (target === 'cash') d.cashTravel = cost; else (d.travel = d.travel || {})[k] = cost;
