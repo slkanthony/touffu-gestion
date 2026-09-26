@@ -697,12 +697,14 @@ body.visit-mode .kpi.kpi-fullblur { filter: blur(6px); user-select: none; }
 label.retour-deduct.on, label.retour-deduct.off { max-width: 100%; }
 /* Historique des sorties : bande d'en-tête par vente + colonnes nuancées (2026-09-27) */
 table.sales-hist tr.sale-head td { background: rgba(166,113,83,.16); border-top: 2px solid var(--caramel); padding: 8px 12px; }
-.sale-head-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.sale-head-in { display: flex; align-items: center; gap: 8px 18px; }
+.sale-head-in .sh-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; flex: 1 1 auto; min-width: 0; }
+.sale-head-in .sh-right { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; margin-left: auto; }
 .sale-head-in .sh-date { font-weight: 700; font-size: 1rem; }
 .sale-head-in .sh-event { background: var(--caramel); color: #fff; font-weight: 700; font-size: .85rem; padding: 3px 10px; border-radius: 999px; }
 .sale-head-in .sh-field { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; }
 .sale-head-in .sh-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
-.sale-head-in .sh-total { margin-left: auto; font-size: .9rem; }
+.sale-head-in .sh-total { font-size: .9rem; white-space: nowrap; }
 .sale-head-in .sh-actions { white-space: nowrap; }
 table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(255,255,255,.035); }
 
@@ -710,3 +712,5 @@ table.sales-hist tbody tr:not(.sale-head) td:nth-child(even) { background: rgba(
 .travel-split { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .travel-split input { padding:5px 6px; }
 .travel-split .muted { font-size:.8rem; white-space:nowrap; }
+
+@media (max-width: 700px) { .sale-head-in { flex-wrap: wrap; } .sale-head-in .sh-right { width: 100%; justify-content: flex-end; } }

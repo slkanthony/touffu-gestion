@@ -728,7 +728,7 @@ const Ventes = {
        articles en dessous. Fini les cellules fusionnées perdues au milieu de longues listes. */
     const field = (label, html) => `<span class="sh-field"><span class="sh-lbl">${label}</span>${html}</span>`;
     const rowsHtml = sales.map(s => {
-      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sale-head-in">
+      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sale-head-in"><div class="sh-info">
           <span class="sh-date">${U.frDateTime(s.ts)}</span>
           <span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span>
           ${s.eventName ? `<span class="sh-event">🎪 ${U.esc(s.eventName)}</span>` : ''}
@@ -739,9 +739,9 @@ const Ventes = {
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
-          <span class="sh-total">${s.items.length} article(s) · <b>${U.eur(s.total)}</b></span>
+          </div><div class="sh-right"><span class="sh-total">${s.items.length} article(s) · <b>${U.eur(s.total)}</b></span>
           <span class="sh-actions">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span>
-        </div></td></tr>`;
+        </div></div></td></tr>`;
       const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
