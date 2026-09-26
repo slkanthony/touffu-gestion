@@ -487,6 +487,88 @@ const App = {
     const monthKeys = Object.keys(byMonth).sort().reverse().slice(0, 12);
     const uvMaint = Pricing.fixedOverheadMonthly(); // entretien UV + amortissement de tout le matériel, réparti par mois (0 si non renseigné)
 
+    /* ── Compta par période (2026-09-26) : mêmes formules que l'ancien tableau mensuel, réutilisées
+       par le Récapitulatif (30 j / année / 12 mois / depuis le début + comparaison N-1) et par le
+       tableau « Chiffre d'affaires » en vue Par mois / Par an (+ ligne Total). Aucune donnée n'est
+       stockée : tout est recalculé depuis les ventes, conservées depuis le début. */
+    const activeSales = st.sales.filter(s => !s.cancelled);
+    const aggSales = list => {
+      const m = { n: 0, ca: 0, caAcc: 0, cogs: 0, fee: 0, caCB: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0 };
+      list.forEach(s => {
+        m.n++; m.ca += U.num(s.total); m.caAcc += saleAccCA(s); m.cogs += saleCogs(s);
+        m.fee += saleProcFee(s); m.caCB += saleCardBase(s); m.shipFee += U.num(s.shippingFeeCollected);
+        m.shipping += U.num(s.shippingCost); m.boxCost += saleConsoCost(s); m.eventFee += U.num(s.eventFee);
+      });
+      return m;
+    };
+    const finish = (m, months) => {
+      const vr = U.num(S.vatRate), tva = vr > 0 ? m.ca * vr / (100 + vr) : 0;
+      const marge = m.ca - m.cogs, cotis = saleCotis(m.caAcc, m.ca - m.caAcc + m.shipFee), fixed = uvMaint * months;
+      const net = marge + m.shipFee - m.fee - m.shipping - m.boxCost - m.eventFee - cotis - fixed - (S.vatActive ? tva : 0);
+      return { ...m, tva, marge, cotis, fixed, net };
+    };
+    const monthIdx = ts => { const d = new Date(ts); return d.getFullYear() * 12 + d.getMonth(); };
+    const nowIdx = monthIdx(Date.now());
+    const firstIdx = activeSales.length ? Math.min(...activeSales.map(x => monthIdx(x.ts))) : nowIdx;
+    // Périodes du récapitulatif (+ période de comparaison)
+    const DAY = 86400000, now = Date.now(), d0 = new Date();
+    const yStart = new Date(d0.getFullYear(), 0, 1).getTime();
+    const lyStart = new Date(d0.getFullYear() - 1, 0, 1).getTime();
+    const lySame = new Date(d0.getFullYear() - 1, d0.getMonth(), d0.getDate(), 23, 59, 59).getTime();
+    const periods = {
+      '30d': { label: '30 derniers jours', from: now - 30 * DAY, to: now, months: 1, cmp: { from: now - 60 * DAY, to: now - 30 * DAY, label: 'les 30 jours précédents' } },
+      year: { label: 'Cette année', from: yStart, to: now, months: d0.getMonth() + 1, cmp: { from: lyStart, to: lySame, label: 'la même période en ' + (d0.getFullYear() - 1) } },
+      '12m': { label: '12 derniers mois', from: now - 365 * DAY, to: now, months: 12, cmp: { from: now - 730 * DAY, to: now - 365 * DAY, label: 'les 12 mois précédents' } },
+      all: { label: 'Depuis le début', from: 0, to: now, months: Math.max(1, nowIdx - firstIdx + 1), cmp: null }
+    };
+    const rp = periods[this._recapPeriod] ? this._recapPeriod : 'year';
+    const P = periods[rp];
+    const inRange = (a, b) => activeSales.filter(x => x.ts >= a && x.ts <= b);
+    const R = finish(aggSales(inRange(P.from, P.to)), P.months);
+    const C = P.cmp ? finish(aggSales(inRange(P.cmp.from, P.cmp.to)), P.months) : null;
+    const cmpTxt = (cur, prev, lowerIsGood) => {
+      if (!C) return '';
+      if (!prev) return cur ? '<span class="cmp muted">nouveau</span>' : '';
+      const pct = (cur - prev) / Math.abs(prev) * 100;
+      const good = lowerIsGood ? pct <= 0 : pct >= 0;
+      return `<span class="cmp ${good ? 'pos' : 'neg'}" title="Comparé à ${P.cmp.label} (${U.eur(prev)})">${pct >= 0 ? '▲ +' : '▼ '}${Math.round(pct)} %</span>`;
+    };
+    const tile = (label, val, key, opts = {}) => `<div class="kpi recap-tile sensitive ${opts.cls || ''}"><div class="v ${opts.vcls || ''}">${U.eur(val)}</div><div class="l">${label}</div>${C && key ? cmpTxt(val, C[key], opts.lowerIsGood) : ''}</div>`;
+    const recapHTML = `
+      <div class="card mt dash-recap">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+          <h2 style="margin:0 12px 0 0;">🧾 Récapitulatif</h2>
+          ${Object.entries(periods).map(([k, v]) => `<button class="${k === rp ? 'btn-cta' : 'btn-ghost'} dash-scope-btn" onclick="App._recapPeriod='${k}';App.renderDashboard()">${v.label}</button>`).join('')}
+        </div>
+        <div class="recap-grid">
+          ${tile('Chiffre d\'affaires', R.ca, 'ca')}
+          ${tile('Coût de revient', R.cogs, 'cogs', { lowerIsGood: true })}
+          ${tile('Marge brute', R.marge, 'marge', { vcls: R.marge >= 0 ? 'pos' : 'neg' })}
+          ${tile('Frais de paiement', R.fee, 'fee', { lowerIsGood: true })}
+          ${tile('Port encaissé', R.shipFee, 'shipFee')}
+          ${tile('Frais d\'envoi', R.shipping, 'shipping', { lowerIsGood: true })}
+          ${tile('Frais de stand', R.eventFee, 'eventFee', { lowerIsGood: true })}
+          ${tile('Cartons & conso.', R.boxCost, 'boxCost', { lowerIsGood: true })}
+          ${uvMaint ? tile('Entretien / amortissement', R.fixed, 'fixed', { lowerIsGood: true }) : ''}
+          ${tile('Cotisations URSSAF', R.cotis, 'cotis', { lowerIsGood: true })}
+          ${tile('Bénéfice net', R.net, 'net', { cls: 'recap-net', vcls: R.net >= 0 ? 'pos' : 'neg' })}
+        </div>
+        <p class="muted mb0" style="font-size:.82rem;margin-top:8px;">${R.n} vente(s) sur la période « ${P.label} »${C ? ` · ▲▼ = évolution par rapport à ${P.cmp.label}` : ''}. Paiement par carte : ${U.eur(R.caCB)} (SumUp ${U.pct(S.cardFeeRate)} / Stripe ${U.pct(S.stripeFeeRate)}).</p>
+      </div>`;
+    // Tableau CA : par mois (tous les mois) ou par an, + Total
+    const caView = this._caView === 'year' ? 'year' : 'month';
+    const groups = {};
+    activeSales.forEach(x => { const d = new Date(x.ts); const k = caView === 'year' ? String(d.getFullYear()) : d.toISOString().slice(0, 7); (groups[k] = groups[k] || []).push(x); });
+    const monthsOf = k => {
+      if (caView === 'month') return 1;
+      const y = +k; const a = Math.max(y * 12, firstIdx), b = Math.min(y * 12 + 11, nowIdx);
+      return Math.max(1, b - a + 1);
+    };
+    const caRows = Object.keys(groups).sort().reverse().map(k => ({ k, r: finish(aggSales(groups[k]), monthsOf(k)) }));
+    const caTotal = finish(aggSales(activeSales), caRows.reduce((a, x) => a + (caView === 'month' ? 1 : monthsOf(x.k)), 0));
+    const caRow = (label, r, bold) => `<tr${bold ? ' style="font-weight:700;border-top:2px solid var(--caramel);"' : ''}><td class="col-name"><b>${label}</b></td><td class="num">${r.n}</td><td class="num sensitive">${U.eur(r.ca)}</td>
+          <td class="num sensitive neg">${r.cogs ? '− ' + U.eur(r.cogs) : '—'}</td><td class="num sensitive ${r.marge >= 0 ? 'pos' : 'neg'}">${U.eur(r.marge)}</td><td class="num sensitive neg">${r.fee ? '− ' + U.eur(r.fee) : '—'}</td><td class="num sensitive pos">${r.shipFee ? '+ ' + U.eur(r.shipFee) : '—'}</td><td class="num sensitive neg">${r.shipping ? '− ' + U.eur(r.shipping) : '—'}</td><td class="num sensitive neg">${r.eventFee ? '− ' + U.eur(r.eventFee) : '—'}</td><td class="num sensitive neg">${r.boxCost ? '− ' + U.eur(r.boxCost) : '—'}</td>${uvMaint ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel, réparti par mois">− ${U.eur(r.fixed)}</td>` : ''}<td class="num sensitive neg">− ${U.eur(r.cotis)}</td>${S.vatActive ? `<td class="num sensitive neg" title="TVA reversée — déduite du bénéfice (assujetti)">${r.tva ? '− ' + U.eur(r.tva) : '—'}</td>` : `<td class="num sensitive pos" title="TVA contenue dans le CA — conservée dans ton bénéfice (non assujetti)">${r.tva ? U.eur(r.tva) : '—'}</td>`}<td class="num sensitive ${r.net >= 0 ? 'pos' : 'neg'}">${U.eur(r.net)}</td></tr>`;
+
     this.mount(`
       <div class="view-title"><h1>Bonjour Antho</h1><span class="sub">${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
       <div class="grid c4">
@@ -558,12 +640,17 @@ const App = {
         </details>
       </div>
 
+      ${recapHTML}
+
       <details class="fold dash-section mt" ${this._dashCAOpen ? 'open' : ''} ontoggle="App._dashCAOpen=this.open">
-        <summary><span>💶 Chiffre d'affaires par mois</span></summary>
+        <summary><span>💶 Chiffre d'affaires ${caView === 'year' ? 'par an' : 'par mois'}</span></summary>
         <div class="fold-body">
-        <div class="table-wrap"><table><thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA total</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Frais paiement</th><th class="num">Port encaissé</th><th class="num">Frais d'envoi réel</th><th class="num">Frais stand</th><th class="num">Coût cartons</th>${uvMaint ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF (${U.pct(S.socialTaxRate)} / ${U.pct(Pricing.socialRateHandmade())})</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
-        <tbody>${monthKeys.map(k => { const m = byMonth[k], f = m.fee, vr = U.num(S.vatRate), tva = vr > 0 ? m.ca * vr / (100 + vr) : 0, marge = m.ca - m.cogs, cotis = saleCotis(m.caAcc, m.ca - m.caAcc + m.shipFee); const net = marge + m.shipFee - f - m.shipping - m.boxCost - m.eventFee - cotis - uvMaint - (S.vatActive ? tva : 0); const [y, mo] = k.split('-'); return `<tr><td class="col-name"><b>${mo}/${y}</b></td><td class="num">${m.n}</td><td class="num sensitive">${U.eur(m.ca)}</td>
-          <td class="num sensitive neg">${m.cogs ? '− ' + U.eur(m.cogs) : '—'}</td><td class="num sensitive ${marge >= 0 ? 'pos' : 'neg'}">${U.eur(marge)}</td><td class="num sensitive neg">${f ? '− ' + U.eur(f) : '—'}</td><td class="num sensitive pos">${m.shipFee ? '+ ' + U.eur(m.shipFee) : '—'}</td><td class="num sensitive neg">${m.shipping ? '− ' + U.eur(m.shipping) : '—'}</td><td class="num sensitive neg">${m.eventFee ? '− ' + U.eur(m.eventFee) : '—'}</td><td class="num sensitive neg">${m.boxCost ? '− ' + U.eur(m.boxCost) : '—'}</td>${uvMaint ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel (imprimante, extracteur, scelleuse…) réparti par mois">− ${U.eur(uvMaint)}</td>` : ''}<td class="num sensitive neg">− ${U.eur(cotis)}</td>${S.vatActive ? `<td class="num sensitive neg" title="TVA reversée — déduite du bénéfice (assujetti)">${tva ? '− ' + U.eur(tva) : '—'}</td>` : `<td class="num sensitive pos" title="TVA contenue dans le CA — conservée dans ton bénéfice (non assujetti)">${tva ? U.eur(tva) : '—'}</td>`}<td class="num sensitive ${net >= 0 ? 'pos' : 'neg'}">${U.eur(net)}</td></tr>`; }).join('') || `<tr><td colspan="${uvMaint ? 14 : 13}" class="muted">Aucune vente enregistrée.</td></tr>`}</tbody></table></div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button class="${caView === 'month' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App._caView='month';App.renderDashboard()">Par mois</button>
+          <button class="${caView === 'year' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App._caView='year';App.renderDashboard()">Par an</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th class="col-name">${caView === 'year' ? 'Année' : 'Mois'}</th><th class="num">Ventes</th><th class="num">CA total</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Frais paiement</th><th class="num">Port encaissé</th><th class="num">Frais d'envoi réel</th><th class="num">Frais stand</th><th class="num">Coût cartons</th>${uvMaint ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF (${U.pct(S.socialTaxRate)} / ${U.pct(Pricing.socialRateHandmade())})</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
+        <tbody>${caRows.map(x => caRow(caView === 'year' ? x.k : x.k.split('-').reverse().join('/'), x.r)).join('') || `<tr><td colspan="${uvMaint ? 14 : 13}" class="muted">Aucune vente enregistrée.</td></tr>`}${caRows.length > 1 ? caRow('Total', caTotal, true) : ''}</tbody></table></div>
         <p class="muted mt">"Coût revient" = coût d'achat/de fabrication des produits vendus (mastication : coût réel des lots ; accessoires : matières + main d'œuvre), figé à la vente ou estimé au coût actuel pour les ventes antérieures. "Marge brute" = CA − coût revient. "Frais paiement" = commission ${U.pct(S.cardFeeRate)} SumUp (ventes directes CB + marchés / retours d'événement) et ${U.pct(S.stripeFeeRate)} Stripe (ventes en ligne du site) ; virement et espèces = 0 frais. "Cotisations URSSAF" = ${U.pct(S.socialTaxRate)} sur la mastication (vente de marchandises) + ${U.pct(Pricing.socialRateHandmade())} sur les accessoires (fait main / artisanat), calculées ligne par ligne selon la nature du produit ; le port encaissé cotise au taux marchandises. Reste à déclarer/payer réellement à l'URSSAF, déjà déduit ici du bénéfice net. "TVA" = TVA contenue dans le CA (au taux ${U.pct(S.vatRate)}) : ${S.vatActive ? '<b>reversée</b> (assujetti) → déduite du bénéfice net.' : '<b>conservée</b> dans ton bénéfice (non assujetti) — elle sera déduite automatiquement le jour où tu coches « Je suis assujetti à la TVA » ci-dessus.'} "Port encaissé" = frais de livraison facturés au client (sous le seuil réglé en Paramètres) ; "Frais d'envoi réel" = ce que tu as payé au transporteur ; "Frais stand" = coût de l'emplacement d'un marché/événement (saisi au retour d'événement, modifiable dans l'historique des ventes) ; "Coût cartons" = coût des consommables utilisés dans le ticket.${uvMaint ? ` "Entretien matériel" = entretien de l'imprimante UV (filtres + cartouches de nettoyage + main d'œuvre) + amortissement de tout le matériel de l'atelier (imprimante, extracteur, scelleuse… réglés en Paramètres → Réglages financiers), réparti par mois (${U.eur(uvMaint)}/mois) — charge fixe indépendante du volume vendu.` : ''}</p>
         </div>
       </details>
@@ -576,7 +663,7 @@ const App = {
         </div>
       </details>
 
-      <p class="muted mt sensitive">Coût revient 30 j : <b>${U.eur(cogs30)}</b> · Marge brute 30 j : <b>${U.eur(ca - cogs30)}</b> · Frais paiement estimés sur 30 j : <b>${U.eur(fees)}</b> (SumUp ${U.pct(S.cardFeeRate)} / Stripe ${U.pct(S.stripeFeeRate)}, sur ${U.eur(caCB)} par carte) · Port encaissé 30 j : <b>${U.eur(shipFee30)}</b> · Frais d'envoi 30 j : <b>${U.eur(shipping30)}</b> · Frais stand 30 j : <b>${U.eur(eventFee30)}</b> · Coût cartons 30 j : <b>${U.eur(boxCost30)}</b>${uvMaint ? ` · Entretien matériel / mois : <b>${U.eur(uvMaint)}</b>` : ''} · Cotisations 30 j : <b>${U.eur(saleCotis(caAcc30, ca - caAcc30 + shipFee30))}</b> · CA 30 j : <b>${U.eur(ca)}</b> (${recent.length} ventes)</p>`);
+`);
 
     this.renderCharts(meatCounts, catCounts);
   },
