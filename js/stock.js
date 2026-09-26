@@ -432,6 +432,7 @@ const Stock = {
     const linkedCatId = v.catalogId || p.catalogId || '';
     const linkedCat = linkedCatId ? Store.state.catalogM.find(c=>c.id===linkedCatId) : null;
     this._evCatPickId = linkedCatId;
+    this._evPid = p.id; this._evVid = v.id;
     const pt = p.tags || {};
     const _rLb = {'faible':'Faible','moyenne':'Moyenne','forte':'Forte','tres-forte':'Très Forte'}[pt.resistance] || '';
     const _tLb = Store.productTypeLabel(pt.type);
@@ -918,11 +919,41 @@ const Stock = {
     if (!box) return;
     box.style.display = 'block';
     const query = (q || '').trim().toLowerCase();
+    // Même logique que « Lier au catalogue prix » du produit : champ vide → fiches de la viande du produit ;
+    // dès qu'on tape → toutes les viandes.
+    const prod = Store.state.stockM.find(x => x.id === this._evPid);
+    const meatRaw = prod?.meatType || '';
+    const meat = meatRaw.toLowerCase();
+    const byMeat = !query && meat;
     const matches = Store.state.catalogM
-      .filter(c => !query || c.name.toLowerCase().includes(query))
-      .sort((a, b) => U.sortFr(a.name, b.name));
+      .filter(c => query ? c.name.toLowerCase().includes(query) : (!byMeat || (c.meatType || '').toLowerCase() === meat));
+    // Repères : ✓ cette variante / ✓ ce produit (lien du produit ou d'une autre de ses variantes) / 🔗 lié ailleurs.
+    const owners = {};
+    const add = (cid, who) => { if (cid) (owners[cid] = owners[cid] || []).push(who); };
+    Store.state.stockM.forEach(sp => {
+      add(sp.catalogId, { pId: sp.id, vId: '', label: sp.name });
+      (sp.variants || []).forEach(v => add(v.catalogId, { pId: sp.id, vId: v.id, label: sp.name + ' — ' + (v.label || v.value || '') }));
+    });
+    const rank = c => {
+      const o = owners[c.id] || [];
+      if (o.some(w => w.pId === this._evPid && w.vId === this._evVid)) return 0;
+      if (o.some(w => w.pId === this._evPid)) return 1;
+      return o.length ? 3 : 2;
+    };
+    const tag = c => {
+      const r = rank(c);
+      if (r === 0) return ` <span style="color:var(--ok,#4caf50);font-weight:600;">✓ cette variante</span>`;
+      if (r === 1) { const w = owners[c.id].filter(w => w.pId === this._evPid && w.vId); return ` <span style="color:var(--ok,#4caf50);">✓ ${w.length ? 'variante ' + U.esc(w.map(x => x.label.split(' — ').pop()).join(', ')) : 'ce produit'}</span>`; }
+      if (r === 3) { const l = [...new Set(owners[c.id].map(w => w.label))]; return ` <span style="color:var(--warn,#e0a040);">🔗 lié à : ${U.esc(l.join(', '))}</span>`; }
+      return '';
+    };
+    matches.sort((a, b) => rank(a) - rank(b) || U.sortFr(a.name, b.name));
+    const sepIdx = matches.findIndex(c => rank(c) === 3);
+    const sep = `<div class="muted" style="padding:6px 10px;font-size:.78rem;border-top:1px dashed var(--caramel);margin-top:4px;">Déjà liées à un autre produit</div>`;
+    const hint = byMeat ? `<div class="muted" style="padding:6px 10px;font-size:.8rem;">Fiches ${U.esc(meatRaw)} — tape pour chercher dans toutes les viandes</div>` : '';
+    const empty = !matches.length ? `<div class="muted" style="padding:6px 10px;">Aucune fiche${byMeat ? ' pour cette viande — tape le nom pour chercher partout' : ''}.</div>` : '';
     const noneItem = `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickEvCat('','')">— aucune (libre) —</div>`;
-    box.innerHTML = noneItem + matches.map(c => `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickEvCat('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span></div>`).join('');
+    box.innerHTML = hint + noneItem + empty + matches.map((c, i) => (i === sepIdx ? sep : '') + `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickEvCat('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span>${tag(c)}</div>`).join('');
   },
   closeEvCatPick() {
     const box = document.getElementById('ev_cat_pick_list');
