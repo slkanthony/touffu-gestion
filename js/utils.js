@@ -282,7 +282,7 @@ const U = {
      sur tactile, toucher = ouvre / toucher ailleurs = ferme. Une seule bulle globale (#tipBubble),
      positionnée en fixed et gardée dans l'écran (jamais coupée par un bloc qui défile). */
   info(html) {
-    return `<span class="info-tip" tabindex="0" onmouseenter="U.tipShow(this)" onmouseleave="U.tipHide()" onfocus="U.tipShow(this)" onblur="U.tipHide()" onclick="event.preventDefault();event.stopPropagation();U.tipToggle(this)">i<span class="info-src">${html}</span></span>`;
+    return `<span class="info-tip" tabindex="0" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onmouseenter="U.tipShow(this)" onmouseleave="U.tipHide()" onfocus="U.tipShow(this)" onblur="U.tipHide()" onclick="event.preventDefault();event.stopPropagation();U.tipToggle(this)">i<span class="info-src">${html}</span></span>`;
   },
   _tipEl() {
     let b = document.getElementById('tipBubble');
@@ -329,7 +329,11 @@ window.addEventListener('scroll', () => U.tipHide(), true);
    aides pour le même titre sont regroupées dans une seule bulle. Marche aussi pour les rendus partiels / fenêtres. */
 U._helpAnchor = (el) => {
   const sel = el.getAttribute('data-help-anchor');
-  if (sel) { const a = document.querySelector(sel); if (a) return a; }
+  if (sel) {
+    // « ~ sélecteur » = cherché dans le bloc de l'aide (fiche repliable, carte, fenêtre), pas dans toute la page
+    const a = sel[0] === '~' ? (el.closest('details, .card, .modal') || document).querySelector(sel.slice(1).trim()) : document.querySelector(sel);
+    if (a) return a;
+  }
   if (el.parentElement && el.parentElement.tagName === 'LABEL') return el.parentElement;
   const fg = el.closest('.fg'); if (fg) { const lb = fg.querySelector(':scope > label'); if (lb && lb !== el) return lb; }
   const prev = el.previousElementSibling;
