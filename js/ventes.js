@@ -153,7 +153,7 @@ const Ventes = {
         </div>`}
         <div class="fg" data-onclose="Ventes.closeQMenu"><label>Produit (${filtered.length})</label>
           ${U.autocomplete({ id: 'v_prod', value: this.q, placeholder: 'tape ou choisis dans la liste…', options: [], open: false, onInput: 'Ventes.setQ', onPick: 'Ventes.pickProduct' })}
-          ${this.qOpen && prodSuggestions.length ? `<div class="ac-list" style="position:static;margin-top:4px;">${prodSuggestions.map(u => `<div class="ac-item" onmousedown="event.preventDefault();Ventes.pickProduct('${u.key}')">${U.esc(u.name)}${u.label ? ' · ' + U.esc(u.label) : ''} — dispo ${U.qty(this.avail(u))} — ${U.eur(u.price)}</div>`).join('')}</div>` : ''}
+          ${this.qOpen && prodSuggestions.length ? `<div class="ac-list" style="position:static;margin-top:4px;">${prodSuggestions.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.pickProduct('${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">dispo ${U.qty(this.avail(u))}</span><span class="pp-c">${U.eur(u.price)}</span></div>`).join('')}</div>` : ''}
         </div>
         ${sel ? `<div class="grid c2">
           ${sel.kind === 'M' ? lotSelect : `<div class="fg"><label>Disponible</label><input disabled value="${U.qty(this.avail(sel))} pièce(s)"></div>`}
@@ -1099,7 +1099,7 @@ const Ventes = {
         <div class="fg autocomplete" data-onclose="Ventes.closeCashMenu"><label>Produit</label>
           <input id="cash_prod" type="text" autocomplete="off" placeholder="tape un nom ou un SKU…" value="${U.esc(this.cashQ)}"
             oninput="Ventes.setCashQ(this.value);U.refocus('cash_prod')">
-          ${this.cashOpen && suggestions.length ? `<div class="ac-list" style="position:static;margin-top:4px;max-height:230px;overflow-y:auto;">${suggestions.map(u => `<div class="ac-item" onmousedown="event.preventDefault();Ventes.pickCashProduct('${u.key}')">${U.esc(u.name)}${u.label ? ' · ' + U.esc(u.label) : ''}${u.sku ? ' · ' + U.esc(u.sku) : ''} — ${U.eur(u.price)}</div>`).join('')}</div>` : ''}
+          ${this.cashOpen && suggestions.length ? `<div class="ac-list" style="position:static;margin-top:4px;max-height:230px;overflow-y:auto;">${suggestions.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.pickCashProduct('${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${U.esc(u.sku || '')}</span><span class="pp-c">${U.eur(u.price)}</span></div>`).join('')}</div>` : ''}
           ${this.cashOpen && !suggestions.length && this.cashQ ? `<div class="muted" style="padding:6px 2px;">Aucun produit ne correspond à « ${U.esc(this.cashQ)} ».</div>` : ''}
         </div>
         <div class="fg"><label>Date de l'événement</label><input type="date" value="${d.cashDate}" onchange="Ventes.setCashDate(this.value)"></div>

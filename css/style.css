@@ -885,3 +885,8 @@ select.nsel-native { position: absolute !important; opacity: 0 !important; point
 .nsel-panel .pp-row { gap: 18px; }
 .ac-list { width: max-content; max-width: min(560px, calc(100vw - 24px)); }
 .ac-item.pp-row .pp-a { white-space: nowrap; }
+/* Listes de recherche en colonnes : variante en pastille à côté du nom, listes intégrées pleine largeur */
+.ac-item.pp-row .pp-v { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(166, 113, 83, 0.18); color: var(--caramel); font-size: .8rem; font-weight: 700; }
+.ac-item.pp-row.active .pp-v { background: rgba(255,255,255,.25); color: #fff; }
+.ac-list[style*="position:static"] { width: 100%; max-width: none; }
+.ac-item.pp-row .pp-c { min-width: 70px; }

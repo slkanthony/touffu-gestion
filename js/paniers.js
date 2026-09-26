@@ -870,7 +870,7 @@ const Paniers = {
             <input id="pan_excl_q" type="text" autocomplete="off" placeholder="Chercher un produit à exclure…"
               value="${U.esc(this.excludeProdsQ)}" oninput="Paniers.setExcludeProdsQ(this.value)" onfocus="Paniers.openExcludeProds()">
             ${this.excludeProdsOpen && exclProdResults.length ? `<div class="ac-list">${exclProdResults.map(p =>
-              `<div class="ac-item" onmousedown="event.preventDefault();Paniers.addExcludeProduct('${p.id}')">${U.esc(p.name)} <span class="muted">— ${U.esc(p.meatType || '')}</span></div>`
+              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.addExcludeProduct('${p.id}')"><span class="pp-a">${U.esc(p.name)}</span><span class="pp-b">${U.esc(p.meatType || '')}</span><span class="pp-c"></span></div>`
             ).join('')}</div>` : ''}
           </div>
           ${exclNames.length ? `<div class="chips" style="margin-top:6px;">${this.excludeProducts.map((id, i) =>
@@ -941,11 +941,7 @@ const Paniers = {
               <input id="pan_add_q" type="text" autocomplete="off" placeholder="Chercher un produit…"
                 value="${U.esc(this.addQ)}" oninput="Paniers.setAddQ(this.value)" onfocus="Paniers.openAddMenu()">
             ${this.addOpen && addResults.length ? `<div class="ac-list" style="max-height:250px;overflow:auto;">${addResults.map(c =>
-              `<div class="ac-item" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')">
-                ${U.esc(c.name)} · <b>${U.esc(c.variant)}</b> — ${U.eur(c.price)}
-                ${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}
-                <span class="muted">· ${U.esc(c.meat)}</span>
-              </div>`
+              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
             ).join('')}</div>` : ''}
             </div>
           </div>

@@ -1053,7 +1053,7 @@ const Stock = {
     matches.sort((a, b) => rank(a) - rank(b) || U.sortFr(a.name, b.name));
     const sepIdx = matches.findIndex(c => rank(c) === 2);
     const sep = `<div class="muted" style="padding:6px 10px;font-size:.78rem;border-top:1px dashed var(--caramel);margin-top:4px;">Déjà liées à un autre produit</div>`;
-    return hint + noneItem + empty + matches.map((c, i) => (i === sepIdx ? sep : '') + `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickCatForProduct('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span>${tag(c)}</div>`).join('');
+    return hint + noneItem + empty + matches.map((c, i) => (i === sepIdx ? sep : '') + `<div class="ac-item pp-row" onmousedown="event.preventDefault();Stock.pickCatForProduct('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\\'")}')"><span class="pp-a">${U.esc(c.name)}${tag(c)}</span><span class="pp-b">${U.esc(c.meatType || '—')}</span><span class="pp-c">${U.esc(Store.supplierName(c.mainSupplierId))}</span></div>`).join('');
   },
   refreshCatPick() {
     const box = document.getElementById('cat_pick_list');
@@ -1123,7 +1123,7 @@ const Stock = {
     const hint = byMeat ? `<div class="muted" style="padding:6px 10px;font-size:.8rem;">Fiches ${U.esc(meatRaw)} — tape pour chercher dans toutes les viandes</div>` : '';
     const empty = !matches.length ? `<div class="muted" style="padding:6px 10px;">Aucune fiche${byMeat ? ' pour cette viande — tape le nom pour chercher partout' : ''}.</div>` : '';
     const noneItem = `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickEvCat('','')">— aucune (libre) —</div>`;
-    box.innerHTML = hint + noneItem + empty + matches.map((c, i) => (i === sepIdx ? sep : '') + `<div class="ac-item" onmousedown="event.preventDefault();Stock.pickEvCat('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\'")}')">${U.esc(c.name)} <span class="muted">— ${U.esc(c.meatType || '—')} (${U.esc(Store.supplierName(c.mainSupplierId))})</span>${tag(c)}</div>`).join('');
+    box.innerHTML = hint + noneItem + empty + matches.map((c, i) => (i === sepIdx ? sep : '') + `<div class="ac-item pp-row" onmousedown="event.preventDefault();Stock.pickEvCat('${c.id}','${U.esc(c.name).replace(/&#39;/g, "\'")}')"><span class="pp-a">${U.esc(c.name)}${tag(c)}</span><span class="pp-b">${U.esc(c.meatType || '—')}</span><span class="pp-c">${U.esc(Store.supplierName(c.mainSupplierId))}</span></div>`).join('');
   },
   closeEvCatPick() {
     const box = document.getElementById('ev_cat_pick_list');
