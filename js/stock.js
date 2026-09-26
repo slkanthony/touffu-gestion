@@ -100,6 +100,8 @@ const Stock = {
   _setFaibleType(val) { this.faible.type = val; this.renderFaible(); },
   _setFaibleStatus(val) { this.faible.status = val; this.renderFaible(); },
   _setConsoLink(val) { this.consoFilters.link = val; this.renderConso(); },
+  _setConsoCat(val) { this.consoFilters.cat = val; this.renderConso(); },
+  _setConsoState(val) { this.consoFilters.state = val; this.renderConso(); },
   _setMatType(val) { this.matFilters.type = val; this.renderMatieres(); },
   _setMatLink(val) { this.matFilters.link = val; this.renderMatieres(); },
 
@@ -1806,7 +1808,7 @@ const Stock = {
     },
 
   /* ───── CONSOMMABLES ───── */
-  consoFilters: { link: 'all', sort: 'name', sortDir: 'asc' },
+  consoFilters: { q: '', cat: 'all', link: 'all', state: 'all', sort: 'name', sortDir: 'asc' },
   setConsoSort(key) {
     const f = this.consoFilters;
     if (f.sort === key) f.sortDir = f.sortDir === 'asc' ? 'desc' : 'asc';
@@ -1816,7 +1818,16 @@ const Stock = {
   renderConso(){
     const S=Store.state.settings, f=this.consoFilters;
     U.syncFilters('stock_conso', f);
-    const list = Store.state.consumables.filter(c=>f.link!=='nourl'||!c.url);
+    const all = Store.state.consumables;
+    const qn = U.normSearch(f.q || '');
+    const isLow = c => U.num(c.low) > 0 && U.num(c.qty) <= U.num(c.low);
+    const list = all.filter(c =>
+      (!qn || U.normSearch(c.name + ' ' + (c.dimensions || '') + ' ' + (c.ref || '')).includes(qn)) &&
+      (!f.cat || f.cat === 'all' || (c.category || 'Autre') === f.cat) &&
+      (f.link === 'nourl' ? !c.url : f.link === 'url' ? !!c.url : true) &&
+      (f.state === 'low' ? isLow(c) : f.state === 'out' ? U.num(c.qty) <= 0 : f.state === 'replace' ? !!c.toReplace : true));
+    const cats = [...new Set(all.map(c => c.category || 'Autre'))].sort(U.sortFr);
+    const cnt = fn => all.filter(fn).length;
     const dir = f.sortDir === 'asc' ? 1 : -1;
     list.sort((a,b) => {
       let v = 0;
@@ -1833,13 +1844,18 @@ const Stock = {
     const sortHead = (key, label) => `<span class="sortable ${f.sort===key?'active':''}" onclick="Stock.setConsoSort('${key}')">${label} ${f.sort===key?(f.sortDir==='asc'?'▲':'▼'):'⇕'}</span>`;
     document.getElementById('stockBody').innerHTML=`
       <div class="toolbar"><button class="btn-cta" onclick="Stock.editConso()">＋ Consommable</button>
-        <div class="fg mb0" style="max-width:240px;"><label>Lien fournisseur</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'},{v:'nourl',l:'Sans lien fournisseur'}], onPick: 'Stock._setConsoLink' })}</div>
         <span class="muted">Cartons d'envoi, sachets, blisters, étiquettes, encre…</span></div>
+      <div class="card"><div class="grid c4">
+        <div class="fg mb0"><label>Recherche</label><input id="conso_q" placeholder="nom, dimensions, réf…" value="${U.esc(f.q || '')}" oninput="Stock.consoFilters.q=this.value;Stock.renderConso();U.refocus('conso_q')"></div>
+        <div class="fg mb0"><label>Catégorie</label>${U.customSelect({ value: f.cat || 'all', options: [{v:'all',l:'Toutes ('+all.length+')'}].concat(cats.map(c=>({v:c,l:c+' ('+cnt(x=>(x.category||'Autre')===c)+')'}))), onPick: 'Stock._setConsoCat' })}</div>
+        <div class="fg mb0"><label>Lien fournisseur</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'},{v:'url',l:'Avec lien ('+cnt(c=>!!c.url)+')'},{v:'nourl',l:'Sans lien ('+cnt(c=>!c.url)+')'}], onPick: 'Stock._setConsoLink' })}</div>
+        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state || 'all', options: [{v:'all',l:'Tous'},{v:'low',l:'⚠️ Stock bas ('+cnt(isLow)+')'},{v:'out',l:'Rupture ('+cnt(c=>U.num(c.qty)<=0)+')'},{v:'replace',l:'🚩 À ne plus racheter ('+cnt(c=>!!c.toReplace)+')'}], onPick: 'Stock._setConsoState' })}</div>
+      </div>${list.length !== all.length ? `<p class="muted mb0" style="font-size:.82rem;margin-top:6px;">${list.length} / ${all.length} consommable(s) affiché(s)</p>` : ''}</div>
       ${list.length ? `<div class="card"><div class="table-wrap"><table>
         <thead><tr><th class="col-name">${sortHead('name','Article')}</th><th>${sortHead('dim','Dimensions')}</th><th>${sortHead('cat','Catégorie')}</th><th style="text-align:center;">${sortHead('qty','En stock')}</th><th style="text-align:center;">${sortHead('low','Seuil')}</th><th style="text-align:center;">${sortHead('cost','Coût / unité')}</th><th></th></tr></thead>
         <tbody>${list.map(c=>{const cTotal=c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit);const cQper=U.num(c.costQtyPer)||1;return `<tr>
           <td class="col-name"><b>${U.esc(c.name)}</b>${this.replaceBadge(c)}</td>
-          <td class="muted">${this.consoDims(c) ? U.esc(this.consoDims(c)) : '—'}</td>
+          <td class="muted" style="${c.category === 'Blisters' && U.num(c.blisterWidthMm) ? 'font-size:1rem;font-weight:600;' : ''}">${this.consoDims(c) ? U.esc(this.consoDims(c)) : '—'}</td>
           <td><span class="badge info">${U.esc(c.category||'Autre')}</span></td>
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
@@ -1873,6 +1889,7 @@ const Stock = {
     const S=Store.state.settings;
     const c=id?Store.state.consumables.find(x=>x.id===id):{id:U.uid(),name:'',category:S.consCategories[0],unit:'PCS',qty:0,low:0,costUnit:0};
     const isBl = c.category === 'Blisters';
+    this._editConsoId = c.id;
     U.modal({
       title:id?'Modifier':'Nouveau consommable', okLabel:'Enregistrer',
       body:`<div class="frow">
@@ -1899,7 +1916,7 @@ const Stock = {
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="fg" style="margin-top:6px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;"><input type="checkbox" id="c_toReplace" ${c.toReplace?'checked':''} style="width:auto;"> 🚩 À ne plus racheter (à remplacer ou supprimer)</label></div>
       <div class="frow">
-        <div class="fg"><label>Remplacer par (optionnel)</label><select id="c_replaceBy"><option value="">—</option>${Store.state.consumables.filter(x=>x.id!==c.id).slice().sort((a,b)=>U.sortFr(a.name+(a.dimensions||''),b.name+(b.dimensions||''))).map(x=>`<option value="${x.id}" ${c.replaceBy===x.id?'selected':''}>${U.esc(x.name)}${x.dimensions?' · '+U.esc(x.dimensions):''}</option>`).join('')}</select></div>
+        <div class="fg"><label>Remplacer par (optionnel)</label><select id="c_replaceBy">${this._replaceOpts(c.id, c.category, c.replaceBy)}</select></div>
         <div class="fg" style="flex:2;"><label>Note (optionnel)</label><input id="c_replaceNote" value="${U.esc(c.replaceNote||'')}" placeholder="ex : trop cher, finir le stock puis passer au 23×5×35"></div>
       </div>`,
       onOk:()=>{
@@ -1928,8 +1945,16 @@ const Stock = {
       }
     });
   },
+  /* « Remplacer par » : uniquement les consommables de la MÊME catégorie (un blister ne se remplace pas par un sachet). */
+  _replaceOpts(selfId, cat, cur) {
+    const same = Store.state.consumables.filter(x => x.id !== selfId && (x.category || 'Autre') === (cat || 'Autre'))
+      .sort((a, b) => U.sortFr(a.name + (this.consoDims(a) || ''), b.name + (this.consoDims(b) || '')));
+    return `<option value="">—</option>` + same.map(x => `<option value="${x.id}" ${cur === x.id ? 'selected' : ''}>${U.esc(x.name)}${this.consoDims(x) ? ' · ' + U.esc(this.consoDims(x)) : ''}</option>`).join('');
+  },
   _onConsoCatChange() {
     const cat = U.val('c_cat');
+    const rb = document.getElementById('c_replaceBy');
+    if (rb) { const id = (Store.state.consumables.find(x => x.name === U.val('c_name')) || {}).id; rb.innerHTML = this._replaceOpts(this._editConsoId || id, cat, rb.value); }
     const isBl = cat === 'Blisters';
     const bl = document.getElementById('c_blister_fields');
     const dw = document.getElementById('c_dim_wrap');
@@ -1954,7 +1979,7 @@ const Stock = {
   },
   /* Dimensions affichées : un rouleau de blister n'a pas de L×l×h mais une LARGEUR (mm). */
   consoDims(c) {
-    if (c.category === 'Blisters' && U.num(c.blisterWidthMm)) return U.num(c.blisterWidthMm) + ' mm de large';
+    if (c.category === 'Blisters' && U.num(c.blisterWidthMm)) return U.num(c.blisterWidthMm) + ' mm';
     return c.dimensions || '';
   },
   _dimVolume(dim) {
