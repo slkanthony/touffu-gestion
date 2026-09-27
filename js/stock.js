@@ -531,35 +531,10 @@ const Stock = {
       </div>
       </div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
-      <p class="muted" style="font-size:.78rem;margin-bottom:8px;">Tags de cette variante — vide = hérite du produit</p>
-      <div class="frow" style="gap:12px;">
-        <div class="fg"><label>Résistance</label><select id="ev_resistance">
-          <option value="" ${!(v.tags||{}).resistance?'selected':''}>— hériter du produit${_rLb?' ('+_rLb+')':' (non défini)'} —</option>
-          <option value="faible" ${(v.tags||{}).resistance==='faible'?'selected':''}>Faible</option>
-          <option value="moyenne" ${(v.tags||{}).resistance==='moyenne'?'selected':''}>Moyenne</option>
-          <option value="forte" ${(v.tags||{}).resistance==='forte'?'selected':''}>Forte</option>
-          <option value="tres-forte" ${(v.tags||{}).resistance==='tres-forte'?'selected':''}>Très Forte</option>
-        </select></div>
-        <div class="fg"><label>Type</label><select id="ev_type">
-          <option value="" ${!(v.tags||{}).type?'selected':''}>— hériter du produit${_tLb?' ('+_tLb+')':' (non défini)'} —</option>
-          ${Store.productTypes().map(t => `<option value="${U.esc(t.value)}" ${(v.tags||{}).type===t.value?'selected':''}>${U.esc(t.label)}</option>`).join('')}
-        </select></div>
-      </div>
-      <div class="frow" style="gap:12px;">
-        <div class="fg"><label>Odeur</label><select id="ev_odeur">
-          <option value="" ${!(v.tags||{}).odeur?'selected':''}>— hériter du produit${_oLb?' ('+_oLb+')':' (non défini)'} —</option>
-          <option value="faible" ${(v.tags||{}).odeur==='faible'?'selected':''}>Faible</option>
-          <option value="moyenne" ${(v.tags||{}).odeur==='moyenne'?'selected':''}>Moyenne</option>
-          <option value="forte" ${(v.tags||{}).odeur==='forte'?'selected':''}>Forte</option>
-        </select></div>
-        <div class="fg"><label>Gras</label><select id="ev_gras">
-          <option value="" ${!(v.tags||{}).gras?'selected':''}>— hériter du produit${_grLb?' ('+_grLb+')':' (non défini)'} —</option>
-          <option value="non" ${(v.tags||{}).gras==='non'?'selected':''}>Non gras</option>
-          <option value="peu" ${(v.tags||{}).gras==='peu'?'selected':''}>Peu gras</option>
-          <option value="moyen" ${(v.tags||{}).gras==='moyen'?'selected':''}>Moyennement gras</option>
-          <option value="gras" ${(v.tags||{}).gras==='gras'?'selected':''}>Gras</option>
-        </select></div>
-      </div>
+      <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
+        ${[['Poil', {avec:'Avec poil', sans:'Sans poil', les_deux:'Avec ou sans'}[pt.poil] || ''], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
+        <p class="muted" style="font-size:.74rem;margin:4px 0 0;">À modifier dans « ✏️ Modifier le produit ».</p></div>
+      <p class="muted" style="font-size:.78rem;margin:10px 0 8px;">Propres à cette taille — vide = hérite du produit</p>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Âge</label>
           <div id="ev_age" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;justify-content:center;">
@@ -640,16 +615,13 @@ const Stock = {
         } else {
           v.catalogVariantId = '';
         }
-        if (document.getElementById('ev_resistance')) {
-          const evResistance = U.val('ev_resistance');
-          const evType = U.val('ev_type');
-          const evOdeur = U.val('ev_odeur');
-          const evGras = U.val('ev_gras');
+        if (document.getElementById('ev_age')) {
+          // Seuls l'âge et le gabarit dépendent de la taille ; le reste vient toujours du produit.
           const evAgeEl = document.getElementById('ev_age');
           const evAge = evAgeEl ? [...evAgeEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
           const evGabaritEl = document.getElementById('ev_gabarit');
           const evGabarit = evGabaritEl ? [...evGabaritEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
-          v.tags = { resistance: evResistance, type: evType, odeur: evOdeur, gras: evGras, age: evAge, gabarit: evGabarit };
+          v.tags = { age: evAge, gabarit: evGabarit };
         } else {
           delete v.tags;
         }

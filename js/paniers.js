@@ -49,10 +49,12 @@ const Paniers = {
     return {
       poil: pt.poil || '',
       hypo: pt.hypo || false,
-      resistance: vt.resistance || pt.resistance || '',
-      type: vt.type || pt.type || '',
-      odeur: vt.odeur || pt.odeur || '',
-      gras: vt.gras || pt.gras || '',
+      // Poil, hypo, résistance, type, odeur, gras : toujours ceux du PRODUIT (identiques pour toutes
+      // les tailles, demande d'Antho 2026-09-29) ; seuls âge et gabarit peuvent varier par variante.
+      resistance: pt.resistance || '',
+      type: pt.type || '',
+      odeur: pt.odeur || '',
+      gras: pt.gras || '',
       age: (vt.age && vt.age.length) ? vt.age : (pt.age || []),
       gabarit: (vt.gabarit && vt.gabarit.length) ? vt.gabarit : (pt.gabarit || [])
     };
