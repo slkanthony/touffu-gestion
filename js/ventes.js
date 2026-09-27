@@ -13,7 +13,7 @@ const Ventes = {
   q: '', qOpen: false,
   catQ: '', cat: 'all', catOpen: false,
   variant: 'all',
-  selKey: '', lotId: '', qty: 1,
+  selKey: '', lotId: '', qty: 1, packN: 1,
   consoId: '', consoQty: 1,
   cart: [],
   customerName: '',
@@ -37,7 +37,7 @@ const Ventes = {
       const availG = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
       const availE = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
       const lots = v.lots.map(l => ({ id: l.id, lotNumber: l.lotNumber, dluo: l.dluo, qtyG: U.num(l.qtyGeneral), qtyE: U.num(l.qtyEvent) }));
-      out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: v.mode || 'size', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', value: v.value, price: U.num(v.priceTTC), availG, availE, lots });
+      out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: v.mode || 'size', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', value: v.value, price: U.num(v.priceTTC), availG, availE, lots, packs: [...new Set((v.packSkus || []).map(x => U.num(x.n)).filter(n => n >= 2))].sort((a, b) => a - b) });
     }));
     Store.state.catalogA.forEach(a => {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
@@ -162,8 +162,9 @@ const Ventes = {
         </div>
         ${sel ? `<div class="grid c2">
           ${sel.kind === 'M' ? lotSelect : `<div class="fg"><label>Disponible</label><input disabled value="${U.qty(this.avail(sel))} pièce(s)"></div>`}
-          <div class="fg"><label>Quantité</label><input id="v_qty" type="number" step="0.001" min="0" value="${this.qty || 1}" onchange="Ventes.qty=U.num(this.value)"></div>
+          <div class="fg"><label>${this.packN > 1 ? `Nombre de lots de ${this.packN}` : 'Quantité'}</label><input id="v_qty" type="number" step="0.001" min="0" value="${this.qty || 1}" onchange="Ventes.qty=U.num(this.value)"></div>
         </div>
+        ${sel.kind === 'M' && (sel.packs || []).length ? `<div class="frow" style="gap:6px;margin:8px 0 4px;"><span class="muted" style="align-self:center;">Vendu :</span><button class="${this.packN <= 1 ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.packN=1;Ventes.render()">À l'unité</button>${sel.packs.map(n => `<button class="${this.packN === n ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.packN=${n};Ventes.render()">Lot de ${n}</button>`).join('')}${this.packN > 1 ? `<span class="muted" style="align-self:center;">→ ${U.qty((U.num(this.qty) || 1) * this.packN)} pièce(s) retirée(s)</span>` : ''}</div>` : ''}
         <span class="muted">${U.esc(sel.name)}${sel.label ? ' · ' + U.esc(sel.label) : ''} — ${U.eur(sel.price)} — dispo ${U.qty(this.avail(sel))}</span>`
         : `<p class="muted">${filtered.length === 0 ? 'Aucun produit pour ce filtre — vérifie le stock concerné (général / événement) ou tes filtres.' : 'Tape un nom ou choisis un produit ci-dessus.'}</p>`}
       </div>
@@ -212,7 +213,7 @@ const Ventes = {
   pickProduct(key) {
     const u = this.units().find(x => x.key === key);
     this.selKey = key; this.q = u ? u.name + (u.label ? ' · ' + u.label : '') : this.q;
-    this.qOpen = false; this.lotId = ''; this.qty = 1; this.render();
+    this.qOpen = false; this.lotId = ''; this.qty = 1; this.packN = 1; this.render();
   },
 
   /* Alerte péremption FEFO : si l'utilisateur choisit manuellement un lot alors qu'un autre,
@@ -245,8 +246,9 @@ const Ventes = {
     const u = this.units().find(x => x.key === this.selKey);
     if (!u && !this.consoId) { U.toast('Choisis un produit ou un consommable.', true); return; }
     if (!u && this.consoId) { if (this._pushConsoIfSelected()) { this.render(); U.toast('Ajouté au ticket.'); } return; }
-    const qty = U.num(this.qty) || U.numVal('v_qty');
+    let qty = U.num(this.qty) || U.numVal('v_qty');
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
+    if (u.kind === 'M' && this.packN > 1) qty = qty * this.packN;   // lot de N → N pièces par lot
     if (u.kind === 'M') {
       const lotId = this.lotId || u.lots[0]?.id || '';
       const lot = u.lots.find(l => l.id === lotId);
@@ -281,9 +283,10 @@ const Ventes = {
   },
 
   _pushLine(u, qty, lotId, lotLabel) {
-    this.cart.push({ key: u.key, kind: u.kind, pId: u.pId, vId: u.vId, lotId, lotLabel, name: u.name, label: u.label, sku: u.sku, price: u.price, qty });
+    const pk = u.kind === 'M' && this.packN > 1 ? { pack: this.packN, packs: qty / this.packN } : {};
+    this.cart.push({ key: u.key, kind: u.kind, pId: u.pId, vId: u.vId, lotId, lotLabel, name: u.name, label: u.label, sku: u.sku, price: u.price, qty, ...pk });
     this._pushConsoIfSelected();
-    this.qty = 1; this.selKey = ''; this.q = ''; this.lotId = '';
+    this.qty = 1; this.selKey = ''; this.q = ''; this.lotId = ''; this.packN = 1;
     this.render();
     U.toast('Ajouté au ticket.');
   },
@@ -325,7 +328,7 @@ const Ventes = {
       <h2>🛒 Ticket en cours (${this.cart.length}) — stock ${this.source === 'event' ? 'événement' : 'général'}</h2>
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
-          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}</td>
+          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${U.num(c.pack) >= 2 ? ` <span class="badge info">${U.qty(c.packs)} lot${c.packs > 1 ? 's' : ''} de ${c.pack}</span>` : ''}</td>
           <td>${c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—'}</td>
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="0.001" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=U.num(this.value);Ventes.render()"></td>
@@ -453,7 +456,7 @@ const Ventes = {
           if (c.qty - take > 0) shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: c.qty - take, src: source });
         }
       }
-      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(missing > 0 ? { missing } : {}) });
+      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(missing > 0 ? { missing } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
       sale.total += c.price * c.qty;
     }
     touched.forEach(v => { v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0); });
@@ -853,7 +856,7 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
         </div></td></tr>`;
       const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
-        <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
+        <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
         <td>${i.todo === 'open' ? `<span class="badge warn">🧩 à traiter</span>` : i.deducted === false ? `<span class="badge info">${i.todo === 'caOnly' ? '💶 CA seul' : '✔ fait à la main'}</span>` : i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
@@ -951,10 +954,11 @@ const Ventes = {
   _groupOk(lines) {
     const map = {};
     lines.forEach(l => {
-      const k = l.target.kind + '|' + l.target.pId + '|' + l.target.vId;
-      const g = map[k] || (map[k] = { kind: l.target.kind, pId: l.target.pId, vId: l.target.vId, name: l.target.name, label: l.target.label, sku: l.target.sku || l.sku, mapped: false, qty: 0, ttc: 0 });
+      const pk = U.num(l.target.pack) >= 2 ? U.num(l.target.pack) : 1;
+      const k = l.target.kind + '|' + l.target.pId + '|' + l.target.vId + '|' + pk;
+      const g = map[k] || (map[k] = { kind: l.target.kind, pId: l.target.pId, vId: l.target.vId, name: l.target.name, label: l.target.label, sku: l.target.sku || l.sku, mapped: false, qty: 0, ttc: 0, pack: pk, packs: 0 });
       if (l.status === 'mapped') g.mapped = true;
-      g.qty += l.qty; g.ttc += l.ttc;
+      g.qty += l.qty * pk; g.packs += l.qty; g.ttc += l.ttc;
     });
     return Object.values(map).map(g => ({ ...g, unit: g.qty > 0 ? g.ttc / g.qty : g.ttc }));
   },
@@ -1074,7 +1078,11 @@ const Ventes = {
   _skuIndex() {
     const idx = {}, dups = new Set();
     const add = (sku, t) => { if (!sku) return; if (idx[sku]) dups.add(sku); else idx[sku] = t; };
-    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => add((v.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: v.sku || '' })));
+    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => {
+      add((v.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: v.sku || '' });
+      // SKU de lot : « lot de N » = N pièces de CETTE variante (sabots en vrac…)
+      (v.packSkus || []).forEach(x => add((x.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: x.sku, pack: U.num(x.n) }));
+    }));
     Store.state.catalogA.forEach(a => add((a.sku || '').trim().toUpperCase(), { kind: 'A', pId: a.id, vId: '', name: a.name, label: a.category || '', sku: a.sku || '' }));
     dups.forEach(s => delete idx[s]);
     return { idx, dups };
@@ -1089,7 +1097,9 @@ const Ventes = {
   },
   _mapTarget(desc) {
     const m = (Store.state.settings.sumupMap || {})[this._normDesc(desc)];
-    return m ? this._targetFor(m.kind, m.pId, m.vId) : null;
+    const t = m ? this._targetFor(m.kind, m.pId, m.vId) : null;
+    if (t && U.num(m.n) >= 2) t.pack = U.num(m.n);
+    return t;
   },
   /* Lien ↗ : ouvre la fiche du produit dans un nouvel onglet (Stock → Mastication / Accessoires). */
   stockHref(kind, pId) { return kind === 'A' ? '#/accessoires/' + pId : kind === 'C' ? '#/stock/conso' : '#/stock/mastication/' + pId; },
@@ -1178,10 +1188,14 @@ const Ventes = {
       safeItems.push(...safe);
     });
     const safeMap = {};
-    safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || ''); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0 }); x.qty += g.qty; x.ttc += g.ttc; x.mapped = x.mapped || g.mapped; });
+    safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || '') + '|' + (g.pack || 1); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0, packs: 0 }); x.qty += g.qty; x.packs += U.num(g.packs); x.ttc += g.ttc; x.mapped = x.mapped || g.mapped; });
     const unitsByKey = {}; this.units().forEach(u => { unitsByKey[u.kind === 'A' ? 'A|' + u.pId + '|' : u.key] = u; });
+    const packTxt = x => U.num(x.pack) >= 2 ? ` <span class="badge info">${U.qty(x.packs)} lot${x.packs > 1 ? 's' : ''} de ${x.pack}</span>` : '';
     const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const cur = u ? U.num(u.availE) : 0; const short = g.kind === 'A' ? 0 : Math.max(0, g.qty - cur); return { ...g, cur, after: Math.max(0, cur - g.qty), short }; })
       .sort((a, b) => U.sortFr(a.name + ' ' + (a.label || ''), b.name + ' ' + (b.label || '')));
+    // Plusieurs lignes pour une même variante (à l'unité + en lot) : le stock « après » se cumule.
+    const _run = {};
+    safeList.forEach(x => { if (x.kind === 'A') return; const vk = x.pId + '|' + x.vId; const cur = vk in _run ? _run[vk] : x.cur; x.cur = cur; x.after = Math.max(0, cur - x.qty); x.short = Math.max(0, x.qty - cur); _run[vk] = x.after; });
     const shortQty = safeList.reduce((a, x) => a + x.short, 0);
     const ambMap = {};
     ambItems.forEach(a => { const k = a.pId + '|' + a.vId; const g = ambMap[k] || (ambMap[k] = { ...a, qty: 0 }); g.qty += a.qty; });
@@ -1211,7 +1225,7 @@ const Ventes = {
       <div class="mt">${d.days.map(g => this.retourDayCard(g, imported)).join('')}</div>
       ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen !== false ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${deduct ? 'déduits du stock événement' : 'reconnus (enregistrés sans déduction)'}</b> (${U.qty(safeQty)} article(s))${deduct && shortQty ? ` <span class="badge bad">⚠️ stock insuffisant sur ${safeList.filter(x => x.short).length}</span>` : ''}</summary><div class="fold-body">
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${deduct ? 'Après validation' : 'Après (inchangé)'}</th><th></th></tr></thead>
-        <tbody>${safeList.map(x => `<tr${x.short && deduct ? ' style="color:var(--alerte);"' : ''}><td class="col-name"><b>${U.esc(x.name)}</b>${x.mapped ? ' <span class="badge info" title="Relié par une association que tu as retenue lors d\'un import précédent">🧠 retenu</span>' : ''}</td><td>${U.esc(x.label || '')}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${x.kind === 'A' ? '<span class="muted">accessoire</span>' : U.qty(x.cur)}</td><td class="num">${x.kind === 'A' ? '—' : deduct ? `<b>${U.qty(x.after)}</b>${x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : ''}` : U.qty(x.cur)}</td><td>${this.openLink(x.kind, x.pId)}</td></tr>`).join('')}</tbody></table></div>
+        <tbody>${safeList.map(x => `<tr${x.short && deduct ? ' style="color:var(--alerte);"' : ''}><td class="col-name"><b>${U.esc(x.name)}</b>${packTxt(x)}${x.mapped ? ' <span class="badge info" title="Relié par une association que tu as retenue lors d\'un import précédent">🧠 retenu</span>' : ''}</td><td>${U.esc(x.label || '')}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${x.kind === 'A' ? '<span class="muted">accessoire</span>' : U.qty(x.cur)}</td><td class="num">${x.kind === 'A' ? '—' : deduct ? `<b>${U.qty(x.after)}</b>${x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : ''}` : U.qty(x.cur)}</td><td>${this.openLink(x.kind, x.pId)}</td></tr>`).join('')}</tbody></table></div>
         <p class="muted help" style="font-size:.82rem;">Un seul lot en stock événement, ou tous les lots vendus en entier : la déduction est sûre, elle se fait directement (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif.</p>
       </div></details>` : ''}
       ${ambList.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>🔀 ${ambList.length} produit(s) à plusieurs lots</b> (${U.qty(ambQty)} article(s)) — ${deduct ? 'tu choisiras le lot juste après' : 'enregistrés sans déduction'}</summary><div class="fold-body">
@@ -1470,9 +1484,9 @@ const Ventes = {
       const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
       const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
       const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
-      if (safe.length) this._deductSale(sale, safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty })), 'event');
+      if (safe.length) this._deductSale(sale, safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty, pack: g.pack, packs: g.packs })), 'event');
       this._markImported(sale.items);
-      ambiguous.forEach(g => { sale.items.push({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: 'multiLot' }); sale.total += g.unit * g.qty; });
+      ambiguous.forEach(g => { sale.items.push({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: 'multiLot', ...(U.num(g.pack) >= 2 ? { pack: g.pack, packs: g.packs } : {}) }); sale.total += g.unit * g.qty; });
       probs.forEach(g => { sale.items.push({ kind: 'M', pId: '', vId: '', name: g.desc || 'Sans nom', label: '', sku: g.sku || '', sumupSku: g.sku || '', desc: g.desc || 'Sans nom', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: g.status }); sale.total += g.unit * g.qty; });
       Store.state.sales.unshift(sale);
       const nDed = sale.items.filter(i => i.deducted).reduce((a, i) => a + U.num(i.qty) - U.num(i.missing), 0);
@@ -1562,6 +1576,8 @@ const Ventes = {
   /* Catégorie d'un article à traiter : link (produit à associer), short (stock manquant),
      multi (plusieurs lots en stock événement et vente partielle → répartition à choisir, JAMAIS en groupe),
      ready (sans ambiguïté, prêt à déduire). Calculé sur le stock actuel. */
+  /* « LOT 5 », « LOT2 », « lot de 3 » dans un libellé → 5 / 2 / 3 ; sinon 1. */
+  _packFromDesc(desc) { const m = String(desc || '').match(/\blot\s*(?:de\s*)?(\d+)/i); const n = m ? +m[1] : 1; return n >= 2 ? n : 1; },
   _todoCat(i) {
     if (!i.pId) return 'link';
     if (i.reason === 'short') return 'short';
@@ -1626,7 +1642,7 @@ const Ventes = {
     const fb = (f, label) => `<button class="${this.todoFilter === f ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setTodoFilter('${f}')">${label} (${counts[f]})</button>`;
     const bn = this._todoBanner;
     const map = Store.state.settings.sumupMap || {};
-    const mapRows = Object.entries(map).map(([k, m]) => { const t = this._targetFor(m.kind, m.pId, m.vId); return `<tr><td class="col-name" style="text-align:left;">${U.esc(k)}</td><td>${t ? `<b>${U.esc(t.name)}</b> <span class="muted">${U.esc(t.label || '')}</span> ${this.openLink(t.kind, t.pId)}` : '<span class="badge bad">produit supprimé</span>'}</td><td><button class="btn-ghost btn-sm" title="Oublier cette association" onclick="Ventes.ttForget(${U.esc(JSON.stringify(k))})">🗑</button></td></tr>`; }).join('');
+    const mapRows = Object.entries(map).map(([k, m]) => { const t = this._targetFor(m.kind, m.pId, m.vId); return `<tr><td class="col-name" style="text-align:left;">${U.esc(k)}</td><td>${t ? `<b>${U.esc(t.name)}</b> <span class="muted">${U.esc(t.label || '')}</span>${U.num(m.n) >= 2 ? ` <span class="badge info">× ${m.n} pièces</span>` : ''} ${this.openLink(t.kind, t.pId)}` : '<span class="badge bad">produit supprimé</span>'}</td><td><button class="btn-ghost btn-sm" title="Oublier cette association" onclick="Ventes.ttForget(${U.esc(JSON.stringify(k))})">🗑</button></td></tr>`; }).join('');
     App.mount(`
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;"><div><h1>🧩 Articles à traiter</h1><span class="sub">retours d'événement · ce qui n'a pas été déduit automatiquement</span></div>
         <button class="btn-ghost" style="white-space:nowrap;" onclick="Ventes.closeTodo()">← Retour aux ventes</button></div>
@@ -1652,7 +1668,7 @@ const Ventes = {
     const [rTxt, rCls] = reasons[i.reason] || ['À traiter', 'warn'];
     const head = `<div class="tt-head"><span class="badge ${rCls}">${rTxt}</span>${i.reason !== 'multiLot' && i.todo === 'open' && this._todoCat(i) === 'multi' ? ' <span class="badge bad">🔀 Plusieurs lots</span>' : ''}
       <span class="tt-desc"><b>${U.esc(i.desc || i.name)}</b>${!i.desc && i.label ? ` <span class="pp-v">${U.esc(i.label)}</span>` : ''}${i.sumupSku ? ` <span class="tag" title="SKU dans SumUp">${U.esc(i.sumupSku)}</span>` : ''}</span>
-      <span class="tt-qty">× <b>${U.qty(i.qty)}</b> · <span class="sensitive">${U.eur(i.price * i.qty)}</span></span></div>`;
+      <span class="tt-qty">× <b>${U.qty(i.qty)}</b>${U.num(i.pack) >= 2 ? ` <span class="muted">(${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack})</span>` : ''} · <span class="sensitive">${U.eur(i.price * i.qty)}</span></span></div>`;
     const linked = t => `<div class="tt-linked"><span class="muted">${i.desc ? 'Associé à' : 'Produit'} :</span> <b>${U.esc(t.name)}</b>${t.label ? ` <span class="pp-v">${U.esc(t.label)}</span>` : ''}${t.sku ? ` <span class="tag">${U.esc(t.sku)}</span>` : ''} ${this.openLink(t.kind, t.pId)}${i.desc && !i.deducted && i.todo === 'open' ? ` <button class="btn-ghost btn-sm" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}</div>`;
     const markBtns = `<button class="btn-ghost btn-sm" title="Tu as déjà corrigé le stock toi-même" onclick="Ventes.ttMark('${k}','done')">✔ Déjà fait à la main</button>`;
     let body;
@@ -1673,7 +1689,8 @@ const Ventes = {
         <div class="tt-sug"><span class="muted">💡 Ça ressemble à :</span> ${sug.length ? sug.map(u => `<button class="btn-ghost btn-sm tt-chip" title="Associer à ce produit" onclick="Ventes.ttLink('${k}','${u.key}')"><b>${U.esc(u.name)}</b>${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''} <span class="muted">${uTxt(u)}</span></button>`).join('') : '<span class="muted">aucune ressemblance — cherche ci-dessous</span>'}</div>
         <input id="tt_q_${sid}" class="mt" placeholder="🔍 Chercher le bon produit (nom, variante ou SKU)…" value="${U.esc(q)}" oninput="Ventes.ttSearch('${k}',this.value);U.refocus('tt_q_${sid}')">
         ${res.length ? `<div class="ac-list" style="position:static;margin-top:4px;">${res.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.ttLink('${k}','${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${uTxt(u)}</span><span class="pp-c">${U.esc(u.sku || '')}</span></div>`).join('')}</div>` : q ? '<p class="muted">Aucun produit trouvé.</p>' : ''}
-        <div class="tt-actions"><label class="tt-remember"><input type="checkbox" ${st.remember ? 'checked' : ''} onchange="Ventes._ttState('${k}').remember=this.checked"> Retenir (lignes identiques + prochains imports)</label>
+        <div class="tt-actions"><label class="tt-pack" title="Si ce libellé SumUp est un lot (ex. « Sabot de veau LOT 5 »), chaque vente compte pour N pièces de la variante choisie">Vendu par lot de <input type="number" min="1" step="1" value="${st.pack == null ? this._packFromDesc(i.desc || i.name) : st.pack}" onchange="Ventes._ttState('${k}').pack=Math.max(1,Math.round(U.num(this.value)))"> pièce(s)</label>
+          <label class="tt-remember"><input type="checkbox" ${st.remember ? 'checked' : ''} onchange="Ventes._ttState('${k}').remember=this.checked"> Retenir (lignes identiques + prochains imports)</label>
           <button class="btn-ghost btn-sm" title="Garder la vente dans le chiffre d'affaires sans toucher au stock (ex : montant personnalisé)" onclick="Ventes.ttMark('${k}','caOnly')">💶 CA seulement</button>${markBtns}</div>
       </div>`;
     } else {
@@ -1740,14 +1757,17 @@ const Ventes = {
       if (same) targets.push({ s, it, k: s.id + ':' + ix });
     }); });
     const snaps = [...new Set(targets.map(t => t.s))].map(s => Store.snapshot('sales', s));
+    const pack = st.pack == null ? this._packFromDesc(desc) : st.pack;
     targets.forEach(({ it, k: kk }) => {
       if (!it.desc) it.desc = it.name;
       Object.assign(it, { kind: u.kind, pId: u.pId, vId: u.vId || '', name: u.name, label: u.label, sku: u.sku || it.sumupSku || '' });
+      // Lot : la ligne SumUp (N lots) devient N × pack pièces de la variante (prix ramené à la pièce).
+      if (pack >= 2 && u.kind === 'M' && !it.pack) { it.packs = it.qty; it.pack = pack; it.qty = it.qty * pack; it.price = U.num(it.price) / pack; }
       delete it.cost;
       const s2 = this._ttState(kk); s2.q = ''; s2.lots = null;
     });
     const saves = ['sales'];
-    if (st.remember) { const S = Store.state.settings; S.sumupMap = S.sumupMap || {}; S.sumupMap[norm] = { kind: u.kind, pId: u.pId, vId: u.vId || '' }; saves.push('settings'); }
+    if (st.remember) { const S = Store.state.settings; S.sumupMap = S.sumupMap || {}; S.sumupMap[norm] = { kind: u.kind, pId: u.pId, vId: u.vId || '', ...(pack >= 2 && u.kind === 'M' ? { n: pack } : {}) }; saves.push('settings'); }
     const entry = Store.log('vente', `Article associé — « ${desc} » → ${u.name} ${u.label}` + (targets.length > 1 ? ` (${targets.length} lignes)` : ''), { type: 'restoreBatch', data: snaps });
     Store.save(...saves);
     this.render();
@@ -1758,6 +1778,7 @@ const Ventes = {
     if (i.deducted) return;
     const snap = Store.snapshot('sales', s);
     Object.assign(i, { kind: 'M', pId: '', vId: '', name: i.desc || i.name, label: '', sku: i.sumupSku || '' });
+    if (U.num(i.pack) >= 2) { i.qty = U.num(i.packs) || i.qty / i.pack; i.price = U.num(i.price) * i.pack; delete i.pack; delete i.packs; }
     delete i.cost;
     const st = this._ttState(k); st.lots = null;
     const entry = Store.commitSnapshot(snap, 'vente', `Association retirée — « ${i.name} »`);

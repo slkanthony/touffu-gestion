@@ -642,8 +642,10 @@ const Stats = {
         }
         const key = i.pId || ('name:' + (i.name || '?'));
         let g = prodMap[key];
-        if (!g) g = prodMap[key] = { key, name: i.name || '(sans nom)', qty: 0, ca: 0, kind: i.kind, pId: i.pId, meat: i.kind === 'M' ? this._prodMeat(i.pId) : '—', saleIds: new Set(), month: new Array(12).fill(0) };
+        if (!g) g = prodMap[key] = { key, name: i.name || '(sans nom)', qty: 0, ca: 0, kind: i.kind, pId: i.pId, meat: i.kind === 'M' ? this._prodMeat(i.pId) : '—', saleIds: new Set(), month: new Array(12).fill(0), singles: 0, lots: {} };
         g.qty += qty; g.ca += rev; g.saleIds.add(s.id); g.month[mo] += (metric === 'ca' ? rev : qty);
+        // Détail « à l'unité / en lot » (SKU de lot, lot en vente manuelle)
+        if (U.num(i.pack) >= 2) g.lots[i.pack] = (g.lots[i.pack] || 0) + U.num(i.packs); else g.singles += qty;
         if (i.pId) soldPids.add(i.pId);
         byChannelCA[ch] = (byChannelCA[ch] || 0) + rev;
         const cat = i.kind === 'A' ? 'Accessoires' : 'Mastication';
@@ -754,7 +756,7 @@ const Stats = {
           <div style="position:relative;height:230px;"><canvas id="salesTopChart"></canvas></div>
           <button class="btn-ghost btn-sm mt" onclick="Stats.toggleTop()">${this._topOpen ? 'Masquer le classement' : `Voir le classement complet (Top ${top.length})`}</button>
           ${this._topOpen ? `<div class="table-wrap mt"><table><thead><tr><th>#</th><th class="col-name">Produit</th><th class="num">Quantité</th><th class="num sensitive">CA</th><th class="num">Ventes</th></tr></thead>
-          <tbody>${top.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b>${p.kind === 'A' ? ' <span class="badge info">accessoire</span>' : ''}</td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          <tbody>${top.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b>${p.kind === 'A' ? ' <span class="badge info">accessoire</span>' : ''}${Object.keys(p.lots || {}).length ? `<div class="muted" style="font-size:.8rem;">${[p.singles ? `${U.qty(p.singles)} à l'unité` : ''].concat(Object.keys(p.lots).sort((a, b) => a - b).map(n => `${U.qty(p.lots[n])} lot${p.lots[n] > 1 ? 's' : ''} de ${n}`)).filter(Boolean).join(' · ')}</div>` : ''}</td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('')}</tbody></table></div>` : ''}
         </div>
         ${hasChannel ? `<div class="card"><h2>🛍️ Répartition par canal (CA)</h2><div style="position:relative;height:230px;"><canvas id="salesChannelChart"></canvas></div></div>` : ''}
       </div>

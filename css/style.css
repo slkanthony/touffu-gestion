@@ -1081,3 +1081,9 @@ table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .tt-multi { margin: 4px 0 8px; padding: 7px 11px; border-radius: 8px; border: 1px dashed #e0a040; background: rgba(224,160,64,.10); font-size: .88rem; }
 .tt-gen { margin: 4px 0 8px; padding: 7px 11px; border-radius: 8px; border: 1px dashed var(--caramel); background: rgba(166,113,83,.10); font-size: .88rem; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
 .gl-preview { margin: 10px 0 0; font-size: .9rem; }
+/* SKU de lot (variante) + pièces par lot (association) — 2026-09-30 */
+.pack-sku-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.pack-sku-row .ps-sku { flex: 1; min-width: 0; text-transform: uppercase; }
+.pack-sku-row .ps-n { width: 70px; text-align: center; }
+.tt-pack { display: flex; gap: 6px; align-items: center; text-transform: none; margin: 0; font-size: .88rem; }
+.tt-pack input { width: 58px; text-align: center; padding: 4px 6px; }

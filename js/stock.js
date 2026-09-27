@@ -453,6 +453,10 @@ const Stock = {
     return out;
   },
   /* Tags propres à une variante (déclinaison → ceux de sa taille). null = hérite du produit. */
+  _packSkuRow(sku, n) {
+    return `<div class="pack-sku-row"><input class="ps-sku" placeholder="ex : SABOTS-VEAU-LOT5" value="${U.esc(sku || '')}"><span class="muted">=</span><input class="ps-n" type="number" min="2" step="1" value="${n || ''}" placeholder="5"><span class="muted">pièces</span><button type="button" class="btn-icon" title="Retirer" onclick="this.parentElement.remove()">✕</button></div>`;
+  },
+  _addPackSkuRow() { const box = document.getElementById('ev_packs'); if (box) box.insertAdjacentHTML('beforeend', this._packSkuRow('', '')); },
   variantTags(p, v) { const src = this.parentOf(p, v) || v; return src.tags || null; },
   /* Famille = une taille + ses déclinaisons (sert aux paniers : jamais 2 variantes de la même famille). */
   familyKey(p, v) { const par = this.parentOf(p, v); return p.id + ':' + (par ? par.id : v.id); },
@@ -510,6 +514,11 @@ const Stock = {
         <div class="fg"><label>Nom de la variante</label><input id="ev_label" value="${U.esc(Pricing.labelVariant(v))}" placeholder="ex: 25CM, 100G, LOT 2…"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
       </div>
+      <div class="fg"><label>SKU de lot (retours d'événement SumUp)</label>
+        <div id="ev_packs">${(v.packSkus || []).map(x => Stock._packSkuRow(x.sku, x.n)).join('')}</div>
+        <button type="button" class="btn-ghost btn-sm" onclick="Stock._addPackSkuRow()">＋ Ajouter un SKU de lot</button>
+        <p class="muted help" style="font-size:.78rem;margin:4px 0 0;">Pour une variante vendue aussi par lot sans conditionnement propre (ex. sabots en vrac) : un SKU SumUp « lot de N » est compté comme N pièces de cette variante à l'import, et les statistiques gardent le détail « à l'unité / en lot ».</p>
+      </div>
       ${_kids.length ? `<p class="muted" style="font-size:.8rem;margin:6px 0 0;">Déclinaisons de cette variante : <b>${_kids.map(k=>U.esc(Pricing.labelVariant(k))).join(', ')}</b> — elles héritent de sa fiche prix et de ses tags.</p>` : `<div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Déclinaison de</label><select id="ev_parent" onchange="Stock._evParentChange()">
           <option value="">— aucune (variante de référence) —</option>
@@ -564,6 +573,9 @@ const Stock = {
         const snap=Store.snapshot('stockM',p);
         if (newLabel !== Pricing.labelVariant(v)) v.label = newLabel;
         v.sku=U.val('ev_sku');
+        // SKU de lot : [{sku, n}] (n = pièces par lot, ≥ 2) — lignes vides ignorées.
+        const _packs = [...document.querySelectorAll('#ev_packs .pack-sku-row')].map(r => ({ sku: r.querySelector('.ps-sku').value.trim().toUpperCase(), n: Math.round(U.num(r.querySelector('.ps-n').value)) })).filter(x => x.sku && x.n >= 2);
+        if (_packs.length) v.packSkus = _packs; else delete v.packSkus;
         const parId = document.getElementById('ev_parent') ? U.val('ev_parent') : '';
         if (parId) {
           const par = p.variants.find(x => x.id === parId);
