@@ -1087,3 +1087,7 @@ table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .pack-sku-row .ps-n { width: 70px; text-align: center; }
 .tt-pack { display: flex; gap: 6px; align-items: center; text-transform: none; margin: 0; font-size: .88rem; }
 .tt-pack input { width: 58px; text-align: center; padding: 4px 6px; }
+/* Déclinaison sans stock propre (2026-09-30) */
+.virt-check { display: flex; gap: 8px; align-items: flex-start; text-transform: none; margin: 8px 0 0; padding: 8px 11px; border: 1px dashed var(--caramel); border-radius: 8px; font-size: .86rem; cursor: pointer; }
+.virt-check input { margin-top: 3px; accent-color: var(--caramel); }
+tr.virt-row > td { background: rgba(166,113,83,.05); }

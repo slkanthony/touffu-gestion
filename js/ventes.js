@@ -13,7 +13,7 @@ const Ventes = {
   q: '', qOpen: false,
   catQ: '', cat: 'all', catOpen: false,
   variant: 'all',
-  selKey: '', lotId: '', qty: 1, packN: 1,
+  selKey: '', lotId: '', qty: 1,
   consoId: '', consoQty: 1,
   cart: [],
   customerName: '',
@@ -34,10 +34,15 @@ const Ventes = {
     const out = [];
     Store.state.stockM.forEach(p => p.variants.forEach(v => {
       if (v.mode === 'vrac') return;
+      if (Stock.isVirtual(p, v)) {
+        const vq = Stock.virtualQty(p, v);
+        out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: 'piece', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', value: v.value, price: U.num(v.priceTTC), availG: vq.g, availE: vq.e, lots: [], vLots: vq.n });
+        return;
+      }
       const availG = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
       const availE = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
       const lots = v.lots.map(l => ({ id: l.id, lotNumber: l.lotNumber, dluo: l.dluo, qtyG: U.num(l.qtyGeneral), qtyE: U.num(l.qtyEvent) }));
-      out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: v.mode || 'size', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', value: v.value, price: U.num(v.priceTTC), availG, availE, lots, packs: [...new Set((v.packSkus || []).map(x => U.num(x.n)).filter(n => n >= 2))].sort((a, b) => a - b) });
+      out.push({ key: 'M|' + p.id + '|' + v.id, kind: 'M', mode: v.mode || 'size', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), type: p.meatType || 'Autre', sku: v.sku || '', value: v.value, price: U.num(v.priceTTC), availG, availE, lots });
     }));
     Store.state.catalogA.forEach(a => {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
@@ -111,7 +116,9 @@ const Ventes = {
     const prodSuggestions = this.qOpen ? filtered.slice(0, 30) : [];
 
     let lotSelect = '';
-    if (sel && sel.kind === 'M') {
+    if (sel && sel.kind === 'M' && sel.vLots) {
+      lotSelect = `<div class="fg"><label>Stock</label><div class="muted" style="padding:9px 11px;border:1px solid var(--input-border);border-radius:9px;">Lot de ${sel.vLots} sans stock propre : pris sur la variante principale (DLUO la plus courte d'abord) · <b>${U.qty(this.avail(sel))}</b> lot(s) dispo</div></div>`;
+    } else if (sel && sel.kind === 'M') {
       // Seuls les lots avec du stock réel dans le stock concerné sont listés — un lot à 0 dispo
       // (ex: tout au général alors qu'on vend en événement) n'a rien à faire dans la liste, sur
       // demande explicite d'Antho. Le garde-fou pour "je me trompe" reste l'alerte péremption
@@ -162,9 +169,8 @@ const Ventes = {
         </div>
         ${sel ? `<div class="grid c2">
           ${sel.kind === 'M' ? lotSelect : `<div class="fg"><label>Disponible</label><input disabled value="${U.qty(this.avail(sel))} pièce(s)"></div>`}
-          <div class="fg"><label>${this.packN > 1 ? `Nombre de lots de ${this.packN}` : 'Quantité'}</label><input id="v_qty" type="number" step="0.001" min="0" value="${this.qty || 1}" onchange="Ventes.qty=U.num(this.value)"></div>
+          <div class="fg"><label>${sel.vLots ? `Nombre de lots de ${sel.vLots}` : 'Quantité'}</label><input id="v_qty" type="number" step="0.001" min="0" value="${this.qty || 1}" onchange="Ventes.qty=U.num(this.value)"></div>
         </div>
-        ${sel.kind === 'M' && (sel.packs || []).length ? `<div class="frow" style="gap:6px;margin:8px 0 4px;"><span class="muted" style="align-self:center;">Vendu :</span><button class="${this.packN <= 1 ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.packN=1;Ventes.render()">À l'unité</button>${sel.packs.map(n => `<button class="${this.packN === n ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.packN=${n};Ventes.render()">Lot de ${n}</button>`).join('')}${this.packN > 1 ? `<span class="muted" style="align-self:center;">→ ${U.qty((U.num(this.qty) || 1) * this.packN)} pièce(s) retirée(s)</span>` : ''}</div>` : ''}
         <span class="muted">${U.esc(sel.name)}${sel.label ? ' · ' + U.esc(sel.label) : ''} — ${U.eur(sel.price)} — dispo ${U.qty(this.avail(sel))}</span>`
         : `<p class="muted">${filtered.length === 0 ? 'Aucun produit pour ce filtre — vérifie le stock concerné (général / événement) ou tes filtres.' : 'Tape un nom ou choisis un produit ci-dessus.'}</p>`}
       </div>
@@ -213,7 +219,7 @@ const Ventes = {
   pickProduct(key) {
     const u = this.units().find(x => x.key === key);
     this.selKey = key; this.q = u ? u.name + (u.label ? ' · ' + u.label : '') : this.q;
-    this.qOpen = false; this.lotId = ''; this.qty = 1; this.packN = 1; this.render();
+    this.qOpen = false; this.lotId = ''; this.qty = 1; this.render();
   },
 
   /* Alerte péremption FEFO : si l'utilisateur choisit manuellement un lot alors qu'un autre,
@@ -248,7 +254,17 @@ const Ventes = {
     if (!u && this.consoId) { if (this._pushConsoIfSelected()) { this.render(); U.toast('Ajouté au ticket.'); } return; }
     let qty = U.num(this.qty) || U.numVal('v_qty');
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
-    if (u.kind === 'M' && this.packN > 1) qty = qty * this.packN;   // lot de N → N pièces par lot
+    if (u.kind === 'M' && u.vLots) {
+      // Lot sans stock propre : pris sur la variante principale (DLUO la plus courte d'abord) à la validation.
+      const lbl = 'pris sur la variante principale';
+      if (this.avail(u) < qty) {
+        U.modal({ title: '⚠️ Stock insuffisant', okLabel: 'Ajouter quand même',
+          body: `<p>Il ne reste que <b>${U.qty(this.avail(u))}</b> lot(s) de ${u.vLots} en stock ${this.source === 'event' ? 'événement' : 'général'} — tu en sors <b>${U.qty(qty)}</b>.</p><p>Continuer quand même ?</p>`,
+          onOk: () => { U.closeModal(); this._pushLine(u, qty, '', lbl); } });
+        return;
+      }
+      this._pushLine(u, qty, '', lbl); return;
+    }
     if (u.kind === 'M') {
       const lotId = this.lotId || u.lots[0]?.id || '';
       const lot = u.lots.find(l => l.id === lotId);
@@ -283,10 +299,10 @@ const Ventes = {
   },
 
   _pushLine(u, qty, lotId, lotLabel) {
-    const pk = u.kind === 'M' && this.packN > 1 ? { pack: this.packN, packs: qty / this.packN } : {};
+    const pk = u.vLots ? { vLots: u.vLots } : {};   // variante lot sans stock propre : converti en pièces à la validation
     this.cart.push({ key: u.key, kind: u.kind, pId: u.pId, vId: u.vId, lotId, lotLabel, name: u.name, label: u.label, sku: u.sku, price: u.price, qty, ...pk });
     this._pushConsoIfSelected();
-    this.qty = 1; this.selKey = ''; this.q = ''; this.lotId = ''; this.packN = 1;
+    this.qty = 1; this.selKey = ''; this.q = ''; this.lotId = '';
     this.render();
     U.toast('Ajouté au ticket.');
   },
@@ -328,7 +344,7 @@ const Ventes = {
       <h2>🛒 Ticket en cours (${this.cart.length}) — stock ${this.source === 'event' ? 'événement' : 'général'}</h2>
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
-          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${U.num(c.pack) >= 2 ? ` <span class="badge info">${U.qty(c.packs)} lot${c.packs > 1 ? 's' : ''} de ${c.pack}</span>` : ''}</td>
+          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
           <td>${c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—'}</td>
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="0.001" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=U.num(this.value);Ventes.render()"></td>
@@ -416,14 +432,18 @@ const Ventes = {
   _deductSale(sale, lines, source) {
     const shortfalls = [];
     const touched = [];
-    for (const c of lines) {
+    for (let c of lines) {
       let missing = 0;
       // Coût de revient FIGÉ sur la ligne au moment de la vente (pour la vraie marge) :
       // mastication = coût réel des lots consommés (FEFO) ; accessoire = coût calculé (matières+main d'œuvre) ; consommable = coût unitaire.
       let lineCost = 0;
+      if (c.kind === 'M' && U.num(c.vLots) >= 2) {
+        // Vente manuelle d'une variante « lot » sans stock propre : qty = nb de lots → pièces.
+        c = { ...c, pack: U.num(c.vLots), packs: U.num(c.qty), qty: U.num(c.qty) * U.num(c.vLots), price: U.num(c.price) / U.num(c.vLots) };
+      }
       if (c.kind === 'M') {
         const p = Store.state.stockM.find(x => x.id === c.pId);
-        const v = p?.variants.find(x => x.id === c.vId);
+        const v = p && Stock.stockVar(p, c.vId);   // variante sans stock propre → stock de sa principale
         if (v) {
           const field = source === 'event' ? 'qtyEvent' : 'qtyGeneral';
           let remaining = c.qty;
@@ -1001,7 +1021,7 @@ const Ventes = {
     grouped.forEach(g => {
       if (g.kind === 'M') {
         const p = Store.state.stockM.find(x => x.id === g.pId);
-        const v = p && p.variants.find(x => x.id === g.vId);
+        const v = p && Stock.stockVar(p, g.vId);
         if (this._isAmbiguousEvent(v, g.qty)) {
           const stocked = v.lots.filter(l => U.num(l.qtyEvent) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
           ambiguous.push({ ...g, total: stocked.reduce((a, l) => a + U.num(l.qtyEvent), 0), nLots: stocked.length, lots: stocked.map(l => ({ n: l.lotNumber || 'sans n°', dluo: l.dluo, q: U.num(l.qtyEvent) })) });
@@ -1079,9 +1099,8 @@ const Ventes = {
     const idx = {}, dups = new Set();
     const add = (sku, t) => { if (!sku) return; if (idx[sku]) dups.add(sku); else idx[sku] = t; };
     Store.state.stockM.forEach(p => (p.variants || []).forEach(v => {
-      add((v.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: v.sku || '' });
-      // SKU de lot : « lot de N » = N pièces de CETTE variante (sabots en vrac…)
-      (v.packSkus || []).forEach(x => add((x.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: x.sku, pack: U.num(x.n) }));
+      // Déclinaison sans stock propre : une vente = packQty pièces de sa variante principale (sabots en vrac…)
+      add((v.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: v.sku || '', ...(Stock.isVirtual(p, v) ? { pack: Stock.packQtyOf(v) } : {}) });
     }));
     Store.state.catalogA.forEach(a => add((a.sku || '').trim().toUpperCase(), { kind: 'A', pId: a.id, vId: '', name: a.name, label: a.category || '', sku: a.sku || '' }));
     dups.forEach(s => delete idx[s]);
@@ -1191,11 +1210,11 @@ const Ventes = {
     safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || '') + '|' + (g.pack || 1); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0, packs: 0 }); x.qty += g.qty; x.packs += U.num(g.packs); x.ttc += g.ttc; x.mapped = x.mapped || g.mapped; });
     const unitsByKey = {}; this.units().forEach(u => { unitsByKey[u.kind === 'A' ? 'A|' + u.pId + '|' : u.key] = u; });
     const packTxt = x => U.num(x.pack) >= 2 ? ` <span class="badge info">${U.qty(x.packs)} lot${x.packs > 1 ? 's' : ''} de ${x.pack}</span>` : '';
-    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const cur = u ? U.num(u.availE) : 0; const short = g.kind === 'A' ? 0 : Math.max(0, g.qty - cur); return { ...g, cur, after: Math.max(0, cur - g.qty), short }; })
+    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const _sp = g.kind === 'M' ? Store.state.stockM.find(x => x.id === g.pId) : null; const _sv = _sp && Stock.stockVar(_sp, g.vId); const cur = _sv ? _sv.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0) : (u ? U.num(u.availE) : 0); const short = g.kind === 'A' ? 0 : Math.max(0, g.qty - cur); return { ...g, cur, after: Math.max(0, cur - g.qty), short }; })
       .sort((a, b) => U.sortFr(a.name + ' ' + (a.label || ''), b.name + ' ' + (b.label || '')));
     // Plusieurs lignes pour une même variante (à l'unité + en lot) : le stock « après » se cumule.
     const _run = {};
-    safeList.forEach(x => { if (x.kind === 'A') return; const vk = x.pId + '|' + x.vId; const cur = vk in _run ? _run[vk] : x.cur; x.cur = cur; x.after = Math.max(0, cur - x.qty); x.short = Math.max(0, x.qty - cur); _run[vk] = x.after; });
+    safeList.forEach(x => { if (x.kind === 'A') return; const _p = Store.state.stockM.find(y => y.id === x.pId); const _v = _p && Stock.stockVar(_p, x.vId); const vk = x.pId + '|' + (_v ? _v.id : x.vId); const cur = vk in _run ? _run[vk] : x.cur; x.cur = cur; x.after = Math.max(0, cur - x.qty); x.short = Math.max(0, x.qty - cur); _run[vk] = x.after; });
     const shortQty = safeList.reduce((a, x) => a + x.short, 0);
     const ambMap = {};
     ambItems.forEach(a => { const k = a.pId + '|' + a.vId; const g = ambMap[k] || (ambMap[k] = { ...a, qty: 0 }); g.qty += a.qty; });
@@ -1582,7 +1601,7 @@ const Ventes = {
     if (!i.pId) return 'link';
     if (i.reason === 'short') return 'short';
     if (i.kind === 'M') {
-      const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && (p.variants || []).find(x => x.id === i.vId);
+      const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && Stock.stockVar(p, i.vId);
       if (v) { const lots = v.lots.filter(l => U.num(l.qtyEvent) > 0); const tot = lots.reduce((a, l) => a + U.num(l.qtyEvent), 0); if (lots.length > 1 && i.qty < tot) return 'multi'; if (tot < i.qty) return 'gen'; }
     }
     return 'ready';
@@ -1679,7 +1698,7 @@ const Ventes = {
     } else if (i.reason === 'short') {
       const t = this._targetFor(i.kind, i.pId, i.vId);
       body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : le stock ${i.kind === 'C' ? '' : 'événement '}était insuffisant (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
-        <div class="tt-actions">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && pp.variants.find(x => x.id === i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></div></div>`;
+        <div class="tt-actions">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && Stock.stockVar(pp, i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></div></div>`;
     } else if (!i.pId) {
       const sug = this._suggest(i.desc || i.name, 4, units);
       const q = st.q;
@@ -1702,7 +1721,7 @@ const Ventes = {
         body = `<div class="tt-body">${linked(t)}<div class="tt-actions"><span>Stock fini événement : <b>${U.qty(av)}</b></span>
           ${av > 0 ? `<button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire ${U.qty(Math.min(av, i.qty))}</button>` : '<span class="muted">rien à déduire (fait à la commande)</span>'}${markBtns}</div></div>`;
       } else {
-        const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
+        const p = Store.state.stockM.find(x => x.id === i.pId); const v = Stock.stockVar(p, i.vId);
         const field = 'qtyEvent'; // retour d'événement : toujours le stock événement
         const lots = v.lots.filter(l => U.num(l[field]) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
         if (st.lots === null) {
@@ -1738,7 +1757,7 @@ const Ventes = {
   ttFefo(k) {
     const f = this._ttFind(k); if (!f) return; const { i } = f;
     const st = this._ttState(k);
-    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId); if (!v) return;
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && Stock.stockVar(p, i.vId); if (!v) return;
     const field = 'qtyEvent'; // retour d'événement : toujours le stock événement
     const lots = v.lots.filter(l => U.num(l[field]) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
     st.lots = this._fefo(lots, field, i.qty);
@@ -1757,7 +1776,7 @@ const Ventes = {
       if (same) targets.push({ s, it, k: s.id + ':' + ix });
     }); });
     const snaps = [...new Set(targets.map(t => t.s))].map(s => Store.snapshot('sales', s));
-    const pack = st.pack == null ? this._packFromDesc(desc) : st.pack;
+    const pack = U.num(u.vLots) >= 2 ? U.num(u.vLots) : (st.pack == null ? this._packFromDesc(desc) : st.pack);
     targets.forEach(({ it, k: kk }) => {
       if (!it.desc) it.desc = it.name;
       Object.assign(it, { kind: u.kind, pId: u.pId, vId: u.vId || '', name: u.name, label: u.label, sku: u.sku || it.sumupSku || '' });
@@ -1810,7 +1829,7 @@ const Ventes = {
       const take = Math.min(U.num(a.stockEvent), i.qty);
       return { sum: take, qty: i.qty, ready: take > 0 };
     }
-    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId);
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && Stock.stockVar(p, i.vId);
     if (!v) return { err: 'Variante introuvable.' };
     const field = 'qtyEvent'; // retour d'événement : toujours le stock événement
     if (st.lots === null) {
@@ -1844,7 +1863,7 @@ const Ventes = {
       i.cost = U.num(Pricing.accCalc(a).cost) * i.qty;
       msg = `${take} déduit(s)`;
     } else {
-      const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
+      const p = Store.state.stockM.find(x => x.id === i.pId); const v = Stock.stockVar(p, i.vId);
       const field = 'qtyEvent'; // retour d'événement : toujours le stock événement
       snap('stockM', p);
       // Lots du stock événement (répartition de l'article) + éventuellement du stock GÉNÉRAL
@@ -1873,7 +1892,7 @@ const Ventes = {
      ne couvre pas la vente, on peut prendre le reste — ou tout — dans le stock GÉNÉRAL, lot par lot. */
   ttGeneral(k) {
     const f = this._ttFind(k); if (!f) return; const { i } = f;
-    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId); if (!v) return;
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && Stock.stockVar(p, i.vId); if (!v) return;
     const st = this._ttState(k);
     const evPicks = i.deducted ? [] : Object.entries(st.lots || {}).filter(([, q]) => U.num(q) > 0);
     const evSum = i.deducted ? i.qty - U.num(i.missing) : evPicks.reduce((a, [, q]) => a + U.num(q), 0);
@@ -1910,7 +1929,7 @@ const Ventes = {
   _glApply() {
     const c = this._glCtx; if (!c) return false;
     const { k } = c; const f = this._ttFind(k); if (!f) return false; const { i } = f;
-    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = Stock.stockVar(p, i.vId);
     const gp = this._glPicks();
     let gsum = 0;
     for (const [lid, q] of Object.entries(gp)) { const lot = v.lots.find(l => l.id === lid); if (!lot || q > U.num(lot.qtyGeneral)) { U.toast(`Le lot ${lot ? (lot.lotNumber || 'sans n°') : ''} n'a que ${lot ? U.qty(lot.qtyGeneral) : 0} en stock général.`, true); return false; } gsum += q; }

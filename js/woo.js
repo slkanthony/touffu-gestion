@@ -531,7 +531,8 @@ const Woo = {
     // 1) Stock mastication (quantités + prix de vente + SKU)
     Store.state.stockM.forEach(p => p.variants.forEach(v => {
       if (v.mode === 'vrac') return;
-      const stock = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral) + (this.stockScope === 'both' ? U.num(l.qtyEvent) : 0), 0);
+      const _sv = Stock.stockVar(p, v), _n = Stock.isVirtual(p, v) ? Stock.packQtyOf(v) : 1;   // lot sans stock propre : stock principal ÷ N
+      const stock = Math.floor(_sv.lots.reduce((a, l) => a + U.num(l.qtyGeneral) + (this.stockScope === 'both' ? U.num(l.qtyEvent) : 0), 0) / _n);
       add(v.sku, `${p.name} — ${Pricing.labelVariant(v)}`, U.num(v.priceTTC), stock, 'Mastication', p.meatType || '');
     }));
     // 2) Catalogue prix : si un SKU y est renseigné, il fournit/affine le prix calculé

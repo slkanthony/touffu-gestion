@@ -327,6 +327,27 @@ const Stock = {
       </div>
     </td></tr>`;
 
+    if (this.isVirtual(p, v)) {
+      const vq = this.virtualQty(p, v);
+      return `<tr class="virt-row">
+      <td class="col-name var-cell"><div class="vc"><span class="vc-ind"><span class="muted" title="Déclinaison sans stock propre de ${U.esc(Pricing.labelVariant(vq.par))}">↳</span></span><span style="width:22px;display:inline-block;"></span><b class="vc-name">${U.esc(label)}</b><span class="vc-badges"> <span class="badge info" style="font-size:.65rem;cursor:help;" title="Pas de stock propre : chaque vente retire ${vq.n} pièces de ${U.esc(Pricing.labelVariant(vq.par))}. Stock affiché = stock de ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}.">pris sur ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}</span>${!v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="La fiche prix n'a pas de ligne « Lot de ${vq.n} pc » (prix du lot à saisir ici)">⚠ prix non lié</span>` : ''}</span></div></td>
+      <td><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU du lot')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)"></td>
+      <td class="num muted" title="Les alertes de stock bas sont sur la variante principale">—</td>
+      <td class="num muted" title="Les alertes de stock bas sont sur la variante principale">—</td>
+      <td class="num" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
+      <td class="num" title="Lots disponibles en stock événement (calculé)">${U.qty(vq.e)} <span class="muted" style="font-size:.72rem;">lots</span></td>
+      <td class="num muted" title="Lots disponibles au total (calculé)"><b>${U.qty(vq.t)}</b></td>
+      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n}">${U.eur(U.num(vq.par.costUnit) * vq.n, 3)}</td>
+      <td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="Prix de vente TTC du lot" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>
+      <td class="num muted">—</td>
+      <td class="right"><div class="act-grid"><span class="act-row">
+        <button class="btn-icon" title="Monter" ${vi<=0?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',-1)">↑</button>
+        <button class="btn-icon" title="Descendre" ${vi>=sib.length-1?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',1)">↓</button>
+        </span><span class="act-row">
+        <button class="btn-ghost btn-sm" onclick="Stock.editVariant('${p.id}','${v.id}')">Modifier</button>
+        <button class="btn-icon" title="Supprimer" onclick="Stock.delVariant('${p.id}','${v.id}')">🗑️</button>
+      </span></div></td></tr>`;
+    }
     return `<tr>
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <span class="badge" title="Lié à : ${U.esc(lc.name)}" style="font-size:.65rem;background:var(--caramel);color:#fff;cursor:help;">💰</span>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
       <td><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)"></td>
@@ -446,6 +467,15 @@ const Stock = {
   },
   childrenOf(p, v) { return (p?.variants || []).filter(x => x.parentId === v.id && this.parentOf(p, x)); },
   packQtyOf(v) { return Math.max(2, Math.round(U.num(v.packQty)) || 2); },
+  /* Déclinaison « sans stock propre » (2026-09-30, sabots en vrac) : ses ventes retirent packQty pièces
+     de la variante principale ; son stock affiché = stock principal ÷ packQty (arrondi à l'inférieur). */
+  isVirtual(p, v) { return !!(v && v.virtual && this.parentOf(p, v)); },
+  stockVar(p, vOrId) { const v = typeof vOrId === 'object' ? vOrId : (p?.variants || []).find(x => x.id === vOrId); return (v && v.virtual && this.parentOf(p, v)) || v; },
+  virtualQty(p, v) {
+    const par = this.parentOf(p, v), n = this.packQtyOf(v);
+    const g = par.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0), e = par.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
+    return { g: Math.floor(g / n), e: Math.floor(e / n), t: Math.floor((g + e) / n), n, par };
+  },
   /* Ordre d'affichage : chaque taille suivie de ses déclinaisons. */
   orderedVariants(p) {
     const out = [];
@@ -475,6 +505,7 @@ const Stock = {
     return { found: !!cv, disabled: !!cv && cv.enabled === false, catChanged, cat, n };
   },
   _evParentChange() {
+    const _vb = document.getElementById('ev_virtual_block'); if (_vb) _vb.style.display = U.val('ev_parent') ? '' : 'none';
     const on = !!U.val('ev_parent');
     const set = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; };
     set('ev_cat_block', !on); set('ev_tags_block', !on); set('ev_pack_block', on); set('ev_inherit_note', on);
@@ -514,11 +545,6 @@ const Stock = {
         <div class="fg"><label>Nom de la variante</label><input id="ev_label" value="${U.esc(Pricing.labelVariant(v))}" placeholder="ex: 25CM, 100G, LOT 2…"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
       </div>
-      <div class="fg"><label>SKU de lot (retours d'événement SumUp)</label>
-        <div id="ev_packs">${(v.packSkus || []).map(x => Stock._packSkuRow(x.sku, x.n)).join('')}</div>
-        <button type="button" class="btn-ghost btn-sm" onclick="Stock._addPackSkuRow()">＋ Ajouter un SKU de lot</button>
-        <p class="muted help" style="font-size:.78rem;margin:4px 0 0;">Pour une variante vendue aussi par lot sans conditionnement propre (ex. sabots en vrac) : un SKU SumUp « lot de N » est compté comme N pièces de cette variante à l'import, et les statistiques gardent le détail « à l'unité / en lot ».</p>
-      </div>
       ${_kids.length ? `<p class="muted" style="font-size:.8rem;margin:6px 0 0;">Déclinaisons de cette variante : <b>${_kids.map(k=>U.esc(Pricing.labelVariant(k))).join(', ')}</b> — elles héritent de sa fiche prix et de ses tags.</p>` : `<div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Déclinaison de</label><select id="ev_parent" onchange="Stock._evParentChange()">
           <option value="">— aucune (variante de référence) —</option>
@@ -526,6 +552,7 @@ const Stock = {
         </select></div>
         <div class="fg" id="ev_pack_block" style="max-width:150px;${_parSel?'':'display:none;'}"><label>Pièces par lot</label><input id="ev_packqty" type="number" min="2" step="1" value="${_packDef}"></div>
       </div>
+      <label id="ev_virtual_block" class="virt-check" style="${_parSel?'':'display:none;'}"><input type="checkbox" id="ev_virtual" ${v.virtual?'checked':''}> <span><b>Pas de stock propre</b> — prendre les pièces sur la variante principale (vente en vrac, lot sans conditionnement). Stock affiché = stock principal ÷ pièces par lot.</span></label>
       ${_suggested ? `<p class="muted" style="font-size:.78rem;margin:4px 0 0;">💡 Proposé d'après le nom — vérifie avant d'enregistrer (« — aucune — » pour ne pas la rattacher).</p>` : ''}
       <p class="muted help">Une déclinaison (ex. 25CM LOT 2) est la même taille vendue par plusieurs pièces : elle reprend automatiquement la fiche calcul de prix de sa taille (ligne « Lot de N ») et ses tags. Elle garde son SKU, son stock et ses seuils.</p>
       <p id="ev_inherit_note" style="font-size:.82rem;color:var(--caramel);margin:6px 0 0;${_parSel?'':'display:none;'}">${_parSel ? '↳ Fiche calcul de prix et tags hérités de « ' + U.esc(Pricing.labelVariant(p.variants.find(w=>w.id===_parSel))) + ' » (ligne « Lot de N » de sa fiche).' : ''}</p>`}
@@ -573,14 +600,14 @@ const Stock = {
         const snap=Store.snapshot('stockM',p);
         if (newLabel !== Pricing.labelVariant(v)) v.label = newLabel;
         v.sku=U.val('ev_sku');
-        // SKU de lot : [{sku, n}] (n = pièces par lot, ≥ 2) — lignes vides ignorées.
-        const _packs = [...document.querySelectorAll('#ev_packs .pack-sku-row')].map(r => ({ sku: r.querySelector('.ps-sku').value.trim().toUpperCase(), n: Math.round(U.num(r.querySelector('.ps-n').value)) })).filter(x => x.sku && x.n >= 2);
-        if (_packs.length) v.packSkus = _packs; else delete v.packSkus;
         const parId = document.getElementById('ev_parent') ? U.val('ev_parent') : '';
         if (parId) {
           const par = p.variants.find(x => x.id === parId);
           const n = Math.max(2, Math.round(U.numVal('ev_packqty')) || 2);
+          const wantVirtual = !!(document.getElementById('ev_virtual') || {}).checked;
+          if (wantVirtual && !v.virtual && v.lots.some(l => U.num(l.qtyGeneral) + U.num(l.qtyEvent) > 0)) { U.toast('Cette variante a encore du stock dans ses lots : vide-les (ou transfère-les sur ' + Pricing.labelVariant(par) + ') avant de la passer « sans stock propre ».', true); return false; }
           v.parentId = parId; v.packQty = n;
+          if (wantVirtual) { v.virtual = true; v.lots = []; v.low = 0; v.lowEvent = 0; } else delete v.virtual;
           if (!v.label) v.label = Pricing.labelVariant(par) + ' LOT ' + n;
           v.mode = 'piece'; v.value = n;
           delete v.tags;
@@ -593,7 +620,7 @@ const Stock = {
           else U.toast(`Déclinaison de ${Pricing.labelVariant(par)} — prix repris de « ${r.cat.name} » (Lot de ${n} pc)${r.disabled ? ' ⚠️ ligne désactivée dans la fiche' : ''}.`, false, entry.id);
           return;
         }
-        delete v.parentId; delete v.packQty;
+        delete v.parentId; delete v.packQty; delete v.virtual;
         const pickedCatId = Stock._evCatPickId || '';
         const typed = U.val('ev_cat_q').trim();
         let finalCatId = pickedCatId;
@@ -713,10 +740,11 @@ const Stock = {
         <div class="fg"><label>Valeur / taille</label><input id="av_val" placeholder="ex: 100, S, 1…"></div>
       </div>
       ${_tops.length ? `<div class="frow">
-        <div class="fg"><label>Déclinaison de (optionnel)</label><select id="av_parent" onchange="document.getElementById('av_pack_block').style.display=this.value?'':'none'">
+        <div class="fg"><label>Déclinaison de (optionnel)</label><select id="av_parent" onchange="document.getElementById('av_pack_block').style.display=this.value?'':'none';document.getElementById('av_virtual_block').style.display=this.value?'':'none'">
           <option value="">— aucune —</option>${_tops.map(w=>`<option value="${w.id}">${U.esc(Pricing.labelVariant(w))}</option>`).join('')}</select></div>
         <div class="fg" id="av_pack_block" style="max-width:150px;display:none;"><label>Pièces par lot</label><input id="av_packqty" type="number" min="2" step="1" value="2"></div>
       </div>
+      <label id="av_virtual_block" class="virt-check" style="display:none;"><input type="checkbox" id="av_virtual"> <span><b>Pas de stock propre</b> — prendre les pièces sur la variante principale (vente en vrac, lot sans conditionnement).</span></label>
       <p class="muted help">Déclinaison = la même taille vendue par plusieurs pièces (ex. 25CM → 25CM LOT 2) : fiche prix (ligne « Lot de N ») et tags repris de la taille. Le mode est alors ignoré ; si « Valeur / taille » reste vide, le nom est composé automatiquement (ex. 25CM LOT 2).</p>` : ''}
       <div class="frow">
         <div class="fg"><label>SKU WooCommerce</label><input id="av_sku" placeholder="optionnel"></div>
@@ -734,7 +762,8 @@ const Stock = {
         if (parId) {
           const par = p.variants.find(x=>x.id===parId);
           const n = Math.max(2, Math.round(U.numVal('av_packqty')) || 2);
-          const nv = {id:U.uid(),catalogVariantId:'',mode:'piece',value:n,label:raw || (Pricing.labelVariant(par)+' LOT '+n),parentId:parId,packQty:n,sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]};
+          const virt = !!(document.getElementById('av_virtual') || {}).checked;
+          const nv = {id:U.uid(),catalogVariantId:'',mode:'piece',value:n,label:raw || (Pricing.labelVariant(par)+' LOT '+n),parentId:parId,packQty:n,sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:virt?0:U.numVal('av_low'),lowEvent:virt?0:U.numVal('av_lowe'),lots:[],...(virt?{virtual:true}:{})};
           p.variants.push(nv);
           const r = Stock.resolveChild(p, nv);
           const entry=Store.commitSnapshot(snap,'stock','Variante ajoutée — '+p.name+' ('+nv.label+')');
@@ -1245,6 +1274,7 @@ const Stock = {
   },
 
   addLot(pId, vId) {
+    { const _p = Store.state.stockM.find(x => x.id === pId); const _v = _p && _p.variants.find(x => x.id === vId); if (this.isVirtual(_p, _v)) { U.toast('Cette variante n\'a pas de stock propre : ajoute le lot sur ' + Pricing.labelVariant(this.parentOf(_p, _v)) + '.', true); return; } }
     const p=Store.state.stockM.find(x=>x.id===pId); if(!p) return;
     const v=p.variants.find(x=>x.id===vId); if(!v) return;
     // Instantané pris AVANT le resync automatique ci-dessous, pour que l'Annulation

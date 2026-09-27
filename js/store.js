@@ -137,11 +137,26 @@ const Store = {
     this.migrateSachetDims(s);
     this.migrateFabSegments(s);
     this.migrateLabelTypes(s);
+    this.migratePackSkus(s);
     return s;
   },
   /* Types d'étiquette (2026-09-27) : liste éditable {id,name,cost} dans Réglages → Consommables.
      Une fiche prix pointe un type (p.labelTypeId → coût suivi en direct) ou '' = « Autre montant » (p.labelCost libre, vrac).
      Migration unique : fiche au montant par défaut actuel → « Étiquette sachet », sinon « Autre montant » (valeur gardée). */
+  /* (2026-09-30) Les « SKU de lot » (v.packSkus) deviennent des déclinaisons « sans stock propre »
+     (même produit, parentId = la variante, packQty = n, virtual) — données saisies par Antho, rien d'inventé. */
+  migratePackSkus(s) {
+    (s.stockM || []).forEach(p => (p.variants || []).slice().forEach(v => {
+      if (!Array.isArray(v.packSkus) || !v.packSkus.length) return;
+      v.packSkus.forEach(x => {
+        const n = Math.round(Number(x.n) || 0); if (n < 2 || !x.sku) return;
+        if (p.variants.some(w => (w.sku || '').toUpperCase() === String(x.sku).toUpperCase())) return;
+        const base = (v.label || (v.mode === 'size' ? v.value : '') || '').toString();
+        p.variants.push({ id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), catalogVariantId: '', mode: 'piece', value: n, label: (base ? base + ' ' : '') + 'LOT ' + n, parentId: v.id, packQty: n, virtual: true, sku: String(x.sku).toUpperCase(), priceTTC: 0, costUnit: 0, low: 0, lowEvent: 0, lots: [] });
+      });
+      delete v.packSkus;
+    }));
+  },
   migrateLabelTypes(s) {
     const S = s.settings; if (!S) return;
     if (!Array.isArray(S.labelTypes)) {
