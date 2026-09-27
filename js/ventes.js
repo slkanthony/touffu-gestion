@@ -1567,7 +1567,7 @@ const Ventes = {
     if (i.reason === 'short') return 'short';
     if (i.kind === 'M') {
       const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && (p.variants || []).find(x => x.id === i.vId);
-      if (v) { const lots = v.lots.filter(l => U.num(l.qtyEvent) > 0); const tot = lots.reduce((a, l) => a + U.num(l.qtyEvent), 0); if (lots.length > 1 && i.qty < tot) return 'multi'; }
+      if (v) { const lots = v.lots.filter(l => U.num(l.qtyEvent) > 0); const tot = lots.reduce((a, l) => a + U.num(l.qtyEvent), 0); if (lots.length > 1 && i.qty < tot) return 'multi'; if (tot < i.qty) return 'gen'; }
     }
     return 'ready';
   },
@@ -1606,7 +1606,7 @@ const Ventes = {
   },
   renderTodo() {
     const units = this.units();
-    const counts = { all: 0, link: 0, ready: 0, multi: 0, short: 0 };
+    const counts = { all: 0, link: 0, ready: 0, multi: 0, gen: 0, short: 0 };
     let doneN = 0;
     const groups = [];
     Store.state.sales.forEach(s => {
@@ -1632,7 +1632,7 @@ const Ventes = {
         <button class="btn-ghost" style="white-space:nowrap;" onclick="Ventes.closeTodo()">← Retour aux ventes</button></div>
       ${bn ? `<div class="card todo-banner">✅ Import validé : <b>${U.qty(bn.deducted)}</b> article(s) déduits du stock événement. Il reste <b>${bn.pending}</b> ligne(s) à traiter ci-dessous — rien n'est déduit tant que tu ne cliques pas « Déduire ».</div>` : ''}
       <div class="card">
-        <div class="sumup-filters">${fb('all', 'Tout')}${fb('link', '🏷️ Produit à associer')}${fb('ready', '✅ Prêts à déduire')}${fb('multi', '🔀 Plusieurs lots (à répartir)')}${fb('short', '📉 Stock manquant')}</div>
+        <div class="sumup-filters">${fb('all', 'Tout')}${fb('link', '🏷️ Produit à associer')}${fb('ready', '✅ Prêts à déduire')}${fb('multi', '🔀 Plusieurs lots (à répartir)')}${fb('gen', '🏬 Stock événement insuffisant')}${fb('short', '📉 Stock manquant')}</div>
         ${counts[this.todoFilter] ? this._todoBulkBar('') : ''}
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;margin:10px 0 0;"><input type="checkbox" ${this.todoShowDone ? 'checked' : ''} onchange="Ventes.setTodoShowDone(this.checked)"> Afficher aussi les articles déjà traités (${doneN})</label>
         <p class="muted help">Associer : clique une proposition 💡 (nom ressemblant) ou cherche le produit. « Retenir » applique l'association aux autres lignes identiques et aux prochains imports. Lots : indique combien sont partis de chaque lot, ou « Proposer » (DLUO la plus courte d'abord), puis « Déduire ». ↗ ouvre la fiche dans un nouvel onglet. Chaque déduction est annulable (↺ dans le message ou le Journal).</p>
@@ -1663,7 +1663,7 @@ const Ventes = {
     } else if (i.reason === 'short') {
       const t = this._targetFor(i.kind, i.pId, i.vId);
       body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : le stock ${i.kind === 'C' ? '' : 'événement '}était insuffisant (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
-        <div class="tt-actions"><button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></div></div>`;
+        <div class="tt-actions">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && pp.variants.find(x => x.id === i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></div></div>`;
     } else if (!i.pId) {
       const sug = this._suggest(i.desc || i.name, 4, units);
       const q = st.q;
@@ -1698,6 +1698,9 @@ const Ventes = {
           ${this._todoCat(i) === 'multi' ? `<p class="tt-multi">🔀 <b>Plusieurs lots en stock événement</b> : indique combien sont partis de chaque lot (ou « Proposer »), puis « Déduire ». Cet article n'est jamais déduit par « Tout déduire ».</p>` : ''}
           ${lots.length ? `<div class="table-wrap"><table class="tt-lots"><thead><tr><th>N° de lot</th><th>DLUO</th><th class="num">En stock</th><th class="num">Partis de ce lot</th></tr></thead><tbody>${lots.map(l => `<tr><td>${U.esc(l.lotNumber || 'sans n°')}</td><td>${l.dluo ? U.frDate(l.dluo) : '—'}${l.dluo && l.dluo < today ? ' <span class="badge bad">périmé</span>' : ''}</td><td class="num">${U.qty(l[field])}</td><td class="num"><input type="number" min="0" step="1" value="${st.lots[l.id] || ''}" placeholder="0" style="width:80px;text-align:center;" onchange="Ventes.ttSetLot('${k}','${l.id}',this.value)"></td></tr>`).join('')}</tbody></table></div>`
             : `<p class="muted">Aucun lot avec du stock événement pour cette variante.</p>`}
+          ${(() => { const evTot = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0), genTot = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
+            return evTot < i.qty ? `<p class="tt-gen">🏬 Stock événement ${evTot ? `insuffisant (${U.qty(evTot)} pour ${U.qty(i.qty)} vendus)` : 'à 0'} · stock général : <b>${U.qty(genTot)}</b>
+              <button class="btn-ghost btn-sm" onclick="Ventes.ttGeneral('${k}')">🏬 ${evTot ? 'Compléter depuis le stock général' : 'Déduire du stock général'}</button></p>` : ''; })()}
           <div class="tt-actions"><span>Total choisi : <b id="tt_sum_${sid}">${U.qty(sum)}</b> / ${U.qty(i.qty)} vendu(s)</span>
             ${lots.length ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttFefo('${k}')">Proposer (DLUO la plus courte d'abord)</button><button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire</button>` : ''}${markBtns}</div>
         </div>`;
@@ -1806,7 +1809,7 @@ const Ventes = {
     return { sum, qty: i.qty, ready: sum === i.qty };
   },
   /* Applique la déduction (déjà vérifiée par _ttCheck). snapMap : instantanés « avant » partagés. */
-  _ttDo(k, snapMap) {
+  _ttDo(k, snapMap, genPicks) {
     const { s, i } = this._ttFind(k); const st = this._ttState(k);
     const snap = (dom, obj) => { const key = dom + ':' + obj.id; if (!snapMap[key]) snapMap[key] = Store.snapshot(dom, obj); };
     snap('sales', s);
@@ -1823,24 +1826,104 @@ const Ventes = {
       const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
       const field = 'qtyEvent'; // retour d'événement : toujours le stock événement
       snap('stockM', p);
-      const picks = Object.entries(st.lots || {}).filter(([, q]) => U.num(q) > 0);
-      let cost = 0, sum = 0; const labels = [];
-      picks.forEach(([lid, q]) => {
-        const lot = v.lots.find(l => l.id === lid); q = U.num(q); sum += q;
-        lot[field] = U.num(lot[field]) - q;
+      // Lots du stock événement (répartition de l'article) + éventuellement du stock GÉNÉRAL
+      // (fenêtre « Déduire du stock général », quand le stock événement ne suffit pas).
+      const picks = Object.entries(st.lots || {}).filter(([, q]) => U.num(q) > 0).map(([lid, q]) => [lid, q, field])
+        .concat(Object.entries(genPicks || {}).filter(([, q]) => U.num(q) > 0).map(([lid, q]) => [lid, q, 'qtyGeneral']));
+      let cost = 0, sum = 0, sumGen = 0; const labels = [];
+      picks.forEach(([lid, q, fld]) => {
+        const lot = v.lots.find(l => l.id === lid); q = U.num(q); sum += q; if (fld === 'qtyGeneral') sumGen += q;
+        lot[fld] = U.num(lot[fld]) - q;
         cost += q * U.num(lot.costUnit || v.costUnit);
-        s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field, qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
-        labels.push((lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') + ' ×' + q);
+        s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field: fld, qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
+        labels.push((lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') + ' ×' + q + (fld === 'qtyGeneral' ? ' (gén.)' : ''));
       });
       cost += (i.qty - sum) * U.num(v.costUnit);
       v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0);
       i.cost = cost; i.lotLabel = labels.join(' / ');
       if (sum < i.qty) i.missing = i.qty - sum;
-      msg = `${U.qty(sum)} déduit(s) du stock événement`;
+      msg = !sumGen ? `${U.qty(sum)} déduit(s) du stock événement` : sum === sumGen ? `${U.qty(sumGen)} déduit(s) du stock général` : `${U.qty(sum - sumGen)} déduit(s) du stock événement + ${U.qty(sumGen)} du stock général`;
     }
     i.deducted = true; i.todo = 'done';
     delete this._tt[k];
     return msg;
+  },
+  /* Fenêtre « Déduire du stock général » (2026-09-30, demande d'Antho) : quand le stock événement
+     ne couvre pas la vente, on peut prendre le reste — ou tout — dans le stock GÉNÉRAL, lot par lot. */
+  ttGeneral(k) {
+    const f = this._ttFind(k); if (!f) return; const { i } = f;
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId); if (!v) return;
+    const st = this._ttState(k);
+    const evPicks = i.deducted ? [] : Object.entries(st.lots || {}).filter(([, q]) => U.num(q) > 0);
+    const evSum = i.deducted ? i.qty - U.num(i.missing) : evPicks.reduce((a, [, q]) => a + U.num(q), 0);
+    const need = i.deducted ? U.num(i.missing) : Math.max(0, i.qty - evSum);
+    const glots = v.lots.filter(l => U.num(l.qtyGeneral) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
+    const genTot = glots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
+    const pre = this._fefo(glots, 'qtyGeneral', need);
+    const today = U.today();
+    this._glCtx = { k, glots: glots.map(l => l.id), genTot, need };
+    const head = `<p style="margin:0 0 8px;"><b>${U.esc(p.name)}</b> <span class="pp-v">${U.esc(Pricing.labelVariant(v))}</span> — vendu <b>${U.qty(i.qty)}</b></p>
+      <p class="muted" style="margin:0 0 10px;">Pris dans le stock événement : <b>${U.qty(evSum)}</b> · à prendre dans le stock général : <b>${U.qty(need)}</b></p>`;
+    if (!need) { U.toast('La répartition du stock événement couvre déjà toute la vente.', true); return; }
+    if (!genTot) {
+      U.modal({ title: '🏬 Déduire du stock général', hideOk: true, body: head + `<p class="warn-txt">Le stock général de cette variante est à 0 : rien à déduire. Si tu as déjà corrigé le stock toi-même, utilise « ✔ Déjà fait à la main ».</p>` });
+      return;
+    }
+    U.modal({
+      title: '🏬 Déduire du stock général', okLabel: 'Déduire du stock général',
+      body: head + `<div class="table-wrap"><table class="tt-lots"><thead><tr><th>N° de lot</th><th>DLUO</th><th class="num">Stock général</th><th class="num">À retirer</th></tr></thead><tbody>
+        ${glots.map(l => `<tr><td>${U.esc(l.lotNumber || 'sans n°')}</td><td>${l.dluo ? U.frDate(l.dluo) : '—'}${l.dluo && l.dluo < today ? ' <span class="badge bad">périmé</span>' : ''}</td><td class="num">${U.qty(l.qtyGeneral)}</td>
+          <td class="num"><input type="number" min="0" step="1" id="gl_${l.id}" value="${pre[l.id] || ''}" placeholder="0" style="width:80px;text-align:center;" oninput="Ventes._glPreview()"></td></tr>`).join('')}
+        </tbody></table></div>
+        <p id="gl_preview" class="gl-preview"></p>`,
+      onOk: () => this._glApply()
+    });
+    this._glPreview();
+  },
+  _glPicks() { const c = this._glCtx; const out = {}; (c ? c.glots : []).forEach(id => { const el = document.getElementById('gl_' + id); const q = Math.max(0, Math.round(U.num(el && el.value))); if (q) out[id] = q; }); return out; },
+  _glPreview() {
+    const c = this._glCtx, el = document.getElementById('gl_preview'); if (!c || !el) return;
+    const sum = Object.values(this._glPicks()).reduce((a, q) => a + q, 0);
+    el.innerHTML = `Stock général : <b>${U.qty(c.genTot)}</b> → <b>${U.qty(Math.max(0, c.genTot - sum))}</b> · retiré : <b>${U.qty(sum)}</b> / ${U.qty(c.need)} à prendre` + (sum > c.need ? ' <span class="badge bad">plus que nécessaire</span>' : sum < c.need ? ' <span class="badge warn">incomplet</span>' : ' <span class="badge ok">✓</span>');
+  },
+  _glApply() {
+    const c = this._glCtx; if (!c) return false;
+    const { k } = c; const f = this._ttFind(k); if (!f) return false; const { i } = f;
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
+    const gp = this._glPicks();
+    let gsum = 0;
+    for (const [lid, q] of Object.entries(gp)) { const lot = v.lots.find(l => l.id === lid); if (!lot || q > U.num(lot.qtyGeneral)) { U.toast(`Le lot ${lot ? (lot.lotNumber || 'sans n°') : ''} n'a que ${lot ? U.qty(lot.qtyGeneral) : 0} en stock général.`, true); return false; } gsum += q; }
+    if (!gsum) { U.toast('Indique la quantité à retirer du stock général.', true); return false; }
+    if (gsum > c.need) { U.toast(`Tu retires ${U.qty(gsum)}, mais il n'en faut que ${U.qty(c.need)}.`, true); return false; }
+    const snapMap = {};
+    let msg;
+    if (i.deducted) {
+      // Article déjà déduit à l'import mais avec du manquant : on complète depuis le stock général.
+      const s = f.s;
+      snapMap['sales:' + s.id] = Store.snapshot('sales', s); snapMap['stockM:' + p.id] = Store.snapshot('stockM', p);
+      s.undoOps = s.undoOps || []; const labels = [];
+      Object.entries(gp).forEach(([lid, q]) => {
+        const lot = v.lots.find(l => l.id === lid);
+        lot.qtyGeneral = U.num(lot.qtyGeneral) - q;
+        i.cost = U.num(i.cost) + q * (U.num(lot.costUnit || v.costUnit) - U.num(v.costUnit));
+        s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field: 'qtyGeneral', qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
+        labels.push((lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') + ' ×' + q + ' (gén.)');
+      });
+      v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0);
+      i.lotLabel = [i.lotLabel, ...labels].filter(Boolean).join(' / ');
+      i.missing = U.num(i.missing) - gsum;
+      if (i.missing <= 0) { delete i.missing; i.todo = 'done'; }
+      msg = `${U.qty(gsum)} pris dans le stock général` + (i.missing ? ` (${U.qty(i.missing)} encore manquant)` : '');
+      delete this._tt[k];
+    } else {
+      const chk = this._ttCheck(k);
+      if (chk.err && chk.sum !== 0) { U.toast(chk.err, true); return false; }
+      msg = this._ttDo(k, snapMap, gp);
+    }
+    const entry = Store.log('vente', `Article déduit — ${i.name} ${i.label || ''} : ${msg}`, { type: 'restoreBatch', data: Object.values(snapMap) });
+    Store.save('sales', 'stockM');
+    this._glCtx = null;
+    setTimeout(() => { this.render(); U.toast(`${i.name} : ${msg}.`, false, entry.id); }, 0);
   },
   async ttDeduct(k) {
     const c = this._ttCheck(k);
