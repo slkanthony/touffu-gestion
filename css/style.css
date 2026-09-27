@@ -1007,3 +1007,33 @@ table.tt-lots { max-width: 620px; }
 .hist-selbar .nsel-trig, .sale-detail .nsel-trig { width: auto; min-width: 170px; display: inline-flex; padding-top: 5px; padding-bottom: 5px; }
 .sales-hist tr.sale-detail .sh-info { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
 .sales-hist tr.sale-detail .sh-field { display: inline-flex; gap: 8px; align-items: center; }
+/* ---------- Calendrier de l'appli (remplace le calendrier du navigateur) ---------- */
+input.dsel-native { position: absolute !important; opacity: 0 !important; pointer-events: none !important; width: 1px !important; height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden; }
+input.dsel-trig {
+  width: 100%; cursor: pointer; font-weight: 600; font-variant-numeric: tabular-nums; padding-right: 34px;
+  background: var(--blanc) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a67153' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M16 3v4M8 3v4M3 10h18'/%3E%3C/svg%3E") no-repeat right 10px center / 17px 17px;
+}
+input.dsel-trig.open { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(166, 113, 83, 0.15); }
+.date-picker-wrap input.dsel-trig { font-size: 1rem; padding-top: 10px; padding-bottom: 10px; }
+.dsel-panel { position: fixed; z-index: 400; width: 286px; background: var(--card-bg); border: 1px solid var(--caramel); border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.4); padding: 10px; color: var(--texte); font-family: 'Quicksand'; user-select: none; }
+.dsel-panel button { font-family: 'Quicksand'; cursor: pointer; box-shadow: none; }
+.dsel-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.dsel-nav { width: 32px; height: 32px; padding: 0; border-radius: 8px; border: 1px solid var(--card-border); background: transparent; color: var(--caramel); font-size: 1.25rem; line-height: 1; }
+.dsel-nav:hover { background: rgba(166,113,83,.18); border-color: var(--caramel); }
+.dsel-title { flex: 1; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--texte); font-weight: 700; font-size: .98rem; text-transform: capitalize; }
+.dsel-title:hover { background: rgba(166,113,83,.14); color: var(--caramel); }
+.dsel-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.dsel-wd { text-align: center; font-size: .72rem; font-weight: 700; color: var(--caramel); text-transform: uppercase; padding: 2px 0 4px; }
+.dsel-d { height: 34px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--texte); font-size: .9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dsel-d:hover { background: rgba(166,113,83,.18); }
+.dsel-d.out { color: var(--gris); opacity: .45; font-weight: 500; }
+.dsel-d.today { border-color: var(--caramel); color: var(--caramel); }
+.dsel-d.on { background: var(--caramel); border-color: var(--caramel); color: #fff; }
+.dsel-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.dsel-mo { padding: 10px 4px; border: 1px solid var(--card-border); border-radius: 8px; background: transparent; color: var(--texte); font-weight: 600; font-size: .88rem; text-transform: capitalize; }
+.dsel-mo:hover { border-color: var(--caramel); background: rgba(166,113,83,.14); }
+.dsel-mo.on { background: var(--caramel); border-color: var(--caramel); color: #fff; }
+.dsel-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--card-border); }
+.dsel-link { border: 0; background: transparent; color: var(--caramel); font-weight: 700; font-size: .85rem; padding: 4px 6px; border-radius: 6px; }
+.dsel-link:hover { background: rgba(166,113,83,.14); }
+.hist-periods input.dsel-trig { width: 150px; }

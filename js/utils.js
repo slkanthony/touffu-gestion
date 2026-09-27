@@ -584,3 +584,151 @@ U.nsel = {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => U.nsel.scan(document));
   else U.nsel.scan(document);
 })();
+
+/* ════════ CALENDRIER DE L'APPLI (2026-09-29, demande d'Antho) ════════
+   Remplace l'affichage de TOUS les <input type="date"> (calendrier du navigateur, blanc et bleu)
+   par un champ texte « jj/mm/aaaa » + un calendrier aux couleurs de l'appli. Le champ date
+   d'origine reste dans la page (caché) : son `value` (AAAA-MM-JJ), ses onchange/oninput et
+   U.val continuent de marcher sans rien changer. Pour garder le natif : attribut data-native. */
+U.dsel = {
+  cur: null,
+  MONTHS: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+  iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
+  fmt(v) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; },
+  parse(txt) {
+    const s = String(txt || '').trim(); if (!s) return '';
+    let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+    let d, mo, y;
+    if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if ((m = /^(\d{1,2})[\/.\- ](\d{1,2})[\/.\- ](\d{2}|\d{4})$/.exec(s))) { d = +m[1]; mo = +m[2]; y = +m[3]; }
+    else if ((m = /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(s))) { d = +m[1]; mo = +m[2]; y = +m[3]; }
+    else return null;
+    if (y < 100) y += 2000;
+    const dt = new Date(y, mo - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d ? this.iso(dt) : null;
+  },
+  sync(inp) {
+    const t = inp._dselTrig; if (!t) return;
+    if (document.activeElement !== t) t.value = this.fmt(inp.value);
+    t.disabled = inp.disabled;
+    const st = inp.getAttribute('style') || '';
+    if (t._st !== st) { t._st = st; t.style.cssText = st; }
+  },
+  enhance(inp) {
+    if (inp._dselTrig || inp.hasAttribute('data-native')) return;
+    const t = document.createElement('input');
+    t.type = 'text'; t.className = 'dsel-trig'; t.placeholder = 'jj/mm/aaaa'; t.autocomplete = 'off'; t.inputMode = 'numeric';
+    t.title = inp.title || 'Clique pour choisir la date (ou tape-la : jj/mm/aaaa)';
+    inp._dselTrig = t; t._inp = inp;
+    inp.classList.add('dsel-native'); inp.tabIndex = -1;
+    inp.after(t);
+    this.sync(inp);
+    t.addEventListener('mousedown', () => { if (document.activeElement === t && !(this.cur && this.cur.inp === inp)) setTimeout(() => this.open(inp), 0); });
+    t.addEventListener('focus', () => { if (!this.cur || this.cur.inp !== inp) this.open(inp); });
+    t.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); this.commitText(inp); this.close(); }
+      else if (e.key === 'Escape') { this.close(); }
+      else if (e.key === 'Tab') { this.commitText(inp); this.close(); }
+    });
+    t.addEventListener('blur', () => setTimeout(() => { if (!this.cur || this.cur.inp !== inp) this.commitText(inp); }, 150));
+  },
+  commitText(inp) {
+    const t = inp._dselTrig; if (!t || !t.isConnected) return;   // champ remplacé par un nouveau rendu : rien à valider
+    const v = this.parse(t.value);
+    if (v === null) { t.value = this.fmt(inp.value); if (typeof U.toast === 'function') U.toast('Date non reconnue — format jj/mm/aaaa.', true); return; }
+    this.set(inp, v, true);
+  },
+  set(inp, v, keepFocus) {
+    // Le texte affiché d'abord : le rendu déclenché par « change » peut détacher ce champ, et son
+    // « blur » ne doit alors pas revalider l'ancienne date.
+    if (inp._dselTrig) inp._dselTrig.value = this.fmt(v);
+    if (inp.value !== v) {
+      inp.value = v;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const t = inp._dselTrig;
+    if (t && t.isConnected) t.value = this.fmt(inp.value);
+  },
+  open(inp) {
+    this.close();
+    const t = inp._dselTrig; if (!t || t.disabled) return;
+    const base = inp.value ? new Date(inp.value + 'T12:00:00') : new Date();
+    const p = document.createElement('div');
+    p.className = 'dsel-panel';
+    document.body.appendChild(p);
+    this.cur = { inp, t, p, y: base.getFullYear(), m: base.getMonth(), mode: 'days' };
+    t.classList.add('open');
+    p.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    p.addEventListener('click', e => this._click(e));
+    this.draw();
+  },
+  place() {
+    const c = this.cur; if (!c) return;
+    const r = c.t.getBoundingClientRect(), p = c.p;
+    const w = p.offsetWidth, h = p.offsetHeight;
+    p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    const below = window.innerHeight - r.bottom - 8;
+    p.style.top = (below < h && r.top - 8 > below ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+  },
+  draw() {
+    const c = this.cur; if (!c) return;
+    const today = this.iso(new Date()), sel = c.inp.value;
+    let body;
+    if (c.mode === 'months') {
+      body = `<div class="dsel-head"><button type="button" class="dsel-nav" data-a="py">‹</button><button type="button" class="dsel-title" data-a="days">${c.y}</button><button type="button" class="dsel-nav" data-a="ny">›</button></div>
+        <div class="dsel-months">${this.MONTHS.map((n, i) => `<button type="button" class="dsel-mo${i === c.m ? ' on' : ''}" data-a="mo" data-v="${i}">${n.slice(0, 4)}${n.length > 4 ? '.' : ''}</button>`).join('')}</div>`;
+    } else {
+      const first = new Date(c.y, c.m, 1);
+      const start = new Date(c.y, c.m, 1 - ((first.getDay() + 6) % 7));
+      const cells = [];
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const v = this.iso(d);
+        cells.push(`<button type="button" class="dsel-d${d.getMonth() !== c.m ? ' out' : ''}${v === today ? ' today' : ''}${v === sel ? ' on' : ''}" data-a="d" data-v="${v}">${d.getDate()}</button>`);
+      }
+      body = `<div class="dsel-head"><button type="button" class="dsel-nav" data-a="pm" title="Mois précédent">‹</button><button type="button" class="dsel-title" data-a="months" title="Choisir le mois / l'année">${this.MONTHS[c.m]} ${c.y} ▾</button><button type="button" class="dsel-nav" data-a="nm" title="Mois suivant">›</button></div>
+        <div class="dsel-grid">${['lu', 'ma', 'me', 'je', 've', 'sa', 'di'].map(x => `<span class="dsel-wd">${x}</span>`).join('')}${cells.join('')}</div>`;
+    }
+    c.p.innerHTML = body + `<div class="dsel-foot"><button type="button" class="dsel-link" data-a="clear">Effacer</button><button type="button" class="dsel-link" data-a="today">Aujourd'hui</button></div>`;
+    this.place();
+  },
+  _click(e) {
+    const b = e.target.closest('[data-a]'); const c = this.cur; if (!b || !c) return;
+    const a = b.dataset.a;
+    if (a === 'pm' || a === 'nm') { c.m += a === 'pm' ? -1 : 1; if (c.m < 0) { c.m = 11; c.y--; } if (c.m > 11) { c.m = 0; c.y++; } this.draw(); }
+    else if (a === 'py' || a === 'ny') { c.y += a === 'py' ? -1 : 1; this.draw(); }
+    else if (a === 'months') { c.mode = 'months'; this.draw(); }
+    else if (a === 'days') { c.mode = 'days'; this.draw(); }
+    else if (a === 'mo') { c.m = +b.dataset.v; c.mode = 'days'; this.draw(); }
+    else if (a === 'd') { const inp = c.inp; this.close(); this.set(inp, b.dataset.v); }
+    else if (a === 'today') { const inp = c.inp; this.close(); this.set(inp, this.iso(new Date())); }
+    else if (a === 'clear') { const inp = c.inp; this.close(); this.set(inp, ''); }
+  },
+  close() {
+    if (!this.cur) return;
+    this.cur.p.remove(); this.cur.t.classList.remove('open');
+    this.cur = null;
+  },
+  scan(root) {
+    if (root.tagName === 'INPUT' && root.type === 'date') this.enhance(root);
+    else if (root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(i => this.enhance(i));
+  }
+};
+(() => {
+  // Valeur posée par le code (input.value = …, ex. boutons « +1 mois ») → champ affiché mis à jour.
+  const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  Object.defineProperty(HTMLInputElement.prototype, 'value', { configurable: true, get() { return d.get.call(this); }, set(v) { d.set.call(this, v); if (this._dselTrig) U.dsel.sync(this); } });
+  document.addEventListener('mousedown', e => { if (U.dsel.cur && e.target !== U.dsel.cur.t && !U.dsel.cur.p.contains(e.target)) U.dsel.close(); }, true);
+  window.addEventListener('scroll', e => { if (U.dsel.cur && !U.dsel.cur.p.contains(e.target)) U.dsel.place(); }, true);
+  window.addEventListener('resize', () => U.dsel.close());
+  new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.type === 'attributes') { if (m.target._dselTrig) U.dsel.sync(m.target); continue; }
+      for (const n of m.addedNodes) if (n.nodeType === 1) U.dsel.scan(n);
+      for (const n of m.removedNodes) if (n.nodeType === 1 && U.dsel.cur && (n === U.dsel.cur.t || n.contains(U.dsel.cur.t))) U.dsel.close();
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'style'] });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => U.dsel.scan(document));
+  else U.dsel.scan(document);
+})();
