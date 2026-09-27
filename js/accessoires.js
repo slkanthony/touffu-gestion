@@ -17,6 +17,7 @@ const Accessoires = {
   _bomCat: {},
   _widthsOpen: false,
   _accOpen: {},
+  focusId: null,  // fiche à ouvrir/faire défiler (lien direct #/accessoires/<id>)
   setAccOpen(id, open) { this._accOpen[id] = open; },
   _fabOpen: {},
   setFabOpen(id, open) { this._fabOpen[id] = open; },
@@ -115,6 +116,8 @@ const Accessoires = {
     }
     if (needSave) Store.save('catalogA');
     U.syncFilters('accessoires', this, ['accQ', 'accCatFilter', 'accWidthFilter', 'accBicolorFilter', 'accSort', 'accSortDir']);
+    const focusId = this.focusId; this.focusId = null;
+    if (focusId) { this.accQ = ''; this.accCatFilter = ''; this.accWidthFilter = ''; this.accBicolorFilter = ''; this._accOpen[focusId] = true; }
     let list = [...Store.state.catalogA];
     const q = this.accQ.toLowerCase();
     if (q) list = list.filter(a => a.name.toLowerCase().includes(q));
@@ -164,6 +167,7 @@ const Accessoires = {
         <span class="right">${sortHead('price', 'Prix TTC')}</span>
       </div>` : ''}
       ${list.map(a => this.accCard(a)).join('') || '<div class="card empty"><span class="big">🐕</span>Aucun accessoire. Crée ta première fiche : matières + temps de fabrication, et le prix se calcule tout seul.</div>'}`;
+    if (focusId) setTimeout(() => { const el = document.getElementById('acc-' + focusId); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
   },
 
   setAccInline(id, field, val) {
@@ -328,7 +332,7 @@ const Accessoires = {
     const accOpen = this._accOpen[a.id] || false;
     const widths = this._normalizeWidths(a);
     const criticalClass = c.critical ? ' acc-critical' : '';
-    return `<details class="fold prod-fold acc-fold${criticalClass}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
+    return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
         <span><b>${U.esc(a.name)}</b>${c.critical ? ' <span class="badge bad">coeff critique</span>' : ''}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>

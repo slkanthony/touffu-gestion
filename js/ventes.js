@@ -25,7 +25,8 @@ const Ventes = {
   retourConsoId: '', retourConsoQty: 1, // saisie des consommables (sacs…) utilisés pendant l'événement
   kind: 'M',           // 'M' mastication (défaut) | 'A' accessoires — bascule le sélecteur de produit à sortir
   accWidth: 'all',     // filtre largeur de sangle en mode Accessoires
-  editTicketId: '', ticketConsoId: '', ticketConsoQty: 1, // édition d'un ticket d'événement déjà validé (frais de stand + consommables)
+  editTicketId: '', ticketConsoId: '', ticketConsoQty: 1,
+  todoOpen: false, todoFilter: 'all', todoShowDone: false, _tt: {}, _todoBanner: null, _memOpen: false, // page « 🧩 Articles à traiter » // édition d'un ticket d'événement déjà validé (frais de stand + consommables)
 
   units() {
     const out = [];
@@ -86,6 +87,7 @@ const Ventes = {
 
   render() {
     if (this.editTicketId) { this.renderTicketEditor(); return; }
+    if (this.todoOpen) { this.renderTodo(); return; }
     const units = this.units();
     const wantKind = this.kind === 'A' ? 'A' : 'M';
     // Catégories proposées = celles du type sélectionné uniquement (viandes pour la mastication,
@@ -124,7 +126,8 @@ const Ventes = {
 
     App.mount(`
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;"><div><h1>Ventes</h1><span class="sub">déclare une sortie · le stock se met à jour</span></div>
-        <button class="btn-cta" style="flex:0 0 auto;white-space:nowrap;" onclick="Ventes.toggleRetour()">${this.retourOpen ? '← Vente manuelle' : '📥 Retour d\'événement'}</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${this.todoCount() ? `<button class="btn-ghost" style="white-space:nowrap;" onclick="Ventes.openTodo()">🧩 À traiter (${this.todoCount()})</button>` : ''}
+        <button class="btn-cta" style="flex:0 0 auto;white-space:nowrap;" onclick="Ventes.toggleRetour()">${this.retourOpen ? '← Vente manuelle' : '📥 Retour d\'événement'}</button></div></div>
 
       ${this.retourOpen ? this.retourPanel() : `
       <div class="frow" style="margin-bottom:10px;">
@@ -410,6 +413,7 @@ const Ventes = {
     const shortfalls = [];
     const touched = [];
     for (const c of lines) {
+      let missing = 0;
       // Coût de revient FIGÉ sur la ligne au moment de la vente (pour la vraie marge) :
       // mastication = coût réel des lots consommés (FEFO) ; accessoire = coût calculé (matières+main d'œuvre) ; consommable = coût unitaire.
       let lineCost = 0;
@@ -425,7 +429,7 @@ const Ventes = {
             const take = Math.min(U.num(l[field]), remaining);
             if (take > 0) { l[field] = U.num(l[field]) - take; remaining -= take; lineCost += take * U.num(l.costUnit || v.costUnit); sale.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: l.id, field, qty: take, lotMeta: { lotNumber: l.lotNumber, dluo: l.dluo, costUnit: l.costUnit } }); }
           }
-          if (remaining > 0) { shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: remaining, src: source }); lineCost += remaining * U.num(v.costUnit); }
+          if (remaining > 0) { missing = remaining; shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: remaining, src: source }); lineCost += remaining * U.num(v.costUnit); }
           if (!touched.includes(v)) touched.push(v);
         }
       } else if (c.kind === 'A') {
@@ -444,10 +448,11 @@ const Ventes = {
           lineCost = U.num(co.costUnit) * c.qty;
           const take = Math.min(U.num(co.qty), c.qty);
           if (take > 0) { co.qty = U.num(co.qty) - take; sale.undoOps.push({ kind: 'C', pId: co.id, qty: take }); }
+          if (c.qty - take > 0) missing = c.qty - take;
           if (c.qty - take > 0) shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: c.qty - take, src: source });
         }
       }
-      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost });
+      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(missing > 0 ? { missing } : {}) });
       sale.total += c.price * c.qty;
     }
     touched.forEach(v => { v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0); });
@@ -730,13 +735,13 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
           </div><div class="sh-right"><span class="sh-total">${s.items.length} article(s) · <b>${U.eur(s.total)}</b></span>
-          <span class="sh-actions">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span>
+          <span class="sh-actions">${!s.cancelled && s.items.some(i => i.todo === 'open') ? `<button class="btn-ghost btn-sm" title="Articles de ce ticket pas encore déduits du stock" onclick="Ventes.openTodo()">🧩 ${s.items.filter(i => i.todo === 'open').length} à traiter</button> ` : ''}${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span>
         </div></div></td></tr>`;
       const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
-        <td>${i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
+        <td>${i.todo === 'open' ? `<span class="badge warn">🧩 à traiter</span>` : i.deducted === false ? `<span class="badge info">${i.todo === 'caOnly' ? '💶 CA seul' : '✔ fait à la main'}</span>` : i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
         <td class="num">${U.qty(i.qty)}</td>
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
@@ -809,7 +814,8 @@ const Ventes = {
     const map = {};
     lines.forEach(l => {
       const k = l.target.kind + '|' + l.target.pId + '|' + l.target.vId;
-      const g = map[k] || (map[k] = { kind: l.target.kind, pId: l.target.pId, vId: l.target.vId, name: l.target.name, label: l.target.label, sku: l.sku, qty: 0, ttc: 0 });
+      const g = map[k] || (map[k] = { kind: l.target.kind, pId: l.target.pId, vId: l.target.vId, name: l.target.name, label: l.target.label, sku: l.target.sku || l.sku, mapped: false, qty: 0, ttc: 0 });
+      if (l.status === 'mapped') g.mapped = true;
       g.qty += l.qty; g.ttc += l.ttc;
     });
     return Object.values(map).map(g => ({ ...g, unit: g.qty > 0 ? g.ttc / g.qty : g.ttc }));
@@ -818,11 +824,11 @@ const Ventes = {
   _groupProblems(lines) {
     const map = {};
     lines.forEach(l => {
-      const k = (l.sku || '') + '||' + l.desc;
+      const k = l.status + '||' + (l.sku || '') + '||' + l.desc;
       const g = map[k] || (map[k] = { desc: l.desc, sku: l.sku, status: l.status, qty: 0, ttc: 0 });
       g.qty += l.qty; g.ttc += l.ttc;
     });
-    return Object.values(map);
+    return Object.values(map).map(g => ({ ...g, unit: g.qty > 0 ? g.ttc / g.qty : g.ttc }));
   },
 
   /* ⚠️ Ambiguïté de lot à l'IMPORT (jamais en vente manuelle, où le lot est choisi) :
@@ -855,8 +861,8 @@ const Ventes = {
         const p = Store.state.stockM.find(x => x.id === g.pId);
         const v = p && p.variants.find(x => x.id === g.vId);
         if (this._isAmbiguousEvent(v, g.qty)) {
-          const stocked = v.lots.filter(l => U.num(l.qtyEvent) > 0);
-          ambiguous.push({ ...g, total: stocked.reduce((a, l) => a + U.num(l.qtyEvent), 0), nLots: stocked.length });
+          const stocked = v.lots.filter(l => U.num(l.qtyEvent) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
+          ambiguous.push({ ...g, total: stocked.reduce((a, l) => a + U.num(l.qtyEvent), 0), nLots: stocked.length, lots: stocked.map(l => ({ n: l.lotNumber || 'sans n°', dluo: l.dluo, q: U.num(l.qtyEvent) })) });
           return;
         }
       }
@@ -924,19 +930,32 @@ const Ventes = {
     return rows.filter(r => r.some(c => c.trim() !== ''));
   },
 
-  /* SKU (majuscule, sans espaces) -> cible stock (variante Mastication ou accessoire). */
+  /* SKU (majuscule, sans espaces) -> cible stock (variante Mastication ou accessoire).
+     Un SKU porté par PLUSIEURS fiches n'est jamais utilisé (risque de déduire le mauvais produit) :
+     il est renvoyé dans `dups` et les lignes correspondantes partent « à traiter ». */
   _skuIndex() {
-    const idx = {};
-    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => {
-      const sku = (v.sku || '').trim().toUpperCase();
-      if (sku) idx[sku] = { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v) };
-    }));
-    Store.state.catalogA.forEach(a => {
-      const sku = (a.sku || '').trim().toUpperCase();
-      if (sku && !idx[sku]) idx[sku] = { kind: 'A', pId: a.id, vId: '', name: a.name, label: a.category || '' };
-    });
-    return idx;
+    const idx = {}, dups = new Set();
+    const add = (sku, t) => { if (!sku) return; if (idx[sku]) dups.add(sku); else idx[sku] = t; };
+    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => add((v.sku || '').trim().toUpperCase(), { kind: 'M', pId: p.id, vId: v.id, name: p.name, label: Pricing.labelVariant(v), sku: v.sku || '' })));
+    Store.state.catalogA.forEach(a => add((a.sku || '').trim().toUpperCase(), { kind: 'A', pId: a.id, vId: '', name: a.name, label: a.category || '', sku: a.sku || '' }));
+    dups.forEach(s => delete idx[s]);
+    return { idx, dups };
   },
+  /* Associations « libellé SumUp → produit » choisies par Antho (settings.sumupMap) : réutilisées
+     aux imports suivants. Ce n'est jamais une devinette : uniquement ce qu'il a lui-même associé. */
+  _normDesc(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); },
+  _targetFor(kind, pId, vId) {
+    if (kind === 'A') { const a = Store.state.catalogA.find(x => x.id === pId); return a ? { kind: 'A', pId, vId: '', name: a.name, label: a.category || '', sku: a.sku || '' } : null; }
+    const p = Store.state.stockM.find(x => x.id === pId); const v = p && (p.variants || []).find(x => x.id === vId);
+    return v ? { kind: 'M', pId, vId, name: p.name, label: Pricing.labelVariant(v), sku: v.sku || '' } : null;
+  },
+  _mapTarget(desc) {
+    const m = (Store.state.settings.sumupMap || {})[this._normDesc(desc)];
+    return m ? this._targetFor(m.kind, m.pId, m.vId) : null;
+  },
+  /* Lien ↗ : ouvre la fiche du produit dans un nouvel onglet (Stock → Mastication / Accessoires). */
+  stockHref(kind, pId) { return kind === 'A' ? '#/accessoires/' + pId : kind === 'C' ? '#/stock/conso' : '#/stock/mastication/' + pId; },
+  openLink(kind, pId) { return pId ? `<a class="btn-icon open-tab" href="${this.stockHref(kind, pId)}" target="_blank" rel="noopener" title="Ouvrir la fiche dans un nouvel onglet (contrôler / modifier)">↗</a>` : ''; },
 
   analyzeRetour() {
     const inp = document.getElementById('retour_file');
@@ -958,7 +977,7 @@ const Ventes = {
     if ([iDate, iRef, iQty, iDesc, iSku, iTtc].some(i => i < 0)) {
       U.toast('Colonnes SumUp introuvables (Date, Réf. transaction, Quantité, Description, SKU, Prix TTC).', true); return;
     }
-    const skuIdx = this._skuIndex();
+    const { idx: skuIdx, dups } = this._skuIndex();
     const dayMap = {};
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -970,9 +989,11 @@ const Ventes = {
       const ttc = this._frNum(r[iTtc]);
       const sku = (r[iSku] || '').trim();
       const line = { ref, ts, desc: (r[iDesc] || '').trim(), sku, qty, ttc, unit: qty > 0 ? ttc / qty : ttc };
-      const target = sku ? skuIdx[sku.toUpperCase()] : null;
-      line.status = !sku ? 'noSku' : target ? 'ok' : 'unknownSku';
+      const SKU = sku.toUpperCase();
+      const target = sku && !dups.has(SKU) ? skuIdx[SKU] : null;
+      line.status = !sku ? 'noSku' : dups.has(SKU) ? 'dupSku' : target ? 'ok' : 'unknownSku';
       if (target) line.target = target;
+      else { const mt = this._mapTarget(line.desc); if (mt) { line.target = mt; line.mappedFrom = line.status; line.status = 'mapped'; } }
       const dk = this._marketDay(ts);
       const g = dayMap[dk] || (dayMap[dk] = { key: dk, ts, label: dk === 'date-inconnue' ? 'Date inconnue' : U.frDate(dk), lines: [], include: true });
       if (!isNaN(ts) && ts < g.ts) { g.ts = ts; } // garde le 1er horodatage de la journée
@@ -1004,63 +1025,66 @@ const Ventes = {
       </div>`;
     }
     const imported = this._retourImportedRefs();
-    let nNoSku = 0, nUnknown = 0, nDup = 0;
-    const problems = [];
-    d.days.forEach(g => g.lines.forEach(l => {
-      if (imported.has(l.ref)) { nDup++; return; }
-      if (l.status === 'noSku') { nNoSku++; problems.push(l); }
-      else if (l.status === 'unknownSku') { nUnknown++; problems.push(l); }
-    }));
-    // Safe vs ambigu (multi-lots partiels) calculés sur les buckets réels (respecte la fusion).
+    let nDup = 0;
+    d.days.forEach(g => g.lines.forEach(l => { if (imported.has(l.ref)) nDup++; }));
+    // Tout est calculé sur les journées COCHÉES (respecte la fusion) : ce qui sera déduit / pas déduit.
     let safeQty = 0, ambQty = 0;
-    const ambItems = [], safeItems = [];
+    const ambItems = [], safeItems = [], problems = [];
     this._retourBuckets(d, imported).forEach(b => {
-      const ok = b.lines.filter(l => l.status === 'ok' && !imported.has(l.ref));
-      const { safe, ambiguous } = this._retourSplit(ok);
+      const fresh = b.lines.filter(l => !imported.has(l.ref));
+      problems.push(...fresh.filter(l => !l.target));
+      const { safe, ambiguous } = this._retourSplit(fresh.filter(l => l.target));
       safeQty += safe.reduce((a, g) => a + g.qty, 0);
       ambQty += ambiguous.reduce((a, g) => a + g.qty, 0);
       ambItems.push(...ambiguous);
       safeItems.push(...safe);
     });
-    // Récap détaillé de ce qui SERA déduit (demande d'Antho) : un produit par ligne, stock
-    // événement actuel → après (jamais négatif), en rouge si insuffisant.
     const safeMap = {};
-    safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || ''); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0 }); x.qty += g.qty; x.ttc += g.ttc; });
+    safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || ''); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0 }); x.qty += g.qty; x.ttc += g.ttc; x.mapped = x.mapped || g.mapped; });
     const unitsByKey = {}; this.units().forEach(u => { unitsByKey[u.kind === 'A' ? 'A|' + u.pId + '|' : u.key] = u; });
-    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const cur = u ? U.num(u.availE) : 0; return { ...g, cur, after: Math.max(0, cur - g.qty), short: Math.max(0, g.qty - cur) }; })
+    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const cur = u ? U.num(u.availE) : 0; const short = g.kind === 'A' ? 0 : Math.max(0, g.qty - cur); return { ...g, cur, after: Math.max(0, cur - g.qty), short }; })
       .sort((a, b) => U.sortFr(a.name + ' ' + (a.label || ''), b.name + ' ' + (b.label || '')));
-    // Regroupe l'affichage des ambigus par produit (une ligne par variante).
+    const shortQty = safeList.reduce((a, x) => a + x.short, 0);
     const ambMap = {};
-    ambItems.forEach(a => { const k = a.name + '||' + a.label; const g = ambMap[k] || (ambMap[k] = { name: a.name, label: a.label, qty: 0, total: a.total, nLots: a.nLots }); g.qty += a.qty; });
+    ambItems.forEach(a => { const k = a.pId + '|' + a.vId; const g = ambMap[k] || (ambMap[k] = { ...a, qty: 0 }); g.qty += a.qty; });
     const ambList = Object.values(ambMap);
+    const gp = this._groupProblems(problems);
+    const probQty = problems.reduce((a, l) => a + l.qty, 0);
+    const nBy = st => problems.filter(l => l.status === st).reduce((a, l) => a + l.qty, 0);
+    const nMapped = safeList.filter(x => x.mapped).length + ambList.filter(x => x.mapped).length;
+    const deduct = this.retourDeduct;
+    const notParts = [ambQty ? `${ambQty} à plusieurs lots` : '', nBy('noSku') ? `${nBy('noSku')} sans SKU` : '', nBy('unknownSku') ? `${nBy('unknownSku')} SKU inconnu` : '', nBy('dupSku') ? `${nBy('dupSku')} SKU en double` : '', shortQty ? `${shortQty} manquant(s) en stock` : ''].filter(Boolean);
+    const reasonTxt = st => st === 'noSku' ? 'Sans SKU' : st === 'dupSku' ? 'SKU en double dans ton stock' : 'SKU inconnu dans ton stock';
     return `<div class="card">
       <h2>📥 Retour d'événement — revue avant validation</h2>
-      <div class="frow" style="gap:8px;flex-wrap:wrap;">
-        <span class="badge ok">✅ ${safeQty} article(s) déduits</span>
-        ${ambList.length ? `<span class="badge bad">🔀 ${ambList.length} produit(s) multi-lots (${ambQty} art.) — déduction manuelle</span>` : ''}
-        ${nNoSku ? `<span class="badge warn">⚠️ ${nNoSku} sans SKU</span>` : ''}
-        ${nUnknown ? `<span class="badge warn">⚠️ ${nUnknown} SKU inconnu</span>` : ''}
-        ${nDup ? `<span class="badge info">↩️ ${nDup} déjà importé(s) — ignoré(s)</span>` : ''}
+      ${!(safeQty + ambQty + probQty) ? `<div class="retour-summary"><div class="rs-box hist"><div class="rs-n">0</div><div><b>rien de nouveau à importer</b><br><span class="muted">${nDup ? 'toutes les lignes de ce fichier ont déjà été importées' : 'aucune journée cochée'}</span></div></div></div>`
+      : deduct ? `<div class="retour-summary">
+        <div class="rs-box ok"><div class="rs-n">${U.qty(safeQty - shortQty)}</div><div><b>article(s) déduits</b> du stock événement à la validation<br><span class="muted">${safeList.length} produit(s) reconnus par leur SKU${nMapped ? ` (dont ${nMapped} par une association retenue 🧠)` : ''}</span></div></div>
+        <div class="rs-box todo"><div class="rs-n">${U.qty(ambQty + probQty + shortQty)}</div><div><b>article(s) NON déduits</b> maintenant → à traiter juste après<br><span class="muted">${notParts.join(' · ') || 'aucun'}</span></div></div>
+      </div>
+      <p class="muted help">Tous les articles vendus sont enregistrés dans le ticket (chiffre d'affaires juste). Ceux qui ne sont pas déduits s'ouvrent juste après la validation dans « 🧩 Articles à traiter » : associer le bon produit (des ressemblances de nom te sont proposées), choisir le lot, puis déduire.</p>`
+      : `<div class="retour-summary"><div class="rs-box hist"><div class="rs-n">${U.qty(safeQty + ambQty + probQty)}</div><div><b>article(s) ajoutés aux statistiques</b><br><span class="muted">import historique : le stock n'est PAS touché</span></div></div></div>`}
+      <div class="frow" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
+        ${nDup ? `<span class="badge info">↩️ ${nDup} ligne(s) déjà importée(s) — ignorée(s)</span>` : ''}
       </div>
       <label class="mt" style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;">
         <input type="checkbox" ${d.mergeOne ? 'checked' : ''} onclick="Ventes.setRetourMerge(this.checked)">
         Fusionner les journées cochées en un seul ticket (ex : marché sur un week-end)</label>
-      ${this.eventNamesDatalist()}
       <div class="mt">${d.days.map(g => this.retourDayCard(g, imported)).join('')}</div>
-      ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${this.retourDeduct ? 'qui seront déduits du stock événement' : 'enregistrés SANS déduction (import historique)'}</b> (${safeQty} article(s))${safeList.some(x => x.short) ? ' <span class="badge bad">⚠️ stock insuffisant sur ' + safeList.filter(x => x.short).length + '</span>' : ''}</summary><div class="fold-body">
-        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${this.retourDeduct ? 'Après validation' : 'Après (inchangé)'}</th></tr></thead>
-        <tbody>${safeList.map(x => `<tr${x.short && this.retourDeduct ? ' style="color:var(--alerte);"' : ''}><td class="col-name"><b>${U.esc(x.name)}</b></td><td>${U.esc(x.label || '')}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${U.qty(x.cur)}</td><td class="num">${this.retourDeduct ? `<b>${U.qty(x.after)}</b>${x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : ''}` : U.qty(x.cur)}</td></tr>`).join('')}</tbody></table></div>
-        <p class="muted help" style="font-size:.82rem;">Déduction FEFO (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif. Les ventes espèces et consommables ajoutés plus bas sont déduits en plus.</p>
+      ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen !== false ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${deduct ? 'déduits du stock événement' : 'reconnus (enregistrés sans déduction)'}</b> (${U.qty(safeQty)} article(s))${deduct && shortQty ? ` <span class="badge bad">⚠️ stock insuffisant sur ${safeList.filter(x => x.short).length}</span>` : ''}</summary><div class="fold-body">
+        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${deduct ? 'Après validation' : 'Après (inchangé)'}</th><th></th></tr></thead>
+        <tbody>${safeList.map(x => `<tr${x.short && deduct ? ' style="color:var(--alerte);"' : ''}><td class="col-name"><b>${U.esc(x.name)}</b>${x.mapped ? ' <span class="badge info" title="Relié par une association que tu as retenue lors d\'un import précédent">🧠 retenu</span>' : ''}</td><td>${U.esc(x.label || '')}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${x.kind === 'A' ? '<span class="muted">accessoire</span>' : U.qty(x.cur)}</td><td class="num">${x.kind === 'A' ? '—' : deduct ? `<b>${U.qty(x.after)}</b>${x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : ''}` : U.qty(x.cur)}</td><td>${this.openLink(x.kind, x.pId)}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted help" style="font-size:.82rem;">Un seul lot en stock événement, ou tous les lots vendus en entier : la déduction est sûre, elle se fait directement (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif.</p>
       </div></details>` : ''}
-      ${problems.length ? (() => { const gp = this._groupProblems(problems); return `<details class="fold" style="margin-top:12px;"><summary><b>⚠️ ${gp.length} produit(s) à traiter à la main</b> (${problems.reduce((a, l) => a + l.qty, 0)} article(s))</summary><div class="fold-body">
-        <p class="muted help">Non déduits automatiquement (sans SKU ou SKU absent de ton stock). Fais-les à la main dans la vente si nécessaire, ou complète le SKU côté SumUp et Stock puis réimporte.</p>
+      ${ambList.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>🔀 ${ambList.length} produit(s) à plusieurs lots</b> (${U.qty(ambQty)} article(s)) — ${deduct ? 'tu choisiras le lot juste après' : 'enregistrés sans déduction'}</summary><div class="fold-body">
+        <p class="muted help">Plusieurs numéros de lot en stock événement et vendus seulement en partie : impossible de savoir lequel est parti. Après la validation, tu indiques combien sont partis de chaque lot (ou tu acceptes la proposition « DLUO la plus courte d'abord ») et la déduction se fait.</p>
+        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Vendu</th><th>Lots en stock événement</th><th></th></tr></thead>
+        <tbody>${ambList.map(a => `<tr><td class="col-name"><b>${U.esc(a.name)}</b> <span class="muted">${U.esc(a.label || '')}</span></td><td class="num"><b>${U.qty(a.qty)}</b> / ${U.qty(a.total)}</td><td>${(a.lots || []).map(l => `<span class="tag">${U.esc(l.n)} · ${l.dluo ? U.frDate(l.dluo) : 'sans DLUO'} · ${U.qty(l.q)}</span>`).join(' ')}</td><td>${this.openLink(a.kind, a.pId)}</td></tr>`).join('')}</tbody></table></div>
+      </div></details>` : ''}
+      ${gp.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>⚠️ ${gp.length} produit(s) sans produit reconnu</b> (${U.qty(probQty)} article(s)) — ${deduct ? 'à associer juste après' : 'enregistrés par leur nom'}</summary><div class="fold-body">
+        <p class="muted help">Pas de SKU, SKU absent de ton stock, ou SKU porté par plusieurs produits. Après la validation, l'appli te propose les produits dont le nom ressemble : tu choisis le bon (ou tu cherches), et tu peux le retenir pour les prochains imports.</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit (SumUp)</th><th>SKU</th><th class="num">Qté</th><th class="num">Montant</th><th>Motif</th></tr></thead>
-        <tbody>${gp.map(l => `<tr><td class="col-name">${U.esc(l.desc)}</td><td>${l.sku ? `<span class="tag">${U.esc(l.sku)}</span>` : '—'}</td><td class="num">${U.qty(l.qty)}</td><td class="num sensitive">${U.eur(l.ttc)}</td><td>${l.status === 'noSku' ? 'Sans SKU' : 'SKU inconnu'}</td></tr>`).join('')}</tbody></table></div>
-      </div></details>`; })() : ''}
-      ${ambList.length ? `<details class="fold" style="margin-top:12px;"><summary><b>🔀 ${ambList.length} produit(s) à traiter (numéro de lot)</b> (${ambQty} article(s))</summary><div class="fold-body">
-        <p class="muted help">Ces produits ont <b>plusieurs numéros de lot</b> en stock événement et tu n'en as vendu qu'une partie : impossible de deviner lequel est parti, donc <b>non déduits</b>. Retire la bonne quantité du bon lot dans <b>Stock</b> (ou via une Vente Événement).</p>
-        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Vendu</th><th class="num">En stock évén.</th><th class="num">Nb lots</th></tr></thead>
-        <tbody>${ambList.map(a => `<tr><td class="col-name"><b>${U.esc(a.name)}</b> <span class="muted">${U.esc(a.label || '')}</span></td><td class="num">${U.qty(a.qty)}</td><td class="num">${U.qty(a.total)}</td><td class="num">${a.nLots}</td></tr>`).join('')}</tbody></table></div>
+        <tbody>${gp.map(l => `<tr><td class="col-name" style="text-align:left;">${U.esc(l.desc)}</td><td>${l.sku ? `<span class="tag">${U.esc(l.sku)}</span>` : '—'}</td><td class="num">${U.qty(l.qty)}</td><td class="num sensitive">${U.eur(l.ttc)}</td><td>${reasonTxt(l.status)}</td></tr>`).join('')}</tbody></table></div>
       </div></details>` : ''}
       ${this.cashSection()}
       ${this.retourConsoSection()}
@@ -1240,7 +1264,7 @@ const Ventes = {
 
   retourDayCard(g, imported) {
     const newLines = g.lines.filter(l => !imported.has(l.ref));
-    const okLines = newLines.filter(l => l.status === 'ok');
+    const okLines = newLines.filter(l => l.target);
     const okTotal = okLines.reduce((a, l) => a + l.ttc, 0);
     const dayTotal = newLines.reduce((a, l) => a + l.ttc, 0);
     const nTx = new Set(g.lines.map(l => l.ref)).size;
@@ -1275,7 +1299,7 @@ const Ventes = {
     const seen = new Set(imported);
     const deduct = this.retourDeduct;   // décoché = import HISTORIQUE (stats sans toucher au stock)
     let created = 0, deducted = 0;
-    const allShort = [], allAmbig = [];
+    const createdSales = [];
     // Tickets SumUp (un par journée retenue), produits identiques regroupés.
     buckets.forEach(b => {
       if (!deduct) {
@@ -1297,23 +1321,25 @@ const Ventes = {
         created++; deducted += items.reduce((a, i) => a + i.qty, 0); refs.forEach(r => seen.add(r));
         return;
       }
-      const okLines = b.lines.filter(l => l.status === 'ok' && !seen.has(l.ref));
-      if (!okLines.length) return;
-      const refs = [...new Set(okLines.map(l => l.ref))];
-      const { safe, ambiguous } = this._retourSplit(okLines);
-      allAmbig.push(...ambiguous);
-      // Un ticket n'est créé QUE s'il y a du "safe" à déduire ; sinon (tout ambigu) on ne
-      // marque pas les refs → la journée réapparaîtra au prochain import pour rappel.
-      if (!safe.length) return;
-      const lines = safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty }));
+      // Tous les articles de la journée vont dans le ticket (CA juste). Seuls les « sûrs » sont déduits
+      // maintenant ; les autres restent « à traiter » (todo:'open') dans « 🧩 Articles à traiter ».
+      const raw = b.lines.filter(l => !seen.has(l.ref));
+      if (!raw.length) return;
+      const refs = [...new Set(raw.map(l => l.ref))];
+      const { safe, ambiguous } = this._retourSplit(raw.filter(l => l.target));
+      const probs = this._groupProblems(raw.filter(l => !l.target));
       const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
       const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
       const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
       const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
-      const short = this._deductSale(sale, lines, 'event');
+      if (safe.length) this._deductSale(sale, safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty })), 'event');
+      this._markImported(sale.items);
+      ambiguous.forEach(g => { sale.items.push({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: 'multiLot' }); sale.total += g.unit * g.qty; });
+      probs.forEach(g => { sale.items.push({ kind: 'M', pId: '', vId: '', name: g.desc || 'Sans nom', label: '', sku: g.sku || '', sumupSku: g.sku || '', desc: g.desc || 'Sans nom', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: g.status }); sale.total += g.unit * g.qty; });
       Store.state.sales.unshift(sale);
-      Store.log('vente', `Retour événement ${b.label} — ${U.eur(sale.total)} (${lines.length} produit(s))`, { type: 'sale', data: { saleId: sale.id } });
-      created++; deducted += lines.reduce((a, l) => a + l.qty, 0); allShort.push(...short);
+      const nDed = sale.items.filter(i => i.deducted).reduce((a, i) => a + U.num(i.qty) - U.num(i.missing), 0);
+      Store.log('vente', `Retour événement ${b.label} — ${U.eur(sale.total)} (${sale.items.length} produit(s), ${nDed} article(s) déduits)`, { type: 'sale', data: { saleId: sale.id } });
+      created++; deducted += nDed; createdSales.push(sale);
       refs.forEach(r => seen.add(r));
     });
     // Ticket espèces séparé (payment 'cash', pas de frais SumUp), daté à la journée choisie.
@@ -1328,10 +1354,11 @@ const Ventes = {
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
         const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
-        const short = this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
+        this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
+        this._markImported(sale.items);
         Store.state.sales.unshift(sale);
         Store.log('vente', `Retour événement (espèces) — ${U.eur(sale.total)}`, { type: 'sale', data: { saleId: sale.id } });
-        created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0); allShort.push(...short);
+        created++; deducted += sale.items.reduce((a, i) => a + U.num(i.qty) - U.num(i.missing), 0); createdSales.push(sale);
       }
     }
     // Consommables utilisés pendant l'événement (sacs…) : un ticket dédié, coût compté dans les stats.
@@ -1349,40 +1376,294 @@ const Ventes = {
       } else {
         const sale = { id: U.uid(), ts: consoTs, source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
         this._deductSale(sale, d.consoLines.map(l => ({ kind: 'C', pId: l.consumableId, vId: '', name: l.name, label: '', sku: '', lotLabel: '', price: 0, qty: l.qty })), 'event');
+        this._markImported(sale.items); createdSales.push(sale);
         consoCost = (sale.items || []).reduce((a, i) => a + U.num(i.cost), 0);
         Store.state.sales.unshift(sale);
         Store.log('vente', `Retour événement — consommables utilisés (${sale.items.length}, coût ${U.eur(consoCost)})`, { type: 'sale', data: { saleId: sale.id } });
         created++;
       }
     }
-    if (!created && !allAmbig.length) { U.toast('Rien à valider (déjà importé ?).', true); return; }
+    if (!created) { U.toast('Rien à valider (déjà importé ?).', true); return; }
     if (created) { if (deduct) Store.save('sales', 'stockM', 'catalogA', 'consumables'); else Store.save('sales'); }
     this.retourData = null;
-    this.retourOpen = false; history.replaceState(null, '', '#/ventes');
     this.retourDeduct = true;   // retour au défaut sûr (déduction) après chaque import
     this.retourConsoId = ''; this.retourConsoQty = 1;
-    this.render();
+    const pending = createdSales.reduce((a, s) => a + s.items.filter(i => i.todo === 'open').length, 0);
     const consoTxt = consoCost > 0 ? ` · consommables ${U.eur(consoCost)}` : '';
-    if (created) U.toast(deduct
-      ? `${created} ticket(s) créé(s) · ${deducted} article(s) déduits du stock événement${consoTxt}.`
-      : `📚 ${created} ticket(s) historique(s) créé(s) · ${deducted} article(s) ajoutés aux stats (stock NON touché)${consoTxt}.`);
-    if (deduct && (allShort.length || allAmbig.length)) this._alertRetourIssues(allShort, allAmbig);
+    if (!deduct) {
+      this.retourOpen = false; history.replaceState(null, '', '#/ventes'); this.render();
+      U.toast(`📚 ${created} ticket(s) historique(s) créé(s) · ${deducted} article(s) ajoutés aux stats (stock NON touché)${consoTxt}.`);
+      return;
+    }
+    if (pending) {
+      // 2e partie : on enchaîne directement sur les articles restant à traiter.
+      this._todoBanner = { deducted, pending };
+      this.retourOpen = false; this.todoOpen = true; this.todoFilter = 'all';
+      history.replaceState(null, '', '#/ventes/traiter'); this.render(); window.scrollTo(0, 0);
+    } else {
+      this.retourOpen = false; history.replaceState(null, '', '#/ventes'); this.render();
+    }
+    U.toast(`${created} ticket(s) créé(s) · ${deducted} article(s) déduits du stock événement${consoTxt}${pending ? ` · ${pending} à traiter` : ''}.`);
+  },
+  /* Lignes déduites à l'import : marquées déduites ; s'il manquait du stock, elles restent à vérifier. */
+  _markImported(items) {
+    (items || []).forEach(i => { i.deducted = true; if (U.num(i.missing) > 0) { i.todo = 'open'; i.reason = 'short'; } });
   },
 
-  _alertRetourIssues(shortfalls, ambiguous) {
-    const parts = [];
-    if (ambiguous.length) {
-      const rows = ambiguous.map(a => `<li><b>${U.esc(a.name)}</b>${a.label ? ' ' + U.esc(a.label) : ''} — vendu ${U.qty(a.qty)} sur ${U.qty(a.total)} en stock, réparti sur <b>${a.nLots} lots</b></li>`).join('');
-      parts.push(`<p><b>🔀 Plusieurs lots — à déduire à la main</b></p>
-        <p class="muted">Ces produits ont <b>plusieurs numéros de lot</b> en stock événement et tu n'en as vendu qu'une partie : impossible de savoir lequel est parti, donc <b>rien n'a été déduit</b> pour eux. Va dans <b>Stock</b> (ou fais une <b>Vente Événement</b>) pour retirer la bonne quantité du bon lot.</p>
-        <ul style="margin:8px 0;padding-left:20px;line-height:1.6;">${rows}</ul>`);
+  /* ══════════ 🧩 ARTICLES À TRAITER (2e partie du retour d'événement) ══════════
+     Tout ce qui n'a pas été déduit automatiquement : article sans produit reconnu (à associer,
+     avec des propositions par ressemblance de nom — c'est Antho qui choisit), produit à plusieurs
+     lots (il choisit la quantité par lot), stock manquant (à vérifier). Rien n'est déduit sans clic. */
+  todoCount() { let n = 0; Store.state.sales.forEach(s => { if (!s.cancelled) (s.items || []).forEach(i => { if (i.todo === 'open') n++; }); }); return n; },
+  openTodo() { this.todoFilter = 'all'; location.hash = '/ventes/traiter'; },
+  closeTodo() { this._todoBanner = null; location.hash = '/ventes'; },
+  setTodoFilter(f) { this.todoFilter = f; this.render(); },
+  setTodoShowDone(b) { this.todoShowDone = b; this.render(); },
+  _ttState(k) { return this._tt[k] || (this._tt[k] = { q: '', lots: null, remember: true, src: 'event' }); },
+  _ttFind(k) { const [sid, idx] = k.split(':'); const s = Store.state.sales.find(x => x.id === sid); const i = s && s.items[+idx]; return i ? { s, i } : null; },
+  _todoCat(i) { return !i.pId ? 'link' : i.reason === 'short' ? 'short' : 'lots'; },
+  _tok(s) {
+    const STOP = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'd', 'l', 'avec', 'et', 'a', 'au', 'aux', 'en', 'un', 'une', 'pcs', 'pc', 'piece', 'pieces']);
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/(\d)[\s,.]*(kg|g|cm|mm)\b/g, '$1$2').replace(/\blot\s*(\d+)/g, 'lot$1')
+      .replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(t => t && !STOP.has(t))
+      .map(t => t.length > 3 && !/\d/.test(t) ? t.replace(/(s|x)$/, '') : t);
+  },
+  /* Produits dont le nom (+ variante) ressemble au libellé SumUp — simple PROPOSITION, jamais appliquée seule. */
+  _suggest(desc, n, units) {
+    const dt = [...new Set(this._tok(desc))]; if (!dt.length) return [];
+    const near = (a, b) => a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)));
+    return units.map(u => {
+      const ct = u._tok || (u._tok = [...new Set(this._tok(u.name + ' ' + u.label))]);
+      if (!ct.length) return null;
+      const hit = dt.filter(t => ct.some(c => near(t, c))).length;
+      return { u, sc: 2 * hit / (dt.length + ct.length) };
+    }).filter(x => x && x.sc >= 0.4).sort((a, b) => b.sc - a.sc || b.u.availE - a.u.availE).slice(0, n).map(x => x.u);
+  },
+  _fefo(lots, field, qty) {
+    const out = {}; let rest = qty;
+    lots.forEach(l => { if (rest <= 0) return; const t = Math.min(U.num(l[field]), rest); if (t > 0) { out[l.id] = t; rest -= t; } });
+    return out;
+  },
+
+  renderTodo() {
+    const units = this.units();
+    const counts = { all: 0, link: 0, lots: 0, short: 0 };
+    let doneN = 0;
+    const groups = [];
+    Store.state.sales.forEach(s => {
+      if (s.cancelled) return;
+      const rows = [];
+      (s.items || []).forEach((i, idx) => {
+        if (!i.todo) return;
+        const open = i.todo === 'open';
+        if (open) { counts.all++; counts[this._todoCat(i)]++; } else doneN++;
+        if (!open && !this.todoShowDone) return;
+        if (this.todoFilter !== 'all' && (!open || this._todoCat(i) !== this.todoFilter)) return;
+        rows.push(this.todoItem(s, idx, i, units));
+      });
+      if (rows.length) groups.push({ s, rows });
+    });
+    groups.sort((a, b) => b.s.ts - a.s.ts);
+    const fb = (f, label) => `<button class="${this.todoFilter === f ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setTodoFilter('${f}')">${label} (${counts[f]})</button>`;
+    const bn = this._todoBanner;
+    const map = Store.state.settings.sumupMap || {};
+    const mapRows = Object.entries(map).map(([k, m]) => { const t = this._targetFor(m.kind, m.pId, m.vId); return `<tr><td class="col-name" style="text-align:left;">${U.esc(k)}</td><td>${t ? `<b>${U.esc(t.name)}</b> <span class="muted">${U.esc(t.label || '')}</span> ${this.openLink(t.kind, t.pId)}` : '<span class="badge bad">produit supprimé</span>'}</td><td><button class="btn-ghost btn-sm" title="Oublier cette association" onclick="Ventes.ttForget(${U.esc(JSON.stringify(k))})">🗑</button></td></tr>`; }).join('');
+    App.mount(`
+      <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;"><div><h1>🧩 Articles à traiter</h1><span class="sub">retours d'événement · ce qui n'a pas été déduit automatiquement</span></div>
+        <button class="btn-ghost" style="white-space:nowrap;" onclick="Ventes.closeTodo()">← Retour aux ventes</button></div>
+      ${bn ? `<div class="card todo-banner">✅ Import validé : <b>${U.qty(bn.deducted)}</b> article(s) déduits du stock événement. Il reste <b>${bn.pending}</b> ligne(s) à traiter ci-dessous — rien n'est déduit tant que tu ne cliques pas « Déduire ».</div>` : ''}
+      <div class="card">
+        <div class="sumup-filters">${fb('all', 'Tout')}${fb('link', '🏷️ Produit à associer')}${fb('lots', '🔀 Lot à choisir / à déduire')}${fb('short', '📉 Stock manquant')}</div>
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;margin:10px 0 0;"><input type="checkbox" ${this.todoShowDone ? 'checked' : ''} onchange="Ventes.setTodoShowDone(this.checked)"> Afficher aussi les articles déjà traités (${doneN})</label>
+        <p class="muted help">Associer : clique une proposition 💡 (nom ressemblant) ou cherche le produit. « Retenir » applique l'association aux autres lignes identiques et aux prochains imports. Lots : indique combien sont partis de chaque lot, ou « Proposer » (DLUO la plus courte d'abord), puis « Déduire ». ↗ ouvre la fiche dans un nouvel onglet. Chaque déduction est annulable (↺ dans le message ou le Journal).</p>
+      </div>
+      ${groups.map(g => `<div class="card todo-ticket"><h3 class="todo-ticket-h">📅 ${U.frDateTime(g.s.ts)} ${g.s.eventName ? `<span class="sh-event">🎪 ${U.esc(g.s.eventName)}</span>` : ''} <span class="muted">· ${g.s.payment === 'cash' ? 'espèces' : 'SumUp'}</span></h3>${g.rows.join('')}</div>`).join('')
+        || `<div class="card empty"><span class="big">🎉</span>${counts.all ? 'Rien pour ce filtre.' : 'Plus rien à traiter.'}</div>`}
+      <details class="fold card params-fold" ${this._memOpen ? 'open' : ''} ontoggle="Ventes._memOpen=this.open"><summary><h2>🧠 Associations retenues (${Object.keys(map).length})</h2></summary><div class="fold-body">
+        <p class="muted help">Libellés SumUp que tu as associés toi-même à un produit : aux prochains imports, ils sont reliés directement (badge 🧠 dans la revue). Supprime une association si elle est fausse.</p>
+        ${mapRows ? `<div class="table-wrap"><table><thead><tr><th class="col-name" style="text-align:left;">Libellé SumUp</th><th>Produit</th><th></th></tr></thead><tbody>${mapRows}</tbody></table></div>` : '<p class="muted">Aucune association retenue pour l\'instant.</p>'}
+      </div></details>`);
+  },
+
+  todoItem(s, idx, i, units) {
+    const k = s.id + ':' + idx, sid = (s.id + '_' + idx).replace(/[^\w-]/g, '_');
+    const st = this._ttState(k);
+    const reasons = { multiLot: ['🔀 Plusieurs lots', 'warn'], short: ['📉 Stock manquant', 'bad'], dupSku: ['⚠️ SKU en double', 'bad'], unknownSku: ['❓ SKU inconnu', 'warn'], noSku: ['🏷️ Sans SKU', 'warn'] };
+    const [rTxt, rCls] = reasons[i.reason] || ['À traiter', 'warn'];
+    const head = `<div class="tt-head"><span class="badge ${rCls}">${rTxt}</span>
+      <span class="tt-desc"><b>${U.esc(i.desc || i.name)}</b>${!i.desc && i.label ? ` <span class="pp-v">${U.esc(i.label)}</span>` : ''}${i.sumupSku ? ` <span class="tag" title="SKU dans SumUp">${U.esc(i.sumupSku)}</span>` : ''}</span>
+      <span class="tt-qty">× <b>${U.qty(i.qty)}</b> · <span class="sensitive">${U.eur(i.price * i.qty)}</span></span></div>`;
+    const linked = t => `<div class="tt-linked"><span class="muted">${i.desc ? 'Associé à' : 'Produit'} :</span> <b>${U.esc(t.name)}</b>${t.label ? ` <span class="pp-v">${U.esc(t.label)}</span>` : ''}${t.sku ? ` <span class="tag">${U.esc(t.sku)}</span>` : ''} ${this.openLink(t.kind, t.pId)}${i.desc && !i.deducted && i.todo === 'open' ? ` <button class="btn-ghost btn-sm" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}</div>`;
+    const markBtns = `<button class="btn-ghost btn-sm" title="Tu as déjà corrigé le stock toi-même" onclick="Ventes.ttMark('${k}','done')">✔ Déjà fait à la main</button>`;
+    let body;
+    if (i.todo !== 'open') {
+      const t = i.pId ? this._targetFor(i.kind, i.pId, i.vId) : null;
+      const txt = i.deducted ? `✅ Déduit${i.lotLabel ? ' — ' + U.esc(i.lotLabel) : ''}${U.num(i.missing) ? ` · ${U.qty(i.missing)} non déduit(s)` : ''}` : i.todo === 'caOnly' ? '💶 Compté dans le CA seulement (stock non touché)' : '✔ Marqué fait à la main';
+      body = `<div class="tt-body tt-done"><span>${txt}</span>${t ? ' · ' + linked(t) : ''} ${!i.deducted || i.reason === 'short' ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','open')">↩ Rouvrir</button>` : ''}</div>`;
+    } else if (i.reason === 'short') {
+      const t = this._targetFor(i.kind, i.pId, i.vId);
+      body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : le stock ${i.kind === 'C' ? '' : 'événement '}était insuffisant (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
+        <div class="tt-actions"><button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></div></div>`;
+    } else if (!i.pId) {
+      const sug = this._suggest(i.desc || i.name, 4, units);
+      const q = st.q;
+      const res = q ? units.filter(u => (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q.toLowerCase())).slice(0, 20) : [];
+      const uTxt = u => u.kind === 'A' ? 'accessoire' : 'évén. ' + U.qty(u.availE);
+      body = `<div class="tt-body">
+        <div class="tt-sug"><span class="muted">💡 Ça ressemble à :</span> ${sug.length ? sug.map(u => `<button class="btn-ghost btn-sm tt-chip" title="Associer à ce produit" onclick="Ventes.ttLink('${k}','${u.key}')"><b>${U.esc(u.name)}</b>${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''} <span class="muted">${uTxt(u)}</span></button>`).join('') : '<span class="muted">aucune ressemblance — cherche ci-dessous</span>'}</div>
+        <input id="tt_q_${sid}" class="mt" placeholder="🔍 Chercher le bon produit (nom, variante ou SKU)…" value="${U.esc(q)}" oninput="Ventes.ttSearch('${k}',this.value);U.refocus('tt_q_${sid}')">
+        ${res.length ? `<div class="ac-list" style="position:static;margin-top:4px;">${res.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.ttLink('${k}','${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${uTxt(u)}</span><span class="pp-c">${U.esc(u.sku || '')}</span></div>`).join('')}</div>` : q ? '<p class="muted">Aucun produit trouvé.</p>' : ''}
+        <div class="tt-actions"><label class="tt-remember"><input type="checkbox" ${st.remember ? 'checked' : ''} onchange="Ventes._ttState('${k}').remember=this.checked"> Retenir (lignes identiques + prochains imports)</label>
+          <button class="btn-ghost btn-sm" title="Garder la vente dans le chiffre d'affaires sans toucher au stock (ex : montant personnalisé)" onclick="Ventes.ttMark('${k}','caOnly')">💶 CA seulement</button>${markBtns}</div>
+      </div>`;
+    } else {
+      const t = this._targetFor(i.kind, i.pId, i.vId);
+      if (!t) body = `<div class="tt-body"><p class="warn-txt">Produit introuvable (supprimé ?).</p><div class="tt-actions">${i.desc ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}${markBtns}</div></div>`;
+      else if (i.kind === 'A') {
+        const a = Store.state.catalogA.find(x => x.id === i.pId);
+        const av = U.num(a.stockEvent);
+        body = `<div class="tt-body">${linked(t)}<div class="tt-actions"><span>Stock fini événement : <b>${U.qty(av)}</b></span>
+          ${av > 0 ? `<button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire ${U.qty(Math.min(av, i.qty))}</button>` : '<span class="muted">rien à déduire (fait à la commande)</span>'}${markBtns}</div></div>`;
+      } else {
+        const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
+        const field = st.src === 'general' ? 'qtyGeneral' : 'qtyEvent';
+        const lots = v.lots.filter(l => U.num(l[field]) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
+        if (st.lots === null) {
+          const tot = lots.reduce((a, l) => a + U.num(l[field]), 0);
+          st.lots = lots.length <= 1 || i.qty >= tot ? this._fefo(lots, field, i.qty) : {};
+        }
+        const sum = Object.values(st.lots).reduce((a, q) => a + U.num(q), 0);
+        const today = U.today();
+        body = `<div class="tt-body">${linked(t)}
+          <div class="tt-src"><span class="muted">Retirer du stock :</span> <button class="${st.src !== 'general' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.ttSrc('${k}','event')">🎪 Événement</button> <button class="${st.src === 'general' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.ttSrc('${k}','general')">🏬 Général</button></div>
+          ${lots.length ? `<div class="table-wrap"><table class="tt-lots"><thead><tr><th>N° de lot</th><th>DLUO</th><th class="num">En stock</th><th class="num">Partis de ce lot</th></tr></thead><tbody>${lots.map(l => `<tr><td>${U.esc(l.lotNumber || 'sans n°')}</td><td>${l.dluo ? U.frDate(l.dluo) : '—'}${l.dluo && l.dluo < today ? ' <span class="badge bad">périmé</span>' : ''}</td><td class="num">${U.qty(l[field])}</td><td class="num"><input type="number" min="0" step="1" value="${st.lots[l.id] || ''}" placeholder="0" style="width:80px;text-align:center;" onchange="Ventes.ttSetLot('${k}','${l.id}',this.value)"></td></tr>`).join('')}</tbody></table></div>`
+            : `<p class="muted">Aucun lot avec du stock ${st.src === 'general' ? 'général' : 'événement'} pour cette variante.</p>`}
+          <div class="tt-actions"><span>Total choisi : <b id="tt_sum_${sid}">${U.qty(sum)}</b> / ${U.qty(i.qty)} vendu(s)</span>
+            ${lots.length ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttFefo('${k}')">Proposer (DLUO la plus courte d'abord)</button><button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire</button>` : ''}${markBtns}</div>
+        </div>`;
+      }
     }
-    if (shortfalls.length) {
-      const rows = shortfalls.map(s => `<li><b>${U.esc(s.name)}</b>${s.label ? ' ' + U.esc(s.label) : ''} — vendu ${U.qty(s.sold)}, <b class="warn-txt">${U.qty(s.missing)} non déduit(s)</b> (stock ${s.src === 'event' ? 'événement' : 'général'} épuisé)</li>`).join('');
-      parts.push(`<p><b>⚠️ Stock insuffisant — mis à 0</b></p>
-        <p class="muted">Le stock ne peut pas passer en négatif ; ces articles ont été mis à 0 (il en manquait).</p>
-        <ul style="margin:8px 0;padding-left:20px;line-height:1.6;">${rows}</ul>`);
+    return `<div class="tt-item${i.todo !== 'open' ? ' is-done' : ''}">${head}${body}</div>`;
+  },
+
+  ttSearch(k, val) { this._ttState(k).q = val; this.render(); },
+  ttSrc(k, src) { const st = this._ttState(k); st.src = src; st.lots = null; this.render(); },
+  ttSetLot(k, lotId, val) {
+    const st = this._ttState(k); st.lots = st.lots || {};
+    st.lots[lotId] = Math.max(0, Math.round(U.num(val)));
+    const sum = Object.values(st.lots).reduce((a, q) => a + U.num(q), 0);
+    const [sid, idx] = k.split(':');
+    const el = document.getElementById('tt_sum_' + (sid + '_' + idx).replace(/[^\w-]/g, '_'));
+    if (el) el.textContent = U.qty(sum);
+  },
+  ttFefo(k) {
+    const f = this._ttFind(k); if (!f) return; const { i } = f;
+    const st = this._ttState(k);
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId); if (!v) return;
+    const field = st.src === 'general' ? 'qtyGeneral' : 'qtyEvent';
+    const lots = v.lots.filter(l => U.num(l[field]) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
+    st.lots = this._fefo(lots, field, i.qty);
+    this.render();
+  },
+  ttLink(k, key) {
+    const f = this._ttFind(k); if (!f) return; const { i } = f;
+    const u = this.units().find(x => x.key === key); if (!u) return;
+    const st = this._ttState(k);
+    const desc = i.desc || i.name;
+    const norm = this._normDesc(desc);
+    // Lignes à relier : celle-ci, et si « Retenir » est coché, toutes les lignes ouvertes au même libellé.
+    const targets = [];
+    Store.state.sales.forEach((s, si) => { if (s.cancelled) return; (s.items || []).forEach((it, ix) => {
+      const same = it === i || (st.remember && it.todo === 'open' && !it.pId && this._normDesc(it.desc || it.name) === norm);
+      if (same) targets.push({ s, it, k: s.id + ':' + ix });
+    }); });
+    const snaps = [...new Set(targets.map(t => t.s))].map(s => Store.snapshot('sales', s));
+    targets.forEach(({ it, k: kk }) => {
+      if (!it.desc) it.desc = it.name;
+      Object.assign(it, { kind: u.kind, pId: u.pId, vId: u.vId || '', name: u.name, label: u.label, sku: u.sku || it.sumupSku || '' });
+      delete it.cost;
+      const s2 = this._ttState(kk); s2.q = ''; s2.lots = null;
+    });
+    const saves = ['sales'];
+    if (st.remember) { const S = Store.state.settings; S.sumupMap = S.sumupMap || {}; S.sumupMap[norm] = { kind: u.kind, pId: u.pId, vId: u.vId || '' }; saves.push('settings'); }
+    const entry = Store.log('vente', `Article associé — « ${desc} » → ${u.name} ${u.label}` + (targets.length > 1 ? ` (${targets.length} lignes)` : ''), { type: 'restoreBatch', data: snaps });
+    Store.save(...saves);
+    this.render();
+    U.toast(`Associé à ${u.name}${u.label ? ' ' + u.label : ''}` + (targets.length > 1 ? ` (+${targets.length - 1} ligne(s) identique(s))` : '') + (st.remember ? ' · retenu pour les prochains imports' : '') + '.', false, entry.id);
+  },
+  ttUnlink(k) {
+    const f = this._ttFind(k); if (!f) return; const { s, i } = f;
+    if (i.deducted) return;
+    const snap = Store.snapshot('sales', s);
+    Object.assign(i, { kind: 'M', pId: '', vId: '', name: i.desc || i.name, label: '', sku: i.sumupSku || '' });
+    delete i.cost;
+    const st = this._ttState(k); st.lots = null;
+    const entry = Store.commitSnapshot(snap, 'vente', `Association retirée — « ${i.name} »`);
+    Store.save('sales'); this.render();
+    U.toast('Association retirée pour cette ligne (l\'association retenue reste dans la liste 🧠 en bas).', false, entry.id);
+  },
+  ttMark(k, status) {
+    const f = this._ttFind(k); if (!f) return; const { s, i } = f;
+    const snap = Store.snapshot('sales', s);
+    i.todo = status;
+    const lbl = status === 'caOnly' ? 'CA seulement' : status === 'done' ? 'traité' : 'rouvert';
+    const entry = Store.commitSnapshot(snap, 'vente', `Article ${lbl} — ${i.desc || i.name}`);
+    Store.save('sales'); this.render();
+    U.toast(status === 'open' ? 'Article remis à traiter.' : 'Article marqué ' + lbl + '.', false, entry.id);
+  },
+  ttForget(key) {
+    const map = Store.state.settings.sumupMap || {}; if (!map[key]) return;
+    delete map[key]; Store.save('settings'); this.render();
+    U.toast('Association oubliée.');
+  },
+  async ttDeduct(k) {
+    const f = this._ttFind(k); if (!f) return; const { s, i } = f;
+    if (i.todo !== 'open' || i.deducted || !i.pId) return;
+    const st = this._ttState(k);
+    const snaps = [Store.snapshot('sales', s)];
+    s.undoOps = s.undoOps || [];
+    let msg;
+    if (i.kind === 'A') {
+      const a = Store.state.catalogA.find(x => x.id === i.pId); if (!a) return;
+      snaps.push(Store.snapshot('catalogA', a));
+      const take = Math.min(U.num(a.stockEvent), i.qty);
+      if (take > 0) { a.stockEvent = U.num(a.stockEvent) - take; s.undoOps.push({ kind: 'A', pId: a.id, field: 'stockEvent', qty: take }); }
+      i.cost = U.num(Pricing.accCalc(a).cost) * i.qty;
+      msg = `${take} déduit(s)`;
+    } else {
+      const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId); if (!v) return;
+      const field = st.src === 'general' ? 'qtyGeneral' : 'qtyEvent';
+      const picks = Object.entries(st.lots || {}).filter(([, q]) => U.num(q) > 0);
+      let sum = 0;
+      for (const [lid, q] of picks) {
+        const lot = v.lots.find(l => l.id === lid);
+        if (!lot || U.num(q) > U.num(lot[field])) { U.toast(`Le lot ${lot ? (lot.lotNumber || 'sans n°') : ''} n'a que ${lot ? U.qty(lot[field]) : 0} en stock.`, true); return; }
+        sum += U.num(q);
+      }
+      if (!sum) { U.toast('Indique combien sont partis de chaque lot (ou « Proposer »).', true); return; }
+      if (sum > i.qty) { U.toast(`Tu as choisi ${U.qty(sum)}, mais ${U.qty(i.qty)} ont été vendus.`, true); return; }
+      if (sum < i.qty && !await U.confirm(`Tu retires ${U.qty(sum)} sur ${U.qty(i.qty)} vendus : ${U.qty(i.qty - sum)} ne seront pas déduits (stock insuffisant ?). Continuer et marquer cet article comme traité ?`, { title: '⚠️ Quantité incomplète', okLabel: 'Continuer' })) return;
+      snaps.push(Store.snapshot('stockM', p));
+      let cost = 0; const labels = [];
+      picks.forEach(([lid, q]) => {
+        const lot = v.lots.find(l => l.id === lid); q = U.num(q);
+        lot[field] = U.num(lot[field]) - q;
+        cost += q * U.num(lot.costUnit || v.costUnit);
+        s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field, qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
+        labels.push((lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') + ' ×' + q);
+      });
+      cost += (i.qty - sum) * U.num(v.costUnit);
+      v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0);
+      i.cost = cost; i.lotLabel = labels.join(' / ');
+      if (sum < i.qty) i.missing = i.qty - sum;
+      msg = `${U.qty(sum)} déduit(s) du stock ${field === 'qtyGeneral' ? 'général' : 'événement'}`;
     }
-    U.modal({ title: '⚠️ À vérifier après import', hideOk: true, body: parts.join('<hr class="sep" style="border-style:dashed;margin:12px 0;">') });
-  }
+    i.deducted = true; i.todo = 'done';
+    const entry = Store.log('vente', `Article déduit — ${i.name} ${i.label || ''} : ${msg}`, { type: 'restoreBatch', data: snaps });
+    Store.save('sales', 'stockM', 'catalogA');
+    delete this._tt[k];
+    this.render();
+    U.toast(`${i.name} : ${msg}.`, false, entry.id);
+  },
 };

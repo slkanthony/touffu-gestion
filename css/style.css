@@ -957,3 +957,26 @@ input.coeff-in { width: 66px; padding: 4px 6px; text-align: right; font-size: .8
 input.coeff-in.auto { color: var(--gris); font-weight: 500; border-style: dashed; }
 .coeff-cell .coeff-reset { padding: 2px 4px; font-size: .95rem; color: var(--caramel); }
 .mini-coeff .coeff-cell input.coeff-in { width: 66px; }
+/* Retour d'événement : synthèse + page « 🧩 Articles à traiter » (2026-09-29) */
+.retour-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 6px 0 4px; }
+.rs-box { display: flex; gap: 14px; align-items: center; border-radius: 10px; padding: 12px 16px; border: 2px solid var(--card-border); line-height: 1.35; }
+.rs-box .rs-n { font-size: 2rem; font-weight: 700; min-width: 56px; text-align: center; }
+.rs-box.ok { border-color: #3d9a5b; background: rgba(61,154,91,.10); } .rs-box.ok .rs-n { color: #3d9a5b; }
+.rs-box.todo { border-color: #e0a040; background: rgba(224,160,64,.10); } .rs-box.todo .rs-n { color: #e0a040; }
+.rs-box.hist { border-color: var(--caramel); background: rgba(166,113,83,.10); } .rs-box.hist .rs-n { color: var(--caramel); }
+a.open-tab { text-decoration: none; font-weight: 700; color: var(--caramel); display: inline-block; padding: 2px 6px; border: 1px solid var(--caramel); border-radius: 6px; line-height: 1.1; }
+a.open-tab:hover { background: var(--caramel); color: #fff; }
+.todo-banner { border-left: 4px solid #3d9a5b; }
+.todo-ticket-h { margin: 0 0 10px; font-size: 1rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tt-item { border: 1px solid var(--card-border); border-left: 3px solid var(--caramel); border-radius: 9px; padding: 10px 12px; margin-bottom: 10px; }
+.tt-item.is-done { opacity: .7; border-left-color: #3d9a5b; }
+.tt-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tt-desc { flex: 1 1 240px; }
+.tt-qty { white-space: nowrap; }
+.tt-body { margin-top: 8px; }
+.tt-sug { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tt-chip { text-align: left; }
+.tt-linked, .tt-src { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.tt-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.tt-remember { display: flex; gap: 6px; align-items: center; text-transform: none; margin: 0; cursor: pointer; font-size: .88rem; }
+table.tt-lots { max-width: 620px; }

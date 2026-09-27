@@ -265,7 +265,12 @@ const App = {
       // #/ventes/retour = panneau « Retour d'événement » ouvert (survit à un F5)
       const wantRetour = sub === 'retour';
       if (wantRetour !== !!Ventes.retourOpen) { Ventes.retourOpen = wantRetour; if (!wantRetour) Ventes.retourData = null; }
+      // #/ventes/traiter = page « 🧩 Articles à traiter »
+      Ventes.todoOpen = sub === 'traiter';
+      if (!Ventes.todoOpen) Ventes._todoBanner = null;
     }
+    // #/accessoires/<id> = ouvre et déplie cette fiche (lien ↗ depuis Ventes)
+    if (id === 'accessoires') Accessoires.focusId = sub || null;
     if (id === 'woo') Woo.tab = ['site', 'sumup'].includes(sub) ? sub : 'export';
     if (id === 'catalogue') {
       if (sub === 'new') { Catalogue.mode = 'new'; Catalogue.editId = null; }
