@@ -727,7 +727,11 @@ const Ventes = {
     else { f.sort = key; f.dir = key === 'date' || key === 'total' ? 'desc' : 'asc'; }
     f.page = 1; this.render();
   },
-  toggleHistOpen(id) { this._histOpen[id] = !this._histOpen[id]; this.render(); },
+  toggleHistOpen(id, keepInView) {
+    this._histOpen[id] = !this._histOpen[id]; this.render();
+    // Replié depuis le bas d'une longue liste : on remet la vente à l'écran (sinon on se retrouve plus bas).
+    if (keepInView) { const el = document.getElementById('hist-' + id); if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.scrollY - 140)); }
+  },
   histOpenAll(open) { if (open) this.histFiltered().slice((this.histF.page - 1) * 25, this.histF.page * 25).forEach(s => { this._histOpen[s.id] = true; }); else this._histOpen = {}; this.render(); },
   toggleHistSel(id, on) { if (on) this._histSel[id] = true; else delete this._histSel[id]; this.render(); },
   histSelectList(ids, on) { ids.forEach(id => { if (on) this._histSel[id] = true; else delete this._histSel[id]; }); this.render(); },
@@ -824,7 +828,7 @@ const Ventes = {
       const open = !!this._histOpen[s.id];
       const nTodo = s.items.filter(i => i.todo === 'open').length;
       // Colonnes FIXES (grille .hist-row) alignées sur la ligne de titres (2026-09-29).
-      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="hist-row">
+      const head = `<tr id="hist-${s.id}" class="sale-head ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="hist-row">
           <span class="hc-cb"><input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)"></span>
           <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}" onclick="Ventes.toggleHistOpen('${s.id}')">${open ? '▾' : '▸'}</button></span>
           <span class="hc-date sh-date" style="cursor:pointer;" onclick="Ventes.toggleHistOpen('${s.id}')">${U.frDateTime(s.ts)}</span>
@@ -840,6 +844,7 @@ const Ventes = {
       if (!open) return head;
       const kind = this._saleKind(s);
       const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
+          <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Remise', this.deliveryLabel(s))}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
@@ -856,7 +861,7 @@ const Ventes = {
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
       </tr>`).join('');
-      return head + detail + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items;
+      return head + detail + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr>`;
     }).join('');
     const pager = pages > 1 ? `<div class="hist-pager"><button class="btn-ghost btn-sm" ${f.page <= 1 ? 'disabled' : ''} onclick="Ventes.setHistF('page',${f.page - 1})">◀</button>
       ${Array.from({ length: pages }, (_, i) => i + 1).filter(n => n === 1 || n === pages || Math.abs(n - f.page) <= 2).map((n, i, arr) => (i && n - arr[i - 1] > 1 ? '<span class="muted">…</span>' : '') + `<button class="${n === f.page ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistF('page',${n})">${n}</button>`).join('')}

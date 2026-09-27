@@ -1059,3 +1059,4 @@ input.dsel-trig.open { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(
 .sales-hist .hist-row .hc-act > span { display: flex; justify-content: flex-end; }
 .sales-hist .hist-row .hc-todo { padding: 1px 6px; font-size: .78rem; margin-right: 4px; }
 @media (max-width: 1100px) { .sales-hist .hist-row .hc-act { display: flex; } }
+.sales-hist tr.hist-fold-foot > td { text-align: center; padding: 6px; background: rgba(166,113,83,.06); border-bottom: 2px solid var(--caramel); }
