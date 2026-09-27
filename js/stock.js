@@ -331,7 +331,7 @@ const Stock = {
       const vq = this.virtualQty(p, v);
       return `<tr class="virt-row">
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind"><span class="muted" title="Déclinaison sans stock propre de ${U.esc(Pricing.labelVariant(vq.par))}">↳</span></span><span style="width:22px;display:inline-block;"></span><b class="vc-name">${U.esc(label)}</b><span class="vc-badges"> <span class="badge info" style="font-size:.65rem;cursor:help;" title="Pas de stock propre : chaque vente retire ${vq.n} pièces de ${U.esc(Pricing.labelVariant(vq.par))}. Stock affiché = stock de ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}.">pris sur ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}</span>${!v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="La fiche prix n'a pas de ligne « Lot de ${vq.n} pc » (prix du lot à saisir ici)">⚠ prix non lié</span>` : ''}</span></div></td>
-      <td><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU du lot')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)"></td>
+      <td><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU du lot')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
       <td class="num muted" title="Les alertes de stock bas sont sur la variante principale">—</td>
       <td class="num muted" title="Les alertes de stock bas sont sur la variante principale">—</td>
       <td class="num" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
@@ -350,7 +350,7 @@ const Stock = {
     }
     return `<tr>
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <span class="badge" title="Lié à : ${U.esc(lc.name)}" style="font-size:.65rem;background:var(--caramel);color:#fff;cursor:help;">💰</span>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
-      <td><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)"></td>
+      <td><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
       <td class="num"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"></td>
       <td class="num"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
       <td class="num ${lowCls}"><b>${U.qty(qg)}</b></td>
@@ -421,6 +421,31 @@ const Stock = {
     const entry=Store.commitSnapshot(snap,'stock',`Prix d'achat modifié — ${p.name} (${Pricing.labelVariant(v)})`);
     U.toast('Prix d\'achat mis à jour.', false, entry.id);
     Store.save('stockM');
+  },
+  /* SKU proposé pour une variante stock (2026-09-30) : déclinaison → SKU de sa taille + « -LOT<n> » ;
+     sinon base tirée d'une variante sœur qui a un SKU (ou du nom du produit) + suffixe de la variante.
+     Évite un SKU déjà utilisé ailleurs (suffixe -2, -3…). */
+  suggestSku(p, v) {
+    const par = this.parentOf(p, v);
+    let sku;
+    if (par) {
+      const b = (par.sku || '').trim().toUpperCase() || Pricing.autoSku(p.name, p.meatType, Pricing.skuVariantLabel(par));
+      sku = b + '-LOT' + this.packQtyOf(v);
+    } else {
+      const sib = p.variants.find(w => w !== v && !this.parentOf(p, w) && Pricing.skuBaseFrom(w));
+      sku = sib ? Pricing.skuWithBase(Pricing.skuBaseFrom(sib), v) : Pricing.autoSku(p.name, p.meatType, Pricing.skuVariantLabel(v));
+    }
+    const used = new Set();
+    Store.state.stockM.forEach(x => (x.variants || []).forEach(w => { if (w !== v && w.sku) used.add(String(w.sku).trim().toUpperCase()); }));
+    let out = sku, k = 2; while (used.has(out)) out = sku + '-' + (k++);
+    return out;
+  },
+  /* Bouton ✨ (SKU vide) et après création d'une variante : propose le SKU dans une petite fenêtre. */
+  async proposeSku(pId, vId) {
+    const p = Store.state.stockM.find(x => x.id === pId); const v = p && p.variants.find(x => x.id === vId); if (!v) return;
+    const sku = this.suggestSku(p, v);
+    if (!await U.ask({ title: '🏷️ Générer le SKU ?', html: `<p>SKU proposé pour <b>${U.esc(p.name)}</b> — ${U.esc(Pricing.labelVariant(v))} :</p><p style="font-size:1.15rem;font-weight:700;color:var(--caramel);margin:6px 0 10px;">${U.esc(sku)}</p><p class="muted" style="margin:0;">Tu pourras le modifier ensuite dans la colonne SKU. Pense à le reporter sur ton site / SumUp.</p>`, okLabel: 'Utiliser ce SKU', cancelLabel: 'Non merci' })) return;
+    this.setVarSku(pId, vId, sku);
   },
   setVarSku(pId, vId, val) {
     const p=Store.state.stockM.find(x=>x.id===pId); const v=p?.variants.find(x=>x.id===vId); if(!v) return;
@@ -770,12 +795,15 @@ const Stock = {
           Store.save('stockM'); if (r.catChanged) Store.save('catalogM'); U.closeModal(); App.rerender();
           if (r.cat && !r.found) U.toast(`Déclinaison ajoutée — ⚠️ la fiche « ${r.cat.name} » n'a pas de ligne « Lot de ${n} pc ».`, true);
           else U.toast('Déclinaison ajoutée.', false, entry.id);
+          if (!nv.sku) setTimeout(() => Stock.proposeSku(p.id, nv.id), 150);
           return;
         }
-        p.variants.push({id:U.uid(),catalogVariantId:'',mode,value,label:mode==='size'?raw:'',sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]});
+        const _nv = {id:U.uid(),catalogVariantId:'',mode,value,label:mode==='size'?raw:'',sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]};
+        p.variants.push(_nv);
         const entry=Store.commitSnapshot(snap,'stock','Variante ajoutée — '+p.name+' ('+raw+')');
         Store.save('stockM'); U.closeModal(); App.rerender();
         U.toast('Variante ajoutée.', false, entry.id);
+        if (!_nv.sku) setTimeout(() => Stock.proposeSku(p.id, _nv.id), 150);
       }
     });
   },

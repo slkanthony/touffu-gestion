@@ -774,7 +774,7 @@ const Catalogue = {
           ${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</div>
       </td>
       <td>${this.packPicker(i, v.sachetId, v.mode)}
-        <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
+        <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
       <td class="num sensitive">${U.eur(c.cost, 3)}</td>
       <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
       <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
@@ -890,25 +890,27 @@ const Catalogue = {
     this.drawVars();
   },
 
+  /* Génération automatique des SKU des variantes COCHÉES sans SKU (2026-09-30, demande d'Antho) :
+     base = SKU d'une variante déjà remplie de la fiche (même mode d'abord), sinon nom du produit ;
+     puis suffixe de la variante (100G, LOT2, S…). Rempli dans le brouillon (visible, modifiable),
+     enregistré avec « Enregistrer ». Un SKU déjà pris ailleurs → alerte, jamais bloqué. */
   autoFillSkus(mode) {
-    const sfx = mode === 'piece' ? 'PC' : mode === 'gram' ? 'G' : null;
-    if (!sfx) return;
-    const ref = this._d.variants.find(r => r.mode === mode && r.sku);
-    if (!ref) return;
-    const rv = String(ref.value);
-    if (!rv) return;
-    const re = new RegExp(rv.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + sfx, 'i');
-    if (!re.test(ref.sku)) return;
-    const dupes = [];
-    this._d.variants.forEach(v => {
-      if (v.mode !== mode || v.sku || v === ref) return;
-      const tv = String(v.value);
-      if (!tv) return;
-      const generated = ref.sku.replace(re, tv + sfx);
-      if (this._skuExists(generated)) dupes.push(generated);
-      v.sku = generated;
+    const vs = this._d.variants || [];
+    const refs = vs.filter(r => r.sku && String(r.sku).trim());
+    const ref = refs.find(r => r.mode === mode && Pricing.skuBaseFrom(r)) || refs.find(r => Pricing.skuBaseFrom(r));
+    const base = ref ? Pricing.skuBaseFrom(ref) : (this._d.name || U.val('cp_name') ? Pricing.autoSku(this._d.name || U.val('cp_name'), this._d.meatType, '') : '');
+    if (!base) return;
+    const taken = new Set(vs.filter(r => r.sku).map(r => String(r.sku).trim().toUpperCase()));
+    const made = [], dupes = [];
+    vs.forEach(v => {
+      if (v.sku || v.enabled === false) return;
+      let sku = Pricing.skuWithBase(base, v);
+      if (taken.has(sku)) return;   // même SKU qu'une autre ligne de la fiche : on laisse vide (à saisir)
+      taken.add(sku); v.sku = sku; made.push(sku);
+      if (this._skuExists(sku)) dupes.push(sku);
     });
     if (dupes.length) U.toast(`⚠️ SKU généré déjà utilisé ailleurs : ${dupes.join(', ')} — vérifie/modifie-le.`, true);
+    else if (made.length) U.toast(`SKU généré${made.length > 1 ? 's' : ''} : ${made.join(', ')} (modifiable, enregistré avec la fiche).`);
   },
 
   /* Un SKU est-il déjà pris par une AUTRE fiche (Stock, ou une autre fiche Catalogue) ?

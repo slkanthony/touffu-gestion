@@ -1091,3 +1091,6 @@ table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .virt-check { display: flex; gap: 8px; align-items: flex-start; text-transform: none; margin: 8px 0 0; padding: 8px 11px; border: 1px dashed var(--caramel); border-radius: 8px; font-size: .86rem; cursor: pointer; }
 .virt-check input { margin-top: 3px; accent-color: var(--caramel); }
 tr.virt-row > td { background: rgba(166,113,83,.05); }
+.sku-cell { display: flex; gap: 4px; align-items: center; }
+.sku-cell .sku-input { flex: 1; min-width: 0; }
+.sku-cell .sku-gen { padding: 2px 4px; font-size: .95rem; }

@@ -342,6 +342,18 @@ const Pricing = {
     return vLabel ? slug + '-' + vLabel : slug;
   },
 
+  /* SKU d'une variante déduit du SKU d'une AUTRE variante du même produit (2026-09-30) :
+     « SABOTS-VEAU » (1 pièce) → base « SABOTS-VEAU » → Lot de 2 = « SABOTS-VEAU-LOT2 » ;
+     « FRIANDISE-LAP-50G » → base « FRIANDISE-LAP » → 100 g = « FRIANDISE-LAP-100G ».
+     ref = variante qui a déjà un SKU ; renvoie la base (sans suffixe de variante) ou '' si indéductible. */
+  skuBaseFrom(ref) {
+    const s = String(ref && ref.sku || '').trim().toUpperCase(); if (!s) return '';
+    const lab = this.slugify(this.skuVariantLabel(ref));
+    if (!lab) return s;
+    if (s.endsWith('-' + lab)) return s.slice(0, -(lab.length + 1));
+    return '';
+  },
+  skuWithBase(base, v) { const lab = this.slugify(this.skuVariantLabel(v)); return lab ? base + '-' + lab : base; },
   skuVariantLabel(v) {
     if (v.mode === 'gram') return U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
     // Une seule pièce → AUCUN suffixe (le « -1PC » est redondant : c'est une pièce par défaut).
