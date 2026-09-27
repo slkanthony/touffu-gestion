@@ -315,16 +315,30 @@ const Store = {
     const dirty = [...this._dirty]; this._dirty.clear();
     if (this.remote) {
       this._flushing = true;
+      /* Un envoi PAR domaine (2026-09-29) : avant, tout partait en un seul paquet, donc un domaine
+         refusé par le serveur (règle de sécurité Supabase d'un profil) faisait échouer TOUT
+         l'enregistrement, et le paquet était renvoyé en boucle. Désormais : un domaine refusé
+         (permission) est signalé clairement et abandonné ; les autres s'enregistrent normalement ;
+         seule une vraie coupure réseau garde les domaines en attente pour un nouvel essai. */
+      const denied = [], retry = [];
       try {
-        const rows = dirty.map(k => ({ key: k, data: this.state[k], updated_at: new Date().toISOString() }));
-        const { error } = await this.sb.from('app_state').upsert(rows);
-        if (error) throw error;
-        this._justSynced = Date.now();
-        this.updateSyncBadge('✓ synchronisé');
+        for (const k of dirty) {
+          const { error } = await this.sb.from('app_state').upsert({ key: k, data: this.state[k], updated_at: new Date().toISOString() });
+          if (!error) continue;
+          console.error(k, error);
+          if (error.code === '42501' || /row-level security|permission|policy/i.test(error.message || '')) denied.push(k); else retry.push(k);
+        }
       } catch (e) {
-        dirty.forEach(d => this._dirty.add(d));
-        this.updateSyncBadge('⚠ hors ligne'); console.error(e);
+        console.error(e);
+        dirty.forEach(d => { if (!denied.includes(d)) retry.push(d); });
       } finally { this._flushing = false; }
+      retry.forEach(d => this._dirty.add(d));
+      if (!retry.length) this._justSynced = Date.now();
+      this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
+      if (denied.length && typeof U !== 'undefined' && U.toast) {
+        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', journal: 'journal', meta: 'infos techniques' };
+        U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => names[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
+      }
     } else {
       localStorage.setItem('touffu_state', JSON.stringify(this.state));
       this.updateSyncBadge('✓ enregistré (local)');

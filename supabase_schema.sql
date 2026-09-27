@@ -49,12 +49,23 @@ drop policy if exists "snapshots lecture" on public.snapshots;
 create policy "snapshots lecture" on public.snapshots
   for select to authenticated using (true);
 
--- Écriture : tout compte connecté SAUF « viewer » (bloqué côté base, pas seulement à l'écran)
+-- Écriture app_state : admin (aucun rôle) = tout ; équipe ('team') = stock + fiches prix
+-- (l'appli ne laisse l'équipe modifier QUE lien / réf. / notes fournisseur des fiches prix) ;
+-- viewer = rien. (Noms des règles = ceux du serveur réel.)
 drop policy if exists "app_state écriture" on public.app_state;
-create policy "app_state écriture" on public.app_state
-  for all to authenticated
-  using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer')
-  with check (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer');
+drop policy if exists "app_state ecriture" on public.app_state;
+drop policy if exists "app_state maj" on public.app_state;
+drop policy if exists "app_state suppr" on public.app_state;
+create policy "app_state ecriture" on public.app_state for insert to authenticated
+  with check ((auth.jwt()->'app_metadata'->>'role') is null
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM')));
+create policy "app_state maj" on public.app_state for update to authenticated
+  using ((auth.jwt()->'app_metadata'->>'role') is null
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM')))
+  with check ((auth.jwt()->'app_metadata'->>'role') is null
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM')));
+create policy "app_state suppr" on public.app_state for delete to authenticated
+  using ((auth.jwt()->'app_metadata'->>'role') is null);
 drop policy if exists "snapshots écriture" on public.snapshots;
 create policy "snapshots écriture" on public.snapshots
   for all to authenticated
