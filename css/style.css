@@ -1064,3 +1064,12 @@ input.dsel-trig.open { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(
 .btn-ghost, :root[data-theme="dark"] .btn-ghost { border: 2px solid var(--caramel); }
 .btn-ghost:hover:not(:disabled):not(.active) { background: rgba(166, 113, 83, 0.16); border-color: var(--caramel); }
 .btn-ghost:disabled { border-color: var(--input-border); }
+/* (2026-09-29) Fond des boutons secondaires = bleu des cartes (au lieu de transparent → noir sur le fond de page) */
+.btn-ghost:not(.active), :root[data-theme="dark"] .btn-ghost:not(.active) { background-color: var(--card-bg); }
+.btn-ghost:hover:not(:disabled):not(.active) { background-color: color-mix(in srgb, var(--card-bg) 82%, #a67153); }
+/* Historique des sorties : plus de trait marron entre les ventes, séparation discrète + une ligne sur deux nuancée */
+table.sales-hist tr.sale-head td { border-top: 1px solid var(--card-border); background: transparent; }
+table.sales-hist tr.sale-head:nth-of-type(even) td { background: rgba(255, 255, 255, 0.025); }
+table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
+.sales-hist tr.sale-head.is-sel > td { background: rgba(166, 113, 83, 0.22); }
+.sales-hist tr.hist-fold-foot > td { border-bottom: 1px solid var(--card-border); }
