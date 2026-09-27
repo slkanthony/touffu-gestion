@@ -1060,3 +1060,7 @@ input.dsel-trig.open { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(
 .sales-hist .hist-row .hc-todo { padding: 1px 6px; font-size: .78rem; margin-right: 4px; }
 @media (max-width: 1100px) { .sales-hist .hist-row .hc-act { display: flex; } }
 .sales-hist tr.hist-fold-foot > td { text-align: center; padding: 6px; background: rgba(166,113,83,.06); border-bottom: 2px solid var(--caramel); }
+/* Boutons secondaires (.btn-ghost) : contour marron comme les fenêtres, fond inchangé (2026-09-29) */
+.btn-ghost, :root[data-theme="dark"] .btn-ghost { border: 2px solid var(--caramel); }
+.btn-ghost:hover:not(:disabled):not(.active) { background: rgba(166, 113, 83, 0.16); border-color: var(--caramel); }
+.btn-ghost:disabled { border-color: var(--input-border); }
