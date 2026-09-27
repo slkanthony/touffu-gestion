@@ -823,18 +823,20 @@ const Ventes = {
     const rowsHtml = pageList.map(s => {
       const open = !!this._histOpen[s.id];
       const nTodo = s.items.filter(i => i.todo === 'open').length;
-      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="sale-head-in"><div class="sh-info">
-          <input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)">
-          <button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}" onclick="Ventes.toggleHistOpen('${s.id}')">${open ? '▾' : '▸'}</button>
-          <span class="sh-date" style="cursor:pointer;" onclick="Ventes.toggleHistOpen('${s.id}')">${U.frDateTime(s.ts)}</span>
-          <span class="badge info">${kindLbl(s)}</span>${originBadge(s)}
-          ${s.eventName ? `<span class="sh-event">🎪 ${U.esc(s.eventName)}</span>` : ''}
-          ${field('Paiement', this.paymentLabel(s))}
-          ${s.customerName ? field('Client', U.esc(s.customerName)) : ''}
-          ${!open && s.items.length ? `<span class="muted sh-first" title="${U.esc(s.items.map(i => i.name).join(', '))}">${U.esc(s.items[0].name)}${s.items.length > 1 ? ` +${s.items.length - 1}` : ''}</span>` : ''}
-          </div><div class="sh-right">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm" title="Articles de ce ticket pas encore déduits du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button>` : ''}<span class="sh-total">${s.items.length} art. · <b>${U.eur(s.total)}</b></span>
-          <span class="sh-actions">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}${s.historical ? '' : `<button class="btn-ghost btn-sm" title="Annuler la sortie et remettre le stock (la vente reste, marquée annulée)" onclick="Ventes.cancelSale('${s.id}')">Annuler</button> `}`}<button class="btn-ghost btn-sm" title="Supprimer de l'historique" onclick="Ventes.deleteSales('${s.id}')">🗑</button></span>
-        </div></div></td></tr>`;
+      // Colonnes FIXES (grille .hist-row) alignées sur la ligne de titres (2026-09-29).
+      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="hist-row">
+          <span class="hc-cb"><input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)"></span>
+          <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}" onclick="Ventes.toggleHistOpen('${s.id}')">${open ? '▾' : '▸'}</button></span>
+          <span class="hc-date sh-date" style="cursor:pointer;" onclick="Ventes.toggleHistOpen('${s.id}')">${U.frDateTime(s.ts)}</span>
+          <span class="hc-kind"><span class="badge info">${kindLbl(s)}</span></span>
+          <span class="hc-orig">${originBadge(s) || '<span class="muted">manuelle</span>'}</span>
+          <span class="hc-ev">${s.eventName ? `<span class="sh-event" title="${U.esc(s.eventName)}">🎪 ${U.esc(s.eventName)}</span>` : s.customerName ? `<span title="Client">👤 ${U.esc(s.customerName)}</span>` : '<span class="muted">—</span>'}</span>
+          <span class="hc-pay">${this.paymentLabel(s)}</span>
+          <span class="hc-prod muted" title="${U.esc(s.items.map(i => i.name).join(', '))}">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm hc-todo" title="${nTodo} article(s) pas encore déduit(s) du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button> ` : ''}${s.items.length ? U.esc(s.items[0].name) + (s.items.length > 1 ? ` <b>+${s.items.length - 1}</b>` : '') : '—'}</span>
+          <span class="hc-n">${s.items.length}</span>
+          <span class="hc-tot"><b>${U.eur(s.total)}</b></span>
+          <span class="hc-act"><span class="a1">${!s.cancelled && s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button>` : ''}</span><span class="a2">${s.cancelled ? '<span class="badge bad">annulée</span>' : s.historical ? '' : `<button class="btn-ghost btn-sm" title="Annuler la sortie et remettre le stock (la vente reste, marquée annulée)" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span><span class="a3"><button class="btn-ghost btn-sm" title="Supprimer de l'historique" onclick="Ventes.deleteSales('${s.id}')">🗑</button></span></span>
+        </div></td></tr>`;
       if (!open) return head;
       const kind = this._saleKind(s);
       const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
@@ -880,7 +882,7 @@ const Ventes = {
         <span class="muted">Origine :</span><select onchange="if(this.value){Ventes.setSaleOrigin(Ventes._selIds(),this.value)}"><option value="">— changer —</option><option value="online">🌐 En ligne</option><option value="direct">🏪 Directe</option><option value="event">🎪 Événement</option></select>
         <button class="btn-danger btn-sm" onclick="Ventes.deleteSales(Ventes._selIds())">🗑 Supprimer la sélection</button>
         <button class="btn-ghost btn-sm" onclick="Ventes._histSel={};Ventes.render()">✕ Désélectionner</button></div>` : ''}
-      <div class="table-wrap"><table class="sales-hist"><tbody>${rowsHtml || '<tr><td colspan="7" class="muted">Aucune vente pour ces filtres.</td></tr>'}</tbody></table></div>
+      <div class="table-wrap"><table class="sales-hist"><tbody>${pageList.length ? (() => { const hs = (key, label, cls) => `<span class="${cls}${key ? ' sortable' + (f.sort === key ? ' active' : '') : ''}"${key ? ` onclick="Ventes.setHistorySort('${key}')"` : ''}>${label}${key ? (f.sort === key ? (f.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇕') : ''}</span>`; return `<tr class="hist-head"><td colspan="7"><div class="hist-row"><span class="hc-cb"></span><span class="hc-tg"></span>${hs('date', 'Date', 'hc-date')}${hs('', 'Canal', 'hc-kind')}${hs('', 'Origine', 'hc-orig')}${hs('', 'Événement', 'hc-ev')}${hs('payment', 'Paiement', 'hc-pay')}${hs('name', 'Produits', 'hc-prod')}${hs('', 'Art.', 'hc-n')}${hs('total', 'Total', 'hc-tot')}<span class="hc-act"></span></div></td></tr>`; })() : ''}${rowsHtml || '<tr><td colspan="7" class="muted">Aucune vente pour ces filtres.</td></tr>'}</tbody></table></div>
       ${pager}`;
   },
 

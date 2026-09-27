@@ -1037,3 +1037,25 @@ input.dsel-trig.open { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(
 .dsel-link { border: 0; background: transparent; color: var(--caramel); font-weight: 700; font-size: .85rem; padding: 4px 6px; border-radius: 6px; }
 .dsel-link:hover { background: rgba(166,113,83,.14); }
 .hist-periods input.dsel-trig { width: 150px; }
+/* Historique : colonnes fixes alignées + ligne de titres (2026-09-29) */
+.sales-hist .hist-row { display: grid; grid-template-columns: 22px 20px 104px 80px 88px minmax(110px, 1fr) 112px minmax(130px, 1.3fr) 32px 80px 212px; align-items: center; column-gap: 8px; }
+.sales-hist .hist-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sales-hist .hist-row .hc-n, .sales-hist .hist-row .hc-tot { text-align: right; font-variant-numeric: tabular-nums; }
+.sales-hist .hist-row .hc-act { display: flex; gap: 5px; justify-content: flex-end; overflow: visible; }
+.sales-hist .hist-row .hc-ev .sh-event { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; background: var(--caramel); color: #fff; font-weight: 700; font-size: .82rem; padding: 3px 10px; border-radius: 999px; }
+.sales-hist .hist-row .hc-date { font-weight: 700; }
+.sales-hist .hist-row .hc-prod { font-size: .86rem; }
+.sales-hist tr.hist-head > td { background: var(--th-bg); padding: 8px 12px; border-top: 0; }
+.sales-hist tr.hist-head .hist-row > span { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
+.sales-hist tr.hist-head .sortable { cursor: pointer; }
+.sales-hist tr.hist-head .sortable.active { color: var(--caramel); }
+@media (max-width: 1100px) {
+  .sales-hist .hist-row { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .sales-hist .hist-row > span { overflow: visible; }
+  .sales-hist .hist-row .hc-act { margin-left: auto; }
+  .sales-hist tr.hist-head { display: none; }
+}
+.sales-hist .hist-row .hc-act { display: grid; grid-template-columns: 98px 72px 34px; gap: 4px; justify-items: end; }
+.sales-hist .hist-row .hc-act > span { display: flex; justify-content: flex-end; }
+.sales-hist .hist-row .hc-todo { padding: 1px 6px; font-size: .78rem; margin-right: 4px; }
+@media (max-width: 1100px) { .sales-hist .hist-row .hc-act { display: flex; } }
