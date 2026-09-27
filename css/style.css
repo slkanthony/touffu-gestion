@@ -1073,3 +1073,8 @@ table.sales-hist tr.sale-head:nth-of-type(even) td { background: rgba(255, 255, 
 table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .sales-hist tr.sale-head.is-sel > td { background: rgba(166, 113, 83, 0.22); }
 .sales-hist tr.hist-fold-foot > td { border-bottom: 1px solid var(--card-border); }
+/* Articles à traiter : actions groupées (2026-09-30) */
+.todo-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.todo-bulk.small { margin-top: 0; }
+.todo-ticket-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.todo-ticket-top .todo-ticket-h { margin: 0; }

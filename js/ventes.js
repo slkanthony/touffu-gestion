@@ -1584,6 +1584,15 @@ const Ventes = {
     return out;
   },
 
+  /* Boutons d'actions groupées (toute la page si saleId vide, sinon un ticket). */
+  _todoBulkBar(saleId) {
+    const n = this._todoKeys(saleId).length, r = this._todoReady(saleId).length;
+    const a = saleId ? `'${saleId}'` : "''";
+    return `<div class="todo-bulk${saleId ? ' small' : ''}"><span class="muted">${saleId ? 'Ce ticket' : 'Articles affichés'} (${n}) :</span>
+      <button class="btn-ok btn-sm" ${r ? '' : 'disabled'} title="Déduit tous les articles prêts : produit associé et « Total choisi = vendu »" onclick="Ventes.ttBulkDeduct(${a})">✅ Tout déduire (${r} prêt${r > 1 ? 's' : ''})</button>
+      <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('done',${a})">✔ Tout déjà fait à la main</button>
+      <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('caOnly',${a})">💶 Tout en CA seulement</button></div>`;
+  },
   renderTodo() {
     const units = this.units();
     const counts = { all: 0, link: 0, lots: 0, short: 0 };
@@ -1613,10 +1622,11 @@ const Ventes = {
       ${bn ? `<div class="card todo-banner">✅ Import validé : <b>${U.qty(bn.deducted)}</b> article(s) déduits du stock événement. Il reste <b>${bn.pending}</b> ligne(s) à traiter ci-dessous — rien n'est déduit tant que tu ne cliques pas « Déduire ».</div>` : ''}
       <div class="card">
         <div class="sumup-filters">${fb('all', 'Tout')}${fb('link', '🏷️ Produit à associer')}${fb('lots', '🔀 Lot à choisir / à déduire')}${fb('short', '📉 Stock manquant')}</div>
+        ${counts[this.todoFilter] ? this._todoBulkBar('') : ''}
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;margin:10px 0 0;"><input type="checkbox" ${this.todoShowDone ? 'checked' : ''} onchange="Ventes.setTodoShowDone(this.checked)"> Afficher aussi les articles déjà traités (${doneN})</label>
         <p class="muted help">Associer : clique une proposition 💡 (nom ressemblant) ou cherche le produit. « Retenir » applique l'association aux autres lignes identiques et aux prochains imports. Lots : indique combien sont partis de chaque lot, ou « Proposer » (DLUO la plus courte d'abord), puis « Déduire ». ↗ ouvre la fiche dans un nouvel onglet. Chaque déduction est annulable (↺ dans le message ou le Journal).</p>
       </div>
-      ${groups.map(g => `<div class="card todo-ticket"><h3 class="todo-ticket-h">📅 ${U.frDateTime(g.s.ts)} ${g.s.eventName ? `<span class="sh-event">🎪 ${U.esc(g.s.eventName)}</span>` : ''} <span class="muted">· ${g.s.payment === 'cash' ? 'espèces' : 'SumUp'}</span></h3>${g.rows.join('')}</div>`).join('')
+      ${groups.map(g => `<div class="card todo-ticket"><div class="todo-ticket-top"><h3 class="todo-ticket-h">📅 ${U.frDateTime(g.s.ts)} ${g.s.eventName ? `<span class="sh-event">🎪 ${U.esc(g.s.eventName)}</span>` : ''} <span class="muted">· ${g.s.payment === 'cash' ? 'espèces' : 'SumUp'}</span></h3>${this._todoKeys(g.s.id).length ? this._todoBulkBar(g.s.id) : ''}</div>${g.rows.join('')}</div>`).join('')
         || `<div class="card empty"><span class="big">🎉</span>${counts.all ? 'Rien pour ce filtre.' : 'Plus rien à traiter.'}</div>`}
       <details class="fold card params-fold" ${this._memOpen ? 'open' : ''} ontoggle="Ventes._memOpen=this.open"><summary><h2>🧠 Associations retenues (${Object.keys(map).length})</h2></summary><div class="fold-body">
         <p class="muted help">Libellés SumUp que tu as associés toi-même à un produit : aux prochains imports, ils sont reliés directement (badge 🧠 dans la revue). Supprime une association si elle est fausse.</p>
@@ -1755,37 +1765,58 @@ const Ventes = {
     delete map[key]; Store.save('settings'); this.render();
     U.toast('Association oubliée.');
   },
-  async ttDeduct(k) {
-    const f = this._ttFind(k); if (!f) return; const { s, i } = f;
-    if (i.todo !== 'open' || i.deducted || !i.pId) return;
+  /* Vérifie un article « à traiter » avant déduction (sans rien modifier, sauf la répartition par
+     défaut quand elle est sans ambiguïté : 1 lot, ou tout vendu). → {err} ou {sum, qty, ready}. */
+  _ttCheck(k) {
+    const f = this._ttFind(k); if (!f) return { err: 'introuvable' }; const { i } = f;
+    if (i.todo !== 'open' || i.deducted || !i.pId) return { err: 'skip' };
     const st = this._ttState(k);
-    const snaps = [Store.snapshot('sales', s)];
+    if (i.kind === 'A') {
+      const a = Store.state.catalogA.find(x => x.id === i.pId); if (!a) return { err: 'Accessoire introuvable.' };
+      const take = Math.min(U.num(a.stockEvent), i.qty);
+      return { sum: take, qty: i.qty, ready: take > 0 };
+    }
+    const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId);
+    if (!v) return { err: 'Variante introuvable.' };
+    const field = st.src === 'general' ? 'qtyGeneral' : 'qtyEvent';
+    if (st.lots === null) {
+      const lots = v.lots.filter(l => U.num(l[field]) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
+      const tot = lots.reduce((a, l) => a + U.num(l[field]), 0);
+      st.lots = lots.length <= 1 || i.qty >= tot ? this._fefo(lots, field, i.qty) : {};
+    }
+    let sum = 0;
+    for (const [lid, q] of Object.entries(st.lots || {})) {
+      if (U.num(q) <= 0) continue;
+      const lot = v.lots.find(l => l.id === lid);
+      if (!lot || U.num(q) > U.num(lot[field])) return { err: `Le lot ${lot ? (lot.lotNumber || 'sans n°') : ''} n'a que ${lot ? U.qty(lot[field]) : 0} en stock.` };
+      sum += U.num(q);
+    }
+    if (!sum) return { err: 'Indique combien sont partis de chaque lot (ou « Proposer »).', sum: 0, qty: i.qty };
+    if (sum > i.qty) return { err: `Tu as choisi ${U.qty(sum)}, mais ${U.qty(i.qty)} ont été vendus.` };
+    return { sum, qty: i.qty, ready: sum === i.qty };
+  },
+  /* Applique la déduction (déjà vérifiée par _ttCheck). snapMap : instantanés « avant » partagés. */
+  _ttDo(k, snapMap) {
+    const { s, i } = this._ttFind(k); const st = this._ttState(k);
+    const snap = (dom, obj) => { const key = dom + ':' + obj.id; if (!snapMap[key]) snapMap[key] = Store.snapshot(dom, obj); };
+    snap('sales', s);
     s.undoOps = s.undoOps || [];
     let msg;
     if (i.kind === 'A') {
-      const a = Store.state.catalogA.find(x => x.id === i.pId); if (!a) return;
-      snaps.push(Store.snapshot('catalogA', a));
+      const a = Store.state.catalogA.find(x => x.id === i.pId);
+      snap('catalogA', a);
       const take = Math.min(U.num(a.stockEvent), i.qty);
       if (take > 0) { a.stockEvent = U.num(a.stockEvent) - take; s.undoOps.push({ kind: 'A', pId: a.id, field: 'stockEvent', qty: take }); }
       i.cost = U.num(Pricing.accCalc(a).cost) * i.qty;
       msg = `${take} déduit(s)`;
     } else {
-      const p = Store.state.stockM.find(x => x.id === i.pId); const v = p && p.variants.find(x => x.id === i.vId); if (!v) return;
+      const p = Store.state.stockM.find(x => x.id === i.pId); const v = p.variants.find(x => x.id === i.vId);
       const field = st.src === 'general' ? 'qtyGeneral' : 'qtyEvent';
+      snap('stockM', p);
       const picks = Object.entries(st.lots || {}).filter(([, q]) => U.num(q) > 0);
-      let sum = 0;
-      for (const [lid, q] of picks) {
-        const lot = v.lots.find(l => l.id === lid);
-        if (!lot || U.num(q) > U.num(lot[field])) { U.toast(`Le lot ${lot ? (lot.lotNumber || 'sans n°') : ''} n'a que ${lot ? U.qty(lot[field]) : 0} en stock.`, true); return; }
-        sum += U.num(q);
-      }
-      if (!sum) { U.toast('Indique combien sont partis de chaque lot (ou « Proposer »).', true); return; }
-      if (sum > i.qty) { U.toast(`Tu as choisi ${U.qty(sum)}, mais ${U.qty(i.qty)} ont été vendus.`, true); return; }
-      if (sum < i.qty && !await U.confirm(`Tu retires ${U.qty(sum)} sur ${U.qty(i.qty)} vendus : ${U.qty(i.qty - sum)} ne seront pas déduits (stock insuffisant ?). Continuer et marquer cet article comme traité ?`, { title: '⚠️ Quantité incomplète', okLabel: 'Continuer' })) return;
-      snaps.push(Store.snapshot('stockM', p));
-      let cost = 0; const labels = [];
+      let cost = 0, sum = 0; const labels = [];
       picks.forEach(([lid, q]) => {
-        const lot = v.lots.find(l => l.id === lid); q = U.num(q);
+        const lot = v.lots.find(l => l.id === lid); q = U.num(q); sum += q;
         lot[field] = U.num(lot[field]) - q;
         cost += q * U.num(lot.costUnit || v.costUnit);
         s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field, qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
@@ -1798,10 +1829,65 @@ const Ventes = {
       msg = `${U.qty(sum)} déduit(s) du stock ${field === 'qtyGeneral' ? 'général' : 'événement'}`;
     }
     i.deducted = true; i.todo = 'done';
-    const entry = Store.log('vente', `Article déduit — ${i.name} ${i.label || ''} : ${msg}`, { type: 'restoreBatch', data: snaps });
-    Store.save('sales', 'stockM', 'catalogA');
     delete this._tt[k];
+    return msg;
+  },
+  async ttDeduct(k) {
+    const c = this._ttCheck(k);
+    if (c.err) { if (c.err !== 'skip') U.toast(c.err, true); return; }
+    const { i } = this._ttFind(k);
+    if (c.sum < c.qty && !await U.confirm(`Tu retires ${U.qty(c.sum)} sur ${U.qty(c.qty)} vendus : ${U.qty(c.qty - c.sum)} ne seront pas déduits (stock insuffisant ?). Continuer et marquer cet article comme traité ?`, { title: '⚠️ Quantité incomplète', okLabel: 'Continuer' })) return;
+    const snapMap = {};
+    const msg = this._ttDo(k, snapMap);
+    const entry = Store.log('vente', `Article déduit — ${i.name} ${i.label || ''} : ${msg}`, { type: 'restoreBatch', data: Object.values(snapMap) });
+    Store.save('sales', 'stockM', 'catalogA');
     this.render();
     U.toast(`${i.name} : ${msg}.`, false, entry.id);
+  },
+
+  /* ── Actions groupées (2026-09-30, demande d'Antho) : sur les articles AFFICHÉS (filtre en cours),
+     de toute la page ou d'un seul ticket (saleId). Une seule entrée de Journal → annulable d'un coup. ── */
+  _todoKeys(saleId) {
+    const keys = [];
+    Store.state.sales.forEach(s => {
+      if (s.cancelled || (saleId && s.id !== saleId)) return;
+      (s.items || []).forEach((i, idx) => {
+        if (i.todo !== 'open') return;
+        if (this.todoFilter !== 'all' && this._todoCat(i) !== this.todoFilter) return;
+        keys.push(s.id + ':' + idx);
+      });
+    });
+    return keys;
+  },
+  _todoReady(saleId) { return this._todoKeys(saleId).filter(k => { const c = this._ttCheck(k); return !c.err && c.ready; }); },
+  async ttBulkDeduct(saleId) {
+    const keys = this._todoKeys(saleId);
+    const ready = keys.filter(k => { const c = this._ttCheck(k); return !c.err && c.ready; });
+    if (!ready.length) { U.toast('Aucun article prêt : associe le produit et complète la répartition par lot (Total choisi = vendu).', true); return; }
+    const rest = keys.length - ready.length;
+    if (!await U.confirm(`Déduire du stock les ${ready.length} article(s) prêts (produit associé, lots choisis = quantité vendue) ?` + (rest ? `\n\n${rest} autre(s) restent à traiter (produit à associer ou lot à choisir).` : '') + '\n\nAnnulable en une fois depuis le Journal.', { title: '✅ Tout déduire', okLabel: `Déduire ${ready.length} article(s)` })) return;
+    const snapMap = {};
+    let n = 0;
+    ready.forEach(k => { this._ttDo(k, snapMap); n++; });
+    const entry = Store.log('vente', `Articles à traiter — ${n} déduit(s) en une fois`, { type: 'restoreBatch', data: Object.values(snapMap) });
+    Store.save('sales', 'stockM', 'catalogA');
+    this.render();
+    U.toast(`${n} article(s) déduit(s)` + (rest ? ` · ${rest} restent à traiter` : '') + '.', false, entry.id);
+  },
+  async ttBulkMark(status, saleId) {
+    const keys = this._todoKeys(saleId);
+    if (!keys.length) { U.toast('Rien à traiter ici.', true); return; }
+    const lbl = status === 'caOnly' ? 'en « CA seulement » (le stock ne sera pas touché)' : 'comme « déjà fait à la main »';
+    if (!await U.confirm(`Marquer les ${keys.length} article(s) affiché(s) ${lbl} ?\n\nAnnulable en une fois depuis le Journal.`, { title: status === 'caOnly' ? '💶 Tout en CA seulement' : '✔ Tout déjà fait à la main', okLabel: 'Confirmer' })) return;
+    const snapMap = {};
+    keys.forEach(k => {
+      const { s, i } = this._ttFind(k);
+      const key = 'sales:' + s.id; if (!snapMap[key]) snapMap[key] = Store.snapshot('sales', s);
+      i.todo = (status === 'caOnly' && !i.deducted) ? 'caOnly' : 'done';
+    });
+    const entry = Store.log('vente', `Articles à traiter — ${keys.length} marqué(s) ${status === 'caOnly' ? 'CA seulement' : 'faits à la main'}`, { type: 'restoreBatch', data: Object.values(snapMap) });
+    Store.save('sales');
+    this.render();
+    U.toast(`${keys.length} article(s) marqué(s).`, false, entry.id);
   },
 };
