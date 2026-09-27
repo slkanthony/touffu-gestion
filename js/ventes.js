@@ -17,7 +17,9 @@ const Ventes = {
   consoId: '', consoQty: 1,
   cart: [],
   customerName: '',
-  historySort: { field: 'date', dir: 'desc' },
+  // Historique des sorties : filtres (persistés), pagination, dépliage, sélection (2026-09-29)
+  histF: { period: 'year', from: '', to: '', src: 'all', origin: 'all', q: '', sort: 'date', dir: 'desc', page: 1 },
+  _histOpen: {}, _histSel: {}, _pendingDel: null,
   retourOpen: false,   // panneau "Retour d'événement" (import CSV SumUp) ouvert ?
   retourData: null,    // données analysées de l'import en attente de validation
   retourDeduct: true,  // coché par défaut = déduire le stock ; décoché = import HISTORIQUE (stats sans toucher au stock)
@@ -179,9 +181,8 @@ const Ventes = {
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
           <h2 class="mb0">🧾 Historique des sorties</h2>
           <div class="frow" style="gap:6px;flex:0;">
-            <button class="btn-ghost btn-sm" onclick="Ventes.exportSales()">⬇️ Exporter (CSV)</button>
+            <button class="btn-ghost btn-sm" title="Exporte les ventes affichées par les filtres" onclick="Ventes.exportSales()">⬇️ Exporter (CSV)</button>
             <button class="btn-danger btn-sm" onclick="Ventes.restoreAll()">↩️ Restaurer Tout</button>
-            <button class="btn-danger btn-sm" onclick="Ventes.clearHistory()">🗑️ Vider l'historique</button>
           </div>
         </div>
         ${this.historyTable()}
@@ -513,16 +514,6 @@ const Ventes = {
     U.toast('Toutes les sorties ont été restaurées.');
   },
 
-  async clearHistory() {
-    if (!Store.state.sales.length) { U.toast('Historique déjà vide.', true); return; }
-    if (!await U.confirm(`Supprimer définitivement les ${Store.state.sales.length} entrée(s) de l'historique des sorties ? Le stock n'est pas modifié — utilise "Restaurer Tout" avant si tu veux aussi re-créditer le stock des ventes actives.`)) return;
-    Store.state.sales = [];
-    Store.log('vente', 'Historique des sorties vidé');
-    Store.save('sales');
-    this.render();
-    U.toast('Historique des sorties vidé.');
-  },
-
   paymentLabel(s) {
     if (s.payment === 'cash') return '💵 Espèces';
     if (s.payment === 'stripe') return '🌐 En ligne (Stripe)';
@@ -697,46 +688,163 @@ const Ventes = {
     this.render();
   },
 
+  /* ══════════ HISTORIQUE DES SORTIES (2026-09-29, refonte demandée par Antho) ══════════
+     Une ligne par vente (repliée), filtres période / stock / origine / recherche, tri, 25 par page,
+     suppression ciblée (une vente ou une sélection) et changement d'origine d'une vente. */
+  _saleOrigin(s) { return s.historical ? 'import' : s.fromImport ? 'retour' : 'manual'; },
+  _saleKind(s) { return s.source === 'event' ? 'event' : s.channel === 'online' ? 'online' : 'direct'; },
+  histFiltered() {
+    const f = this.histF, now = new Date(), y = now.getFullYear();
+    let lo = -Infinity, hi = Infinity;
+    if (f.period === '30') lo = Date.now() - 30 * 864e5;
+    else if (f.period === 'year') lo = new Date(y, 0, 1).getTime();
+    else if (f.period === 'lastyear') { lo = new Date(y - 1, 0, 1).getTime(); hi = new Date(y, 0, 1).getTime() - 1; }
+    else if (f.period === 'custom') { if (f.from) lo = new Date(f.from + 'T00:00:00').getTime(); if (f.to) hi = new Date(f.to + 'T23:59:59').getTime(); }
+    const q = (f.q || '').trim().toLowerCase();
+    const list = Store.state.sales.filter(s => {
+      if (s.ts < lo || s.ts > hi) return false;
+      if (f.src !== 'all' && this._saleKind(s) !== f.src) return false;
+      if (f.origin !== 'all' && this._saleOrigin(s) !== f.origin) return false;
+      if (q) {
+        const hay = [s.customerName, s.eventName, ...(s.items || []).flatMap(i => [i.name, i.label, i.sku, i.desc])].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    const dir = f.dir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (f.sort === 'total') return dir * (U.num(a.total) - U.num(b.total)) || b.ts - a.ts;
+      if (f.sort === 'name') return dir * U.sortFr(a.items[0]?.name || '', b.items[0]?.name || '') || b.ts - a.ts;
+      if (f.sort === 'payment') return dir * U.sortFr(this.paymentLabel(a), this.paymentLabel(b)) || b.ts - a.ts;
+      return dir * (a.ts - b.ts);
+    });
+    return list;
+  },
+  setHistF(k, val) { this.histF[k] = val; if (k !== 'page') this.histF.page = 1; this.render(); if (k === 'q') U.refocus('hist_q'); },
   setHistorySort(key) {
-    if (this.historySort.field === key) this.historySort.dir = this.historySort.dir === 'asc' ? 'desc' : 'asc';
-    else { this.historySort.field = key; this.historySort.dir = key === 'date' ? 'desc' : 'asc'; }
-    this.render();
+    const f = this.histF;
+    if (f.sort === key) f.dir = f.dir === 'asc' ? 'desc' : 'asc';
+    else { f.sort = key; f.dir = key === 'date' || key === 'total' ? 'desc' : 'asc'; }
+    f.page = 1; this.render();
+  },
+  toggleHistOpen(id) { this._histOpen[id] = !this._histOpen[id]; this.render(); },
+  histOpenAll(open) { if (open) this.histFiltered().slice((this.histF.page - 1) * 25, this.histF.page * 25).forEach(s => { this._histOpen[s.id] = true; }); else this._histOpen = {}; this.render(); },
+  toggleHistSel(id, on) { if (on) this._histSel[id] = true; else delete this._histSel[id]; this.render(); },
+  histSelectList(ids, on) { ids.forEach(id => { if (on) this._histSel[id] = true; else delete this._histSel[id]; }); this.render(); },
+  histSelectPeriod() { this.histSelectList(this.histFiltered().map(s => s.id), true); },
+  _selIds() { return Object.keys(this._histSel).filter(id => Store.state.sales.some(s => s.id === id)); },
+
+  /* Changer l'origine d'une vente (ou de la sélection) : 🌐 en ligne / 🏪 directe / 🎪 événement.
+     Ne touche pas au stock : c'est une étiquette pour les statistiques. Quitter « événement »
+     retire le nom d'événement (sinon la vente resterait comptée dans les stats par événement). */
+  setSaleOrigin(ids, o) {
+    ids = [].concat(ids);
+    const sales = Store.state.sales.filter(s => ids.includes(s.id));
+    if (!sales.length || !['online', 'direct', 'event'].includes(o)) return;
+    const snaps = sales.map(s => Store.snapshot('sales', s));
+    sales.forEach(s => {
+      if (o === 'event') { s.source = 'event'; s.channel = 'direct'; }
+      else { s.source = 'general'; s.channel = o; if (s.eventName) { s.eventName = ''; } }
+    });
+    const lbl = { online: 'En ligne', direct: 'Directe', event: 'Événement' }[o];
+    const entry = Store.log('vente', `Origine changée → ${lbl} (${sales.length} vente(s))`, { type: 'restoreBatch', data: snaps });
+    Store.save('sales'); this.render();
+    U.toast(`${sales.length} vente(s) passée(s) en « ${lbl} ».`, false, entry.id);
   },
 
-  /* Vente rattachée à un vrai événement (nommé, issue d'un retour d'événement, ou avec des frais saisis) :
-     seules celles-ci affichent Frais stand / Déplacement dans l'historique. Une vente manuelle
-     depuis le stock événement (ex. virement hors marché) ne les affiche pas. */
+  /* Suppression ciblée. Import historique / vente annulée / sans mouvement de stock : simple retrait.
+     Vraie vente qui avait retiré du stock : on demande « remettre le stock » ou « supprimer seulement ». */
+  async deleteSales(ids) {
+    ids = [].concat(ids).filter(id => Store.state.sales.some(s => s.id === id));
+    if (!ids.length) return;
+    const sales = Store.state.sales.filter(s => ids.includes(s.id));
+    const withStock = sales.filter(s => !s.historical && !s.cancelled && (s.undoOps || []).length);
+    const tot = sales.reduce((a, s) => a + (s.cancelled ? 0 : U.num(s.total)), 0);
+    const what = sales.length === 1 ? `la vente du ${U.frDateTime(sales[0].ts)} (${U.eur(sales[0].total)})` : `${sales.length} ventes (${U.eur(tot)})`;
+    if (!withStock.length) {
+      if (!await U.confirm(`Supprimer ${what} de l'historique ? Elle(s) disparai(ssen)t aussi des statistiques. Le stock n'est pas modifié. (Annulable depuis le Journal.)`)) return;
+      this._doDelete(ids, false); return;
+    }
+    this._pendingDel = ids;
+    U.modal({
+      title: '🗑️ Supprimer ' + (sales.length === 1 ? 'cette vente' : 'ces ventes'), hideOk: true,
+      body: `<p>${what.charAt(0).toUpperCase() + what.slice(1)} — dont <b>${withStock.length}</b> qui ${withStock.length > 1 ? 'avaient' : 'avait'} retiré du stock.</p>
+        <p class="muted">Que faire du stock retiré par ${withStock.length > 1 ? 'ces ventes' : 'cette vente'} ?</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+          <button class="btn-cta" onclick="Ventes._doDelete(Ventes._pendingDel,true)">↩️ Supprimer et remettre le stock</button>
+          <button class="btn-ghost" onclick="Ventes._doDelete(Ventes._pendingDel,false)">🗑️ Supprimer seulement (le stock ne bouge pas)</button>
+        </div>`
+    });
+  },
+  _doDelete(ids, restock) {
+    if (!ids || !ids.length) return;
+    const sales = Store.state.sales.filter(s => ids.includes(s.id));
+    const snaps = sales.map(s => Store.snapshot('sales', s));
+    const domains = new Set(['sales']);
+    if (restock) {
+      const seen = new Set();
+      sales.filter(s => !s.historical && !s.cancelled).forEach(s => (s.undoOps || []).forEach(op => {
+        const dom = op.kind === 'A' ? 'catalogA' : op.kind === 'C' ? 'consumables' : 'stockM';
+        const it = Store.state[dom].find(x => x.id === op.pId);
+        if (it && !seen.has(dom + op.pId)) { seen.add(dom + op.pId); snaps.push(Store.snapshot(dom, it)); domains.add(dom); }
+      }));
+      sales.filter(s => !s.historical && !s.cancelled).forEach(s => (s.undoOps || []).forEach(op => this.applyUndoOp(op)));
+    }
+    Store.state.sales = Store.state.sales.filter(s => !ids.includes(s.id));
+    ids.forEach(id => { delete this._histSel[id]; delete this._histOpen[id]; });
+    this._pendingDel = null;
+    const entry = Store.log('vente', `${sales.length} vente(s) supprimée(s) de l'historique` + (restock ? ' — stock remis' : ''), { type: 'restoreBatch', data: snaps });
+    Store.save(...domains);
+    if (document.getElementById('modalBg')) U.closeModal();
+    this.render();
+    U.toast(`${sales.length} vente(s) supprimée(s)` + (restock ? ', stock remis' : '') + '.', false, entry.id);
+  },
+
   _isRealEvent(s) { return s.source === 'event' && !!(s.eventName || s.fromImport || U.num(s.eventFee) || U.num(s.travelCost)); },
   historyTable() {
-    const sales = Store.state.sales.slice(0, 40);
-    const hDir = this.historySort.dir === 'desc' ? -1 : 1;
-    sales.sort((a, b) => {
-      if (this.historySort.field === 'name') return hDir * U.sortFr(a.items[0]?.name || '', b.items[0]?.name || '');
-      if (this.historySort.field === 'payment') return hDir * U.sortFr(this.paymentLabel(a), this.paymentLabel(b));
-      return hDir * (a.ts - b.ts);
-    });
-    const sortBtn = (key, label) => `<button class="${this.historySort.field === key ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistorySort('${key}')">${label} ${this.historySort.field === key ? (this.historySort.dir === 'asc' ? '▲' : '▼') : ''}</button>`;
+    const f = U.syncFilters('ventes_hist', this.histF) || this.histF;
+    const all = this.histFiltered();
+    const PER = 25;
+    const pages = Math.max(1, Math.ceil(all.length / PER));
+    if (f.page > pages) f.page = pages;
+    const pageList = all.slice((f.page - 1) * PER, f.page * PER);
+    const active = all.filter(s => !s.cancelled);
+    const caTot = active.reduce((a, s) => a + U.num(s.total), 0);
     const today = Store.state.sales.filter(s => !s.cancelled && new Date(s.ts).toDateString() === new Date().toDateString());
     const caJour = today.reduce((a, s) => a + s.total, 0);
-    /* Mise en page (2026-09-27, retour d'Antho) : chaque vente = une BANDE d'en-tête pleine largeur
-       (date, stock, événement, paiement, remise, client, port, frais, total, actions), puis ses
-       articles en dessous. Fini les cellules fusionnées perdues au milieu de longues listes. */
+    const sel = this._selIds();
+    const pageIds = pageList.map(s => s.id);
+    const allPageSel = pageIds.length && pageIds.every(id => this._histSel[id]);
+    const pBtn = (k, l) => `<button class="${f.period === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistF('period','${k}')">${l}</button>`;
+    const sortBtn = (key, label) => `<button class="${f.sort === key ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistorySort('${key}')">${label} ${f.sort === key ? (f.dir === 'asc' ? '▲' : '▼') : ''}</button>`;
+    const originBadge = s => s.historical ? '<span class="badge" title="Import historique : n\'a pas touché au stock">📚 historique</span>' : s.fromImport ? '<span class="badge" title="Import d\'un retour d\'événement SumUp">📥 retour</span>' : '';
+    const kindLbl = s => s.source === 'event' ? 'Événement' : s.channel === 'online' ? 'En ligne' : 'Général';
     const field = (label, html) => `<span class="sh-field"><span class="sh-lbl">${label}</span>${html}</span>`;
-    const rowsHtml = sales.map(s => {
-      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sale-head-in"><div class="sh-info">
-          <span class="sh-date">${U.frDateTime(s.ts)}</span>
-          <span class="badge info">${s.source === 'event' ? 'Événement' : 'Général'}</span>
+    const rowsHtml = pageList.map(s => {
+      const open = !!this._histOpen[s.id];
+      const nTodo = s.items.filter(i => i.todo === 'open').length;
+      const head = `<tr class="sale-head ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="sale-head-in"><div class="sh-info">
+          <input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)">
+          <button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}" onclick="Ventes.toggleHistOpen('${s.id}')">${open ? '▾' : '▸'}</button>
+          <span class="sh-date" style="cursor:pointer;" onclick="Ventes.toggleHistOpen('${s.id}')">${U.frDateTime(s.ts)}</span>
+          <span class="badge info">${kindLbl(s)}</span>${originBadge(s)}
           ${s.eventName ? `<span class="sh-event">🎪 ${U.esc(s.eventName)}</span>` : ''}
           ${field('Paiement', this.paymentLabel(s))}
-          ${field('Remise', this.deliveryLabel(s))}
           ${s.customerName ? field('Client', U.esc(s.customerName)) : ''}
+          ${!open && s.items.length ? `<span class="muted sh-first" title="${U.esc(s.items.map(i => i.name).join(', '))}">${U.esc(s.items[0].name)}${s.items.length > 1 ? ` +${s.items.length - 1}` : ''}</span>` : ''}
+          </div><div class="sh-right">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm" title="Articles de ce ticket pas encore déduits du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button>` : ''}<span class="sh-total">${s.items.length} art. · <b>${U.eur(s.total)}</b></span>
+          <span class="sh-actions">${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}${s.historical ? '' : `<button class="btn-ghost btn-sm" title="Annuler la sortie et remettre le stock (la vente reste, marquée annulée)" onclick="Ventes.cancelSale('${s.id}')">Annuler</button> `}`}<button class="btn-ghost btn-sm" title="Supprimer de l'historique" onclick="Ventes.deleteSales('${s.id}')">🗑</button></span>
+        </div></div></td></tr>`;
+      if (!open) return head;
+      const kind = this._saleKind(s);
+      const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
+          ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
+          ${field('Remise', this.deliveryLabel(s))}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
-          </div><div class="sh-right"><span class="sh-total">${s.items.length} article(s) · <b>${U.eur(s.total)}</b></span>
-          <span class="sh-actions">${!s.cancelled && s.items.some(i => i.todo === 'open') ? `<button class="btn-ghost btn-sm" title="Articles de ce ticket pas encore déduits du stock" onclick="Ventes.openTodo()">🧩 ${s.items.filter(i => i.todo === 'open').length} à traiter</button> ` : ''}${s.cancelled ? '<span class="badge bad">annulée</span>' : `${s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button> ` : ''}<button class="btn-ghost btn-sm" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span>
-        </div></div></td></tr>`;
+        </div></td></tr>`;
       const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b></td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
@@ -746,17 +854,40 @@ const Ventes = {
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
       </tr>`).join('');
-      return head + items;
+      return head + detail + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items;
     }).join('');
+    const pager = pages > 1 ? `<div class="hist-pager"><button class="btn-ghost btn-sm" ${f.page <= 1 ? 'disabled' : ''} onclick="Ventes.setHistF('page',${f.page - 1})">◀</button>
+      ${Array.from({ length: pages }, (_, i) => i + 1).filter(n => n === 1 || n === pages || Math.abs(n - f.page) <= 2).map((n, i, arr) => (i && n - arr[i - 1] > 1 ? '<span class="muted">…</span>' : '') + `<button class="${n === f.page ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistF('page',${n})">${n}</button>`).join('')}
+      <button class="btn-ghost btn-sm" ${f.page >= pages ? 'disabled' : ''} onclick="Ventes.setHistF('page',${f.page + 1})">▶</button></div>` : '';
     return `<p class="muted">Aujourd'hui : <b>${U.eur(caJour)}</b> (${today.length} sorties)</p>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><span class="muted" style="font-size:.85rem;">Trier :</span>${sortBtn('date', 'Date')}${sortBtn('name', 'Produit')}${sortBtn('payment', 'Paiement')}</div>
-      <div class="table-wrap"><table class="sales-hist"><thead><tr><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr></thead>
-      <tbody>${rowsHtml || '<tr><td colspan="7" class="muted">Aucune sortie enregistrée.</td></tr>'}</tbody></table></div>`;
+      <div class="hist-filters">
+        <div class="hist-periods"><span class="muted">Période :</span>${pBtn('30', '30 derniers jours')}${pBtn('year', 'Cette année')}${pBtn('lastyear', 'Année dernière')}${pBtn('all', 'Tout')}${pBtn('custom', 'Du… au…')}
+          ${f.period === 'custom' ? `<input type="date" value="${f.from}" onchange="Ventes.setHistF('from',this.value)"> <span class="muted">au</span> <input type="date" value="${f.to}" onchange="Ventes.setHistF('to',this.value)">` : ''}</div>
+        <div class="grid c3">
+          <div class="fg mb0"><label>Stock / canal</label><select onchange="Ventes.setHistF('src',this.value)"><option value="all" ${f.src === 'all' ? 'selected' : ''}>Tous</option><option value="event" ${f.src === 'event' ? 'selected' : ''}>🎪 Événement</option><option value="direct" ${f.src === 'direct' ? 'selected' : ''}>🏪 Général — directe</option><option value="online" ${f.src === 'online' ? 'selected' : ''}>🌐 En ligne</option></select></div>
+          <div class="fg mb0"><label>Origine</label><select onchange="Ventes.setHistF('origin',this.value)"><option value="all" ${f.origin === 'all' ? 'selected' : ''}>Toutes</option><option value="manual" ${f.origin === 'manual' ? 'selected' : ''}>Ventes manuelles</option><option value="retour" ${f.origin === 'retour' ? 'selected' : ''}>Retours d'événement</option><option value="import" ${f.origin === 'import' ? 'selected' : ''}>Imports historiques</option></select></div>
+          <div class="fg mb0"><label>Recherche</label><input id="hist_q" value="${U.esc(f.q)}" placeholder="produit, client, événement…" oninput="Ventes.setHistF('q',this.value)"></div>
+        </div>
+      </div>
+      <div class="hist-summary"><span><b>${all.length}</b> vente(s) · <b class="sensitive">${U.eur(caTot)}</b>${all.length !== active.length ? ` <span class="muted">(${all.length - active.length} annulée(s) non comptée(s))</span>` : ''}</span>
+        <span class="hist-sorts"><span class="muted">Trier :</span>${sortBtn('date', 'Date')}${sortBtn('total', 'Total')}${sortBtn('name', 'Produit')}${sortBtn('payment', 'Paiement')}</span></div>
+      <div class="hist-tools">
+        <label class="hist-selall"><input type="checkbox" ${allPageSel ? 'checked' : ''} onclick="Ventes.histSelectList(${U.esc(JSON.stringify(pageIds))},this.checked)"> Tout cocher (page)</label>
+        ${all.length > pageList.length ? `<button class="btn-ghost btn-sm" onclick="Ventes.histSelectPeriod()">☑ Cocher les ${all.length} de la période</button>` : ''}
+        <button class="btn-ghost btn-sm" onclick="Ventes.histOpenAll(true)">📂 Tout déplier</button><button class="btn-ghost btn-sm" onclick="Ventes.histOpenAll(false)">📁 Tout replier</button>
+      </div>
+      ${sel.length ? `<div class="hist-selbar"><b>${sel.length} vente(s) sélectionnée(s)</b>
+        <span class="muted">Origine :</span><select onchange="if(this.value){Ventes.setSaleOrigin(Ventes._selIds(),this.value)}"><option value="">— changer —</option><option value="online">🌐 En ligne</option><option value="direct">🏪 Directe</option><option value="event">🎪 Événement</option></select>
+        <button class="btn-danger btn-sm" onclick="Ventes.deleteSales(Ventes._selIds())">🗑 Supprimer la sélection</button>
+        <button class="btn-ghost btn-sm" onclick="Ventes._histSel={};Ventes.render()">✕ Désélectionner</button></div>` : ''}
+      <div class="table-wrap"><table class="sales-hist"><tbody>${rowsHtml || '<tr><td colspan="7" class="muted">Aucune vente pour ces filtres.</td></tr>'}</tbody></table></div>
+      ${pager}`;
   },
 
   exportSales() {
     const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Frais_deplacement', 'Evenement', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
-    Store.state.sales.forEach(s => s.items.forEach((i, idx) => {
+    const list = this.histFiltered();
+    list.forEach(s => s.items.forEach((i, idx) => {
       rows.push([U.frDateTime(s.ts), s.source === 'event' ? 'Evenement' : 'General',
         s.channel === 'online' ? 'En ligne' : s.channel === 'direct' ? 'Directe' : '', s.payment || '',
         s.delivery === 'livraison' ? 'Livraison' : s.delivery === 'clickcollect' ? 'Click and Collect' : '', s.customerName || '',
@@ -772,7 +903,7 @@ const Ventes = {
     }));
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
     U.download(`ventes-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
-    U.toast('Ventes exportées (CSV).');
+    U.toast(`${list.length} vente(s) exportée(s) (CSV) — celles affichées par les filtres.`);
   },
 
   /* ═══════════ RETOUR D'ÉVÉNEMENT — import des ventes SumUp (CSV) ═══════════

@@ -986,3 +986,24 @@ table.tt-lots { max-width: 620px; }
 .tags-inherited > .muted:first-child { width: 100%; font-size: .78rem; }
 .tag-inh { font-size: .8rem; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--caramel); color: var(--texte); }
 .tag-inh.empty { border-style: dashed; border-color: var(--card-border); color: var(--gris); }
+/* Historique des sorties : filtres, lignes repliées, sélection, pagination (2026-09-29) */
+.hist-filters { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 10px; }
+.hist-periods { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hist-periods input[type=date] { width: auto; }
+.hist-summary { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; margin: 6px 0; }
+.hist-sorts, .hist-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hist-tools { margin-bottom: 8px; }
+.hist-selall { display: flex; gap: 6px; align-items: center; text-transform: none; margin: 0 8px 0 0; cursor: pointer; font-size: .88rem; }
+.hist-selbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; margin-bottom: 8px; border: 1px solid var(--caramel); border-radius: 9px; background: rgba(166,113,83,.12); }
+.hist-selbar select { width: auto; }
+.sales-hist tr.sale-head.is-sel > td { background: rgba(166,113,83,.22); }
+.sales-hist .hist-cb { width: 17px; height: 17px; accent-color: var(--caramel); cursor: pointer; }
+.sales-hist .hist-tg { padding: 0 4px; font-size: 1rem; }
+.sales-hist .sh-first { font-size: .85rem; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sales-hist tr.sale-detail > td { background: rgba(166,113,83,.06); padding: 6px 12px; }
+.sales-hist select.hist-origin { width: auto; padding: 3px 8px; }
+.sales-hist tr.hist-items-h th { font-size: .72rem; padding: 5px 10px; }
+.hist-pager { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; align-items: center; margin-top: 12px; }
+.hist-selbar .nsel-trig, .sale-detail .nsel-trig { width: auto; min-width: 170px; display: inline-flex; padding-top: 5px; padding-bottom: 5px; }
+.sales-hist tr.sale-detail .sh-info { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
+.sales-hist tr.sale-detail .sh-field { display: inline-flex; gap: 8px; align-items: center; }
