@@ -568,7 +568,8 @@ U.nsel = {
     const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, k);
     Object.defineProperty(HTMLSelectElement.prototype, k, { configurable: true, get() { return d.get.call(this); }, set(v) { d.set.call(this, v); if (this._nselTrig) U.nsel.sync(this); } });
   });
-  document.addEventListener('mousedown', e => { if (U.nsel.cur && !e.target.closest('.nsel-trig')) U.nsel.close(); }, true);
+  // Clic EXTÉRIEUR seulement : un appui dans le menu lui-même ne doit pas le fermer (sinon le choix est perdu).
+  document.addEventListener('mousedown', e => { if (U.nsel.cur && !e.target.closest('.nsel-trig') && !U.nsel.cur.p.contains(e.target)) U.nsel.close(); }, true);
   window.addEventListener('scroll', e => { if (U.nsel.cur && !U.nsel.cur.p.contains(e.target)) U.nsel.close(); }, true);
   window.addEventListener('resize', () => U.nsel.close());
   document.addEventListener('change', e => { if (e.target.tagName === 'SELECT' && e.target._nselTrig) U.nsel.sync(e.target); }, true);
