@@ -296,7 +296,7 @@ details.fold.prod-fold > summary .type-col { text-align: center; }
 
 details.fold.prod-fold.cat-fold > summary,
 .prod-list-header.cat-header {
-  grid-template-columns: minmax(180px, 2fr) 130px 100px minmax(120px, 1.5fr) 1fr 130px 115px;
+  grid-template-columns: minmax(180px, 2fr) 120px 100px minmax(120px, 1.5fr) 1fr 250px 115px;
 }
 .prod-list-header.acc-header,
 details.fold.prod-fold.acc-fold > summary {
@@ -951,3 +951,9 @@ select.nsel-native { position: absolute !important; opacity: 0 !important; point
 :is(.frow, .grid) > .fg > label:first-child + * { margin-top: auto; }
 /* Coefficient modifiable dans la fiche Prix mastication (2026-09-27) */
 input.coeff-in { width: 66px; padding: 4px 6px; text-align: right; font-size: .88rem; font-weight: 600; }
+/* Prix mastication : coeff commun + décote dans l'en-tête ; case coeff de ligne (gris = calculé, ↺ = propre) */
+.cat-head-inputs { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.coeff-cell { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+input.coeff-in.auto { color: var(--gris); font-weight: 500; border-style: dashed; }
+.coeff-cell .coeff-reset { padding: 2px 4px; font-size: .95rem; color: var(--caramel); }
+.mini-coeff .coeff-cell input.coeff-in { width: 66px; }

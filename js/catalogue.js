@@ -67,7 +67,7 @@ const Catalogue = {
         <span>${sortHead('meat', 'Viande')}</span>
         <span>${sortHead('supplier', 'Fournisseurs')}</span>
         <span class="right">${sortHead('base', 'Variantes / base')}</span>
-        <span style="text-align:right">Décote paliers (%)</span>
+        <span style="text-align:right">Coeff commun · Décote paliers</span>
         <span></span>
       </div>` : ''}
       ${list.map(p => this.card(p)).join('') || `<div class="card empty"><span class="big">🥩</span>Aucun produit. Crée ton premier produit ou importe ton fichier <b>Prix_final.json</b> depuis Paramètres → Import.</div>`}
@@ -147,13 +147,13 @@ const Catalogue = {
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
         <td class="num sensitive">${U.eur(c.cost, 3)}</td>
-        <td class="num sensitive"><input type="number" step="0.01" min="0" value="${c.coeff.toFixed(2)}" class="coeff-in" title="${c.priceFixed ? 'Prix de vente fixé : modifier le coefficient retire le prix fixé' : 'Coefficient de cette variante'}" onchange="Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)">${c.priceFixed ? ' <span class="badge info" title="Prix de vente fixé à la main — le coefficient affiché en découle">fixe</span>' : ''}${!c.priceFixed && c.discount ? `<br><span class="num-decote" title="Décote paliers">−${U.pct(c.discount * 100)}</span>` : ''}</td>
+        <td class="num sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`)}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
         <td class="num sensitive ${S.vatActive ? 'num-cotis' : 'num-marge'}">${S.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
         <td class="num sensitive num-benef-cell ${c.profit >= 0 ? 'pos' : 'neg'}" data-normal="${U.eur(c.profit)}" data-peek="${U.eur(c.profit + c.priceTTC - c.priceHT)}"><b>${U.eur(c.profit)}</b></td>
-        <td class="num">${v.priceTTCManual ? `<button class="btn-icon" title="Revenir au calcul automatique (coeff × décote)" onclick="Catalogue.resetCardPrice('${p.id}','${v.id}')" style="vertical-align:middle;">↺</button>` : ''}<b><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" style="width:85px;text-align:right;font-weight:700;" onchange="Catalogue.setCardPriceTTC('${p.id}','${v.id}',this.value,${on ? curIdx : -1})"></b></td>
+        <td class="num"><b><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" style="width:85px;text-align:right;font-weight:700;" onchange="Catalogue.setCardPriceTTC('${p.id}','${v.id}',this.value,${on ? curIdx : -1})"></b></td>
       </tr>`;
     };
     const showInactive = this._showInactive[p.id];
@@ -191,9 +191,11 @@ const Catalogue = {
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT, 3)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i></span>
-        <span class="b2b-disc-badge" onclick="event.preventDefault();event.stopPropagation()">
+        <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()"><span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
+          <label>Coeff</label><input type="number" min="0" step="0.01" value="${U.num(p.coefficient) || 2}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
+        <span class="b2b-disc-badge">
           <label>Décote</label><input type="number" min="0" max="100" step="1" value="${p.bulkDiscount ?? ''}" placeholder="${S.bulkDiscount}" title="Décote paliers propre à ce produit — vide = suit le réglage global (${S.bulkDiscount}%)" onchange="Catalogue.setCardBulkDiscount('${p.id}',this.value)"><span>%</span>
-        </span>
+        </span></span>
         <span onclick="event.stopPropagation();Catalogue.toggleSel('${p.id}')"><button class="btn btn-sm ${selected?'cat-sel-active':'btn-ghost'}">${selected?'✓ Sélectionné':'Sélectionner'}</button></span>
       </summary>
       <div class="fold-body">
@@ -581,6 +583,38 @@ const Catalogue = {
     App.rerender();
   },
 
+  /* Case Coeff d'une ligne (fiche + éditeur) : coefficient réel de la ligne ; gris = calculé (coeff commun
+     − décote), normal + ↺ = propre à la ligne (coefficient tapé ou prix TTC fixé). Le ↺ remet la ligne sur
+     le calcul automatique. La place du ↺ est toujours réservée → cases alignées. */
+  coeffCell(c, onChange, onReset) {
+    const own = !!c.ownCoeff;
+    const tip = own ? (c.priceFixed ? 'Prix TTC fixé à la main — le coefficient en découle. Modifier le coefficient retire le prix fixé.' : 'Coefficient propre à cette variante')
+      : ('Calculé : coeff commun' + (c.discount ? ' − décote ' + U.pct(c.discount * 100) : ''));
+    return `<span class="coeff-cell"><input type="number" step="0.01" min="0" value="${(c.effCoeff || 0).toFixed(2)}" class="coeff-in${own ? '' : ' auto'}" title="${tip}" onchange="${onChange}"><button type="button" class="btn-icon coeff-reset" title="Revenir au calcul automatique (coeff commun − décote)" ${own ? '' : 'style="visibility:hidden" tabindex="-1"'} onclick="${onReset}">↺</button></span>`;
+  },
+  setCardCommonCoeff(prodId, val) {
+    const p = Store.state.catalogM.find(x => x.id === prodId); if (!p) return;
+    const k = U.num(val);
+    if (k <= 0) { App.rerender(); return; }
+    const snap = Store.snapshot('catalogM', p);
+    p.coefficient = k;
+    Stock.syncPricesFromCatalog(p.id);
+    const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient commun modifié — ' + p.name + ' : ' + k);
+    Store.save('catalogM', 'stockM');
+    U.toast('Coefficient commun mis à jour.', false, entry.id);
+    App.rerender();
+  },
+  resetCardLine(prodId, varId) {
+    const p = Store.state.catalogM.find(x => x.id === prodId); if (!p) return;
+    const v = (p.variants || []).find(x => x.id === varId); if (!v) return;
+    const snap = Store.snapshot('catalogM', p);
+    delete v.priceTTCManual; v.coeff = '';
+    Stock.syncPricesFromCatalog(p.id);
+    const entry = Store.commitSnapshot(snap, 'catalogue', 'Variante remise sur le calcul automatique — ' + p.name + ' ' + Pricing.labelVariant(v));
+    Store.save('catalogM', 'stockM');
+    U.toast('Variante remise sur le coefficient commun.', false, entry.id);
+    App.rerender();
+  },
   setCardBulkDiscount(prodId, val) {
     const p = Store.state.catalogM.find(x => x.id === prodId);
     if (!p) return;
@@ -604,20 +638,6 @@ const Catalogue = {
       delete v.priceTTCManual;
     } else {
       v.priceTTCManual = ttc;
-      const actives = (p.variants || []).filter(x => x.enabled !== false);
-      const lastActive = actives[actives.length - 1];
-      if (lastActive && lastActive.id === varId && actives.length > 1) {
-        const S = Store.state.settings;
-        const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
-        const base = Pricing.baseUnitCost(p);
-        const baseCoeff = U.num(v.coeff) > 0 ? U.num(v.coeff) : (U.num(p.coefficient) || 2);
-        const cost = Pricing.variantProdCost(p, v, base) + (Store.sachet(v.sachetId) ? U.num(Store.sachet(v.sachetId).cost) : 0) + Store.labelCostOf(p);
-        if (cost > 0 && baseCoeff > 0) {
-          const priceHT = ttc / (1 + vat);
-          const newBulk = (1 - priceHT / (cost * baseCoeff)) * 100;
-          if (newBulk >= 0 && newBulk <= 100) p.bulkDiscount = Math.round(newBulk * 10) / 10;
-        }
-      }
     }
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Prix TTC modifié — ' + p.name + ' ' + Pricing.labelVariant(v));
@@ -640,19 +660,6 @@ const Catalogue = {
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient modifié — ' + p.name + ' ' + Pricing.labelVariant(v) + ' : ' + k);
     Store.save('catalogM', 'stockM');
     U.toast('Coefficient mis à jour.', false, entry.id);
-    App.rerender();
-  },
-  resetCardPrice(prodId, varId) {
-    const p = Store.state.catalogM.find(x => x.id === prodId);
-    if (!p) return;
-    const v = (p.variants || []).find(x => x.id === varId);
-    if (!v || !v.priceTTCManual) return;
-    const snap = Store.snapshot('catalogM', p);
-    delete v.priceTTCManual;
-    Stock.syncPricesFromCatalog(p.id);
-    const entry = Store.commitSnapshot(snap, 'catalogue', 'Prix TTC réinitialisé — ' + p.name + ' ' + Pricing.labelVariant(v));
-    Store.save('catalogM', 'stockM');
-    U.toast('Prix revenu au calcul automatique.', false, entry.id);
     App.rerender();
   },
 
@@ -748,7 +755,7 @@ const Catalogue = {
       </td>
       <td>${firstCell}
         <div class="mini-coeff"><label>Coeff${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</label>
-          <input type="number" step="0.01" min="0" value="${c.coeff.toFixed(2)}" ${v.priceTTCManual ? 'title="Prix fixé : modifier le coefficient retire le prix fixé"' : ''} onchange="Catalogue.setVarCoeff(${i},this.value)"></div>
+          ${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</div>
       </td>
       <td>${this.packPicker(i, v.sachetId, v.mode)}
         <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
@@ -759,7 +766,7 @@ const Catalogue = {
       <td class="num sensitive ${Store.state.settings.vatActive ? 'num-cotis' : 'num-marge'}">${Store.state.settings.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
       <td class="num num-benef sensitive ${(Store.state.settings.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT) >= 0 ? 'pos' : 'neg'}"><b>${U.eur(Store.state.settings.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT)}</b></td>
       <td class="num"><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="v-price strong" onchange="Catalogue.setVariantPrice(${i},'ttc',this.value)">
-        ${c.priceFixed ? `<button class="btn-icon" title="Revenir au calcul automatique" onclick="Catalogue.resetVariantPrice(${i})">↺</button>` : ''}</td>
+</td>
       <td><button class="btn-icon" onclick="Catalogue._d.variants.splice(${i},1);Catalogue.drawVars()">🗑️</button></td>
     </tr>`;
   },
@@ -815,6 +822,7 @@ const Catalogue = {
   },
   resetVariantPrice(i) {
     this._d.variants[i].priceTTCManual = '';
+    this._d.variants[i].coeff = '';
     this.drawVars();
   },
 

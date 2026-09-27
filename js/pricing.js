@@ -104,7 +104,10 @@ const Pricing = {
       priceHT = priceTTC / (1 + vat);
       coeff = cost > 0 ? priceHT / cost : 0;
     } else {
-      coeff = U.num(v.coeff) > 0 ? U.num(v.coeff) : (U.num(p.coefficient) || 2);
+      // Coefficient propre à la ligne = coefficient final (la décote paliers ne s'y ajoute pas) ;
+      // sinon coefficient commun du produit, diminué de la décote du palier (2026-09-27).
+      if (U.num(v.coeff) > 0) { coeff = U.num(v.coeff); discount = 0; }
+      else coeff = U.num(p.coefficient) || 2;
       priceHT = cost * coeff * (1 - discount);
       priceTTC = priceHT * (1 + vat);
       // Prix TTC calculé toujours arrondi à 0,10 € (4,50 / 4,70…) — demande d'Antho. Un prix saisi
@@ -120,7 +123,7 @@ const Pricing = {
     const vatAmt = priceTTC - priceHT;
     const profit = margin - social - vatAmt;
     const effCoeff = cost > 0 ? priceHT / cost : 0;
-    return { prodCost, sacCost, labelCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
+    return { prodCost, sacCost, labelCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, ownCoeff: priceFixed || U.num(v.coeff) > 0, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
   },
 
   labelVariant(v) {
