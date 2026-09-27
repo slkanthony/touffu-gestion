@@ -107,20 +107,20 @@ const Pricing = {
       coeff = U.num(v.coeff) > 0 ? U.num(v.coeff) : (U.num(p.coefficient) || 2);
       priceHT = cost * coeff * (1 - discount);
       priceTTC = priceHT * (1 + vat);
-      if (discount > 0) {
+      // Prix TTC calculé toujours arrondi à 0,10 € (4,50 / 4,70…) — demande d'Antho. Un prix saisi
+      // à la main (prix fixé) reste exactement tel quel.
+      if (priceTTC > 0) {
         priceTTC = Math.round(priceTTC * 10) / 10;
         priceHT = priceTTC / (1 + vat);
-        discount = cost > 0 && coeff > 0 ? 1 - priceHT / (cost * coeff) : discount;
+        if (discount > 0) discount = cost > 0 && coeff > 0 ? 1 - priceHT / (cost * coeff) : discount;
       }
     }
-    const baseCoeff = U.num(v.coeff) > 0 ? U.num(v.coeff) : (U.num(p.coefficient) || 2);
-    const effDiscount = (cost > 0 && baseCoeff > 0) ? 1 - priceHT / (cost * baseCoeff) : 0;
     const margin = priceHT - cost;
     const social = priceHT * (U.num(S.socialTaxRate) / 100);
     const vatAmt = priceTTC - priceHT;
     const profit = margin - social - vatAmt;
     const effCoeff = cost > 0 ? priceHT / cost : 0;
-    return { prodCost, sacCost, labelCost, cost, coeff, discount, effDiscount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
+    return { prodCost, sacCost, labelCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
   },
 
   labelVariant(v) {

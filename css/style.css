@@ -357,8 +357,6 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .b2b-disc-badge > span { font-size: 0.82rem; color: var(--caramel); font-weight: 700; }
 .num-decote { color: var(--caramel); font-weight: 600; font-size: 0.82rem; }
 :root[data-theme="dark"] .num-decote { color: var(--caramel-2); }
-.num-decote-eff { color: #e0a040; font-weight: 600; font-size: 0.82rem; font-style: italic; }
-:root[data-theme="dark"] .num-decote-eff { color: #f0b860; }
 
 /* Calculateur de quantité (page 🧮) */
 .calc-ratio { margin-top: 10px; font-size: 0.95rem; color: var(--gris); }
@@ -951,3 +949,5 @@ select.nsel-native { position: absolute !important; opacity: 0 !important; point
    de la ligne restent au même niveau (le champ est poussé en bas de sa colonne, libellés calés en haut). */
 :is(.frow, .grid) > .fg:has(> label:first-child) { display: flex; flex-direction: column; }
 :is(.frow, .grid) > .fg > label:first-child + * { margin-top: auto; }
+/* Coefficient modifiable dans la fiche Prix mastication (2026-09-27) */
+input.coeff-in { width: 66px; padding: 4px 6px; text-align: right; font-size: .88rem; font-weight: 600; }

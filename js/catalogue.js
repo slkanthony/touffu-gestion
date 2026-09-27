@@ -147,7 +147,7 @@ const Catalogue = {
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
         <td class="num sensitive">${U.eur(c.cost, 3)}</td>
-        <td class="num sensitive">${c.coeff.toFixed(2)}${c.priceFixed ? ' <span class="badge info" title="Prix de vente fixé — coefficient recalculé selon le coût de ce fournisseur">fixe</span>' : ''}${c.priceFixed && Math.abs(c.effDiscount) > 0.001 ? `<br><span class="num-decote-eff" title="Décote effective par rapport au prix sans décote (coeff × coût)">−${U.pct(c.effDiscount * 100)}</span>` : c.discount ? `<br><span class="num-decote">−${U.pct(c.discount * 100)}</span>` : ''}</td>
+        <td class="num sensitive"><input type="number" step="0.01" min="0" value="${c.coeff.toFixed(2)}" class="coeff-in" title="${c.priceFixed ? 'Prix de vente fixé : modifier le coefficient retire le prix fixé' : 'Coefficient de cette variante'}" onchange="Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)">${c.priceFixed ? ' <span class="badge info" title="Prix de vente fixé à la main — le coefficient affiché en découle">fixe</span>' : ''}${!c.priceFixed && c.discount ? `<br><span class="num-decote" title="Décote paliers">−${U.pct(c.discount * 100)}</span>` : ''}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
@@ -626,6 +626,22 @@ const Catalogue = {
     App.rerender();
   },
 
+  /* Coefficient modifié directement dans la fiche (2026-09-27, demande d'Antho, comme son ancienne appli) :
+     le prix de vente suit le coefficient ; si la variante avait un prix fixé, il est retiré. */
+  setCardCoeff(prodId, varId, val) {
+    const p = Store.state.catalogM.find(x => x.id === prodId); if (!p) return;
+    const v = (p.variants || []).find(x => x.id === varId); if (!v) return;
+    const k = U.num(val);
+    if (k <= 0) { App.rerender(); return; }
+    const snap = Store.snapshot('catalogM', p);
+    v.coeff = k;
+    delete v.priceTTCManual;
+    Stock.syncPricesFromCatalog(p.id);
+    const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient modifié — ' + p.name + ' ' + Pricing.labelVariant(v) + ' : ' + k);
+    Store.save('catalogM', 'stockM');
+    U.toast('Coefficient mis à jour.', false, entry.id);
+    App.rerender();
+  },
   resetCardPrice(prodId, varId) {
     const p = Store.state.catalogM.find(x => x.id === prodId);
     if (!p) return;
@@ -732,7 +748,7 @@ const Catalogue = {
       </td>
       <td>${firstCell}
         <div class="mini-coeff"><label>Coeff${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</label>
-          <input type="number" step="0.001" value="${c.coeff.toFixed(3)}" ${v.priceTTCManual ? 'disabled title="Ignoré tant qu\'un prix de vente fixe est renseigné"' : ''} onchange="Catalogue._d.variants[${i}].coeff=this.value;Catalogue.drawVars()"></div>
+          <input type="number" step="0.01" min="0" value="${c.coeff.toFixed(2)}" ${v.priceTTCManual ? 'title="Prix fixé : modifier le coefficient retire le prix fixé"' : ''} onchange="Catalogue.setVarCoeff(${i},this.value)"></div>
       </td>
       <td>${this.packPicker(i, v.sachetId, v.mode)}
         <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
@@ -788,6 +804,13 @@ const Catalogue = {
       const vat = 1 + U.num(this._d.vatRate !== undefined && this._d.vatRate !== '' ? this._d.vatRate : S.vatRate) / 100;
       v.priceTTCManual = (num * vat).toFixed(2);
     }
+    this.drawVars();
+  },
+  setVarCoeff(i, val) {
+    const v = this._d.variants[i];
+    if (U.num(val) <= 0) { this.drawVars(); return; }
+    v.coeff = val;
+    v.priceTTCManual = '';
     this.drawVars();
   },
   resetVariantPrice(i) {
