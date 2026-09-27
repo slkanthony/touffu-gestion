@@ -79,6 +79,7 @@ const Catalogue = {
         <button class="btn-ghost btn-sm" onclick="Catalogue.clearSel()">Annuler</button>
       </div>` : ''}
     `);
+    this._teamLock();
   },
 
   setSort(key) {
@@ -404,6 +405,19 @@ const Catalogue = {
     if (this._prefill) { Object.assign(this._d, this._prefill); this._prefill = null; }
   },
 
+  /* Profil « équipe » (2026-09-29, choix A d'Antho) : sur les fiches prix, seuls le lien, la réf. et
+     les notes fournisseur sont modifiables ; tout le reste est grisé (et de toute façon jamais
+     enregistré : Catalogue.save ne recopie que ces 3 champs, Store.save bloque le reste). */
+  _teamLock() {
+    if (!App.isTeam) return;
+    const root = document.getElementById('main'); if (!root) return;
+    const scope = this.mode === 'list' ? '.cat-fold .fold-body, .cat-head-inputs' : '';
+    const els = scope ? root.querySelectorAll(scope.split(',').map(s => s.trim() + ' input, ' + s.trim() + ' select, ' + s.trim() + ' textarea, ' + s.trim() + ' button').join(','))
+      : root.querySelectorAll('input, select, textarea, button');
+    els.forEach(el => { if (!el.closest('[data-team-ok]')) { el.disabled = true; el.title = 'Profil équipe : non modifiable'; } });
+    root.querySelectorAll(this.mode === 'list' ? '.cat-fold details.pack-picker, a[href="#/catalogue/new"]' : 'details.pack-picker, .sup-grid .btn-icon').forEach(el => { el.style.pointerEvents = 'none'; el.style.opacity = '.55'; });
+  },
+
   renderEditor() {
     const S = Store.state.settings, p = this._d;
     const vp = S.variantPresets || { gram: [], piece: [], size: [] };
@@ -412,8 +426,9 @@ const Catalogue = {
       <div class="view-title">
         <h1>${isNew ? 'Nouveau produit mastication' : 'Modifier — ' + U.esc(p.name || '')}</h1>
         <span class="spacer"></span>
-        <button class="btn-ghost" onclick="Catalogue.cancelEdit()">← Retour à la liste</button>
+        <button class="btn-ghost" data-team-ok onclick="Catalogue.cancelEdit()">← Retour à la liste</button>
       </div>
+      ${App.isTeam ? `<div class="card team-note">👥 <b>Profil équipe</b> : sur cette fiche tu peux compléter uniquement le <b>lien</b>, la <b>réf.</b> et les <b>notes fournisseur</b> (section 2). Le reste est verrouillé.</div>` : ''}
 
       <div class="card" style="border-left:4px solid var(--caramel);">
         <h2>🏷️ 1. Informations produit</h2>
@@ -474,8 +489,8 @@ const Catalogue = {
       </div>
 
       <div class="frow">
-        <button class="btn-cta" style="flex:2;" onclick="Catalogue.save()">💾 ${isNew ? 'Créer le produit' : 'Enregistrer les modifications'}</button>
-        <button class="btn-ghost" onclick="Catalogue.cancelEdit()">Annuler</button>
+        <button class="btn-cta" data-team-ok style="flex:2;" onclick="Catalogue.save()">💾 ${isNew ? 'Créer le produit' : 'Enregistrer les modifications'}</button>
+        <button class="btn-ghost" data-team-ok onclick="Catalogue.cancelEdit()">Annuler</button>
         ${!isNew ? `<button class="btn-danger" onclick="Catalogue.remove('${p.id}')">Supprimer</button>` : ''}
       </div>
     `);
@@ -534,7 +549,7 @@ const Catalogue = {
         <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
         <div class="fg"><label>&nbsp;</label><div class="sup-cell"><button class="btn-icon" title="Retirer ce fournisseur" onclick="Catalogue.delSupplier(${i})">🗑️</button></div></div>
       </div>
-      <div class="sup-grid2" style="${Store.hideSupplierInfo() ? 'display:none;' : ''}">
+      <div class="sup-grid2" data-team-ok style="${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg"><label>Réf. fournisseur</label><input value="${U.esc(s.ref || '')}" placeholder="ex : C-23012" onchange="Catalogue._d.suppliers[${i}].ref=this.value.trim()"></div>
         <div class="fg"><label>Lien page fournisseur (URL)</label>
           <div style="display:flex;gap:6px;">
@@ -542,7 +557,7 @@ const Catalogue = {
             <button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sup_url_${i}').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button>
           </div></div>
       </div>
-      <div style="margin:-4px 0 8px;padding:0 4px;${Store.hideSupplierInfo() ? 'display:none;' : ''}">
+      <div data-team-ok style="margin:-4px 0 8px;padding:0 4px;${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg mb0" style="flex:1;"><label>📝 Notes fournisseur <span class="muted" style="font-weight:400;">(visible dans la liste de commande)</span></label>
           <textarea rows="2" placeholder="Ex: acheter au minimum 5 kg sinon aller chez Cernunos…" style="width:100%;resize:vertical;font-size:.85rem;" onchange="Catalogue._d.suppliers[${i}].notes=this.value">${U.esc(s.notes || '')}</textarea></div>
       </div></div>`).join('') || '<p class="muted">Aucun fournisseur — ajoute au moins un fournisseur avec son prix d\'achat.</p>';
@@ -729,6 +744,7 @@ const Catalogue = {
           <tbody>${groupRows.map((r, j) => this.variantRow(r, base, j, groupRows.length)).join('')}</tbody>
         </table></div>`;
     }).join('') || '<p class="muted">Aucune variante — ajoute au moins un conditionnement de vente.</p>';
+    this._teamLock();
   },
 
   variantRow({ v, i, c, on }, base, j, groupLen) {
@@ -905,6 +921,7 @@ const Catalogue = {
   },
 
   save() {
+    if (App.isTeam) return this._saveTeam();
     const p = this._d;
     p.name = U.val('cp_name').trim();
     if (!p.name) { U.toast('Le nom est obligatoire.', true); return false; }
@@ -935,7 +952,29 @@ const Catalogue = {
     this.cancelEdit();
   },
 
-peekBenefTVA(active) {
+_saveTeam() {
+    const d = this._d;
+    const idx = Store.state.catalogM.findIndex(x => x.id === d.id);
+    if (idx < 0) { U.toast('Profil équipe : tu ne peux pas créer de fiche prix.', true); return false; }
+    const p = Store.state.catalogM[idx];
+    const dup = [];
+    (d.suppliers || []).forEach(s => Stock.dupWarnings({ url: s.url, ref: s.ref, self: { kind: 'P', id: p.id } }).forEach(m => { if (!dup.includes(m)) dup.push(m); }));
+    if (!U.dupGate(dup, () => Catalogue.save())) return false;
+    const before = JSON.parse(JSON.stringify(p));
+    let n = 0;
+    (p.suppliers || []).forEach(s => {
+      const e = (d.suppliers || []).find(x => x.id === s.id); if (!e) return;
+      ['url', 'ref', 'notes'].forEach(f => { const v = (e[f] || '').trim(); if (v !== (s[f] || '')) { s[f] = v; n++; } });
+    });
+    if (!n) { U.toast('Aucun lien / réf. / note fournisseur modifié.'); this.cancelEdit(); return; }
+    const entry = Store.log('catalogue', 'Infos fournisseur modifiées (équipe) — ' + p.name, { type: 'restoreItem', data: { domain: 'catalogM', id: p.id, before } });
+    Store._teamCatalogOK = true;
+    try { Store.save('catalogM'); } finally { Store._teamCatalogOK = false; }
+    U.toast('Lien / réf. fournisseur enregistrés.', false, entry.id);
+    this.cancelEdit();
+  },
+
+  peekBenefTVA(active) {
     document.querySelectorAll('.num-benef-cell b').forEach(b => {
       const td = b.parentElement;
       b.textContent = active ? td.dataset.peek : td.dataset.normal;

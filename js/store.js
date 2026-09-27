@@ -296,9 +296,12 @@ const Store = {
       return;
     }
     if (window.App && window.App.isTeam) {
-      const blocked = domains.filter(d => !this.TEAM_DOMAINS.includes(d));
-      domains = domains.filter(d => this.TEAM_DOMAINS.includes(d));
-      if (blocked.length && typeof U !== 'undefined' && U.toast) U.toast('Profil équipe : seul le stock peut être modifié — le reste n’est pas enregistré.', true);
+      // Fiches prix (catalogM) : seulement via Catalogue.save en profil équipe, qui ne recopie
+      // QUE lien / réf. / notes fournisseur (flag _teamCatalogOK posé le temps de l'appel).
+      const ok = d => this.TEAM_DOMAINS.includes(d) || (d === 'catalogM' && this._teamCatalogOK);
+      const blocked = domains.filter(d => !ok(d));
+      domains = domains.filter(ok);
+      if (blocked.length && typeof U !== 'undefined' && U.toast) U.toast(blocked.includes('catalogM') ? 'Profil équipe : sur les fiches prix, seuls le lien, la réf. et les notes fournisseur s’enregistrent (ouvre la fiche avec « Modifier »).' : 'Profil équipe : seul le stock peut être modifié — le reste n’est pas enregistré.', true);
       if (!domains.length) return;
     }
     domains.forEach(d => this._dirty.add(d));
