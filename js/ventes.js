@@ -1118,7 +1118,7 @@ const Ventes = {
     } else {
       this.retourData.cashLines.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, price, qty });
     }
-    this.cashSelKey = ''; this.cashQ = ''; this.cashQty = 1; this.cashPrice = '';
+    this.cashSelKey = ''; this.cashQ = ''; this.cashQty = 1; this.cashPrice = ''; this.cashFType = 'all'; this.cashFVariant = 'all';
     this.render();
   },
   removeCashLine(i) { if (this.retourData) { this.retourData.cashLines.splice(i, 1); this.render(); } },
@@ -1517,7 +1517,7 @@ const Ventes = {
     cash.total = cash.items.reduce((a, it) => a + it.price * it.qty, 0);
     if (isNew) { Store.state.sales.unshift(cash); s.cashSiblingId = cash.id; }
     Store.log('vente', `Vente en liquide ajoutée au ticket ${U.frDateTime(s.ts)} : ${u.name}${u.label ? ' ' + u.label : ''} ×${U.qty(qty)} · ${U.eur(price * qty)}`);
-    this.ticketCashSelKey = ''; this.ticketCashQ = ''; this.ticketCashQty = 1; this.ticketCashPrice = '';
+    this.ticketCashSelKey = ''; this.ticketCashQ = ''; this.ticketCashQty = 1; this.ticketCashPrice = ''; this.cashFType = 'all'; this.cashFVariant = 'all';
     Store.save(...(cash.historical ? ['sales'] : ['sales', 'stockM', 'catalogA', 'consumables']));
     this.render();
     U.toast(selfCash ? `💵 Produit ajouté à ce ticket.` : `💵 Vente en liquide ajoutée${cash.historical ? '' : ' — si ça vide bien le stock restant, la ligne SumUp de ce produit passera « prête à déduire » dans 🧩 Articles à traiter'}.`);
