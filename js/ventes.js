@@ -10,8 +10,8 @@
    ============================================================ */
 const Ventes = {
   source: 'event',   // 'general' (site/boutique) | 'event' (marché) — événement par défaut, comme l'ancienne appli
-  q: '', qOpen: false,
-  catQ: '', cat: 'all', catOpen: false,
+  q: '', qOpen: false, qFreshOpen: false,
+  catQ: '', cat: 'all', catOpen: false, catFreshOpen: false,
   variant: 'all',
   selKey: '', lotId: '', qty: 1,
   consoId: '', consoQty: 1,
@@ -92,7 +92,9 @@ const Ventes = {
     return (this.cat === 'all' || u.type === this.cat) &&
       (wantKind !== 'A' || this.accWidth === 'all' || u.width === this.accWidth) &&
       (this.variant === 'all' || u.label === this.variant) &&
-      (!this.q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(this.q.toLowerCase()));
+      // qFreshOpen : le champ vient d'être rouvert (clic) sans que rien n'ait été retapé —
+      // on montre tout, plutôt que de filtrer sur le texte de l'ancienne sélection (voir setQ).
+      (this.qFreshOpen || !this.q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(this.q.toLowerCase()));
   },
 
   /* Classement des étiquettes de variantes en 4 familles pour les filtres rapides */
@@ -134,8 +136,8 @@ const Ventes = {
     if (this.selKey && !filtered.some(u => u.key === this.selKey)) this.selKey = '';
     const sel = units.find(u => u.key === this.selKey) || null;
 
-    // suggestions autocomplete catégorie
-    const catSuggestions = this.catOpen ? types.filter(t => !this.catQ || t.toLowerCase().includes(this.catQ.toLowerCase())).slice(0, 20) : [];
+    // suggestions autocomplete catégorie (catFreshOpen : réouverture par clic, on montre tout — voir setCatQ)
+    const catSuggestions = this.catOpen ? types.filter(t => this.catFreshOpen || !this.catQ || t.toLowerCase().includes(this.catQ.toLowerCase())).slice(0, 20) : [];
     // suggestions autocomplete produit (déjà filtré par cat/variante/q)
     const prodSuggestions = this.qOpen ? filtered.slice(0, 30) : [];
 
@@ -193,7 +195,7 @@ const Ventes = {
         </div>
         ${sel ? `<div class="grid c2">
           ${sel.kind === 'M' ? lotSelect : `<div class="fg"><label>Disponible</label><input disabled value="${U.qty(this.avail(sel))} pièce(s)"></div>`}
-          <div class="fg"><label>${sel.vLots ? `Nombre de lots de ${sel.vLots}` : 'Quantité'}</label><input id="v_qty" type="number" step="0.001" min="0" value="${this.qty || 1}" onchange="Ventes.qty=U.num(this.value)"></div>
+          <div class="fg"><label>${sel.vLots ? `Nombre de lots de ${sel.vLots}` : 'Quantité'}</label><input id="v_qty" type="number" step="1" min="1" value="${this.qty || 1}" onchange="Ventes.qty=Math.max(1,Math.round(U.num(this.value)))"></div>
         </div>
         <span class="muted">${U.esc(sel.name)}${sel.label ? ' · ' + U.esc(sel.label) : ''} — ${U.eur(sel.price)} — dispo ${U.qty(this.avail(sel))}</span>`
         : `<p class="muted">${filtered.length === 0 ? 'Aucun produit pour ce filtre — vérifie le stock concerné (général / événement) ou tes filtres.' : 'Tape un nom ou choisis un produit ci-dessus.'}</p>`}
@@ -221,29 +223,48 @@ const Ventes = {
   },
 
   setSource(s) { this.source = s; this.lotId = ''; this.render(); },
-  setKind(k) { this.kind = (k === 'A' ? 'A' : 'M'); this.selKey = ''; this.cat = 'all'; this.catQ = ''; this.variant = 'all'; this.accWidth = 'all'; this.q = ''; this.lotId = ''; this.render(); },
+  setKind(k) { this.kind = (k === 'A' ? 'A' : 'M'); this.selKey = ''; this.cat = 'all'; this.catQ = ''; this.catFreshOpen = false; this.variant = 'all'; this.accWidth = 'all'; this.q = ''; this.qFreshOpen = false; this.lotId = ''; this.render(); },
   _setAccWidth(w) { this.accWidth = w || 'all'; this.selKey = ''; this.render(); },
   _setVariant(v) { this.variant = v || 'all'; this.selKey = ''; this.render(); },
   _setConso(v) { this.consoId = v; this.render(); },
 
-  setQ(v) { this.q = v; this.qOpen = true; this.selKey = ''; this.render(); },
-  setCatQ(v) {
-    this.catQ = v; this.catOpen = true;
-    const types = [...new Set(this.units().map(u => u.type))];
-    const exact = types.find(t => t.toLowerCase() === v.trim().toLowerCase());
-    this.cat = v.trim() === '' ? 'all' : (exact || 'all');
-    this.selKey = ''; this.render();
+  /* setQ/setCatQ sont appelés à la fois par la frappe (oninput) ET par le simple clic pour
+     rouvrir le champ (onfocus, voir U.autocomplete) — avec la MÊME valeur (celle déjà affichée)
+     dans ce 2e cas. Sans distinction, rouvrir un champ déjà rempli (produit/catégorie déjà
+     choisi) effaçait aussitôt la sélection (selKey/cat) et ne proposait plus que l'élément déjà
+     choisi (filtré sur son propre texte) — impossible de choisir autre chose sans tout effacer à
+     la main. On détecte cette réouverture « à l'identique » (champ fermé + texte inchangé) pour
+     juste montrer toute la liste sans toucher à la sélection en cours ; un VRAI changement de
+     texte (frappe) redevient normal dès le caractère suivant. */
+  setQ(v) {
+    const freshOpen = !this.qOpen && v === this.q;
+    this.qFreshOpen = freshOpen;
+    this.q = v; this.qOpen = true;
+    if (!freshOpen) this.selKey = '';
+    this.render();
   },
-  pickCat(t) { this.catQ = t; this.cat = t; this.catOpen = false; this.selKey = ''; this.render(); },
+  setCatQ(v) {
+    const freshOpen = !this.catOpen && v === this.catQ;
+    this.catFreshOpen = freshOpen;
+    this.catQ = v; this.catOpen = true;
+    if (!freshOpen) {
+      const types = [...new Set(this.units().map(u => u.type))];
+      const exact = types.find(t => t.toLowerCase() === v.trim().toLowerCase());
+      this.cat = v.trim() === '' ? 'all' : (exact || 'all');
+      this.selKey = '';
+    }
+    this.render();
+  },
+  pickCat(t) { this.catQ = t; this.cat = t; this.catOpen = false; this.catFreshOpen = false; this.selKey = ''; this.render(); },
   // Fermeture au blur (voir U.autocomplete) — un mousedown sur une suggestion empêche
   // le blur de se déclencher avant le pick, donc pas de conflit avec closeCatMenu/closeQMenu.
-  closeCatMenu() { if (this.catOpen) { this.catOpen = false; this.render(); } },
-  closeQMenu() { if (this.qOpen) { this.qOpen = false; this.render(); } },
+  closeCatMenu() { if (this.catOpen) { this.catOpen = false; this.catFreshOpen = false; this.render(); } },
+  closeQMenu() { if (this.qOpen) { this.qOpen = false; this.qFreshOpen = false; this.render(); } },
 
   pickProduct(key) {
     const u = this.units().find(x => x.key === key);
     this.selKey = key; this.q = u ? u.name + (u.label ? ' · ' + u.label : '') : this.q;
-    this.qOpen = false; this.lotId = ''; this.qty = 1; this.render();
+    this.qOpen = false; this.qFreshOpen = false; this.lotId = ''; this.qty = 1; this.render();
   },
 
   /* Alerte péremption FEFO : si l'utilisateur choisit manuellement un lot alors qu'un autre,
@@ -276,7 +297,7 @@ const Ventes = {
     const u = this.units().find(x => x.key === this.selKey);
     if (!u && !this.consoId) { U.toast('Choisis un produit ou un consommable.', true); return; }
     if (!u && this.consoId) { if (this._pushConsoIfSelected()) { this.render(); U.toast('Ajouté au ticket.'); } return; }
-    let qty = U.num(this.qty) || U.numVal('v_qty');
+    let qty = Math.round(U.num(this.qty) || U.numVal('v_qty'));
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
     if (u.kind === 'M' && u.vLots) {
       // Lot sans stock propre : pris sur la variante principale (DLUO la plus courte d'abord) à la validation.
@@ -371,7 +392,7 @@ const Ventes = {
           <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
           <td>${c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—'}</td>
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
-          <td class="num"><input type="number" step="0.001" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=U.num(this.value);Ventes.render()"></td>
+          <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
           <td class="num"><b>${U.eur(c.price * c.qty)}</b></td>
           <td><button class="btn-icon" onclick="Ventes.cart.splice(${i},1);Ventes.render()">🗑️</button></td></tr>`).join('')}</tbody>
         <tfoot><tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr></tfoot></table></div>
