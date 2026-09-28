@@ -1097,6 +1097,11 @@ table.sales-hist tr.sale-head:nth-of-type(even) td { background: rgba(255, 255, 
 table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .sales-hist tr.sale-head.is-sel > td { background: rgba(166, 113, 83, 0.22); }
 .sales-hist tr.hist-fold-foot > td { border-bottom: 1px solid var(--card-border); }
+/* Regroupement visuel de tickets d'un même événement/journée (2026-09-30) : léger fond commun,
+   sous-total dans une bande caramel bien marquée juste après le dernier ticket du groupe. */
+table.sales-hist tr.hist-grouped:not(:hover):not(.is-sel) td { background: rgba(166, 113, 83, 0.06); }
+table.sales-hist tr.hist-group-sub td { background: rgba(166, 113, 83, 0.22); border-top: 1px dashed rgba(166, 113, 83, 0.6); border-bottom: 1px dashed rgba(166, 113, 83, 0.6); padding: 6px 12px; }
+table.sales-hist tr.hist-group-sub .hc-ev, table.sales-hist tr.hist-group-sub .hc-tot { font-weight: 700; }
 /* Articles à traiter : actions groupées (2026-09-30) */
 .todo-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .todo-bulk.small { margin-top: 0; }

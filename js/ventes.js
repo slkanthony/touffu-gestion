@@ -849,11 +849,21 @@ const Ventes = {
     const originBadge = s => s.historical ? '<span class="badge" title="Import historique : n\'a pas touché au stock">📚 historique</span>' : s.fromImport ? '<span class="badge" title="Import d\'un retour d\'événement SumUp">📥 retour</span>' : '';
     const kindLbl = s => s.source === 'event' ? 'Événement' : s.channel === 'online' ? 'En ligne' : 'Général';
     const field = (label, html) => `<span class="sh-field"><span class="sh-lbl">${label}</span>${html}</span>`;
-    const rowsHtml = pageList.map(s => {
+    // Regroupement visuel (2026-09-30) : Antho a fait un retour d'événement avec ventes SumUp +
+    // espèces → même événement, même journée de marché, mais 2 tickets séparés (frais de
+    // paiement corrects, cf. la remarque plus haut sur les frais SumUp) donc 2 totaux distincts,
+    // pénible à additionner à la main. On garde les 2 tickets tels quels (actions individuelles
+    // Modifier/Annuler/🗑 conservées) mais on les rapproche visuellement (fond légèrement teinté
+    // commun) et on affiche UN sous-total combiné juste après, dès que ≥2 tickets ADJACENTS dans
+    // la liste triée/affichée partagent le même nom d'événement et la même « journée de marché »
+    // (frontière à 5h, comme _marketDay — un marché nocturne ne casse pas le groupe à minuit).
+    // Le vrai total tous tickets confondus, agrégé sur tout l'historique (pas seulement 2
+    // tickets adjacents), existe déjà dans Statistiques → 🎪 Événements.
+    const rowHtml = (s, grouped) => {
       const open = !!this._histOpen[s.id];
       const nTodo = s.items.filter(i => i.todo === 'open').length;
       // Colonnes FIXES (grille .hist-row) alignées sur la ligne de titres (2026-09-29).
-      const head = `<tr id="hist-${s.id}" class="sale-head ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="hist-row">
+      const head = `<tr id="hist-${s.id}" class="sale-head${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="hist-row">
           <span class="hc-cb"><input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)"></span>
           <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}" onclick="Ventes.toggleHistOpen('${s.id}')">${open ? '▾' : '▸'}</button></span>
           <span class="hc-date sh-date" style="cursor:pointer;" onclick="Ventes.toggleHistOpen('${s.id}')">${U.frDateTime(s.ts)}</span>
@@ -887,7 +897,29 @@ const Ventes = {
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
       </tr>`).join('');
       return head + detail + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr>`;
-    }).join('');
+    };
+    const rowsArr = [];
+    for (let gi = 0; gi < pageList.length;) {
+      const s0 = pageList[gi];
+      let gj = gi;
+      if (s0.eventName) {
+        const dayKey = this._marketDay(s0.ts);
+        while (gj + 1 < pageList.length && pageList[gj + 1].eventName === s0.eventName && this._marketDay(pageList[gj + 1].ts) === dayKey) gj++;
+      }
+      const group = pageList.slice(gi, gj + 1);
+      const grouped = group.length > 1;
+      group.forEach(gs => rowsArr.push(rowHtml(gs, grouped)));
+      if (grouped) {
+        const sum = group.filter(x => !x.cancelled).reduce((a, x) => a + U.num(x.total), 0);
+        rowsArr.push(`<tr class="hist-group-sub"><td colspan="7"><div class="hist-row">
+          <span class="hc-cb"></span><span class="hc-tg"></span><span class="hc-date"></span><span class="hc-kind"></span><span class="hc-orig"></span>
+          <span class="hc-ev">🎪 Total ${U.esc(s0.eventName)}</span><span class="hc-pay muted">${group.length} tickets</span><span class="hc-prod"></span><span class="hc-n"></span>
+          <span class="hc-tot"><b>${U.eur(sum)}</b></span><span class="hc-act"></span>
+        </div></td></tr>`);
+      }
+      gi = gj + 1;
+    }
+    const rowsHtml = rowsArr.join('');
     const pager = pages > 1 ? `<div class="hist-pager"><button class="btn-ghost btn-sm" ${f.page <= 1 ? 'disabled' : ''} onclick="Ventes.setHistF('page',${f.page - 1})">◀</button>
       ${Array.from({ length: pages }, (_, i) => i + 1).filter(n => n === 1 || n === pages || Math.abs(n - f.page) <= 2).map((n, i, arr) => (i && n - arr[i - 1] > 1 ? '<span class="muted">…</span>' : '') + `<button class="${n === f.page ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistF('page',${n})">${n}</button>`).join('')}
       <button class="btn-ghost btn-sm" ${f.page >= pages ? 'disabled' : ''} onclick="Ventes.setHistF('page',${f.page + 1})">▶</button></div>` : '';
@@ -1435,6 +1467,12 @@ const Ventes = {
     this.ticketCashOpen = false; this.ticketCashPrice = u ? Math.round(u.price * 100) / 100 : ''; this.ticketCashQty = 1; this.render();
   },
   _ticketCashSibling(s) { return Store.state.sales.find(x => x.id === s.cashSiblingId); },
+  /* Cible de l'ajout : si le ticket ouvert EST DÉJÀ un ticket espèces (payment:'cash', ex. créé
+     depuis le panneau de retour d'événement), on ajoute directement dedans — pas de sibling,
+     ça n'aurait aucun sens. Sinon (ticket SumUp), on ajoute dans le ticket espèces séparé et lié
+     (créé à la volée). Corrige un bug signalé par Antho : « 🎪 Modifier » sur un ticket espèces
+     ne proposait aucun moyen d'y ajouter d'autres produits après coup. */
+  _ticketCashTarget(s) { return s.payment === 'cash' ? s : this._ticketCashSibling(s); },
   /* Prix/quantité arrondis (2 décimales / entier) dès la sélection. Ajouter un produit déjà
      présent sur ce ticket CUMULE sa quantité (moyenne pondérée du prix, ops de déduction
      accumulées sur la même ligne) au lieu de dupliquer — Antho saisit ses ventes espèces au fil
@@ -1446,7 +1484,8 @@ const Ventes = {
     const qty = Math.round(U.num(this.ticketCashQty) || U.numVal('ticket_cash_qty'));
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
     const price = Math.round((this.ticketCashPrice !== '' ? U.num(this.ticketCashPrice) : u.price) * 100) / 100;
-    let cash = this._ticketCashSibling(s), isNew = false;
+    const selfCash = s.payment === 'cash';
+    let cash = this._ticketCashTarget(s), isNew = false;
     if (!cash) {
       cash = { id: U.uid(), ts: s.ts, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: 0, eventName: s.eventName || '', travelCost: 0, items: [], total: 0, cancelled: false, undoOps: [], fromImport: !!s.fromImport, historical: !!s.historical, cashSiblingOf: s.id };
       isNew = true;
@@ -1481,33 +1520,37 @@ const Ventes = {
     this.ticketCashSelKey = ''; this.ticketCashQ = ''; this.ticketCashQty = 1; this.ticketCashPrice = '';
     Store.save(...(cash.historical ? ['sales'] : ['sales', 'stockM', 'catalogA', 'consumables']));
     this.render();
-    U.toast(`💵 Vente en liquide ajoutée${cash.historical ? '' : ' — si ça vide bien le stock restant, la ligne SumUp de ce produit passera « prête à déduire » dans 🧩 Articles à traiter'}.`);
+    U.toast(selfCash ? `💵 Produit ajouté à ce ticket.` : `💵 Vente en liquide ajoutée${cash.historical ? '' : ' — si ça vide bien le stock restant, la ligne SumUp de ce produit passera « prête à déduire » dans 🧩 Articles à traiter'}.`);
   },
   removeTicketCash(idx) {
     const s = Store.state.sales.find(x => x.id === this.editTicketId); if (!s) return;
-    const cash = this._ticketCashSibling(s); if (!cash) return;
+    const cash = this._ticketCashTarget(s); if (!cash) return;
     const it = (cash.items || [])[idx]; if (!it) return;
     (it._ops || []).forEach(op => this.applyUndoOp(op));
     cash.undoOps = (cash.undoOps || []).filter(op => !(it._ops || []).includes(op));
     cash.items.splice(idx, 1);
     cash.total = cash.items.reduce((a, i2) => a + i2.price * i2.qty, 0);
     Store.log('vente', `Vente en liquide retirée du ticket ${U.frDateTime(s.ts)} : ${it.name}`);
-    if (!cash.items.length) { Store.state.sales = Store.state.sales.filter(x => x.id !== cash.id); delete s.cashSiblingId; }
+    if (cash.id !== s.id && !cash.items.length) { Store.state.sales = Store.state.sales.filter(x => x.id !== cash.id); delete s.cashSiblingId; }
     Store.save('sales', 'stockM', 'catalogA', 'consumables');
     this.render();
     U.toast('Vente en liquide retirée, stock re-crédité.');
   },
 
   ticketCashCard(s) {
-    const cash = this._ticketCashSibling(s);
+    const selfCash = s.payment === 'cash';
+    const cash = this._ticketCashTarget(s);
     const cashSel = this.units().find(u => u.key === this.ticketCashSelKey);
     const q = (this.ticketCashQ || '').toLowerCase();
     const suggestions = this.ticketCashOpen ? this.units().filter(u => this._cashFMatch(u) && (!q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q))).slice(0, 30) : [];
     const items = cash ? cash.items : [];
     const total = items.reduce((a, it) => a + it.price * it.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--nuit);">
-      <h2>💵 Vente(s) en liquide pour cet événement</h2>
-      <p class="muted help">Ajoute ici une vente encaissée en espèces sur ce même événement, absente de l'export SumUp. Elle part dans un ticket « espèces » séparé (lié à celui-ci) — les frais de paiement restent calculés uniquement sur ce qui est vraiment passé par carte. Le stock événement est déduit tout de suite : si ça vide bien un produit dont une ligne SumUp est en attente (« 🔀 Plusieurs lots ») dans 🧩 Articles à traiter, cette ligne devient « prête à déduire » en un clic, sans avoir à choisir un lot au hasard. Ajouter un produit déjà présent dans la liste ajoute simplement à sa quantité (au lieu de dupliquer la ligne).</p>
+      <h2>💵 ${selfCash ? 'Produits vendus en liquide' : 'Vente(s) en liquide pour cet événement'}</h2>
+      <p class="muted help">${selfCash
+        ? 'Ajoute d\'autres produits vendus en espèces sur ce même ticket (absents de l\'export SumUp). Le stock événement est déduit tout de suite.'
+        : 'Ajoute ici une vente encaissée en espèces sur ce même événement, absente de l\'export SumUp. Elle part dans un ticket « espèces » séparé (lié à celui-ci) — les frais de paiement restent calculés uniquement sur ce qui est vraiment passé par carte. Le stock événement est déduit tout de suite : si ça vide bien un produit dont une ligne SumUp est en attente (« 🔀 Plusieurs lots ») dans 🧩 Articles à traiter, cette ligne devient « prête à déduire » en un clic, sans avoir à choisir un lot au hasard.'}
+        Ajouter un produit déjà présent dans la liste ajoute simplement à sa quantité (au lieu de dupliquer la ligne).</p>
       ${this._cashFilterRow()}
       <div class="grid c2">
         <div class="fg autocomplete" data-onclose="Ventes.closeTicketCashMenu"><label>Produit</label>
@@ -1571,12 +1614,12 @@ const Ventes = {
           <tfoot><tr><th colspan="2">Coût total consommables</th><th class="num">${U.eur(consoCost)}</th><th></th></tr></tfoot></table></div>` : ''}
       </div>
 
-      ${s.payment !== 'cash' ? this.ticketCashCard(s) : ''}
-      <div class="card">
+      ${this.ticketCashCard(s)}
+      ${s.payment !== 'cash' ? `<div class="card">
         <h2 class="mb0">🧾 Articles vendus</h2>
         <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr></thead>
         <tbody>${soldItems.length ? soldItems.map(it => `<tr><td class="col-name"><b>${U.esc(it.name)}</b></td><td>${it.label ? U.esc(it.label) : '—'}</td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num">${U.eur(it.price)}</td><td class="num"><b>${U.eur(U.num(it.price) * U.num(it.qty))}</b></td></tr>`).join('') : '<tr><td colspan="6" class="muted">Aucun article vendu sur ce ticket.</td></tr>'}</tbody></table></div>
-      </div>
+      </div>` : ''}
       `}`);
   },
 
