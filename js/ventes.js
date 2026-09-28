@@ -50,7 +50,29 @@ const Ventes = {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
       out.push({ key: 'A|' + a.id, kind: 'A', mode: 'acc', pId: a.id, vId: '', name: a.name, label: a.category || '', type: a.category || 'Accessoire', width, sku: a.sku || '', price: Pricing.accCalc(a).priceTTC, availG: U.num(a.stockGeneral), availE: U.num(a.stockEvent), lots: [] });
     });
-    return out.sort((a, b) => U.sortFr(a.type + a.name + a.label, b.type + b.name + b.label));
+    return out.sort((a, b) => {
+      const key = U.sortFr(a.type + a.name, b.type + b.name);
+      return key || this._labelCmp(a.label, b.label);
+    });
+  },
+  /* Tri « naturel » d'une étiquette de variante (poids/dim/taille), pour classer les variantes
+     d'un même produit dans l'ordre logique (S < M < L…) plutôt qu'alphabétique (L, M, S, XL, XS,
+     XXL) — demande d'Antho, plus facile à repérer dans une liste de recherche (fromage à
+     croquer S/M/L/XL/XS/XXL…). Même patron de reconnaissance que classifyBuckets. */
+  _labelSortKey(l) {
+    const s = String(l || '').trim();
+    let m = s.match(/^(\d+(?:[.,]\d+)?)\s*(kg|g|mg)$/i);
+    if (m) return parseFloat(m[1].replace(',', '.')) * { kg: 1000, g: 1, mg: 0.001 }[m[2].toLowerCase()];
+    m = s.match(/^(\d+(?:[.,]\d+)?)\s*(m|cm|mm)$/i);
+    if (m) return parseFloat(m[1].replace(',', '.')) * { m: 100, cm: 1, mm: 0.1 }[m[2].toLowerCase()];
+    const si = Stock.SIZE_ORDER.indexOf(s.toUpperCase());
+    if (si >= 0) return si;
+    return null;
+  },
+  _labelCmp(a, b) {
+    const ka = this._labelSortKey(a), kb = this._labelSortKey(b);
+    if (ka != null && kb != null) return ka - kb;
+    return U.sortFr(a, b);
   },
   avail(u) { return this.source === 'event' ? u.availE : u.availG; },
   lotQty(l) { return this.source === 'event' ? l.qtyE : l.qtyG; },
