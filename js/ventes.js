@@ -24,6 +24,7 @@ const Ventes = {
   retourData: null,    // données analysées de l'import en attente de validation
   retourDeduct: true,  // coché par défaut = déduire le stock ; décoché = import HISTORIQUE (stats sans toucher au stock)
   cashQ: '', cashOpen: false, cashSelKey: '', cashQty: 1, cashPrice: '', // saisie d'une vente en liquide dans le retour
+  cashFType: 'all', cashFVariant: 'all', // filtres rapides (type/poids/dim/taille) de la recherche produit "vente en liquide" — partagés entre les 2 endroits où elle apparaît (jamais affichés en même temps)
   retourConsoId: '', retourConsoQty: 1, // saisie des consommables (sacs…) utilisés pendant l'événement
   kind: 'M',           // 'M' mastication (défaut) | 'A' accessoires — bascule le sélecteur de produit à sortir
   accWidth: 'all',     // filtre largeur de sangle en mode Accessoires
@@ -946,6 +947,7 @@ const Ventes = {
      sont listées à part pour traitement à la main. */
   toggleRetour() {
     this.retourOpen = !this.retourOpen; if (!this.retourOpen) this.retourData = null;
+    else { this.cashFType = 'all'; this.cashFVariant = 'all'; }
     // L'état ouvert/fermé est porté par l'URL (#/ventes/retour) → un F5 garde le panneau ouvert.
     history.replaceState(null, '', '#/ventes' + (this.retourOpen ? '/retour' : ''));
     this.render();
@@ -1034,23 +1036,56 @@ const Ventes = {
     return { safe, ambiguous };
   },
 
-  /* ── Ventes en liquide (espèces) rattachées à la journée, absentes de SumUp ── */
+  /* Filtres rapides (catégorie/type + poids/dim/taille) de la recherche produit « vente en
+     liquide » — même patron que le sélecteur de la vente manuelle (classifyBuckets), pour
+     retrouver vite un produit dans les 100+ fiches sans dérouler toute la liste. Partagés entre
+     les 2 endroits où cette recherche apparaît (retour d'événement / ticket déjà validé) : jamais
+     affichés en même temps, donc aucun risque de confusion entre les deux. */
+  _cashFTypes() { return [...new Set(this.units().filter(u => u.kind === 'M').map(u => u.type))].sort(U.sortFr); },
+  _cashFBuckets() { return this.classifyBuckets(this.units().filter(u => u.kind === 'M').map(u => u.label)); },
+  setCashFType(t) { this.cashFType = t || 'all'; this.render(); },
+  setCashFVariant(v) { this.cashFVariant = v || 'all'; this.render(); },
+  _cashFMatch(u) { return (this.cashFType === 'all' || u.type === this.cashFType) && (this.cashFVariant === 'all' || u.label === this.cashFVariant); },
+  _cashFilterRow() {
+    const types = this._cashFTypes(), buckets = this._cashFBuckets();
+    return `<div class="fg"><label>Catégorie / type</label>
+        ${U.customSelect({ value: this.cashFType === 'all' ? '' : this.cashFType, options: [{ v: '', l: 'Toutes catégories' }].concat(types.map(t => ({ v: t, l: t }))), onPick: 'Ventes.setCashFType' })}</div>
+      <div class="fg"><label>Filtres rapides (optionnel)</label><div class="grid c4">
+        ${U.customSelect({ value: buckets.weights.includes(this.cashFVariant) ? this.cashFVariant : '', options: [{ v: '', l: '⚖️ Poids — tous' }].concat(buckets.weights.map(w => ({ v: w, l: w }))), onPick: 'Ventes.setCashFVariant' })}
+        ${U.customSelect({ value: buckets.dims.includes(this.cashFVariant) ? this.cashFVariant : '', options: [{ v: '', l: '📏 Dim. — tous' }].concat(buckets.dims.map(w => ({ v: w, l: w }))), onPick: 'Ventes.setCashFVariant' })}
+        ${U.customSelect({ value: buckets.sizes.includes(this.cashFVariant) ? this.cashFVariant : '', options: [{ v: '', l: '📐 Taille — tous' }].concat(buckets.sizes.map(w => ({ v: w, l: w }))), onPick: 'Ventes.setCashFVariant' })}
+        ${U.customSelect({ value: buckets.others.includes(this.cashFVariant) ? this.cashFVariant : '', options: [{ v: '', l: '🔢 Autres — tous' }].concat(buckets.others.map(w => ({ v: w, l: w }))), onPick: 'Ventes.setCashFVariant' })}
+      </div></div>`;
+  },
+
+  /* ── Ventes en liquide (espèces) rattachées à la journée, absentes de SumUp ──
+     Prix/quantité arrondis (2 décimales / entier) dès la sélection — évite les flottants du
+     genre 5,500036799999999 hérités tels quels du prix de vente calculé. Ajouter un produit déjà
+     présent dans la liste CUMULE sa quantité (moyenne pondérée du prix) au lieu de dupliquer la
+     ligne — Antho saisit ses ventes au fil de l'eau, pas triées, donc un même produit revient
+     souvent à plusieurs reprises. */
   setCashQ(v) { this.cashQ = v; this.cashOpen = true; this.cashSelKey = ''; this.render(); },
   closeCashMenu() { if (this.cashOpen) { this.cashOpen = false; this.render(); } },
   pickCashProduct(key) {
     const u = this.units().find(x => x.key === key);
     this.cashSelKey = key; this.cashQ = u ? u.name + (u.label ? ' · ' + u.label : '') : this.cashQ;
-    this.cashOpen = false; this.cashPrice = u ? u.price : ''; this.cashQty = 1; this.render();
+    this.cashOpen = false; this.cashPrice = u ? Math.round(u.price * 100) / 100 : ''; this.cashQty = 1; this.render();
   },
   setCashDate(v) { if (this.retourData) this.retourData.cashDate = v; },
   addCashLine() {
     if (!this.retourData) return;
     const u = this.units().find(x => x.key === this.cashSelKey);
     if (!u) { U.toast('Choisis un produit.', true); return; }
-    const qty = U.num(this.cashQty) || U.numVal('cash_qty');
+    const qty = Math.round(U.num(this.cashQty) || U.numVal('cash_qty'));
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
-    const price = this.cashPrice !== '' ? U.num(this.cashPrice) : u.price;
-    this.retourData.cashLines.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, price, qty });
+    const price = Math.round((this.cashPrice !== '' ? U.num(this.cashPrice) : u.price) * 100) / 100;
+    const existing = this.retourData.cashLines.find(l => l.kind === u.kind && l.pId === u.pId && l.vId === u.vId);
+    if (existing) {
+      const ttc = existing.qty * existing.price + qty * price;
+      existing.qty += qty; existing.price = Math.round((ttc / existing.qty) * 100) / 100;
+    } else {
+      this.retourData.cashLines.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, price, qty });
+    }
     this.cashSelKey = ''; this.cashQ = ''; this.cashQty = 1; this.cashPrice = '';
     this.render();
   },
@@ -1276,11 +1311,12 @@ const Ventes = {
     const d = this.retourData;
     const cashSel = this.units().find(u => u.key === this.cashSelKey);
     const q = (this.cashQ || '').toLowerCase();
-    const suggestions = this.cashOpen ? this.units().filter(u => !q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q)).slice(0, 30) : [];
+    const suggestions = this.cashOpen ? this.units().filter(u => this._cashFMatch(u) && (!q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q))).slice(0, 30) : [];
     const cashTotal = d.cashLines.reduce((a, l) => a + l.price * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--nuit);margin-top:12px;">
       <h3 style="margin-top:0;">💵 Ventes en liquide (non SumUp)</h3>
-      <p class="muted help">Ajoute ici les ventes de l'événement encaissées en espèces (absentes de l'export SumUp). Elles créent un ticket séparé « espèces » et déduisent aussi ton stock événement.</p>
+      <p class="muted help">Ajoute ici les ventes de l'événement encaissées en espèces (absentes de l'export SumUp). Elles créent un ticket séparé « espèces » et déduisent aussi ton stock événement. Ajouter un produit déjà présent dans la liste ajoute simplement à sa quantité (au lieu de dupliquer la ligne).</p>
+      ${this._cashFilterRow()}
       <div class="grid c2">
         <div class="fg autocomplete" data-onclose="Ventes.closeCashMenu"><label>Produit</label>
           <input id="cash_prod" type="text" autocomplete="off" placeholder="tape un nom ou un SKU…" value="${U.esc(this.cashQ)}"
@@ -1294,8 +1330,8 @@ const Ventes = {
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted help" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
       <div class="fg"><label>🚗 Déplacement <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label>${this.travelWidget((d.travelDet || {}).__cash, 'cash', d.cashTravel)}</div>
       ${cashSel ? `<div class="grid c2">
-        <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="0.001" min="0" value="${this.cashQty || 1}" onchange="Ventes.cashQty=U.num(this.value)"></div>
-        <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : cashSel.price}" onchange="Ventes.cashPrice=U.num(this.value)"></div>
+        <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="1" min="1" value="${this.cashQty || 1}" onchange="Ventes.cashQty=Math.max(1,Math.round(U.num(this.value)))"></div>
+        <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : Math.round(cashSel.price * 100) / 100}" onchange="Ventes.cashPrice=Math.round(U.num(this.value)*100)/100"></div>
       </div>
       <button class="btn-cta btn-sm" onclick="Ventes.addCashLine()">＋ Ajouter cette vente espèces</button>` : ''}
       ${d.cashLines.length ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th></th></tr></thead>
@@ -1343,7 +1379,7 @@ const Ventes = {
      du ticket : déduites du stock (sauf ticket historique) et comptées en coût dans la marge
      du mois de l'événement. Le retrait re-crédite le stock ; annuler le ticket entier re-crédite
      tout (via undoOps). */
-  editEventTicket(id) { this.editTicketId = id; this.ticketConsoId = ''; this.ticketConsoQty = 1; this.ticketCashQ = ''; this.ticketCashOpen = false; this.ticketCashSelKey = ''; this.ticketCashQty = 1; this.ticketCashPrice = ''; this.render(); },
+  editEventTicket(id) { this.editTicketId = id; this.ticketConsoId = ''; this.ticketConsoQty = 1; this.ticketCashQ = ''; this.ticketCashOpen = false; this.ticketCashSelKey = ''; this.ticketCashQty = 1; this.ticketCashPrice = ''; this.cashFType = 'all'; this.cashFVariant = 'all'; this.render(); },
   closeEditTicket() { this.editTicketId = ''; this.render(); },
   _setTicketConso(id) { this.ticketConsoId = id; this.render(); },
   addTicketConso() {
@@ -1396,27 +1432,48 @@ const Ventes = {
   pickTicketCashProduct(key) {
     const u = this.units().find(x => x.key === key);
     this.ticketCashSelKey = key; this.ticketCashQ = u ? u.name + (u.label ? ' · ' + u.label : '') : this.ticketCashQ;
-    this.ticketCashOpen = false; this.ticketCashPrice = u ? u.price : ''; this.ticketCashQty = 1; this.render();
+    this.ticketCashOpen = false; this.ticketCashPrice = u ? Math.round(u.price * 100) / 100 : ''; this.ticketCashQty = 1; this.render();
   },
   _ticketCashSibling(s) { return Store.state.sales.find(x => x.id === s.cashSiblingId); },
+  /* Prix/quantité arrondis (2 décimales / entier) dès la sélection. Ajouter un produit déjà
+     présent sur ce ticket CUMULE sa quantité (moyenne pondérée du prix, ops de déduction
+     accumulées sur la même ligne) au lieu de dupliquer — Antho saisit ses ventes espèces au fil
+     de l'eau (dans l'ordre où elles arrivent), donc un même produit revient souvent plusieurs fois. */
   addTicketCash() {
     const s = Store.state.sales.find(x => x.id === this.editTicketId); if (!s) return;
     const u = this.units().find(x => x.key === this.ticketCashSelKey);
     if (!u) { U.toast('Choisis un produit.', true); return; }
-    const qty = U.num(this.ticketCashQty) || U.numVal('ticket_cash_qty');
+    const qty = Math.round(U.num(this.ticketCashQty) || U.numVal('ticket_cash_qty'));
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
-    const price = this.ticketCashPrice !== '' ? U.num(this.ticketCashPrice) : u.price;
+    const price = Math.round((this.ticketCashPrice !== '' ? U.num(this.ticketCashPrice) : u.price) * 100) / 100;
     let cash = this._ticketCashSibling(s), isNew = false;
     if (!cash) {
       cash = { id: U.uid(), ts: s.ts, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: 0, eventName: s.eventName || '', travelCost: 0, items: [], total: 0, cancelled: false, undoOps: [], fromImport: !!s.fromImport, historical: !!s.historical, cashSiblingOf: s.id };
       isNew = true;
     }
+    const existing = cash.items.find(it => it.kind === u.kind && it.pId === u.pId && it.vId === u.vId);
     if (cash.historical) {
-      cash.items.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, qty, price });
+      if (existing) {
+        const ttc = existing.qty * existing.price + qty * price;
+        existing.qty += qty; existing.price = Math.round((ttc / existing.qty) * 100) / 100;
+      } else {
+        cash.items.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, qty, price });
+      }
     } else {
       const before = (cash.undoOps || []).length;
       this._deductSale(cash, [{ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, lotLabel: '', price, qty }], 'event');
-      cash.items[cash.items.length - 1]._ops = (cash.undoOps || []).slice(before);
+      const newItem = cash.items[cash.items.length - 1];
+      const newOps = (cash.undoOps || []).slice(before);
+      if (existing) {
+        const ttc = existing.qty * existing.price + newItem.qty * newItem.price;
+        existing.qty += newItem.qty; existing.price = Math.round((ttc / existing.qty) * 100) / 100;
+        existing.cost = U.num(existing.cost) + U.num(newItem.cost);
+        existing.lotLabel = [existing.lotLabel, newItem.lotLabel].filter(Boolean).join(' / ');
+        existing._ops = (existing._ops || []).concat(newOps);
+        cash.items.pop(); // la ligne fraîchement ajoutée vient d'être fusionnée dans "existing"
+      } else {
+        newItem._ops = newOps;
+      }
     }
     cash.total = cash.items.reduce((a, it) => a + it.price * it.qty, 0);
     if (isNew) { Store.state.sales.unshift(cash); s.cashSiblingId = cash.id; }
@@ -1445,12 +1502,13 @@ const Ventes = {
     const cash = this._ticketCashSibling(s);
     const cashSel = this.units().find(u => u.key === this.ticketCashSelKey);
     const q = (this.ticketCashQ || '').toLowerCase();
-    const suggestions = this.ticketCashOpen ? this.units().filter(u => !q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q)).slice(0, 30) : [];
+    const suggestions = this.ticketCashOpen ? this.units().filter(u => this._cashFMatch(u) && (!q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q))).slice(0, 30) : [];
     const items = cash ? cash.items : [];
     const total = items.reduce((a, it) => a + it.price * it.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--nuit);">
       <h2>💵 Vente(s) en liquide pour cet événement</h2>
-      <p class="muted help">Ajoute ici une vente encaissée en espèces sur ce même événement, absente de l'export SumUp. Elle part dans un ticket « espèces » séparé (lié à celui-ci) — les frais de paiement restent calculés uniquement sur ce qui est vraiment passé par carte. Le stock événement est déduit tout de suite : si ça vide bien un produit dont une ligne SumUp est en attente (« 🔀 Plusieurs lots ») dans 🧩 Articles à traiter, cette ligne devient « prête à déduire » en un clic, sans avoir à choisir un lot au hasard.</p>
+      <p class="muted help">Ajoute ici une vente encaissée en espèces sur ce même événement, absente de l'export SumUp. Elle part dans un ticket « espèces » séparé (lié à celui-ci) — les frais de paiement restent calculés uniquement sur ce qui est vraiment passé par carte. Le stock événement est déduit tout de suite : si ça vide bien un produit dont une ligne SumUp est en attente (« 🔀 Plusieurs lots ») dans 🧩 Articles à traiter, cette ligne devient « prête à déduire » en un clic, sans avoir à choisir un lot au hasard. Ajouter un produit déjà présent dans la liste ajoute simplement à sa quantité (au lieu de dupliquer la ligne).</p>
+      ${this._cashFilterRow()}
       <div class="grid c2">
         <div class="fg autocomplete" data-onclose="Ventes.closeTicketCashMenu"><label>Produit</label>
           <input id="ticket_cash_prod" type="text" autocomplete="off" placeholder="tape un nom ou un SKU…" value="${U.esc(this.ticketCashQ)}"
@@ -1458,9 +1516,9 @@ const Ventes = {
           ${this.ticketCashOpen && suggestions.length ? `<div class="ac-list" style="position:static;margin-top:4px;max-height:230px;overflow-y:auto;">${suggestions.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.pickTicketCashProduct('${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${U.esc(u.sku || '')}</span><span class="pp-c">${U.eur(u.price)}</span></div>`).join('')}</div>` : ''}
           ${this.ticketCashOpen && !suggestions.length && this.ticketCashQ ? `<div class="muted" style="padding:6px 2px;">Aucun produit ne correspond à « ${U.esc(this.ticketCashQ)} ».</div>` : ''}
         </div>
-        ${cashSel ? `<div class="fg"><label>Quantité</label><input id="ticket_cash_qty" type="number" step="0.001" min="0" value="${this.ticketCashQty || 1}" onchange="Ventes.ticketCashQty=U.num(this.value)"></div>` : ''}
+        ${cashSel ? `<div class="fg"><label>Quantité</label><input id="ticket_cash_qty" type="number" step="1" min="1" value="${this.ticketCashQty || 1}" onchange="Ventes.ticketCashQty=Math.max(1,Math.round(U.num(this.value)))"></div>` : ''}
       </div>
-      ${cashSel ? `<div class="fg" style="max-width:200px;"><label>Prix unitaire TTC</label><input id="ticket_cash_price" type="number" step="0.01" value="${this.ticketCashPrice !== '' ? this.ticketCashPrice : cashSel.price}" onchange="Ventes.ticketCashPrice=U.num(this.value)"></div>
+      ${cashSel ? `<div class="fg" style="max-width:200px;"><label>Prix unitaire TTC</label><input id="ticket_cash_price" type="number" step="0.01" value="${this.ticketCashPrice !== '' ? this.ticketCashPrice : Math.round(cashSel.price * 100) / 100}" onchange="Ventes.ticketCashPrice=Math.round(U.num(this.value)*100)/100"></div>
       <button class="btn-cta btn-sm" onclick="Ventes.addTicketCash()">＋ Ajouter cette vente espèces</button>` : ''}
       ${items.length ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${items.map((it, i) => `<tr><td class="col-name"><b>${U.esc(it.name)}</b> <span class="muted">${U.esc(it.label || '')}</span></td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num">${U.eur(it.price)}</td><td class="num"><b>${U.eur(it.price * it.qty)}</b></td><td><button class="btn-icon" title="Retirer" onclick="Ventes.removeTicketCash(${i})">🗑️</button></td></tr>`).join('')}</tbody>
