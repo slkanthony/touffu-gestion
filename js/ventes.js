@@ -1471,6 +1471,31 @@ const Ventes = {
     const deduct = this.retourDeduct;   // décoché = import HISTORIQUE (stats sans toucher au stock)
     let created = 0, deducted = 0;
     const createdSales = [];
+    // Ticket espèces séparé (payment 'cash', pas de frais SumUp), daté à la journée choisie.
+    // ⚠️ Déduit AVANT les tickets SumUp ci-dessous, exprès : `_isAmbiguousEvent` (dans
+    // `_retourSplit`) lit l'état ACTUEL du stock événement — si une variante à plusieurs lots
+    // est entièrement vendue une fois espèces + SumUp combinés, déduire le liquide en premier
+    // fait disparaître l'ambiguïté côté SumUp sans avoir à sommer les 2 quantités à la main
+    // (cf. retour d'Antho : « je me demande sur quel lot je l'ai vendu alors qu'en fait j'ai
+    // vendu la totalité des 2 lots en comptant le liquide, la question ne se pose même pas »).
+    if (d.cashLines.length) {
+      const cashTs = d.cashDate ? new Date(d.cashDate + 'T12:00:00').getTime() : Date.now();
+      if (!deduct) {
+        const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
+        const total = items.reduce((a, i) => a + i.price * i.qty, 0);
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        Store.state.sales.unshift(sale);
+        Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
+        created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
+      } else {
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
+        this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
+        this._markImported(sale.items);
+        Store.state.sales.unshift(sale);
+        Store.log('vente', `Retour événement (espèces) — ${U.eur(sale.total)}`, { type: 'sale', data: { saleId: sale.id } });
+        created++; deducted += sale.items.reduce((a, i) => a + U.num(i.qty) - U.num(i.missing), 0); createdSales.push(sale);
+      }
+    }
     // Tickets SumUp (un par journée retenue), produits identiques regroupés.
     buckets.forEach(b => {
       if (!deduct) {
@@ -1513,25 +1538,6 @@ const Ventes = {
       created++; deducted += nDed; createdSales.push(sale);
       refs.forEach(r => seen.add(r));
     });
-    // Ticket espèces séparé (payment 'cash', pas de frais SumUp), daté à la journée choisie.
-    if (d.cashLines.length) {
-      const cashTs = d.cashDate ? new Date(d.cashDate + 'T12:00:00').getTime() : Date.now();
-      if (!deduct) {
-        const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
-        const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
-        Store.state.sales.unshift(sale);
-        Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
-        created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
-      } else {
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
-        this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
-        this._markImported(sale.items);
-        Store.state.sales.unshift(sale);
-        Store.log('vente', `Retour événement (espèces) — ${U.eur(sale.total)}`, { type: 'sale', data: { saleId: sale.id } });
-        created++; deducted += sale.items.reduce((a, i) => a + U.num(i.qty) - U.num(i.missing), 0); createdSales.push(sale);
-      }
-    }
     // Consommables utilisés pendant l'événement (sacs…) : un ticket dédié, coût compté dans les stats.
     let consoCost = 0;
     if ((d.consoLines || []).length) {
