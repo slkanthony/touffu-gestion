@@ -28,6 +28,7 @@ const Ventes = {
   kind: 'M',           // 'M' mastication (défaut) | 'A' accessoires — bascule le sélecteur de produit à sortir
   accWidth: 'all',     // filtre largeur de sangle en mode Accessoires
   editTicketId: '', ticketConsoId: '', ticketConsoQty: 1,
+  ticketCashQ: '', ticketCashOpen: false, ticketCashSelKey: '', ticketCashQty: 1, ticketCashPrice: '', // vente en liquide ajoutée après coup sur un ticket événement déjà validé
   todoOpen: false, todoFilter: 'all', todoShowDone: false, _tt: {}, _todoBanner: null, _memOpen: false, // page « 🧩 Articles à traiter » // édition d'un ticket d'événement déjà validé (frais de stand + consommables)
 
   units() {
@@ -1342,7 +1343,7 @@ const Ventes = {
      du ticket : déduites du stock (sauf ticket historique) et comptées en coût dans la marge
      du mois de l'événement. Le retrait re-crédite le stock ; annuler le ticket entier re-crédite
      tout (via undoOps). */
-  editEventTicket(id) { this.editTicketId = id; this.ticketConsoId = ''; this.ticketConsoQty = 1; this.render(); },
+  editEventTicket(id) { this.editTicketId = id; this.ticketConsoId = ''; this.ticketConsoQty = 1; this.ticketCashQ = ''; this.ticketCashOpen = false; this.ticketCashSelKey = ''; this.ticketCashQty = 1; this.ticketCashPrice = ''; this.render(); },
   closeEditTicket() { this.editTicketId = ''; this.render(); },
   _setTicketConso(id) { this.ticketConsoId = id; this.render(); },
   addTicketConso() {
@@ -1380,6 +1381,93 @@ const Ventes = {
     this.render();
     U.toast('Consommable retiré du ticket.');
   },
+
+  /* ── Vente en liquide ajoutée APRÈS COUP sur un ticket SumUp déjà validé (2026-09-30) ──
+     Demande d'Antho : pouvoir revenir sur un ticket événement et y rattacher une vente encaissée
+     en espèces, pour que la quantité combinée (SumUp + liquide) serve à résoudre l'ambiguïté
+     « plusieurs lots » sans qu'il ait à choisir un lot au hasard. Le liquide reste un ticket SÉPARÉ
+     (payment:'cash', lié via `cashSiblingOf`/`cashSiblingId`) pour que les frais SumUp restent
+     calculés sur la seule part réellement encaissée par carte — mais `_todoCat` (Articles à
+     traiter) relit l'état ACTUEL du stock à chaque rendu : dès que le liquide est déduit ici, la
+     ligne SumUp en attente sur le même produit repasse automatiquement « prête à déduire » si la
+     quantité combinée vide bien les lots, sans aucune fusion de données nécessaire. */
+  setTicketCashQ(v) { this.ticketCashQ = v; this.ticketCashOpen = true; this.ticketCashSelKey = ''; this.render(); },
+  closeTicketCashMenu() { if (this.ticketCashOpen) { this.ticketCashOpen = false; this.render(); } },
+  pickTicketCashProduct(key) {
+    const u = this.units().find(x => x.key === key);
+    this.ticketCashSelKey = key; this.ticketCashQ = u ? u.name + (u.label ? ' · ' + u.label : '') : this.ticketCashQ;
+    this.ticketCashOpen = false; this.ticketCashPrice = u ? u.price : ''; this.ticketCashQty = 1; this.render();
+  },
+  _ticketCashSibling(s) { return Store.state.sales.find(x => x.id === s.cashSiblingId); },
+  addTicketCash() {
+    const s = Store.state.sales.find(x => x.id === this.editTicketId); if (!s) return;
+    const u = this.units().find(x => x.key === this.ticketCashSelKey);
+    if (!u) { U.toast('Choisis un produit.', true); return; }
+    const qty = U.num(this.ticketCashQty) || U.numVal('ticket_cash_qty');
+    if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
+    const price = this.ticketCashPrice !== '' ? U.num(this.ticketCashPrice) : u.price;
+    let cash = this._ticketCashSibling(s), isNew = false;
+    if (!cash) {
+      cash = { id: U.uid(), ts: s.ts, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: 0, eventName: s.eventName || '', travelCost: 0, items: [], total: 0, cancelled: false, undoOps: [], fromImport: !!s.fromImport, historical: !!s.historical, cashSiblingOf: s.id };
+      isNew = true;
+    }
+    if (cash.historical) {
+      cash.items.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, qty, price });
+    } else {
+      const before = (cash.undoOps || []).length;
+      this._deductSale(cash, [{ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, lotLabel: '', price, qty }], 'event');
+      cash.items[cash.items.length - 1]._ops = (cash.undoOps || []).slice(before);
+    }
+    cash.total = cash.items.reduce((a, it) => a + it.price * it.qty, 0);
+    if (isNew) { Store.state.sales.unshift(cash); s.cashSiblingId = cash.id; }
+    Store.log('vente', `Vente en liquide ajoutée au ticket ${U.frDateTime(s.ts)} : ${u.name}${u.label ? ' ' + u.label : ''} ×${U.qty(qty)} · ${U.eur(price * qty)}`);
+    this.ticketCashSelKey = ''; this.ticketCashQ = ''; this.ticketCashQty = 1; this.ticketCashPrice = '';
+    Store.save(...(cash.historical ? ['sales'] : ['sales', 'stockM', 'catalogA', 'consumables']));
+    this.render();
+    U.toast(`💵 Vente en liquide ajoutée${cash.historical ? '' : ' — si ça vide bien le stock restant, la ligne SumUp de ce produit passera « prête à déduire » dans 🧩 Articles à traiter'}.`);
+  },
+  removeTicketCash(idx) {
+    const s = Store.state.sales.find(x => x.id === this.editTicketId); if (!s) return;
+    const cash = this._ticketCashSibling(s); if (!cash) return;
+    const it = (cash.items || [])[idx]; if (!it) return;
+    (it._ops || []).forEach(op => this.applyUndoOp(op));
+    cash.undoOps = (cash.undoOps || []).filter(op => !(it._ops || []).includes(op));
+    cash.items.splice(idx, 1);
+    cash.total = cash.items.reduce((a, i2) => a + i2.price * i2.qty, 0);
+    Store.log('vente', `Vente en liquide retirée du ticket ${U.frDateTime(s.ts)} : ${it.name}`);
+    if (!cash.items.length) { Store.state.sales = Store.state.sales.filter(x => x.id !== cash.id); delete s.cashSiblingId; }
+    Store.save('sales', 'stockM', 'catalogA', 'consumables');
+    this.render();
+    U.toast('Vente en liquide retirée, stock re-crédité.');
+  },
+
+  ticketCashCard(s) {
+    const cash = this._ticketCashSibling(s);
+    const cashSel = this.units().find(u => u.key === this.ticketCashSelKey);
+    const q = (this.ticketCashQ || '').toLowerCase();
+    const suggestions = this.ticketCashOpen ? this.units().filter(u => !q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q)).slice(0, 30) : [];
+    const items = cash ? cash.items : [];
+    const total = items.reduce((a, it) => a + it.price * it.qty, 0);
+    return `<div class="card" style="border-left:3px solid var(--nuit);">
+      <h2>💵 Vente(s) en liquide pour cet événement</h2>
+      <p class="muted help">Ajoute ici une vente encaissée en espèces sur ce même événement, absente de l'export SumUp. Elle part dans un ticket « espèces » séparé (lié à celui-ci) — les frais de paiement restent calculés uniquement sur ce qui est vraiment passé par carte. Le stock événement est déduit tout de suite : si ça vide bien un produit dont une ligne SumUp est en attente (« 🔀 Plusieurs lots ») dans 🧩 Articles à traiter, cette ligne devient « prête à déduire » en un clic, sans avoir à choisir un lot au hasard.</p>
+      <div class="grid c2">
+        <div class="fg autocomplete" data-onclose="Ventes.closeTicketCashMenu"><label>Produit</label>
+          <input id="ticket_cash_prod" type="text" autocomplete="off" placeholder="tape un nom ou un SKU…" value="${U.esc(this.ticketCashQ)}"
+            oninput="Ventes.setTicketCashQ(this.value);U.refocus('ticket_cash_prod')">
+          ${this.ticketCashOpen && suggestions.length ? `<div class="ac-list" style="position:static;margin-top:4px;max-height:230px;overflow-y:auto;">${suggestions.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.pickTicketCashProduct('${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${U.esc(u.sku || '')}</span><span class="pp-c">${U.eur(u.price)}</span></div>`).join('')}</div>` : ''}
+          ${this.ticketCashOpen && !suggestions.length && this.ticketCashQ ? `<div class="muted" style="padding:6px 2px;">Aucun produit ne correspond à « ${U.esc(this.ticketCashQ)} ».</div>` : ''}
+        </div>
+        ${cashSel ? `<div class="fg"><label>Quantité</label><input id="ticket_cash_qty" type="number" step="0.001" min="0" value="${this.ticketCashQty || 1}" onchange="Ventes.ticketCashQty=U.num(this.value)"></div>` : ''}
+      </div>
+      ${cashSel ? `<div class="fg" style="max-width:200px;"><label>Prix unitaire TTC</label><input id="ticket_cash_price" type="number" step="0.01" value="${this.ticketCashPrice !== '' ? this.ticketCashPrice : cashSel.price}" onchange="Ventes.ticketCashPrice=U.num(this.value)"></div>
+      <button class="btn-cta btn-sm" onclick="Ventes.addTicketCash()">＋ Ajouter cette vente espèces</button>` : ''}
+      ${items.length ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody>${items.map((it, i) => `<tr><td class="col-name"><b>${U.esc(it.name)}</b> <span class="muted">${U.esc(it.label || '')}</span></td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num">${U.eur(it.price)}</td><td class="num"><b>${U.eur(it.price * it.qty)}</b></td><td><button class="btn-icon" title="Retirer" onclick="Ventes.removeTicketCash(${i})">🗑️</button></td></tr>`).join('')}</tbody>
+        <tfoot><tr><th colspan="4">Total espèces</th><th class="num">${U.eur(total)}</th><th></th></tr></tfoot></table></div>` : ''}
+    </div>`;
+  },
+
   renderTicketEditor() {
     const s = Store.state.sales.find(x => x.id === this.editTicketId);
     if (!s) { this.editTicketId = ''; this.render(); return; }
@@ -1425,6 +1513,7 @@ const Ventes = {
           <tfoot><tr><th colspan="2">Coût total consommables</th><th class="num">${U.eur(consoCost)}</th><th></th></tr></tfoot></table></div>` : ''}
       </div>
 
+      ${s.payment !== 'cash' ? this.ticketCashCard(s) : ''}
       <div class="card">
         <h2 class="mb0">🧾 Articles vendus</h2>
         <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr></thead>
@@ -1752,7 +1841,7 @@ const Ventes = {
         const sum = Object.values(st.lots).reduce((a, q) => a + U.num(q), 0);
         const today = U.today();
         body = `<div class="tt-body">${linked(t)}
-          ${this._todoCat(i) === 'multi' ? `<p class="tt-multi">🔀 <b>Plusieurs lots en stock événement</b> : indique combien sont partis de chaque lot (ou « Proposer »), puis « Déduire ». Cet article n'est jamais déduit par « Tout déduire ».</p>` : ''}
+          ${this._todoCat(i) === 'multi' ? `<p class="tt-multi">🔀 <b>Plusieurs lots en stock événement</b> : indique combien sont partis de chaque lot (ou « Proposer »), puis « Déduire ». Cet article n'est jamais déduit par « Tout déduire ». <button class="tt-minor" style="padding:0;" onclick="Ventes.editEventTicket('${s.id}')">💵 Une partie a été vendue en liquide ? Ajoute-la sur ce ticket</button> — si ça vide bien le stock, cette ligne passera « prête à déduire ».</p>` : ''}
           ${lots.length ? `<div class="table-wrap"><table class="tt-lots"><thead><tr><th>N° de lot</th><th>DLUO</th><th class="num">En stock</th><th class="num">Partis de ce lot</th></tr></thead><tbody>${lots.map(l => `<tr><td>${U.esc(l.lotNumber || 'sans n°')}</td><td>${l.dluo ? U.frDate(l.dluo) : '—'}${l.dluo && l.dluo < today ? ' <span class="badge bad">périmé</span>' : ''}</td><td class="num">${U.qty(l[field])}</td><td class="num"><input type="number" min="0" step="1" value="${st.lots[l.id] || ''}" placeholder="0" style="width:80px;text-align:center;" onchange="Ventes.ttSetLot('${k}','${l.id}',this.value)"></td></tr>`).join('')}</tbody></table></div>`
             : `<p class="muted">Aucun lot avec du stock événement pour cette variante.</p>`}
           ${(() => { const evTot = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0), genTot = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
