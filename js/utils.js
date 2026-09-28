@@ -359,9 +359,14 @@ const U = {
      onClose (optionnel) : nom d'une fonction globale sans argument (ex: "Ventes.closeCatMenu"),
      appelée par le listener de clic extérieur défini plus haut pour refermer la liste. */
   autocomplete({ id, value, placeholder, options, open, onInput, onPick, onClose }) {
+    /* onfocus rouvre la liste au 1er clic (comme avant), mais U.refocus() appelle .focus() sur le nouveau
+       nœud recréé par le render — ce qui redéclenche un vrai événement `focus`, qui rappellerait onInput
+       en boucle et referait perdre le focus juste après. `U._acFoc` marque « ce focus est un écho de notre
+       propre refocus, ignore-le » (posé juste avant U.refocus, aussi bien depuis oninput que depuis onfocus). */
     return `<div class="autocomplete" ${onClose ? `data-onclose="${U.esc(onClose)}"` : ''}>
       <input id="${id}" type="text" autocomplete="off" placeholder="${U.esc(placeholder || '')}" value="${U.esc(value || '')}"
-        oninput="${onInput}(this.value);U.refocus('${id}')" onfocus="${onInput}(this.value)">
+        oninput="${onInput}(this.value);U._acFoc='${id}';U.refocus('${id}')"
+        onfocus="if(U._acFoc==='${id}'){U._acFoc='';}else{${onInput}(this.value);U._acFoc='${id}';U.refocus('${id}');}">
       ${open && options && options.length ? `<div class="ac-list">${options.map(o => `<div class="ac-item" onmousedown="event.preventDefault();${onPick}('${U.esc(o).replace(/&#39;/g, "\\'")}')">${U.esc(o)}</div>`).join('')}</div>` : ''}
     </div>`;
   }
