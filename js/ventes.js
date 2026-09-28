@@ -1963,6 +1963,7 @@ const Ventes = {
     const entry = Store.log('vente', `Article déduit — ${i.name} ${i.label || ''} : ${msg}`, { type: 'restoreBatch', data: Object.values(snapMap) });
     Store.save('sales', 'stockM');
     this._glCtx = null;
+    U.closeModal();
     setTimeout(() => { this.render(); U.toast(`${i.name} : ${msg}.`, false, entry.id); }, 0);
   },
   async ttDeduct(k) {
