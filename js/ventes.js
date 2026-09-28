@@ -1685,20 +1685,27 @@ const Ventes = {
     const st = this._ttState(k);
     const reasons = { multiLot: ['🔀 Plusieurs lots', 'warn'], short: ['📉 Stock manquant', 'bad'], dupSku: ['⚠️ SKU en double', 'bad'], unknownSku: ['❓ SKU inconnu', 'warn'], noSku: ['🏷️ Sans SKU', 'warn'] };
     const [rTxt, rCls] = reasons[i.reason] || ['À traiter', 'warn'];
-    const head = `<div class="tt-head"><span class="badge ${rCls}">${rTxt}</span>${i.reason !== 'multiLot' && i.todo === 'open' && this._todoCat(i) === 'multi' ? ' <span class="badge bad">🔀 Plusieurs lots</span>' : ''}
-      <span class="tt-desc"><b>${U.esc(i.desc || i.name)}</b>${!i.desc && i.label ? ` <span class="pp-v">${U.esc(i.label)}</span>` : ''}${i.sumupSku ? ` <span class="tag" title="SKU dans SumUp">${U.esc(i.sumupSku)}</span>` : ''}</span>
+    // Bandeau titre : nom du produit en premier et en gras (info la plus importante), badges/qté/prix
+    // relégués en second plan — même patron que le bandeau .sale-head de l'historique des sorties.
+    const top = `<div class="tt-top"><span class="tt-top-l">
+        <span class="tt-name">${U.esc(i.desc || i.name)}${!i.desc && i.label ? ` <span class="pp-v">${U.esc(i.label)}</span>` : ''}</span>
+        <span class="badge ${rCls}">${rTxt}</span>${i.reason !== 'multiLot' && i.todo === 'open' && this._todoCat(i) === 'multi' ? ' <span class="badge bad">🔀 Plusieurs lots</span>' : ''}${i.sumupSku ? ` <span class="tag" title="SKU dans SumUp">${U.esc(i.sumupSku)}</span>` : ''}
+      </span>
       <span class="tt-qty">× <b>${U.qty(i.qty)}</b>${U.num(i.pack) >= 2 ? ` <span class="muted">(${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack})</span>` : ''} · <span class="sensitive">${U.eur(i.price * i.qty)}</span></span></div>`;
-    const linked = t => `<div class="tt-linked"><span class="muted">${i.desc ? 'Associé à' : 'Produit'} :</span> <b>${U.esc(t.name)}</b>${t.label ? ` <span class="pp-v">${U.esc(t.label)}</span>` : ''}${t.sku ? ` <span class="tag">${U.esc(t.sku)}</span>` : ''} ${this.openLink(t.kind, t.pId)}${i.desc && !i.deducted && i.todo === 'open' ? ` <button class="btn-ghost btn-sm" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}</div>`;
-    const markBtns = `<button class="btn-ghost btn-sm" title="Tu as déjà corrigé le stock toi-même" onclick="Ventes.ttMark('${k}','done')">✔ Déjà fait à la main</button>`;
+    const linked = t => `<div class="tt-linked-line"><span>${i.desc ? 'Associé à' : 'Produit'} :</span> <b>${U.esc(t.name)}</b>${t.label ? ` <span class="pp-v">${U.esc(t.label)}</span>` : ''}${t.sku ? ` <span class="tag">${U.esc(t.sku)}</span>` : ''} ${this.openLink(t.kind, t.pId)}${i.desc && !i.deducted && i.todo === 'open' ? ` <button class="tt-minor" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}</div>`;
+    // Actions rares/secondaires (Changer, Proposer, Déjà fait à la main, CA seulement…) : style
+    // « lien discret » (.tt-minor, sans contour) pour ne jamais rivaliser avec la vraie action.
+    const markBtn = `<button class="tt-minor" title="Tu as déjà corrigé le stock toi-même" onclick="Ventes.ttMark('${k}','done')">✔ Déjà fait à la main</button>`;
     let body;
     if (i.todo !== 'open') {
       const t = i.pId ? this._targetFor(i.kind, i.pId, i.vId) : null;
       const txt = i.deducted ? `✅ Déduit${i.lotLabel ? ' — ' + U.esc(i.lotLabel) : ''}${U.num(i.missing) ? ` · ${U.qty(i.missing)} non déduit(s)` : ''}` : i.todo === 'caOnly' ? '💶 Compté dans le CA seulement (stock non touché)' : '✔ Marqué fait à la main';
-      body = `<div class="tt-body tt-done"><span>${txt}</span>${t ? ' · ' + linked(t) : ''} ${!i.deducted || i.reason === 'short' ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','open')">↩ Rouvrir</button>` : ''}</div>`;
+      body = `<div class="tt-body tt-done"><span>${txt}</span>${t ? ' · ' + linked(t) : ''} ${!i.deducted || i.reason === 'short' ? `<button class="tt-minor" onclick="Ventes.ttMark('${k}','open')">↩ Rouvrir</button>` : ''}</div>`;
     } else if (i.reason === 'short') {
       const t = this._targetFor(i.kind, i.pId, i.vId);
       body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : le stock ${i.kind === 'C' ? '' : 'événement '}était insuffisant (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
-        <div class="tt-actions">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && Stock.stockVar(pp, i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="btn-ghost btn-sm" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></div></div>`;
+        <div class="tt-divider"></div>
+        <div class="tt-bar"><span class="tt-bar-left"></span><span class="tt-bar-right">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && Stock.stockVar(pp, i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="tt-minor" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></span></div></div>`;
     } else if (!i.pId) {
       const sug = this._suggest(i.desc || i.name, 4, units);
       const q = st.q;
@@ -1708,18 +1715,21 @@ const Ventes = {
         <div class="tt-sug"><span class="muted">💡 Ça ressemble à :</span> ${sug.length ? sug.map(u => `<button class="btn-ghost btn-sm tt-chip" title="Associer à ce produit" onclick="Ventes.ttLink('${k}','${u.key}')"><b>${U.esc(u.name)}</b>${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''} <span class="muted">${uTxt(u)}</span></button>`).join('') : '<span class="muted">aucune ressemblance — cherche ci-dessous</span>'}</div>
         <input id="tt_q_${sid}" class="mt" placeholder="🔍 Chercher le bon produit (nom, variante ou SKU)…" value="${U.esc(q)}" oninput="Ventes.ttSearch('${k}',this.value);U.refocus('tt_q_${sid}')">
         ${res.length ? `<div class="ac-list" style="position:static;margin-top:4px;">${res.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.ttLink('${k}','${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${uTxt(u)}</span><span class="pp-c">${U.esc(u.sku || '')}</span></div>`).join('')}</div>` : q ? '<p class="muted">Aucun produit trouvé.</p>' : ''}
-        <div class="tt-actions"><label class="tt-pack" title="Si ce libellé SumUp est un lot (ex. « Sabot de veau LOT 5 »), chaque vente compte pour N pièces de la variante choisie">Vendu par lot de <input type="number" min="1" step="1" value="${st.pack == null ? this._packFromDesc(i.desc || i.name) : st.pack}" onchange="Ventes._ttState('${k}').pack=Math.max(1,Math.round(U.num(this.value)))"> pièce(s)</label>
-          <label class="tt-remember"><input type="checkbox" ${st.remember ? 'checked' : ''} onchange="Ventes._ttState('${k}').remember=this.checked"> Retenir (lignes identiques + prochains imports)</label>
-          <button class="btn-ghost btn-sm" title="Garder la vente dans le chiffre d'affaires sans toucher au stock (ex : montant personnalisé)" onclick="Ventes.ttMark('${k}','caOnly')">💶 CA seulement</button>${markBtns}</div>
+        <div class="tt-divider"></div>
+        <div class="tt-bar">
+          <span class="tt-bar-left"><label class="tt-pack" title="Si ce libellé SumUp est un lot (ex. « Sabot de veau LOT 5 »), chaque vente compte pour N pièces de la variante choisie">Vendu par lot de <input type="number" min="1" step="1" value="${st.pack == null ? this._packFromDesc(i.desc || i.name) : st.pack}" onchange="Ventes._ttState('${k}').pack=Math.max(1,Math.round(U.num(this.value)))"> pièce(s)</label>
+            <label class="tt-remember"><input type="checkbox" ${st.remember ? 'checked' : ''} onchange="Ventes._ttState('${k}').remember=this.checked"> Retenir (lignes identiques + prochains imports)</label></span>
+          <span class="tt-bar-right"><button class="tt-minor" title="Garder la vente dans le chiffre d'affaires sans toucher au stock (ex : montant personnalisé)" onclick="Ventes.ttMark('${k}','caOnly')">💶 CA seulement</button>${markBtn}</span>
+        </div>
       </div>`;
     } else {
       const t = this._targetFor(i.kind, i.pId, i.vId);
-      if (!t) body = `<div class="tt-body"><p class="warn-txt">Produit introuvable (supprimé ?).</p><div class="tt-actions">${i.desc ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}${markBtns}</div></div>`;
+      if (!t) body = `<div class="tt-body"><p class="warn-txt">Produit introuvable (supprimé ?).</p><div class="tt-bar"><span class="tt-bar-left"></span><span class="tt-bar-right">${i.desc ? `<button class="tt-minor" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}${markBtn}</span></div></div>`;
       else if (i.kind === 'A') {
         const a = Store.state.catalogA.find(x => x.id === i.pId);
         const av = U.num(a.stockEvent);
-        body = `<div class="tt-body">${linked(t)}<div class="tt-actions"><span>Stock fini événement : <b>${U.qty(av)}</b></span>
-          ${av > 0 ? `<button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire ${U.qty(Math.min(av, i.qty))}</button>` : '<span class="muted">rien à déduire (fait à la commande)</span>'}${markBtns}</div></div>`;
+        body = `<div class="tt-body">${linked(t)}<div class="tt-divider"></div><div class="tt-bar"><span class="tt-bar-left">Stock fini événement : <b>${U.qty(av)}</b></span>
+          <span class="tt-bar-right">${markBtn}${av > 0 ? `<button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire ${U.qty(Math.min(av, i.qty))}</button>` : '<span class="muted">rien à déduire (fait à la commande)</span>'}</span></div></div>`;
       } else {
         const p = Store.state.stockM.find(x => x.id === i.pId); const v = Stock.stockVar(p, i.vId);
         const field = 'qtyEvent'; // retour d'événement : toujours le stock événement
@@ -1737,12 +1747,15 @@ const Ventes = {
           ${(() => { const evTot = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0), genTot = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
             return evTot < i.qty ? `<p class="tt-gen">🏬 Stock événement ${evTot ? `insuffisant (${U.qty(evTot)} pour ${U.qty(i.qty)} vendus)` : 'à 0'} · stock général : <b>${U.qty(genTot)}</b>
               <button class="btn-ghost btn-sm" onclick="Ventes.ttGeneral('${k}')">🏬 ${evTot ? 'Compléter depuis le stock général' : 'Déduire du stock général'}</button></p>` : ''; })()}
-          <div class="tt-actions"><span>Total choisi : <b id="tt_sum_${sid}">${U.qty(sum)}</b> / ${U.qty(i.qty)} vendu(s)</span>
-            ${lots.length ? `<button class="btn-ghost btn-sm" onclick="Ventes.ttFefo('${k}')">Proposer (DLUO la plus courte d'abord)</button><button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire</button>` : ''}${markBtns}</div>
+          <div class="tt-divider"></div>
+          <div class="tt-bar">
+            <span class="tt-bar-left">Total choisi : <b id="tt_sum_${sid}">${U.qty(sum)}</b> / ${U.qty(i.qty)} vendu(s)${lots.length ? ` · <button class="tt-minor" style="padding:0;" onclick="Ventes.ttFefo('${k}')">Proposer (DLUO la plus courte d'abord)</button>` : ''}</span>
+            <span class="tt-bar-right">${markBtn}${lots.length ? `<button class="btn-ok btn-sm" onclick="Ventes.ttDeduct('${k}')">✅ Déduire</button>` : ''}</span>
+          </div>
         </div>`;
       }
     }
-    return `<div class="tt-item${i.todo !== 'open' ? ' is-done' : ''}">${head}${body}</div>`;
+    return `<div class="tt-item${i.todo !== 'open' ? ' is-done' : ''}">${top}${body}</div>`;
   },
 
   ttSearch(k, val) { this._ttState(k).q = val; this.render(); },

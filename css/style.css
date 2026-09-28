@@ -968,17 +968,33 @@ a.open-tab { text-decoration: none; font-weight: 700; color: var(--caramel); dis
 a.open-tab:hover { background: var(--caramel); color: #fff; }
 .todo-banner { border-left: 4px solid #3d9a5b; }
 .todo-ticket-h { margin: 0 0 10px; font-size: 1rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.tt-item { border: 1px solid var(--card-border); border-left: 3px solid var(--caramel); border-radius: 9px; padding: 10px 12px; margin-bottom: 10px; }
+/* Carte « Articles à traiter » (2026-09-30) : bandeau titre (nom du produit bien visible, même
+   patron caramel que .sale-head de l'historique) → contenu (lien/tableau de lots/alerte) →
+   séparateur → barre d'actions (info à gauche, boutons à droite). Les actions rares (Changer,
+   Proposer, Déjà fait à la main, CA seulement) sont en style « lien discret » (.tt-minor, pas de
+   contour) pour ne jamais rivaliser visuellement avec la vraie action (✅ Déduire, bordée/colorée) —
+   avant, tous les boutons avaient le même contour caramel et rien ne se distinguait. */
+.tt-item { border: 1px solid var(--card-border); border-left: 3px solid var(--caramel); border-radius: 9px; margin-bottom: 12px; overflow: hidden; }
 .tt-item.is-done { opacity: .7; border-left-color: #3d9a5b; }
-.tt-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.tt-desc { flex: 1 1 240px; }
-.tt-qty { white-space: nowrap; }
-.tt-body { margin-top: 8px; }
+.tt-top { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; background: rgba(166,113,83,.12); padding: 9px 12px; border-bottom: 1px solid var(--card-border); }
+.tt-top-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.tt-name { font-weight: 700; font-size: 1.02rem; }
+.tt-top .badge { font-size: .72rem; padding: 2px 8px; }
+.tt-qty { white-space: nowrap; font-size: .88rem; color: var(--gris); }
+.tt-qty b { color: var(--texte); }
+.tt-body { padding: 10px 12px; }
 .tt-sug { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tt-chip { text-align: left; }
-.tt-linked, .tt-src { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
-.tt-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.tt-linked-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 8px; font-size: .85rem; color: var(--gris); }
+.tt-linked-line b { color: var(--texte); }
+.tt-divider { border-top: 1px dashed var(--card-border); margin: 10px 0 9px; }
+.tt-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.tt-bar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: .86rem; color: var(--gris); }
+.tt-bar-left b { color: var(--texte); }
+.tt-bar-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tt-remember { display: flex; gap: 6px; align-items: center; text-transform: none; margin: 0; cursor: pointer; font-size: .88rem; }
+.tt-minor { background: transparent; color: var(--gris); border: none; box-shadow: none; padding: 5px 4px; font-size: .82rem; text-decoration: underline; text-decoration-color: transparent; }
+.tt-minor:hover { filter: none; color: var(--caramel); text-decoration-color: var(--caramel); }
 table.tt-lots { max-width: 620px; }
 .team-note { border-left: 4px solid var(--caramel); padding: 10px 14px; }
 /* Tags hérités du produit, affichés en lecture seule dans « Modifier variante » */
