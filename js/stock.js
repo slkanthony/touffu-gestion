@@ -446,6 +446,7 @@ const Stock = {
     const sku = this.suggestSku(p, v);
     if (!await U.ask({ title: '🏷️ Générer le SKU ?', html: `<p>SKU proposé pour <b>${U.esc(p.name)}</b> — ${U.esc(Pricing.labelVariant(v))} :</p><p style="font-size:1.15rem;font-weight:700;color:var(--caramel);margin:6px 0 10px;">${U.esc(sku)}</p><p class="muted" style="margin:0;">Tu pourras le modifier ensuite dans la colonne SKU. Pense à le reporter sur ton site / SumUp.</p>`, okLabel: 'Utiliser ce SKU', cancelLabel: 'Non merci' })) return;
     this.setVarSku(pId, vId, sku);
+    this.render();
   },
   setVarSku(pId, vId, val) {
     const p=Store.state.stockM.find(x=>x.id===pId); const v=p?.variants.find(x=>x.id===vId); if(!v) return;
