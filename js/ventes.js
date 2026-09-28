@@ -1630,14 +1630,17 @@ const Ventes = {
     return out;
   },
 
-  /* Boutons d'actions groupées (toute la page si saleId vide, sinon un ticket). */
+  /* Boutons d'actions groupées (toute la page si saleId vide, sinon un ticket). Pleine largeur
+     (label à gauche, boutons à droite) pour la carte de filtres en haut de page ; version compacte
+     inchangée quand elle est nichée dans l'en-tête resserré d'un ticket (todo-ticket-top). */
   _todoBulkBar(saleId) {
     const n = this._todoKeys(saleId).length, r = this._todoReady(saleId).length;
     const a = saleId ? `'${saleId}'` : "''";
-    return `<div class="todo-bulk${saleId ? ' small' : ''}"><span class="muted">${saleId ? 'Ce ticket' : 'Articles affichés'} (${n}) :</span>
-      <button class="btn-ok btn-sm" ${r ? '' : 'disabled'} title="Déduit tous les articles prêts : produit associé et « Total choisi = vendu »" onclick="Ventes.ttBulkDeduct(${a})">✅ Tout déduire (${r} prêt${r > 1 ? 's' : ''})</button>
+    const btns = `<button class="btn-ok btn-sm" ${r ? '' : 'disabled'} title="Déduit tous les articles prêts : produit associé et « Total choisi = vendu »" onclick="Ventes.ttBulkDeduct(${a})">✅ Tout déduire (${r} prêt${r > 1 ? 's' : ''})</button>
       <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('done',${a})">✔ Tout déjà fait à la main</button>
-      <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('caOnly',${a})">💶 Tout en CA seulement</button></div>`;
+      <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('caOnly',${a})">💶 Tout en CA seulement</button>`;
+    if (saleId) return `<div class="todo-bulk small"><span class="muted">Ce ticket (${n}) :</span>${btns}</div>`;
+    return `<div class="tt-bar tt-bulk-bar"><span class="tt-bar-left">Articles affichés : <b>${n}</b></span><span class="tt-bar-right">${btns}</span></div>`;
   },
   renderTodo() {
     const units = this.units();
@@ -1667,9 +1670,11 @@ const Ventes = {
         <button class="btn-ghost" style="white-space:nowrap;" onclick="Ventes.closeTodo()">← Retour aux ventes</button></div>
       ${bn ? `<div class="card todo-banner">✅ Import validé : <b>${U.qty(bn.deducted)}</b> article(s) déduits du stock événement. Il reste <b>${bn.pending}</b> ligne(s) à traiter ci-dessous — rien n'est déduit tant que tu ne cliques pas « Déduire ».</div>` : ''}
       <div class="card">
-        <div class="sumup-filters">${fb('all', 'Tout')}${fb('link', '🏷️ Produit à associer')}${fb('ready', '✅ Prêts à déduire')}${fb('multi', '🔀 Plusieurs lots (à répartir)')}${fb('gen', '🏬 Stock événement insuffisant')}${fb('short', '📉 Stock manquant')}</div>
-        ${counts[this.todoFilter] ? this._todoBulkBar('') : ''}
-        <label style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;margin:10px 0 0;"><input type="checkbox" ${this.todoShowDone ? 'checked' : ''} onchange="Ventes.setTodoShowDone(this.checked)"> Afficher aussi les articles déjà traités (${doneN})</label>
+        <span class="sh-lbl">Filtrer par statut</span>
+        <div class="sumup-filters tt-filters" style="margin-top:6px;">${fb('all', 'Tout')}${fb('link', '🏷️ Produit à associer')}${fb('ready', '✅ Prêts à déduire')}${fb('multi', '🔀 Plusieurs lots (à répartir)')}${fb('gen', '🏬 Stock événement insuffisant')}${fb('short', '📉 Stock manquant')}</div>
+        ${counts[this.todoFilter] ? `<div class="tt-divider"></div><span class="sh-lbl">Actions groupées</span><div style="margin-top:6px;">${this._todoBulkBar('')}</div>` : ''}
+        <div class="tt-divider"></div>
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;margin:0;"><input type="checkbox" ${this.todoShowDone ? 'checked' : ''} onchange="Ventes.setTodoShowDone(this.checked)"> Afficher aussi les articles déjà traités (${doneN})</label>
         <p class="muted help">Associer : clique une proposition 💡 (nom ressemblant) ou cherche le produit. « Retenir » applique l'association aux autres lignes identiques et aux prochains imports. Lots : indique combien sont partis de chaque lot, ou « Proposer » (DLUO la plus courte d'abord), puis « Déduire ». ↗ ouvre la fiche dans un nouvel onglet. Chaque déduction est annulable (↺ dans le message ou le Journal).</p>
       </div>
       ${groups.map(g => `<div class="card todo-ticket"><div class="todo-ticket-top"><h3 class="todo-ticket-h">📅 ${U.frDateTime(g.s.ts)} ${g.s.eventName ? `<span class="sh-event">🎪 ${U.esc(g.s.eventName)}</span>` : ''} <span class="muted">· ${g.s.payment === 'cash' ? 'espèces' : 'SumUp'}</span></h3>${this._todoKeys(g.s.id).length ? this._todoBulkBar(g.s.id) : ''}</div>${g.rows.join('<div class="tt-sep"></div>')}</div>`).join('')

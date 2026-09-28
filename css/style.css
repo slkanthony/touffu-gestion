@@ -1100,6 +1100,15 @@ table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 /* Articles à traiter : actions groupées (2026-09-30) */
 .todo-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .todo-bulk.small { margin-top: 0; }
+/* Carte de filtres en haut de page (2026-09-30, suite) : les boutons de statut occupent toute la
+   largeur disponible (même patron que la barre "Afficher" du Tableau de bord, .dash-scope-btn) au
+   lieu de rester tassés à gauche ; la barre d'actions groupées passe en tt-bar (label ↔ boutons,
+   space-between) pour la même raison. */
+.sh-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); display: block; }
+.tt-filters button { flex: 1 1 0; min-width: 195px; }
+.tt-bulk-bar .tt-bar-left { font-size: .92rem; }
+.tt-bulk-bar .tt-bar-left b { color: var(--texte); }
+.tt-bulk-bar .tt-bar-right { gap: 8px; }
 .todo-ticket-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .todo-ticket-top .todo-ticket-h { margin: 0; }
 .tt-multi { margin: 4px 0 8px; padding: 7px 11px; border-radius: 8px; border: 1px dashed #e0a040; background: rgba(224,160,64,.10); font-size: .88rem; }
