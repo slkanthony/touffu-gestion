@@ -138,8 +138,35 @@ const Woo = {
      simple. Comparaison PAR SKU (jamais par nom) avec le stock mastication + les accessoires de l'appli :
      prix TTC et quantité (stock choisi : événement / général / total). LECTURE SEULE. */
   _sumup: null,
+  _sumupCacheChecked: false,
+  /* Fichier de référence SumUp gardé en cache (localStorage, navigateur courant) pour ne plus avoir
+     à le redéposer à chaque visite (2026-09-30, Antho : « ça ne doit pas attendre le fichier
+     d'analyse à chaque fois »). Un fichier n'est à redéposer que pour rafraîchir la référence
+     (nouvel article créé dans SumUp…). */
+  _restoreSumupCache() {
+    if (this._sumup || this._sumupCacheChecked) return;
+    this._sumupCacheChecked = true;
+    try { const raw = localStorage.getItem('touffu_sumupRef'); if (raw) this._sumup = JSON.parse(raw); } catch (e) {}
+  },
+  /* Exclusion PERSISTANTE d'un article des exports SumUp (ex: sachets 500g+ jamais emmenés sur les
+     marchés) — même patron que _isExcluded/toggleExclude pour le site, réglage séparé
+     (Store.state.settings.sumupExclude) puisque « exclu du site » et « exclu de SumUp » sont deux
+     choses différentes (un produit peut être vendu en ligne mais pas emmené en événement, ou l'inverse). */
+  _isSumupExcluded(sku) { return (Store.state.settings.sumupExclude || []).includes(String(sku || '').toUpperCase()); },
+  toggleSumupExclude(sku) {
+    const s = Store.state.settings; if (!s.sumupExclude) s.sumupExclude = [];
+    const k = String(sku).toUpperCase();
+    const i = s.sumupExclude.indexOf(k);
+    if (i >= 0) s.sumupExclude.splice(i, 1); else s.sumupExclude.push(k);
+    Store.save('settings'); this.render();
+  },
   // La quantité SumUp = le stock ÉVÉNEMENT d'Antho (confirmé 2026-09-28) → comparée uniquement à celui-là.
   sumupFilter: 'issues', sumupQ: '', sumupSort: 'name', sumupSortDir: 'asc', sumupMeat: 'all', sumupFmt: 'all',
+  /* Filtres de la carte d'export SumUp (simple aperçu, même patron que le tableau d'export site). */
+  sumupExpFilters: { q: '', meat: 'all' },
+  _setSumupExpQ(v) { this.sumupExpFilters.q = v; this.render(); U.refocus('sumup_exp_q'); },
+  _setSumupExpMeat(v) { this.sumupExpFilters.meat = v || 'all'; this.render(); },
+  sumupExpSelectAll(on) { (this._sumupExpVisible || []).forEach(k => { this._sumupSel[k] = !!on; }); this.render(); },
   _setSumupMeat(v) { this.sumupMeat = v; this.render(); },
   _setSumupFmt(v) { this.sumupFmt = v; this.render(); },
   /* Format d'une ligne (poids / taille / lot) : variante SumUp normalisée (« 100g » → « 100G »). */
@@ -161,7 +188,7 @@ const Woo = {
     else { this.sumupSort = k; this.sumupSortDir = 'asc'; }
     this.render();
   },
-  clearSumup() { this._sumup = null; this._sumupSel = {}; this.render(); },
+  clearSumup() { this._sumup = null; this._sumupSel = {}; try { localStorage.removeItem('touffu_sumupRef'); } catch (e) {} this.render(); },
 
   /* ───── Fichier d'IMPORT SumUp (2026-09-28, demande d'Antho) ─────
      Repart du fichier SumUp déposé (toutes ses lignes, identifiants « Item id / Variant id (Do not change) »
@@ -206,9 +233,13 @@ const Woo = {
     if (!this._sumup || !this._sumup.raw) { U.toast('Dépose d\'abord ton export d\'articles SumUp.', true); return; }
     if (!this.sumupExpQty && !this.sumupExpPrice) { U.toast('Coche au moins « quantités » ou « prix ».', true); return; }
     const r = this._sumupReport();
+    // Les articles exclus (réglage persistant, carte d'export) ne sont JAMAIS mis à jour, même
+    // s'ils restaient cochés d'une sélection précédente.
+    const allExportable = r.matched.filter(m => !this._isSumupExcluded(m.sku));
+    if (!allExportable.length) { U.toast('Aucun article exportable (tous exclus, ou aucun relié par SKU).', true); return; }
     const n = this._sumupSelCount();
-    const chosen = n ? r.matched.filter(m => this._sumupSel[m.sku.toUpperCase()]) : r.matched;
-    if (!chosen.length) { U.toast('Aucun article relié par SKU à mettre à jour.', true); return; }
+    const chosen = n ? allExportable.filter(m => this._sumupSel[m.sku.toUpperCase()]) : allExportable;
+    if (!chosen.length) { U.toast('Aucun article sélectionné à exporter.', true); return; }
     const untracked = this.sumupExpQty ? chosen.filter(m => !m.track).length : 0;
     const changes = chosen.filter(m => (this.sumupExpQty && m.track && !m.qtyOk) || (this.sumupExpPrice && !m.priceOk)).length;
     if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${this.sumupExpQty ? ' (quantités' + (this.sumupExpPrice ? ' + prix' : '') + ')' : ' (prix)'}.\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
@@ -259,6 +290,7 @@ const Woo = {
       // Fichier brut conservé : le fichier d'import SumUp repart de CE fichier (mêmes lignes, mêmes « Item id / Variant id »).
       this._sumup = { lines, file: file.name, raw: rows, rawText: this._splitRecords(reader.result), cols: { iPrice, iQty } };
       this._sumupSel = {};
+      try { localStorage.setItem('touffu_sumupRef', JSON.stringify(this._sumup)); } catch (e) {}
       this.render();
       U.toast(`SumUp : ${lines.length} article(s)/variante(s) lus.`);
     };
@@ -348,6 +380,61 @@ const Woo = {
     r.unknown.forEach(l => out.push([l.name, l.variant, l.sku, 'SKU inconnu dans l\'appli', f(l.price), '', l.track ? l.qty : '', ''].map(q).join(';')));
     r.noSku.forEach(l => out.push([l.name, l.variant, '', 'pas de SKU dans SumUp', f(l.price), '', l.track ? l.qty : '', ''].map(q).join(';')));
     U.download('sumup-a-corriger-' + U.today() + '.csv', '\ufeff' + out.join('\n'), 'text/csv;charset=utf-8');
+  },
+  /* Carte d'export SumUp \u00ab simple \u00bb (2026-09-30, demande d'Antho : le m\u00eame syst\u00e8me que l'export
+     vers le site \u2014 aper\u00e7u, recherche, filtre viande, s\u00e9lection ET exclusion persistante \u2014 sans
+     attendre un rapport de comparaison). Ne liste que les articles reli\u00e9s par SKU (r.matched) :
+     on ne peut mettre \u00e0 jour dans SumUp qu'un article qu'il conna\u00eet d\u00e9j\u00e0 par ce SKU. La s\u00e9lection
+     (_sumupSel) et les 2 cases prix/quantit\u00e9 sont PARTAG\u00c9ES avec le rapport d\u00e9taill\u00e9 ci-dessous et
+     exportSumupImport() \u2014 un seul m\u00e9canisme de g\u00e9n\u00e9ration, juste une 2e fa\u00e7on de le piloter. */
+  _renderSumupExport(r) {
+    const f = this.sumupExpFilters;
+    const exportable = r.matched.filter(m => !this._isSumupExcluded(m.sku));
+    const excludedCount = r.matched.length - exportable.length;
+    const typeCounts = {};
+    exportable.forEach(m => { const t = m.appType || 'Autre'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+    const typeOpts = [{ v: 'all', l: `Tous (${exportable.length})` }].concat(Object.keys(typeCounts).sort(U.sortFr).map(t => ({ v: t, l: `${t} (${typeCounts[t]})` })));
+    const q = U.normSearch(f.q || '').trim();
+    const visible = exportable.filter(m => (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
+      .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
+    this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
+    const allVisSel = visible.length > 0 && visible.every(m => this._sumupSel[m.sku.toUpperCase()]);
+    const selCount = exportable.filter(m => this._sumupSel[m.sku.toUpperCase()]).length;
+    const exportLabel = selCount > 0 ? `\u2b07 G\u00e9n\u00e9rer le fichier d'import SumUp (${selCount} s\u00e9lectionn\u00e9(s))` : `\u2b07 G\u00e9n\u00e9rer le fichier d'import SumUp (${exportable.length} produit${exportable.length > 1 ? 's' : ''})`;
+    return `
+      <div class="frow" style="gap:18px;flex-wrap:wrap;margin:10px 0 4px;">
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> Envoyer les prix (TTC public)</label>
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantit\u00e9s (stock \u00e9v\u00e9nement)</label>
+      </div>
+      <div class="grid c2">
+        <div class="fg"><label>Recherche</label><input id="sumup_exp_q" value="${U.esc(f.q)}" placeholder="nom du produit ou SKU\u2026" oninput="Woo._setSumupExpQ(this.value)"></div>
+        <div class="fg"><label>Type / viande</label>${U.customSelect({ value: f.meat, options: typeOpts, onPick: 'Woo._setSumupExpMeat' })}</div>
+      </div>
+      <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
+        <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)"> Tout s\u00e9lectionner (${visible.length} affich\u00e9(s))</label>
+        <span class="muted">${selCount > 0 ? `${selCount} produit(s) s\u00e9lectionn\u00e9(s)` : 'Aucune s\u00e9lection \u2192 tout est export\u00e9'}</span>
+        ${excludedCount > 0 ? `<span class="tag" style="border-color:var(--alerte);">\ud83d\udeab ${excludedCount} exclu(s) de SumUp</span>` : ''}
+        ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSumupSel()">Vider la s\u00e9lection</button>` : ''}
+      </div>
+      <button id="sumup_exp_btn2" class="btn-cta mt" onclick="Woo.exportSumupImport()">${exportLabel}</button>
+      <p class="muted help mt">Dans SumUp : Articles \u2192 Importer \u2192 choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> et v\u00e9rifie que SumUp met bien \u00e0 jour l'existant (pas de doublon cr\u00e9\u00e9) avant de faire un export complet.</p>
+      <div class="table-wrap mt"><table><thead><tr>
+        <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout s\u00e9lectionner"></th>
+        <th>SKU</th><th class="col-name">Produit</th><th>Type / viande</th><th class="num">Prix TTC</th><th class="num">Stock \u00e9v\u00e9n.</th><th>Envoi SumUp</th></tr></thead>
+        <tbody>${visible.slice(0, 200).map(m => { const sku = m.sku.toUpperCase(); const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<tr>
+          <td><input type="checkbox" ${this._sumupSel[sku] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${skuJs}',this.checked);Woo.render();"></td>
+          <td><span class="tag">${U.esc(m.sku)}</span></td>
+          <td class="col-name">${U.esc(m.name)}${m.variant ? ' \u2014 ' + U.esc(m.variant) : ''}</td>
+          <td>${m.appType ? `<span class="badge info">${U.esc(m.appType)}</span>` : '\u2014'}</td>
+          <td class="num">${this.sumupExpPrice ? U.eur(m.appPrice) : '\u2014'}</td>
+          <td class="num">${this.sumupExpQty ? U.qty(m.appQty) : '\u2014'}</td>
+          <td><button class="btn-icon" title="Exclure d\u00e9finitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">\ud83d\udeab</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
+        ${visible.length > 200 ? `<p class="muted">\u2026 et ${visible.length - 200} autres non affich\u00e9s (affine la recherche pour les voir \u2014 \u00ab Tout s\u00e9lectionner \u00bb couvre bien les ${visible.length}).</p>` : ''}
+      </div>
+      ${excludedCount > 0 ? `<details class="fold mt" ${this._sumupExclOpen ? 'open' : ''} ontoggle="Woo._sumupExclOpen=this.open"><summary>\ud83d\udeab ${excludedCount} article(s) exclu(s) de SumUp</summary><div class="fold-body">
+        ${r.matched.filter(m => this._isSumupExcluded(m.sku)).sort((a, b) => U.sortFr(a.name, b.name)).map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(m.name)}${m.variant ? ' \u2014 ' + U.esc(m.variant) : ''}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">\u21a9 Inclure</button></div>`; }).join('')}
+      </div></details>` : ''}
+    `;
   },
   _renderSumup() {
     const r = this._sumupReport();
@@ -551,6 +638,7 @@ const Woo = {
   },
 
   render() {
+    this._restoreSumupCache();
     U.syncFilters('woo', this.filters);
     const all = this.lines();
     const linked = all.filter(l => l.sku);
@@ -631,15 +719,24 @@ const Woo = {
 ` : ''}
 
       ${this.tab === 'sumup' ? `      <div class="card">
-        <h2>💳 Comparer avec SumUp</h2>
-        <p class="muted help">Dans SumUp (me.sumup.com) : <b>Articles → Exporter</b>. Dépose ici ce fichier « items-export » : l'appli compare, <b>par SKU</b>, le <b>prix TTC</b> et la <b>quantité</b> de chaque article SumUp avec ton stock, et sort la liste à corriger dans SumUp. <b>Lecture seule</b> — rien n'est modifié, ni dans l'appli ni dans SumUp.</p>
+        <h2>📤 Export vers SumUp</h2>
+        <p class="muted help">Dépose <b>une fois</b> l'export d'articles SumUp (me.sumup.com → <b>Articles → Exporter</b>) : l'appli le garde en mémoire et te propose direct un aperçu à sélectionner, comme pour l'export site — plus besoin de le redéposer à chaque visite. Redépose un fichier seulement pour <b>rafraîchir</b> la référence (nouvel article créé dans SumUp…).</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="woo_sumup_file" accept=".csv,text/csv">
-          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Comparer</button>
-          ${this._sumup ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearSumup()">Effacer le rapport</button><span class="muted" style="font-size:.8rem;">${U.esc(this._sumup.file)}</span>` : ''}
+          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">${this._sumup ? 'Rafraîchir la référence' : 'Charger'}</button>
+          ${this._sumup ? `<span class="muted" style="font-size:.8rem;">Référence : ${U.esc(this._sumup.file)}</span><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearSumup()">Effacer</button>` : ''}
         </div>
-        ${this._sumup ? this._renderSumup() : ''}
+        ${this._sumup ? this._renderSumupExport(this._sumupReport()) : ''}
       </div>
+
+      ${this._sumup ? `<div class="card">
+        <details class="fold" ${this._sumupReportOpen ? 'open' : ''} ontoggle="Woo._sumupReportOpen=this.open"><summary><h2 style="display:inline;margin:0;">🔍 Rapport détaillé (écarts par SKU, sans SKU, inconnus…)</h2></summary>
+          <div class="fold-body">
+            <p class="muted help">Lecture seule — rien n'est modifié, ni dans l'appli ni dans SumUp. Utile pour repérer précisément ce qui diffère avant de générer le fichier dans la carte ci-dessus.</p>
+            ${this._renderSumup()}
+          </div>
+        </details>
+      </div>` : ''}
 
 ` : ''}
 
