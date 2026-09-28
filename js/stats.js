@@ -74,11 +74,11 @@ const Stats = {
       const fee = s.payment === 'sumup' ? base * cardRate : s.payment === 'stripe' ? base * stripeRate : 0;
       const cotis = caAcc * socHM + (ca - caAcc + U.num(s.shippingFeeCollected)) * socStd;
       const tva = S.vatActive && vr > 0 ? ca * vr / (100 + vr) : 0;
-      const stand = U.num(s.eventFee), travel = U.num(s.travelCost);
+      const stand = U.num(s.eventFee), travel = U.num(s.travelCost), meal = U.num(s.mealFee);
       const tx = (s.sumupRefs && s.sumupRefs.length) || 1;
-      return { ca, cogs, conso, fee, cotis, tva, stand, travel, tx, net: ca - cogs - conso - fee - cotis - tva - stand - travel + U.num(s.shippingFeeCollected) - U.num(s.shippingCost) };
+      return { ca, cogs, conso, fee, cotis, tva, stand, travel, meal, tx, net: ca - cogs - conso - fee - cotis - tva - stand - travel - meal + U.num(s.shippingFeeCollected) - U.num(s.shippingCost) };
     };
-    const zero = () => ({ ca: 0, cogs: 0, conso: 0, fee: 0, cotis: 0, tva: 0, stand: 0, travel: 0, tx: 0, net: 0, days: new Set() });
+    const zero = () => ({ ca: 0, cogs: 0, conso: 0, fee: 0, cotis: 0, tva: 0, stand: 0, travel: 0, meal: 0, tx: 0, net: 0, days: new Set() });
     const add = (t, c, day) => { Object.keys(c).forEach(k => { t[k] += c[k]; }); t.days.add(day); };
     const byName = {};
     Store.state.sales.filter(s => !s.cancelled && s.eventName).forEach(s => {
@@ -106,7 +106,7 @@ const Stats = {
     list.sort((a, b) => so.k === 'name' ? dir * U.sortFr(a.name, b.name) : dir * (val(a, so.k) - val(b, so.k)));
     const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Stats.setEventSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const neg = v => v ? '− ' + U.eur(v) : '—';
-    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive neg">${neg(t.cogs)}</td><td class="num sensitive neg">${neg(t.stand)}</td><td class="num sensitive neg">${neg(t.travel)}</td><td class="num sensitive neg">${neg(t.fee)}</td><td class="num sensitive neg">${neg(t.conso)}</td><td class="num sensitive neg">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
+    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive neg">${neg(t.cogs)}</td><td class="num sensitive neg">${neg(t.stand)}</td><td class="num sensitive neg">${neg(t.meal)}</td><td class="num sensitive neg">${neg(t.travel)}</td><td class="num sensitive neg">${neg(t.fee)}</td><td class="num sensitive neg">${neg(t.conso)}</td><td class="num sensitive neg">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
     const open = this._evOpen || (this._evOpen = {});
     const rows = list.map(e => {
       const years = Object.keys(e.years).sort().reverse();
@@ -131,7 +131,7 @@ const Stats = {
       ${unnamed ? `<div class="card" style="border-left:4px solid #f5b041;"><p class="mb0">⚠️ <b>${unnamed}</b> vente(s) d'événement sans nom ne sont pas comptées ici. Nomme-les via <b>Ventes → historique → 🎪 Modifier</b>.</p></div>` : ''}
       <div class="card">
         <h2>🎪 Rentabilité par événement</h2>
-        ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('meal', 'Repas')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
         <p class="muted help" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
@@ -698,7 +698,7 @@ const Stats = {
         ${line('Port encaissé', 'shipFee', '+')}
         ${line('Frais paiement', 'fee', '-')}
         ${line('Frais d\'envoi réel', 'shipping', '-')}
-        ${line('Stand & déplacement', 'eventFee', '-')}
+        ${line('Stand, repas & déplacement', 'eventFee', '-')}
         ${line('Coût cartons', 'box', '-')}
         ${line('Cotisations URSSAF', 'cotis', '-')}
         ${va ? line('TVA (reversée)', 'tva', '-') : ''}
@@ -777,11 +777,11 @@ const Stats = {
           const uvCell = (v) => uvM ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel (imprimante, extracteur, scelleuse…) réparti par mois">− ${U.eur(v)}</td>` : '';
           const row = (label, m) => `<tr><td class="col-name"><b>${label}</b></td><td class="num">${m.nSales}</td><td class="num sensitive">${U.eur(m.ca)}</td>${cell(m.cogs, 'neg')}${margeCell(m.marge)}${cell(m.shipFee, 'pos')}${cell(m.fee, 'neg')}${cell(m.shipping, 'neg')}${cell(m.eventFee, 'neg')}${cell(m.boxCost, 'neg')}${uvCell(m.uvMaint)}<td class="num sensitive neg">− ${U.eur(m.cotis)}</td>${tvaCell(m.tva)}<td class="num sensitive ${m.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(m.net)}</b></td></tr>`;
           return `<div class="table-wrap mt"><table>
-            <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Stand & déplac.</th><th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
+            <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Stand, repas & déplac.</th><th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
             <tbody>${agg.months.slice().reverse().map(m => row(this._monthKeyLabel(m.key), m)).join('') || `<tr><td colspan="${uvM ? 14 : 13}" class="muted">Aucune vente.</td></tr>`}</tbody>
             <tfoot><tr><td class="col-name"><b>Total</b></td><td class="num">${T.n}</td><td class="num sensitive">${U.eur(T.ca)}</td>${cell(T.cogs, 'neg')}${margeCell(T.marge)}${cell(T.shipFee, 'pos')}${cell(T.fee, 'neg')}${cell(T.shipping, 'neg')}${cell(T.ev, 'neg')}${cell(T.box, 'neg')}${uvCell(T.uv)}<td class="num sensitive neg">− ${U.eur(T.cotis)}</td>${tvaCell(T.tva)}<td class="num sensitive ${T.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(T.net)}</b></td></tr></tfoot>
           </table></div>
-          <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand − coût cartons − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
+          <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand/repas/déplacement − coût cartons − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
         })()}
       </div>
 

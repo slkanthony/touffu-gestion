@@ -82,8 +82,10 @@ const Pricing = {
      Si v.priceTTCManual est renseigné, le prix de vente est FIXE (ne
      bouge pas quand le coût change, ex: changement de fournisseur
      principal) et le coefficient affiché devient une valeur dérivée. */
-  /* Coûts d'un événement portés par une vente : frais de stand + frais de déplacement (2026-09-27). */
-  eventCost(s) { return U.num(s && s.eventFee) + U.num(s && s.travelCost); },
+  /* Coûts d'un événement portés par une vente : frais de stand + déplacement + repas (2026-09-27,
+     repas ajouté le 2026-09-30 — Antho paie le repas de midi pour lui + sa compagne qui l'aide
+     sur les événements, coût variable selon ce qu'ils trouvent à manger). */
+  eventCost(s) { return U.num(s && s.eventFee) + U.num(s && s.travelCost) + U.num(s && s.mealFee); },
 
   variantCalc(p, v, idxActive, base, nActive) {
     const S = Store.state.settings;

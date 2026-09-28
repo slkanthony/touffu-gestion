@@ -594,6 +594,17 @@ const Ventes = {
     U.toast('Frais de stand mis à jour.', false, entry.id);
     Store.save('sales');
   },
+  /* Frais de repas de midi (2026-09-30, Antho paie à manger pour lui + sa compagne qui l'aide sur
+     les événements) — saisi au retour d'événement, modifiable après coup ici. Même patron que
+     setEventFee (frais de stand). */
+  setMealFee(id, val) {
+    const s = Store.state.sales.find(x => x.id === id); if (!s) return;
+    const snap = Store.snapshot('sales', s);
+    s.mealFee = U.num(val);
+    const entry = Store.commitSnapshot(snap, 'vente', `Frais de repas — ${U.frDateTime(s.ts)} : ${U.eur(s.mealFee)}`);
+    U.toast('Frais de repas mis à jour.', false, entry.id);
+    Store.save('sales');
+  },
 
   /* ─── Nom d'événement (2026-09-27) : sale.eventName, pour les stats par événement ───
      Suggestions = noms déjà utilisés (datalist), pour taper toujours le même nom. */
@@ -851,7 +862,7 @@ const Ventes = {
     U.toast(`${sales.length} vente(s) supprimée(s)` + (restock ? ', stock remis' : '') + '.', false, entry.id);
   },
 
-  _isRealEvent(s) { return s.source === 'event' && !!(s.eventName || s.fromImport || U.num(s.eventFee) || U.num(s.travelCost)); },
+  _isRealEvent(s) { return s.source === 'event' && !!(s.eventName || s.fromImport || U.num(s.eventFee) || U.num(s.travelCost) || U.num(s.mealFee)); },
   historyTable() {
     const f = U.syncFilters('ventes_hist', this.histF) || this.histF;
     const all = this.histFiltered();
@@ -907,6 +918,7 @@ const Ventes = {
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
+          ${this._isRealEvent(s) ? field('Repas', `<input type="number" step="0.01" min="0" value="${U.num(s.mealFee)}" style="width:80px;" onchange="Ventes.setMealFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
         </div></td></tr>`;
       const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
@@ -971,7 +983,7 @@ const Ventes = {
   },
 
   exportSales() {
-    const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Frais_deplacement', 'Evenement', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
+    const rows = [['Date', 'Stock', 'Canal', 'Paiement', 'Remise', 'Client', 'Port_facture_client', 'Frais_port_encaisses', 'Frais_envoi', 'Frais_stand', 'Frais_repas', 'Frais_deplacement', 'Evenement', 'Cout_conso', 'Produit', 'Variante', 'SKU', 'Lot', 'Quantite', 'Prix_unitaire', 'Total', 'Annulee']];
     const list = this.histFiltered();
     list.forEach(s => s.items.forEach((i, idx) => {
       rows.push([U.frDateTime(s.ts), s.source === 'event' ? 'Evenement' : 'General',
@@ -981,6 +993,7 @@ const Ventes = {
         idx === 0 && s.delivery === 'livraison' ? U.num(s.shippingFeeCollected).toFixed(2) : '',
         idx === 0 ? U.num(s.shippingCost).toFixed(2) : '',
         idx === 0 ? U.num(s.eventFee).toFixed(2) : '',
+        idx === 0 ? U.num(s.mealFee).toFixed(2) : '',
         idx === 0 ? U.num(s.travelCost).toFixed(2) : '',
         s.eventName || '',
         idx === 0 ? U.num(s.items.filter(x => x.kind === 'C').reduce((a, x) => a + U.num(x.cost), 0)).toFixed(2) : '',
@@ -1259,11 +1272,16 @@ const Ventes = {
     const days = Object.values(dayMap).sort((a, b) => b.ts - a.ts);
     if (!days.length) { U.toast('Aucune vente exploitable dans ce fichier.', true); return; }
     const latest = days[0] && days[0].key !== 'date-inconnue' ? days[0].key : new Date().toISOString().slice(0, 10);
-    this.retourData = { days, mergeOne: false, cashLines: [], cashDate: latest, standFees: {}, cashStandFee: '', consoLines: [] };
+    this.retourData = { days, mergeOne: false, cashLines: [], cashDate: latest, standFees: {}, cashStandFee: '', mealFees: {}, cashMealFee: '', consoLines: [] };
     this.render();
   },
   setStandFee(key, val) { if (this.retourData) { (this.retourData.standFees = this.retourData.standFees || {})[key] = U.num(val); } },
+  /* Frais de repas de midi (2026-09-30, Antho : il paie à manger pour lui + sa compagne qui l'aide
+     sur les événements — un coût réel du jour, variable selon ce qu'ils trouvent à manger, donc
+     jamais pré-rempli depuis une fiche comme le stand). Même patron que setStandFee/eventFee. */
+  setDayMealFee(key, val) { if (this.retourData) { (this.retourData.mealFees = this.retourData.mealFees || {})[key] = U.num(val); } },
   setCashStandFee(val) { if (this.retourData) this.retourData.cashStandFee = U.num(val); },
+  setCashMealFee(val) { if (this.retourData) this.retourData.cashMealFee = U.num(val); },
 
   _retourImportedRefs() {
     const set = new Set();
@@ -1382,6 +1400,7 @@ const Ventes = {
       </div>
       <div class="fg"><label>🎪 Événement (ventes espèces)</label>${this.eventSelect(this.retourData && this.retourData.cashEventName || '', 'Ventes.setCashEventName(v)')}</div>
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted help" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
+      <div class="fg"><label>🍽️ Repas (€) <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashMealFee) || ''}" onchange="Ventes.setCashMealFee(this.value)"></div>
       <div class="fg"><label>🚗 Déplacement <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label>${this.travelWidget((d.travelDet || {}).__cash, 'cash', d.cashTravel)}</div>
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="1" min="1" value="${this.cashQty || 1}" onchange="Ventes.cashQty=Math.max(1,Math.round(U.num(this.value)))"></div>
@@ -1618,6 +1637,11 @@ const Ventes = {
           <span class="muted" style="font-size:.82rem;">coût de l'emplacement (métrage…) — imputé au bénéfice de cet événement</span>
         </div>
         <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <label style="margin:0;text-transform:none;">🍽️ Repas (€)</label>
+          <input type="number" step="0.01" min="0" style="width:130px;" value="${U.num(s.mealFee) || ''}" placeholder="0" onchange="Ventes.setMealFee('${s.id}',this.value)">
+          <span class="muted" style="font-size:.82rem;">repas de midi (toi + ta compagne) — imputé au bénéfice de cet événement</span>
+        </div>
+        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <label style="margin:0;text-transform:none;">🚗 Déplacement</label>
           ${this.travelWidget(s.travelDet, 's:' + s.id, s.travelCost)}
         </div>
@@ -1667,6 +1691,8 @@ const Ventes = {
         ${this.eventSelect((this.retourData.eventNames || {})[g.key] || '', `Ventes.setDayEventName('${g.key}',v)`, 'width:240px;')}
         <label style="margin:0;text-transform:none;font-size:.85rem;">🏪 Frais de stand (€)</label>
         <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.standFees || {})[g.key]) || ''}" onchange="Ventes.setStandFee('${g.key}',this.value)">
+        <label style="margin:0;text-transform:none;font-size:.85rem;">🍽️ Repas (€)</label>
+        <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.mealFees || {})[g.key]) || ''}" onchange="Ventes.setDayMealFee('${g.key}',this.value)">
         <label style="margin:0;text-transform:none;font-size:.85rem;">🚗 Déplacement</label>
         ${this.travelWidget((this.retourData.travelDet || {})[g.key], 'd:' + g.key, (this.retourData.travel || {})[g.key])}
       </div>`}
@@ -1695,12 +1721,12 @@ const Ventes = {
       if (!deduct) {
         const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
         this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
         this._markImported(sale.items);
         Store.state.sales.unshift(sale);
@@ -1721,9 +1747,10 @@ const Ventes = {
         const items = grouped.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, variant: g.label, sku: g.sku, qty: g.qty, price: g.unit }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
         const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
+        const mealFee = (b.keys || []).reduce((a, k) => a + U.num((d.mealFees || {})[k]), 0);
         const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
         const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
-        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, mealFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique ${b.label} — ${U.eur(total)} (${items.length} produit(s), stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += items.reduce((a, i) => a + i.qty, 0); refs.forEach(r => seen.add(r));
@@ -1737,9 +1764,10 @@ const Ventes = {
       const { safe, ambiguous } = this._retourSplit(raw.filter(l => l.target));
       const probs = this._groupProblems(raw.filter(l => !l.target));
       const eventFee = (b.keys || []).reduce((a, k) => a + U.num((d.standFees || {})[k]), 0);
+      const mealFee = (b.keys || []).reduce((a, k) => a + U.num((d.mealFees || {})[k]), 0);
       const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
       const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
-      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
+      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, mealFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
       if (safe.length) this._deductSale(sale, safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty, pack: g.pack, packs: g.packs })), 'event');
       this._markImported(sale.items);
       ambiguous.forEach(g => { sale.items.push({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: 'multiLot', ...(U.num(g.pack) >= 2 ? { pack: g.pack, packs: g.packs } : {}) }); sale.total += g.unit * g.qty; });
