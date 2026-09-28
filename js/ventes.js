@@ -1626,25 +1626,12 @@ const Ventes = {
       <div class="card">
         <h2>🎪 Événement & frais de stand</h2>
         ${this.eventNamesDatalist()}
-        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-          <label style="margin:0;text-transform:none;">Nom de l'événement</label>
-          ${this.eventSelect(s.eventName || '', `Ventes.setEventName('${s.id}',v)`, 'width:280px;')}
-          <span class="muted" style="font-size:.82rem;">sert aux statistiques par événement (Statistiques → 🎪 Événements)</span>
+        <div class="grid c3">
+          <div class="fg"><label>Nom de l'événement <span class="muted help">sert aux statistiques par événement (Statistiques → 🎪 Événements)</span></label>${this.eventSelect(s.eventName || '', `Ventes.setEventName('${s.id}',v)`)}</div>
+          <div class="fg"><label>Frais de stand (€) <span class="muted help">coût de l'emplacement (métrage…) — imputé au bénéfice de cet événement</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.eventFee) || ''}" onchange="Ventes.setEventFee('${s.id}',this.value)"></div>
+          <div class="fg"><label>🍽️ Repas (€) <span class="muted help">repas de midi (toi + ta compagne) — imputé au bénéfice de cet événement</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.mealFee) || ''}" onchange="Ventes.setMealFee('${s.id}',this.value)"></div>
         </div>
-        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;">
-          <label style="margin:0;text-transform:none;">Frais de stand (€)</label>
-          <input type="number" step="0.01" min="0" style="width:130px;" value="${U.num(s.eventFee) || ''}" placeholder="0" onchange="Ventes.setEventFee('${s.id}',this.value)">
-          <span class="muted" style="font-size:.82rem;">coût de l'emplacement (métrage…) — imputé au bénéfice de cet événement</span>
-        </div>
-        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-          <label style="margin:0;text-transform:none;">🍽️ Repas (€)</label>
-          <input type="number" step="0.01" min="0" style="width:130px;" value="${U.num(s.mealFee) || ''}" placeholder="0" onchange="Ventes.setMealFee('${s.id}',this.value)">
-          <span class="muted" style="font-size:.82rem;">repas de midi (toi + ta compagne) — imputé au bénéfice de cet événement</span>
-        </div>
-        <div class="frow" style="gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-          <label style="margin:0;text-transform:none;">🚗 Déplacement</label>
-          ${this.travelWidget(s.travelDet, 's:' + s.id, s.travelCost)}
-        </div>
+        <div class="fg" style="margin-top:2px;"><label>🚗 Déplacement</label>${this.travelWidget(s.travelDet, 's:' + s.id, s.travelCost)}</div>
       </div>
 
       <div class="card" style="border-left:3px solid var(--caramel);">
