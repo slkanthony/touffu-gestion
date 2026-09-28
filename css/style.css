@@ -974,14 +974,22 @@ a.open-tab:hover { background: var(--caramel); color: #fff; }
    Proposer, Déjà fait à la main, CA seulement) sont en style « lien discret » (.tt-minor, pas de
    contour) pour ne jamais rivaliser visuellement avec la vraie action (✅ Déduire, bordée/colorée) —
    avant, tous les boutons avaient le même contour caramel et rien ne se distinguait. */
-.tt-item { border: 1px solid var(--card-border); border-left: 3px solid var(--caramel); border-radius: 9px; margin-bottom: 12px; overflow: hidden; }
+.tt-item { border: 1px solid var(--card-border); border-left: 3px solid var(--caramel); border-radius: 9px; overflow: hidden; }
 .tt-item.is-done { opacity: .7; border-left-color: #3d9a5b; }
-.tt-top { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; background: rgba(166,113,83,.12); padding: 9px 12px; border-bottom: 1px solid var(--card-border); }
-.tt-top-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.tt-name { font-weight: 700; font-size: 1.02rem; }
+/* Bandeau en 3 colonnes : les 2 colonnes extrêmes (mêmes largeurs, 1fr/1fr) forcent le nom du
+   produit — la seule colonne "auto" — à rester visuellement CENTRÉ quel que soit le contenu
+   (badges vs qté/prix) des deux côtés, plutôt qu'un simple flex qui le pousse à gauche. */
+.tt-top { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 6px 12px; background: rgba(166,113,83,.12); padding: 9px 12px; border-bottom: 1px solid var(--card-border); }
+.tt-top-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-self: start; min-width: 0; }
+.tt-name { font-weight: 700; font-size: 1.02rem; text-align: center; justify-self: center; }
 .tt-top .badge { font-size: .72rem; padding: 2px 8px; }
-.tt-qty { white-space: nowrap; font-size: .88rem; color: var(--gris); }
+.tt-qty { white-space: nowrap; font-size: .88rem; color: var(--gris); justify-self: end; text-align: right; }
 .tt-qty b { color: var(--texte); }
+/* Ligne de séparation entre 2 articles d'un même ticket (pointillé caramel, même patron que les
+   séparateurs de blocs des Réglages financiers) — les .tt-item ont chacun leur propre encadré,
+   mais Antho voulait un repère supplémentaire, plus net, pour ne jamais confondre 2 produits. */
+.tt-sep { border-top: 2px dashed rgba(166,113,83,.6); margin: 16px 6px; }
+@media (max-width: 560px) { .tt-top { grid-template-columns: 1fr; text-align: center; } .tt-top-badges, .tt-qty { justify-self: center; justify-content: center; } }
 .tt-body { padding: 10px 12px; }
 .tt-sug { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tt-chip { text-align: left; }

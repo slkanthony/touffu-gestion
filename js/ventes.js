@@ -1672,7 +1672,7 @@ const Ventes = {
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;cursor:pointer;margin:10px 0 0;"><input type="checkbox" ${this.todoShowDone ? 'checked' : ''} onchange="Ventes.setTodoShowDone(this.checked)"> Afficher aussi les articles déjà traités (${doneN})</label>
         <p class="muted help">Associer : clique une proposition 💡 (nom ressemblant) ou cherche le produit. « Retenir » applique l'association aux autres lignes identiques et aux prochains imports. Lots : indique combien sont partis de chaque lot, ou « Proposer » (DLUO la plus courte d'abord), puis « Déduire ». ↗ ouvre la fiche dans un nouvel onglet. Chaque déduction est annulable (↺ dans le message ou le Journal).</p>
       </div>
-      ${groups.map(g => `<div class="card todo-ticket"><div class="todo-ticket-top"><h3 class="todo-ticket-h">📅 ${U.frDateTime(g.s.ts)} ${g.s.eventName ? `<span class="sh-event">🎪 ${U.esc(g.s.eventName)}</span>` : ''} <span class="muted">· ${g.s.payment === 'cash' ? 'espèces' : 'SumUp'}</span></h3>${this._todoKeys(g.s.id).length ? this._todoBulkBar(g.s.id) : ''}</div>${g.rows.join('')}</div>`).join('')
+      ${groups.map(g => `<div class="card todo-ticket"><div class="todo-ticket-top"><h3 class="todo-ticket-h">📅 ${U.frDateTime(g.s.ts)} ${g.s.eventName ? `<span class="sh-event">🎪 ${U.esc(g.s.eventName)}</span>` : ''} <span class="muted">· ${g.s.payment === 'cash' ? 'espèces' : 'SumUp'}</span></h3>${this._todoKeys(g.s.id).length ? this._todoBulkBar(g.s.id) : ''}</div>${g.rows.join('<div class="tt-sep"></div>')}</div>`).join('')
         || `<div class="card empty"><span class="big">🎉</span>${counts.all ? 'Rien pour ce filtre.' : 'Plus rien à traiter.'}</div>`}
       <details class="fold card params-fold" ${this._memOpen ? 'open' : ''} ontoggle="Ventes._memOpen=this.open"><summary><h2>🧠 Associations retenues (${Object.keys(map).length})</h2></summary><div class="fold-body">
         <p class="muted help">Libellés SumUp que tu as associés toi-même à un produit : aux prochains imports, ils sont reliés directement (badge 🧠 dans la revue). Supprime une association si elle est fausse.</p>
@@ -1685,12 +1685,12 @@ const Ventes = {
     const st = this._ttState(k);
     const reasons = { multiLot: ['🔀 Plusieurs lots', 'warn'], short: ['📉 Stock manquant', 'bad'], dupSku: ['⚠️ SKU en double', 'bad'], unknownSku: ['❓ SKU inconnu', 'warn'], noSku: ['🏷️ Sans SKU', 'warn'] };
     const [rTxt, rCls] = reasons[i.reason] || ['À traiter', 'warn'];
-    // Bandeau titre : nom du produit en premier et en gras (info la plus importante), badges/qté/prix
-    // relégués en second plan — même patron que le bandeau .sale-head de l'historique des sorties.
-    const top = `<div class="tt-top"><span class="tt-top-l">
-        <span class="tt-name">${U.esc(i.desc || i.name)}${!i.desc && i.label ? ` <span class="pp-v">${U.esc(i.label)}</span>` : ''}</span>
-        <span class="badge ${rCls}">${rTxt}</span>${i.reason !== 'multiLot' && i.todo === 'open' && this._todoCat(i) === 'multi' ? ' <span class="badge bad">🔀 Plusieurs lots</span>' : ''}${i.sumupSku ? ` <span class="tag" title="SKU dans SumUp">${U.esc(i.sumupSku)}</span>` : ''}
-      </span>
+    // Bandeau titre en 3 colonnes (grid) : badges à gauche, NOM DU PRODUIT bien centré au milieu —
+    // info la plus importante, on veut l'œil dessus en premier —, qté/prix à droite. Même fond
+    // teinté caramel que le bandeau .sale-head de l'historique des sorties.
+    const top = `<div class="tt-top">
+      <span class="tt-top-badges"><span class="badge ${rCls}">${rTxt}</span>${i.reason !== 'multiLot' && i.todo === 'open' && this._todoCat(i) === 'multi' ? ' <span class="badge bad">🔀 Plusieurs lots</span>' : ''}${i.sumupSku ? ` <span class="tag" title="SKU dans SumUp">${U.esc(i.sumupSku)}</span>` : ''}</span>
+      <span class="tt-name">${U.esc(i.desc || i.name)}${!i.desc && i.label ? ` <span class="pp-v">${U.esc(i.label)}</span>` : ''}</span>
       <span class="tt-qty">× <b>${U.qty(i.qty)}</b>${U.num(i.pack) >= 2 ? ` <span class="muted">(${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack})</span>` : ''} · <span class="sensitive">${U.eur(i.price * i.qty)}</span></span></div>`;
     const linked = t => `<div class="tt-linked-line"><span>${i.desc ? 'Associé à' : 'Produit'} :</span> <b>${U.esc(t.name)}</b>${t.label ? ` <span class="pp-v">${U.esc(t.label)}</span>` : ''}${t.sku ? ` <span class="tag">${U.esc(t.sku)}</span>` : ''} ${this.openLink(t.kind, t.pId)}${i.desc && !i.deducted && i.todo === 'open' ? ` <button class="tt-minor" onclick="Ventes.ttUnlink('${k}')">✕ Changer</button>` : ''}</div>`;
     // Actions rares/secondaires (Changer, Proposer, Déjà fait à la main, CA seulement…) : style
