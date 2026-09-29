@@ -382,7 +382,7 @@ const Ventes = {
       <h2>📦 Consommable utilisé</h2>
       <div class="grid c2">
         <div class="fg"><label>Article</label>
-          ${U.customSelect({ value: this.consoId, options: [{v:'',l:'— choisir —'}].concat(avail.map(c => ({v:c.id,l:c.name+' — dispo '+U.qty(c.qty)}))), onPick: 'Ventes._setConso' })}
+          ${U.customSelect({ value: this.consoId, options: [{v:'',l:'— choisir —'}].concat(avail.map(c => ({v:c.id,l:Ventes._consoLabel(c)}))), onPick: 'Ventes._setConso' })}
         </div>
         <div class="fg"><label>Quantité</label><input id="v_conso_qty" type="number" step="1" min="1" value="${this.consoQty || 1}" onchange="Ventes.consoQty=U.num(this.value)"></div>
       </div>
@@ -603,6 +603,11 @@ const Ventes = {
     return s.delivery === 'livraison' ? '📦 Livraison' : '🏬 Click & Collect';
   },
 
+  /* Libellé d'un consommable dans les menus : nom — dimensions — dispo · coût/u (les dimensions permettent de reconnaître le bon carton). */
+  _consoLabel(c) {
+    const d = Stock.consoDims(c);
+    return c.name + (d ? ' — ' + d : '') + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '');
+  },
   _retotal(s) { s.total = (s.items || []).reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0); },
   setItemPrice(id, idx, val) {
     const s = Store.state.sales.find(x => x.id === id), it = s && s.items[idx]; if (!it) return;
@@ -1482,7 +1487,7 @@ const Ventes = {
       <h3 style="margin-top:0;">📦 Consommables utilisés (sacs, étiquettes…)</h3>
       <p class="muted help">Indique ce que tu as consommé pendant l'événement (ex : sacs donnés aux clients). ${this.retourDeduct ? 'Déduit du stock consommable' : 'Non déduit (mode historique)'} et compté en <b>coût</b> pour une marge plus précise dans les stats.</p>
       ${avail.length ? `<div class="grid c2">
-        <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.retourConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: c.name + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '') }))), onPick: 'Ventes._setRetourConso' })}</div>
+        <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.retourConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setRetourConso' })}</div>
         <div class="fg"><label>Quantité utilisée</label><input id="retour_conso_qty" type="number" step="1" min="1" value="${this.retourConsoQty || 1}" onchange="Ventes.retourConsoQty=U.num(this.value)"></div>
       </div>
       <button class="btn-cta btn-sm" onclick="Ventes.addRetourConso()">＋ Ajouter</button>` : '<p class="muted">Aucun consommable en stock. Ajoute-les dans Stock → Consommables.</p>'}
@@ -1694,7 +1699,7 @@ const Ventes = {
         <h2>📦 Consommables utilisés (sacs, étiquettes…)</h2>
         <p class="muted help">${s.historical ? 'Événement <b>historique</b> → coût compté sans toucher au stock actuel.' : 'Déduit du stock consommable'} et compté en <b>coût</b> dans la marge du mois de cet événement.</p>
         ${avail.length ? `<div class="grid c2">
-          <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.ticketConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: c.name + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '') }))), onPick: 'Ventes._setTicketConso' })}</div>
+          <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.ticketConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setTicketConso' })}</div>
           <div class="fg"><label>Quantité utilisée</label><input id="ticket_conso_qty" type="number" step="1" min="1" value="${this.ticketConsoQty || 1}" onchange="Ventes.ticketConsoQty=U.num(this.value)"></div>
         </div>
         <button class="btn-cta btn-sm" onclick="Ventes.addTicketConso()">＋ Ajouter</button>` : '<p class="muted">Aucun consommable en stock. Ajoute-les dans Stock → Consommables.</p>'}
