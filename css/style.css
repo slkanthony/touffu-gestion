@@ -788,7 +788,8 @@ details.sachet-group > summary b { font-size: 1.1rem !important; }
 td.var-cell, th.var-cell { text-align: left; }
 td.var-cell .vc { display: flex; align-items: center; gap: 4px; min-width: 190px; }
 td.var-cell .vc-ind { flex: 0 0 16px; width: 16px; text-align: center; }
-td.var-cell .vc-name { white-space: nowrap; }
+td.var-cell .vc-name { flex: 0 0 150px; width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.var-cell .vc-badges .pk-link { order: -1; }
 td.var-cell .vc-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; }
 td.var-cell .vc-badges:empty { display: none; }
 td.var-cell .vc-badges .badge { white-space: nowrap; }

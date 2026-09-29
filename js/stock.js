@@ -156,6 +156,13 @@ const Stock = {
     this._allVariantsCache = allVariants;
     f.variants = f.variants.filter(v => allVariants.includes(v));
 
+    // Une seule fois : prix TTC arrondis à 0,10 € dans les fiches → on recopie sur les variantes reliées (7,69 → 7,70).
+    if (!(window.App && (App.isViewer || App.isTeam)) && Store.state.meta && !Store.state.meta.roundSync1) {
+      Store.state.meta.roundSync1 = true;
+      const ids = new Set(); Store.state.stockM.forEach(p => p.variants.forEach(v => { const id = this.ficheOf(p, v); if (id) ids.add(id); }));
+      ids.forEach(id => { try { this.syncPricesFromCatalog(id); } catch (e) {} });
+      Store.save('meta'); Store.save('stockM');
+    }
     // Produit à UNE seule variante reliée à une fiche prix : le produit est relié à la même fiche (rattrape l'existant).
     { let fixed = false;
       Store.state.stockM.forEach(p => {
@@ -175,8 +182,8 @@ const Stock = {
       if (f.dluo === 'multilot') return p.variants.some(v => new Set(v.lots.filter(l => (U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0).map(l => (l.lotNumber||'').trim()).filter(Boolean)).size >= 2);
       if (f.dluo === 'reminder') return p.variants.some(v => v.lots.some(l => l.reminder && l.reminder.date));
       if (f.dluo === 'nourl') return !p.url;
-      if (f.dluo === 'nocat') return !p.catalogId || !Store.state.catalogM.some(c => c.id === p.catalogId);
-      if (f.dluo === 'hascat') return p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId);
+      if (f.dluo === 'nocat') return !this.productHasFiche(p);
+      if (f.dluo === 'hascat') return this.productHasFiche(p);
       return true;
     }).sort((a, b) => {
       const dir = f.sortDir === 'desc' ? -1 : 1;
@@ -223,6 +230,17 @@ const Stock = {
     this.renderM();
   },
 
+  /* Fiche prix d'une variante : la sienne, sinon celle de sa taille (déclinaison), sinon celle du produit. */
+  ficheOf(p, v) {
+    const ok = id => id && Store.state.catalogM.some(c => c.id === id) ? id : '';
+    const par = this.parentOf(p, v);
+    return ok(v.catalogId) || (par && ok(par.catalogId)) || ok(p.catalogId) || '';
+  },
+  /* Produit « lié » = TOUTES ses variantes ont une fiche prix (au niveau produit ou variante par variante). */
+  productHasFiche(p) {
+    if (!p.variants.length) return !!(p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId));
+    return p.variants.every(v => this.ficheOf(p, v));
+  },
   toggleVariantFilter(name) { this._toggleIn(this.filters.variants, name); this.renderM(); },
   setAllVariantFilter(all) { this.filters.variants = all ? [...this._allVariantsCache] : []; this.renderM(); },
   setVariantFilterOpen(open) { this.filters.variantsOpen = open; },
@@ -249,7 +267,7 @@ const Stock = {
         <b>${U.esc(p.name)}</b>
         <span>
           ${hasAlert ? '<span class="badge bad">⚠ Lot(s) périmé(s)</span>' : hasSoon ? '<span class="badge warn">⏳ DLUO proche</span>' : ''}
-          ${hasAnyCatLink ? '<span class="badge ok" title="Lié au catalogue prix">💰</span>' : ''}
+          ${hasAnyCatLink ? (() => { const fid = (cat && cat.id) || (p.variants.map(v => this.ficheOf(p, v)).find(Boolean)) || ''; return `<a class="badge ok" href="#/catalogue/edit/${fid}" onclick="event.stopPropagation()" title="Lié au catalogue prix — clic : ouvrir la fiche" style="text-decoration:none;">💰</a>`; })() : ''}
         </span>
         <span class="type-col">
           <span class="badge info">${U.esc(p.meatType||'—')}</span>
@@ -357,7 +375,7 @@ const Stock = {
       </span></div></td></tr>`;
     }
     return `<tr>
-      <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <span class="badge" title="Lié à : ${U.esc(lc.name)}" style="font-size:.65rem;background:var(--caramel);color:#fff;cursor:help;">💰</span>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
+      <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
       <td><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
       <td class="num"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"></td>
       <td class="num"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
