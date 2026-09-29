@@ -1153,3 +1153,8 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .conso-pick .multiselect-panel .pp-row .pp-b { text-align: center; font-size: 1.05rem; font-weight: 700; color: var(--texte); min-width: 110px; }
 .conso-pick .multiselect-panel .pp-row .pp-c { text-align: right; }
 .conso-pick .multiselect-panel .pp-row .pp-b:empty, .conso-pick .multiselect-panel .pp-row .pp-c:empty { display: block; }
+
+table.sale-sum { width: 100%; max-width: 560px; border-collapse: collapse; }
+table.sale-sum td { padding: 5px 10px; border: 0; border-bottom: 1px solid var(--card-border); background: transparent !important; }
+table.sale-sum td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.sale-sum tr.sale-sum-net td { border-top: 2px solid var(--caramel); border-bottom: 0; font-size: 1.05rem; padding-top: 8px; }

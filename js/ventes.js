@@ -617,6 +617,26 @@ const Ventes = {
     const d = Stock.consoDims(c);
     return c.name + (d ? ' — ' + d : '') + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '');
   },
+  /* Résumé de rentabilité d'UNE commande : ce qu'elle a rapporté, ce qu'elle a coûté, le bénéfice net. */
+  saleSummaryHTML(s) {
+    const r = Pricing.saleProfit(s);
+    const line = (l, v, cls, tip) => `<tr${tip ? ` title="${U.esc(tip)}"` : ''}><td>${l}</td><td class="num ${cls || ''}">${v}</td></tr>`;
+    const neg = v => (U.num(v) ? '− ' + U.eur(v) : '—');
+    const netCls = r.net >= 0 ? 'pos' : 'neg';
+    return `<table class="sale-sum"><tbody>
+      ${line('Ventes (articles)', U.eur(r.ca))}
+      ${r.shipFee ? line('+ Port payé par le client', U.eur(r.shipFee)) : ''}
+      ${line('− Coût de revient des produits', neg(r.cogs), '', 'Coût réel des lots sortis (figé à la vente)')}
+      ${line('= Marge brute', U.eur(r.marge + r.shipFee), 'muted')}
+      ${line('− Frais de paiement (SumUp / Stripe)', neg(r.fee))}
+      ${line('− Frais d\'envoi réels (transporteur)', neg(r.shipping))}
+      ${line('− Cartons & consommables', neg(r.box))}
+      ${r.eventFee ? line('− Stand, repas & déplacement', neg(r.eventFee)) : ''}
+      ${line('− Cotisations URSSAF', neg(r.cotis))}
+      ${r.tvaActive && r.tva ? line('− TVA reversée', neg(r.tva)) : ''}
+      <tr class="sale-sum-net"><td><b>Bénéfice net de cette commande</b></td><td class="num ${netCls}"><b>${U.eur(r.net)}</b></td></tr>
+    </tbody></table>`;
+  },
   _retotal(s) { s.total = (s.items || []).reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0); },
   setItemPrice(id, idx, val) {
     const s = Store.state.sales.find(x => x.id === id), it = s && s.items[idx]; if (!it) return;
@@ -642,6 +662,7 @@ const Ventes = {
     const entry = Store.commitSnapshot(snap, 'vente', `Frais d'envoi — ${U.frDateTime(s.ts)} : ${U.eur(s.shippingCost)}`);
     U.toast('Frais d\'envoi mis à jour.', false, entry.id);
     Store.save('sales');
+    if (this.editTicketId) this.render();
   },
 
   /* Frais de stand (coût de l'emplacement d'un marché) — saisi au retour d'événement,
@@ -653,6 +674,7 @@ const Ventes = {
     const entry = Store.commitSnapshot(snap, 'vente', `Frais de stand — ${U.frDateTime(s.ts)} : ${U.eur(s.eventFee)}`);
     U.toast('Frais de stand mis à jour.', false, entry.id);
     Store.save('sales');
+    if (this.editTicketId) this.render();
   },
   /* Frais de repas de midi (2026-09-30, Antho paie à manger pour lui + sa compagne qui l'aide sur
      les événements) — saisi au retour d'événement, modifiable après coup ici. Même patron que
@@ -664,6 +686,7 @@ const Ventes = {
     const entry = Store.commitSnapshot(snap, 'vente', `Frais de repas — ${U.frDateTime(s.ts)} : ${U.eur(s.mealFee)}`);
     U.toast('Frais de repas mis à jour.', false, entry.id);
     Store.save('sales');
+    if (this.editTicketId) this.render();
   },
 
   /* ─── Nom d'événement (2026-09-27) : sale.eventName, pour les stats par événement ───
@@ -968,11 +991,12 @@ const Ventes = {
           <span class="hc-pay">${this.paymentLabel(s)}</span>
           <span class="hc-prod muted" title="${U.esc(s.items.map(i => i.name).join(', '))}">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm hc-todo" title="${nTodo} article(s) pas encore déduit(s) du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button> ` : ''}${s.items.length ? U.esc(s.items[0].name) + (s.items.length > 1 ? ` <b>+${s.items.length - 1}</b>` : '') : '—'}</span>
           <span class="hc-n">${s.items.length}</span>
-          <span class="hc-tot"><b>${U.eur(s.total)}</b></span>
+          <span class="hc-tot"><b>${U.eur(s.total)}</b>${s.cancelled || s.historical ? '' : `<br><span class="sensitive ${Pricing.saleProfit(s).net >= 0 ? 'pos' : 'neg'}" style="font-size:.72rem;" title="Bénéfice net de cette commande (après coûts, frais et cotisations)">net ${U.eur(Pricing.saleProfit(s).net)}</span>`}</span>
           <span class="hc-act"><span class="a1">${!s.cancelled ? `<button class="btn-ghost btn-sm" title="${this._isEventSale(s) ? 'Événement, frais de stand, consommables, prix' : 'Frais d envoi, consommables (carton), prix'}" onclick="Ventes.editEventTicket('${s.id}')">${this._isEventSale(s) ? '🎪 Modifier' : '✏️ Modifier'}</button>` : ''}</span><span class="a2">${s.cancelled ? '<span class="badge bad">annulée</span>' : s.historical ? '' : `<button class="btn-ghost btn-sm" title="Annuler la sortie et remettre le stock (la vente reste, marquée annulée)" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span><span class="a3"><button class="btn-ghost btn-sm" title="Supprimer de l'historique" onclick="Ventes.deleteSales('${s.id}')">🗑</button></span></span>
         </div></td></tr>`;
       if (!open) return head;
       const kind = this._saleKind(s);
+      const summaryRow = s.cancelled ? '' : `<tr class="sale-detail"><td colspan="7"><details class="fold" ${this._sumOpen && this._sumOpen[s.id] ? 'open' : ''} ontoggle="Ventes._sumOpen=Ventes._sumOpen||{};Ventes._sumOpen['${s.id}']=this.open"><summary><b>🧮 Résumé de cette commande</b> <span class="sensitive ${Pricing.saleProfit(s).net >= 0 ? 'pos' : 'neg'}">bénéfice net ${U.eur(Pricing.saleProfit(s).net)}</span></summary><div class="fold-body sensitive">${this.saleSummaryHTML(s)}</div></details></td></tr>`;
       const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
@@ -992,7 +1016,7 @@ const Ventes = {
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
       </tr>`).join('');
-      return head + detail + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr>`;
+      return head + detail + summaryRow + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr>`;
     };
     const rowsArr = [];
     for (let gi = 0; gi < pageList.length;) {
@@ -1684,6 +1708,10 @@ const Ventes = {
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;">
         <div><h1>${isEv ? "Modifier l'événement" : 'Modifier la vente'}</h1><span class="sub">${U.frDateTime(s.ts)} · ${isEv ? 'frais de stand, consommables & prix' : "frais d'envoi, consommables & prix"}</span></div>
         <button class="btn-ghost" style="flex:0 0 auto;white-space:nowrap;" onclick="Ventes.closeEditTicket()">← Retour à l'historique</button>
+      </div>
+      <div class="card sensitive-card" style="border-left:3px solid var(--caramel);">
+        <h2>🧮 Résumé de cette commande</h2>
+        <div class="sensitive">${this.saleSummaryHTML(s)}</div>
       </div>
       ${isEv ? `
       <div class="card">

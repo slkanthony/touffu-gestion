@@ -248,6 +248,14 @@ const Pricing = {
     return { masti: M, acc: A };
   },
 
+  /* Résultat d'UNE vente (même formules que la compta mensuelle / rentabilité par activité, sans charges fixes). */
+  saleProfit(s) {
+    const r = this.activityPnL([s], 0), M = r.masti, A = r.acc;
+    const sum = k => U.num(M[k]) + U.num(A[k]);
+    const S = Store.state.settings;
+    return { ca: sum('ca'), cogs: sum('cogs'), marge: sum('ca') - sum('cogs'), shipFee: sum('shipFee'), fee: sum('fee'), shipping: sum('shipping'), box: sum('box'), eventFee: sum('eventFee'), cotis: sum('cotis'), tva: sum('tva'), tvaActive: !!S.vatActive, net: sum('net') };
+  },
+
   accCost(a) {
     const S = Store.state.settings;
     const matCost = (a.bom || []).reduce((acc, l) => {
