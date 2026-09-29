@@ -1149,6 +1149,7 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 }
 
 /* Menus de consommables : nom · dimensions (centrées) · dispo/coût */
-.conso-pick .multiselect-panel .pp-row { grid-template-columns: minmax(0,1fr) 150px 190px; }
-.conso-pick .multiselect-panel .pp-row .pp-b { text-align: center; }
+.conso-pick .multiselect-panel .pp-row { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }
+.conso-pick .multiselect-panel .pp-row .pp-b { text-align: center; font-size: 1.05rem; font-weight: 700; color: var(--texte); min-width: 110px; }
+.conso-pick .multiselect-panel .pp-row .pp-c { text-align: right; }
 .conso-pick .multiselect-panel .pp-row .pp-b:empty, .conso-pick .multiselect-panel .pp-row .pp-c:empty { display: block; }
