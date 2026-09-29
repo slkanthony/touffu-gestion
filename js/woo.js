@@ -170,6 +170,7 @@ const Woo = {
   /* Filtres de la carte d'export SumUp (simple aperçu, même patron que le tableau d'export site). */
   sumupExpFilters: { q: '', meat: 'all' },
   _setSumupExpQ(v) { this.sumupExpFilters.q = v; this.render(); U.refocus('sumup_exp_q'); },
+  _setSumupExpFmt(v) { this.sumupExpFilters.fmt = v || 'all'; this.render(); },
   _setSumupExpMeat(v) { this.sumupExpFilters.meat = v || 'all'; this.render(); },
   sumupExpSelectAll(on) { (this._sumupExpVisible || []).forEach(k => { this._sumupSel[k] = !!on; }); this.render(); },
   _setSumupMeat(v) { this.sumupMeat = v; this.render(); },
@@ -401,7 +402,7 @@ const Woo = {
     const inSumup = new Map(); if (r) r.matched.forEach(m => inSumup.set(m.sku.toUpperCase(), m));
     const units = Ventes.units().filter(u => u.sku).map(u => ({
       sku: u.sku.trim(), name: u.name, variant: u.label || '', appType: u.kind === 'A' ? 'Accessoires' : (u.type || ''),
-      appPrice: u.price, appQty: u.availE
+      appPrice: u.price, appQty: u.availE, mode: u.mode, value: u.value, kind: u.kind, fmt: this._fmtKey(u.label)
     }));
     const isExcl = u => this._isSumupExcluded(u.sku);
     const exportable = units.filter(u => !isExcl(u));
@@ -410,7 +411,11 @@ const Woo = {
     exportable.forEach(m => { const t = m.appType || 'Autre'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
     const typeOpts = [{ v: 'all', l: `Tous (${exportable.length})` }].concat(Object.keys(typeCounts).sort(U.sortFr).map(t => ({ v: t, l: `${t} (${typeCounts[t]})` })));
     const q = U.normSearch(f.q || '').trim();
-    const visible = exportable.filter(m => (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
+    const big = m => m.kind === 'M' && m.mode === 'gram' && U.num(m.value) >= 500;
+    const fmtF = f.fmt || 'all';
+    const fmtList = [...new Set(exportable.map(m => m.fmt))].sort((a, b) => this._fmtCmp(a, b));
+    const fmtOpts = [{ v: 'all', l: 'Tous les formats' }, { v: 'nobig', l: 'Sans les 500 g et plus' }].concat(fmtList.map(x => ({ v: x, l: x === '—' ? '— (sans variante)' : x })));
+    const visible = exportable.filter(m => (fmtF === 'all' || (fmtF === 'nobig' ? !big(m) : m.fmt === fmtF)) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
       .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
     const allVisSel = visible.length > 0 && visible.every(m => this._sumupSel[m.sku.toUpperCase()]);
@@ -433,9 +438,10 @@ const Woo = {
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> Envoyer les prix (TTC public)</label>
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantités (stock événement)</label>
       </div>
-      <div class="grid c2 mt">
+      <div class="grid c3 mt">
         <div class="fg"><label>Recherche</label><input id="sumup_exp_q" value="${U.esc(f.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSumupExpQ(this.value)"></div>
         <div class="fg"><label>Type / viande</label>${U.customSelect({ value: f.meat, options: typeOpts, onPick: 'Woo._setSumupExpMeat' })}</div>
+        <div class="fg"><label>Format (poids / taille / lot)</label>${U.customSelect({ value: fmtF, options: fmtOpts, onPick: 'Woo._setSumupExpFmt' })}</div>
       </div>
       <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
         <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
@@ -696,7 +702,7 @@ const Woo = {
       <div class="woo-tabs">
         ${[['site', '🌐 Site (WooCommerce)'], ['sumup', '💳 SumUp']].map(([k, l]) => `<button class="${this._target() === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setTarget('${k}')">${l}</button>`).join('')}
       </div>
-      <div class="woo-tabs woo-sub">
+      <div class="woo-tabs woo-sub" style="justify-content:${this._target() === 'sumup' ? 'flex-end' : 'flex-start'};">
         ${[['export', '📤 Exporter'], ['compare', '🔄 Comparer']].map(([k, l]) => `<button class="${this._mode() === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setMode('${k}')">${l}</button>`).join('')}
       </div>
 
