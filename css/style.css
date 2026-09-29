@@ -1158,3 +1158,4 @@ table.sale-sum { width: 100%; max-width: 560px; border-collapse: collapse; }
 table.sale-sum td { padding: 5px 10px; border: 0; border-bottom: 1px solid var(--card-border); background: transparent !important; }
 table.sale-sum td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 table.sale-sum tr.sale-sum-net td { border-top: 2px solid var(--caramel); border-bottom: 0; font-size: 1.05rem; padding-top: 8px; }
+.sales-hist tr.hist-click { cursor: pointer; }

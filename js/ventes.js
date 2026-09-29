@@ -655,6 +655,22 @@ const Ventes = {
     const entry = Store.commitSnapshot(snap, 'vente', `${on ? 'Offert' : 'Prix rétabli'} — ${it.name}`);
     Store.save('sales'); U.toast(on ? 'Produit offert : valeur de vente 0 € (le stock reste sorti).' : 'Prix rétabli.', false, entry.id); this.render();
   },
+  _rowClick(e, id) {
+    if (e.target.closest('button,input,select,a,label,textarea,.badge[onclick]')) return;
+    this.toggleHistOpen(id);
+  },
+  clientsDatalist() {
+    const names = [...new Set((Store.state.sales || []).map(x => (x.customerName || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+    return `<datalist id="dl_clients">${names.map(n => `<option value="${U.esc(n)}">`).join('')}</datalist>`;
+  },
+  setCustomerName(id, val) {
+    const s = Store.state.sales.find(x => x.id === id); if (!s) return;
+    const snap = Store.snapshot('sales', s);
+    s.customerName = String(val || '').trim();
+    const entry = Store.commitSnapshot(snap, 'vente', `Client — ${U.frDateTime(s.ts)} : ${s.customerName || '(aucun)'}`);
+    Store.save('sales'); U.toast('Client enregistré.', false, entry.id);
+    this.render();
+  },
   setShippingCost(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
@@ -981,13 +997,13 @@ const Ventes = {
       const open = !!this._histOpen[s.id];
       const nTodo = s.items.filter(i => i.todo === 'open').length;
       // Colonnes FIXES (grille .hist-row) alignées sur la ligne de titres (2026-09-29).
-      const head = `<tr id="hist-${s.id}" class="sale-head${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}"><td colspan="7"><div class="hist-row">
+      const head = `<tr id="hist-${s.id}" class="sale-head hist-click${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}" title="${open ? 'Cliquer pour replier' : 'Cliquer pour déplier'}" onclick="Ventes._rowClick(event,'${s.id}')"><td colspan="7"><div class="hist-row">
           <span class="hc-cb"><input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)"></span>
-          <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}" onclick="Ventes.toggleHistOpen('${s.id}')">${open ? '▾' : '▸'}</button></span>
-          <span class="hc-date sh-date" style="cursor:pointer;" onclick="Ventes.toggleHistOpen('${s.id}')">${U.frDateTime(s.ts)}</span>
+          <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}">${open ? '▾' : '▸'}</button></span>
+          <span class="hc-date sh-date">${U.frDateTime(s.ts)}</span>
           <span class="hc-kind"><span class="badge info">${kindLbl(s)}</span></span>
           <span class="hc-orig">${originBadge(s) || '<span class="muted">manuelle</span>'}</span>
-          <span class="hc-ev">${s.eventName ? `<span class="sh-event" title="${U.esc(s.eventName)}">🎪 ${U.esc(s.eventName)}</span>` : s.customerName ? `<span title="Client">👤 ${U.esc(s.customerName)}</span>` : '<span class="muted">—</span>'}</span>
+          <span class="hc-ev">${s.eventName ? `<span class="sh-event" title="${U.esc(s.eventName)}${s.customerName ? ' — client : ' + U.esc(s.customerName) : ''}">🎪 ${U.esc(s.eventName)}</span>` : s.customerName ? `<span title="Client">👤 ${U.esc(s.customerName)}</span>` : '<span class="muted">—</span>'}</span>
           <span class="hc-pay">${this.paymentLabel(s)}</span>
           <span class="hc-prod muted" title="${U.esc(s.items.map(i => i.name).join(', '))}">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm hc-todo" title="${nTodo} article(s) pas encore déduit(s) du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button> ` : ''}${s.items.length ? U.esc(s.items[0].name) + (s.items.length > 1 ? ` <b>+${s.items.length - 1}</b>` : '') : '—'}</span>
           <span class="hc-n">${s.items.length}</span>
@@ -1000,6 +1016,7 @@ const Ventes = {
       const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
+          ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(s.customerName || '')}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
           ${field('Remise', this.deliveryLabel(s))}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
@@ -1712,6 +1729,10 @@ const Ventes = {
       <div class="card sensitive-card" style="border-left:3px solid var(--caramel);">
         <h2>🧮 Résumé de cette commande</h2>
         <div class="sensitive">${this.saleSummaryHTML(s)}</div>
+      </div>
+      <div class="card">
+        <h2>👤 Client</h2>
+        <div class="fg" style="max-width:360px;"><label>Nom du client (optionnel)</label><input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(s.customerName || '')}" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}</div>
       </div>
       ${isEv ? `
       <div class="card">
