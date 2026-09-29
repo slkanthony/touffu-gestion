@@ -670,7 +670,7 @@ const Stock = {
           const entry=Store.commitSnapshot(snap,'stock','Variante modifiée — '+p.name+' ('+Pricing.labelVariant(v)+')');
           Store.save('stockM'); if (r.catChanged) Store.save('catalogM');
           U.closeModal(); App.rerender();
-          if (!r.cat) U.toast(`Rattachée à ${Pricing.labelVariant(par)} — mais cette taille n'est liée à aucune fiche calcul de prix : lie d'abord ${Pricing.labelVariant(par)}.`, true);
+          if (!r.cat) U.toast(`✅ Rattachée à ${Pricing.labelVariant(par)}. Son prix se mettra à jour tout seul dès que ${Pricing.labelVariant(par)} sera reliée à une fiche de prix.`, false, entry.id);
           else if (!r.found) U.toast(`⚠️ La fiche « ${r.cat.name} » n'a pas de ligne « Lot de ${n} pc » — ajoute-la dans Prix mastication, le prix se mettra à jour.`, true);
           else U.toast(`Déclinaison de ${Pricing.labelVariant(par)} — prix repris de « ${r.cat.name} » (Lot de ${n} pc)${r.disabled ? ' ⚠️ ligne désactivée dans la fiche' : ''}.`, false, entry.id);
           return;
