@@ -1172,7 +1172,7 @@ const Ventes = {
       const ttc = existing.qty * existing.price + qty * price;
       existing.qty += qty; existing.price = Math.round((ttc / existing.qty) * 100) / 100;
     } else {
-      this.retourData.cashLines.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, price, qty });
+      this.retourData.cashLines.push({ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, price, qty, ...(U.num(u.vLots) >= 2 ? { vLots: U.num(u.vLots) } : {}) });
     }
     this.cashSelKey = ''; this.cashQ = ''; this.cashQty = 1; this.cashPrice = ''; this.cashFType = 'all'; this.cashFVariant = 'all';
     this.render();
