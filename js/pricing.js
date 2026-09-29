@@ -371,7 +371,7 @@ const Pricing = {
     }
     // Une seule pièce → AUCUN suffixe (le « -1PC » est redondant). Lot de 2+ → LOT2, LOT5…
     if (v.mode === 'piece') {
-      if (lab && !/^(LOTDE|LOT|PC|PCS|PI[EÈ]CES?)?\d*(LOT|PC|PCS|PI[EÈ]CES?)?$/.test(lab)) return lab;
+      if (lab && !/^[AÀ]?L['’]UNIT[EÉ]$/.test(lab) && !/^(LOTDE|LOT|PC|PCS|PI[EÈ]CES?|UNIT[EÉ]S?|UNIT|U)?\d*(LOT|PC|PCS|PI[EÈ]CES?|UNIT[EÉ]S?|UNIT|U)?$/.test(lab)) return lab;
       return U.num(v.value) > 1 ? 'LOT' + v.value : '';
     }
     return v.label || '';
