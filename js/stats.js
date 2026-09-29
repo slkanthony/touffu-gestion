@@ -106,7 +106,7 @@ const Stats = {
     list.sort((a, b) => so.k === 'name' ? dir * U.sortFr(a.name, b.name) : dir * (val(a, so.k) - val(b, so.k)));
     const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Stats.setEventSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const neg = v => v ? '− ' + U.eur(v) : '—';
-    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive neg">${neg(t.cogs)}</td><td class="num sensitive neg">${neg(t.stand)}</td><td class="num sensitive neg">${neg(t.meal)}</td><td class="num sensitive neg">${neg(t.travel)}</td><td class="num sensitive neg">${neg(t.fee)}</td><td class="num sensitive neg">${neg(t.conso)}</td><td class="num sensitive neg">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
+    const rowCells = t => `<td class="num sensitive">${U.eur(t.ca)}</td><td class="num sensitive">${neg(t.cogs)}</td><td class="num sensitive">${neg(t.stand)}</td><td class="num sensitive">${neg(t.meal)}</td><td class="num sensitive">${neg(t.travel)}</td><td class="num sensitive">${neg(t.fee)}</td><td class="num sensitive">${neg(t.conso)}</td><td class="num sensitive">${neg(t.cotis)}</td><td class="num sensitive ${t.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(t.net)}</b></td>`;
     const open = this._evOpen || (this._evOpen = {});
     const rows = list.map(e => {
       const years = Object.keys(e.years).sort().reverse();
@@ -120,7 +120,7 @@ const Stats = {
     }).join('');
     // Simulateur — tous les événements du référentiel (même sans vente) + création directe.
     const allNames = Store.eventList();
-    const simName = this._evSim && allNames.includes(this._evSim) ? this._evSim : (allNames[0] || '');
+    const simName = this._evSim && allNames.includes(this._evSim) ? this._evSim : '';   // aucun événement présélectionné : on choisit dans le menu
     const encN = encodeURIComponent(simName).replace(/'/g, '%27');
     const fi = simName ? Store.eventInfo(simName) : {};
     const inp = (key, lbl, ph, step) => `<div class="fg"><label>${lbl}</label><input id="evf_${key}" ${step ? `type="number" step="${step}" min="0"` : ''} value="${U.esc(fi[key] ?? '')}" placeholder="${ph}" oninput="Stats._evFicheDirty()"></div>`;
@@ -132,7 +132,7 @@ const Stats = {
       <div class="card">
         <h2>🎪 Rentabilité par événement</h2>
         ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('meal', 'Repas')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <p class="muted help" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente).</p>`
+        <p class="muted help" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente). <b>Couleurs :</b> les colonnes de coûts (précédées d'un « − ») sont simplement déduites du CA ; seul le <b>bénéfice net</b> est coloré — 🟢 vert = gagné, 🔴 rouge = perdu.</p>`
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
       <div class="card">
@@ -156,7 +156,7 @@ const Stats = {
           <button class="btn-cta btn-sm" id="evf_save" onclick="Stats.saveEventFiche()">💾 Enregistrer la fiche</button> <span id="evf_state" class="muted" style="font-size:.82rem;">${Object.keys(fi).length ? '✅ Fiche enregistrée' : 'Fiche vide'}</span>
         </div>
         <h3 class="mt" style="margin-bottom:0;">🧮 Simulation</h3>
-        <div id="ev_sim_out" class="mt"></div>` : '<p class="muted">Aucun événement : crée-en un avec « ＋ Nouvel événement… ».</p>'}
+        <div id="ev_sim_out" class="mt"></div>` : `<p class="muted mt">${allNames.length ? 'Choisis un événement dans le menu pour voir et modifier sa fiche, puis simuler un marché.' : 'Aucun événement : crée-en un avec « ＋ Nouvel événement… ».'}</p>`}
       </div>`);
     this._evSimCur = simName;
     if (simName) this._simEvent();
@@ -202,7 +202,8 @@ const Stats = {
       <div class="kpi recap-tile sensitive ${est >= 0 ? 'good' : 'bad'} recap-net"><div class="v ${est >= 0 ? 'pos' : 'neg'}">${U.eur(est)}</div><div class="l">Bénéfice estimé</div></div>
       <div class="kpi recap-tile sensitive"><div class="v">${breakEven === null ? '—' : U.eur(breakEven)}</div><div class="l">CA minimum pour couvrir stand + déplacement</div></div>
     </div>
-    <p class="muted" style="font-size:.82rem;margin-top:8px;">${est >= 0 ? '✅ Rentable avec ce CA.' : '🔴 En perte avec ce CA.'} ${own ? `Taux de bénéfice tiré de tes ${n} édition(s) de cet événement.` : "Pas encore d'historique pour cet événement : taux de bénéfice moyen de tous tes événements."} À prendre comme un ordre de grandeur.</p>`;
+    <p class="muted" style="font-size:.82rem;margin-top:8px;">${est >= 0 ? '✅ Rentable avec ce CA.' : '🔴 En perte avec ce CA.'} ${own ? `Taux de bénéfice tiré de tes ${n} édition(s) de cet événement.` : "Pas encore d'historique pour cet événement : taux de bénéfice moyen de tous tes événements."} À prendre comme un ordre de grandeur.</p>
+    <p class="muted" style="font-size:.82rem;margin-top:4px;"><b>Comment c'est calculé :</b> CA prévu (celui que tu saisis, sinon ${own ? 'la moyenne de cet événement' : 'la moyenne de tous tes événements'}) × ${Math.round(rate * 100)} % (part du CA qui te reste sur tes événements passés après coût de revient, frais de paiement, consommables et cotisations, avant stand et déplacement) − stand − déplacement de la fiche.</p>`;
   },
 
   _packAgg() {
