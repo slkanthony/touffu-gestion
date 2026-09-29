@@ -41,6 +41,7 @@ const Woo = {
     const meat = this.filters.meat;
     return linked.filter(l => {
       if (meat !== 'all' && (l.meat || '') !== meat) return false;
+      if ((this.filters.fmts || []).length && !this.filters.fmts.includes(this._fmtOfName(l.name))) return false;
       if (q && !((l.name || '').toLowerCase().includes(q) || (l.sku || '').toLowerCase().includes(q))) return false;
       return true;
     });
@@ -170,7 +171,6 @@ const Woo = {
   /* Filtres de la carte d'export SumUp (simple aperçu, même patron que le tableau d'export site). */
   sumupExpFilters: { q: '', meat: 'all' },
   _setSumupExpQ(v) { this.sumupExpFilters.q = v; this.render(); U.refocus('sumup_exp_q'); },
-  _setSumupExpFmt(v) { this.sumupExpFilters.fmt = v || 'all'; this.render(); },
   _setSumupExpMeat(v) { this.sumupExpFilters.meat = v || 'all'; this.render(); },
   sumupExpSelectAll(on) { (this._sumupExpVisible || []).forEach(k => { this._sumupSel[k] = !!on; }); this.render(); },
   _setSumupMeat(v) { this.sumupMeat = v; this.render(); },
@@ -186,6 +186,28 @@ const Woo = {
     if (i >= 0) return [1, i, ''];
     return [2, 0, f];
   },
+  /* Groupes de formats (même esprit que le filtre « Variantes » de Stock) */
+  _fmtClass(f) {
+    if (/^\d+(?:[.,]\d+)?(G|KG)$/.test(f)) return 'Poids';
+    if (/^(XXS|XS|S|M|L|XL|XXL|XXXL)$/.test(f)) return 'Tailles';
+    if (/LOT|PC|PIECE|^\d+$/.test(f)) return 'Pièces / lots';
+    return 'Autres';
+  },
+  _isBigFmt(f) { const r = Woo._fmtRank(f); return r[0] === 0 && r[1] >= 500; },
+  _fmtGroups(list) {
+    return ['Poids', 'Pièces / lots', 'Tailles', 'Autres']
+      .map(label => ({ label, items: list.filter(x => this._fmtClass(x) === label).sort((a, b) => this._fmtCmp(a, b)) }))
+      .filter(g => g.items.length);
+  },
+  _fmtOfName(name) { const i = String(name || '').lastIndexOf(' — '); return i < 0 ? '—' : this._fmtKey(name.slice(i + 3)); },
+  // Export SumUp : par défaut les 500 g et plus sont décochés (fmts === null), le reste coché.
+  _sumupFmtSel() { const f = this.sumupExpFilters, list = this._sumupFmtList || []; return (f.fmts || list.filter(x => !this._isBigFmt(x))).filter(x => list.includes(x)); },
+  _sumupFmtToggle(v) { const f = this.sumupExpFilters; const cur = this._sumupFmtSel(); f.fmts = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); this.render(); },
+  _sumupFmtAll(all) { this.sumupExpFilters.fmts = all ? [...(this._sumupFmtList || [])] : []; this.render(); },
+  _sumupFmtOpen(o) { this.sumupExpFilters.fmtOpen = o; },
+  _siteFmtToggle(v) { const a = this.filters.fmts || (this.filters.fmts = []); const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); this.render(); },
+  _siteFmtAll(all) { this.filters.fmts = all ? [...(this._siteFmtList || [])] : []; this.render(); },
+  _siteFmtOpen(o) { this.filters.fmtOpen = o; },
   _fmtCmp(a, b) { const x = Woo._fmtRank(a), y = Woo._fmtRank(b); return x[0] - y[0] || x[1] - y[1] || U.sortFr(x[2], y[2]); },
   _setSumupFilter(v) { this.sumupFilter = v; this.render(); },
   _setSumupQ(v) { this.sumupQ = v; this.render(); U.refocus('woo_sumup_q'); },
@@ -411,11 +433,10 @@ const Woo = {
     exportable.forEach(m => { const t = m.appType || 'Autre'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
     const typeOpts = [{ v: 'all', l: `Tous (${exportable.length})` }].concat(Object.keys(typeCounts).sort(U.sortFr).map(t => ({ v: t, l: `${t} (${typeCounts[t]})` })));
     const q = U.normSearch(f.q || '').trim();
-    const big = m => m.kind === 'M' && m.mode === 'gram' && U.num(m.value) >= 500;
-    const fmtF = f.fmt || 'all';
-    const fmtList = [...new Set(exportable.map(m => m.fmt))].sort((a, b) => this._fmtCmp(a, b));
-    const fmtOpts = [{ v: 'all', l: 'Tous les formats' }, { v: 'nobig', l: 'Sans les 500 g et plus' }].concat(fmtList.map(x => ({ v: x, l: x === '—' ? '— (sans variante)' : x })));
-    const visible = exportable.filter(m => (fmtF === 'all' || (fmtF === 'nobig' ? !big(m) : m.fmt === fmtF)) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
+    const fmtList = [...new Set(exportable.map(m => m.fmt))];
+    this._sumupFmtList = fmtList;
+    const fmtSel = this._sumupFmtSel();
+    const visible = exportable.filter(m => (!fmtSel.length || fmtSel.includes(m.fmt)) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
       .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
     const allVisSel = visible.length > 0 && visible.every(m => this._sumupSel[m.sku.toUpperCase()]);
@@ -441,7 +462,7 @@ const Woo = {
       <div class="grid c3 mt">
         <div class="fg"><label>Recherche</label><input id="sumup_exp_q" value="${U.esc(f.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSumupExpQ(this.value)"></div>
         <div class="fg"><label>Type / viande</label>${U.customSelect({ value: f.meat, options: typeOpts, onPick: 'Woo._setSumupExpMeat' })}</div>
-        <div class="fg"><label>Format (poids / taille / lot)</label>${U.customSelect({ value: fmtF, options: fmtOpts, onPick: 'Woo._setSumupExpFmt' })}</div>
+        <div class="fg"><label>Variantes (format)</label>${U.multiSelect({ groups: this._fmtGroups(fmtList), selected: fmtSel, toggle: 'Woo._sumupFmtToggle', setAll: 'Woo._sumupFmtAll', open: f.fmtOpen, onOpen: 'Woo._sumupFmtOpen' })}</div>
       </div>
       <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
         <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
@@ -682,6 +703,8 @@ const Woo = {
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Woo.setSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const selCount = this._selCount(linked.filter(l => !this._isExcluded(l.sku)));
     // Options « type de viande » construites à partir des lignes réellement liées
+    const siteFmts = [...new Set(linked.map(l => this._fmtOfName(l.name)))];
+    this._siteFmtList = siteFmts;
     const meatCounts = {};
     linked.forEach(l => { if (l.meat) meatCounts[l.meat] = (meatCounts[l.meat] || 0) + 1; });
     const meatOpts = [{ v: 'all', l: `Tous (${linked.length})` }]
@@ -713,9 +736,10 @@ const Woo = {
           <label class="opt-check"><input type="checkbox" ${this.includePrice ? 'checked' : ''} onchange="Woo.includePrice=this.checked"> Envoyer les prix (TTC public)</label>
           <label class="opt-check"><input type="checkbox" ${this.includeStock ? 'checked' : ''} onchange="Woo.includeStock=this.checked"> Envoyer les quantités de stock</label>
         </div>
-        <div class="grid c2 mt">
+        <div class="grid c3 mt">
           <div class="fg"><label>Recherche</label><input id="woo_q" value="${U.esc(this.filters.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSearch(this.value)"></div>
           <div class="fg"><label>Type de viande</label>${U.customSelect({ value: this.filters.meat, options: meatOpts, onPick: 'Woo._setMeat' })}</div>
+          <div class="fg"><label>Variantes (format)</label>${U.multiSelect({ groups: this._fmtGroups(siteFmts), selected: (this.filters.fmts || []).filter(x => siteFmts.includes(x)), toggle: 'Woo._siteFmtToggle', setAll: 'Woo._siteFmtAll', open: this.filters.fmtOpen, onOpen: 'Woo._siteFmtOpen' })}</div>
         </div>
         <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
           <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.selectAllVisible(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
