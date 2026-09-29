@@ -152,9 +152,11 @@ const Ventes = {
       // insuffisant (addLine, si la quantité demandée dépasse ce que CE lot a de dispo) —
       // toutes deux confirmables, jamais bloquantes.
       const lots = sel.lots.filter(l => this.lotQty(l) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999'));
-      if (!lots.some(l => l.id === this.lotId)) this.lotId = lots[0]?.id || '';
+      // Un seul lot en stock → présélectionné (gain de temps). Plusieurs lots → RIEN de présélectionné : on doit choisir
+      // (et vérifier le n° de lot qu'on a en main) — sinon risque de valider le mauvais sans y penser.
+      if (!lots.some(l => l.id === this.lotId)) this.lotId = lots.length === 1 ? lots[0].id : '';
       lotSelect = `<div class="fg"><label>Lot (plus proche DLUO d'abord)</label>
-        ${lots.length ? U.customSelect({ value: this.lotId, options: lots.map(l => ({v:l.id, l:(l.lotNumber||'sans n°')+' · '+(l.dluo?U.frDate(l.dluo):'sans DLUO')+' · dispo '+U.qty(this.lotQty(l))})), onPick: 'Ventes.pickLot' })
+        ${lots.length ? U.customSelect({ value: this.lotId, options: (lots.length > 1 ? [{v:'', l:'— choisis le lot (vérifie le n° en main) —'}] : []).concat(lots.map(l => ({v:l.id, l:(l.lotNumber||'sans n°')+' · '+(l.dluo?U.frDate(l.dluo):'sans DLUO')+' · dispo '+U.qty(this.lotQty(l))}))), onPick: 'Ventes.pickLot' })
         : '<div class="muted" style="padding:9px 11px;border:1px solid var(--input-border);border-radius:9px;">Aucun lot en stock '+(this.source === 'event' ? 'événement' : 'général')+'</div>'}
         </div>`;
     }
@@ -311,7 +313,12 @@ const Ventes = {
       this._pushLine(u, qty, '', lbl); return;
     }
     if (u.kind === 'M') {
-      const lotId = this.lotId || u.lots[0]?.id || '';
+      let lotId = this.lotId;
+      if (!lotId) {
+        const avail = u.lots.filter(l => this.lotQty(l) > 0);
+        if (avail.length > 1) { U.toast('Choisis le lot : vérifie le n° de lot / la DLUO du produit que tu as en main.', true); return; }
+        lotId = (avail[0] || u.lots[0])?.id || '';
+      }
       const lot = u.lots.find(l => l.id === lotId);
       if (!lot) { U.toast('Aucun lot pour cette variante.', true); return; }
       const lotLabel = (lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '');
