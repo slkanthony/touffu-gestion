@@ -432,7 +432,10 @@ const Stock = {
       const b = (par.sku || '').trim().toUpperCase() || Pricing.autoSku(p.name, p.meatType, Pricing.skuVariantLabel(par));
       sku = b + '-LOT' + this.packQtyOf(v);
     } else {
-      const sib = p.variants.find(w => w !== v && !this.parentOf(p, w) && Pricing.skuBaseFrom(w));
+      // Sœur de même « forme » d'abord (mesure 30CM ↔ 50CM, pas « sans chair ») : leur SKU porte le vrai début du produit.
+      const shape = w => /^\d+([.,]\d+)?(CM|MM|M|G|KG)$/.test(String(Pricing.labelVariant(w) || '').toUpperCase().replace(/\s+/g, '')) ? 'N' : 'T';
+      const sibs = p.variants.filter(w => w !== v && !this.parentOf(p, w) && Pricing.skuBaseFrom(w));
+      const sib = sibs.find(w => shape(w) === shape(v)) || sibs[0];
       sku = sib ? Pricing.skuWithBase(Pricing.skuBaseFrom(sib), v) : Pricing.autoSku(p.name, p.meatType, Pricing.skuVariantLabel(v));
     }
     const used = new Set();
