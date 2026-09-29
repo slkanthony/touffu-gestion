@@ -201,9 +201,10 @@ const Woo = {
   },
   _fmtOfName(name) { const i = String(name || '').lastIndexOf(' — '); return i < 0 ? '—' : this._fmtKey(name.slice(i + 3)); },
   // Export SumUp : par défaut les 500 g et plus sont décochés (fmts === null), le reste coché.
-  _sumupFmtSel() { const f = this.sumupExpFilters, list = this._sumupFmtList || []; return (f.fmts || list.filter(x => !this._isBigFmt(x))).filter(x => list.includes(x)); },
+  _sumupFmtSel() { const f = this.sumupExpFilters, list = this._sumupFmtList || []; return (f.fmts || []).filter(x => list.includes(x)); },
   _sumupFmtToggle(v) { const f = this.sumupExpFilters; const cur = this._sumupFmtSel(); f.fmts = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); this.render(); },
   _sumupFmtAll(all) { this.sumupExpFilters.fmts = all ? [...(this._sumupFmtList || [])] : []; this.render(); },
+  sumupExpSelectNoBig() { (this._sumupExpVisible || []).forEach(k => { const m = (this._sumupExpMap || {})[k]; this._sumupSel[k] = !(m && this._isBigFmt(m.fmt)); }); this.render(); },
   _sumupFmtOpen(o) { this.sumupExpFilters.fmtOpen = o; },
   _siteFmtToggle(v) { const a = this.filters.fmts || (this.filters.fmts = []); const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); this.render(); },
   _siteFmtAll(all) { this.filters.fmts = all ? [...(this._siteFmtList || [])] : []; this.render(); },
@@ -439,6 +440,7 @@ const Woo = {
     const visible = exportable.filter(m => (!fmtSel.length || fmtSel.includes(m.fmt)) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
       .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
+    this._sumupExpMap = Object.fromEntries(visible.map(m => [m.sku.toUpperCase(), m]));
     const allVisSel = visible.length > 0 && visible.every(m => this._sumupSel[m.sku.toUpperCase()]);
     const selCount = exportable.filter(m => this._sumupSel[m.sku.toUpperCase()]).length;
     const exportLabel = selCount > 0 ? `⬇ Générer le fichier d'import SumUp (${selCount} sélectionné(s))` : `⬇ Générer le fichier d'import SumUp (${exportable.length} produit${exportable.length > 1 ? 's' : ''})`;
@@ -466,6 +468,7 @@ const Woo = {
       </div>
       <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
         <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
+        <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.sumupExpSelectNoBig()" title="Coche les produits affichés, sauf les formats de 500 g et plus">Tout sélectionner sauf 500 g et plus</button>
         <span class="muted">${selCount > 0 ? `${selCount} produit(s) sélectionné(s)` : 'Aucune sélection → tout est exporté'}</span>
         ${excludedCount > 0 ? `<span class="tag" style="border-color:var(--alerte);">🚫 ${excludedCount} exclu(s) de SumUp</span>` : ''}
         ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSumupSel()">Vider la sélection</button>` : ''}
