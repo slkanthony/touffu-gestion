@@ -1809,6 +1809,7 @@ const Ventes = {
       }
     }
     if (!created) { U.toast('Rien à valider (déjà importé ?).', true); return; }
+    const _recapSales = createdSales.slice();
     if (created) { if (deduct) Store.save('sales', 'stockM', 'catalogA', 'consumables'); else Store.save('sales'); }
     this.retourData = null;
     this.retourDeduct = true;   // retour au défaut sûr (déduction) après chaque import
@@ -1820,6 +1821,7 @@ const Ventes = {
       U.toast(`📚 ${created} ticket(s) historique(s) créé(s) · ${deducted} article(s) ajoutés aux stats (stock NON touché)${consoTxt}.`);
       return;
     }
+    if (deduct) this._deductRecap(_recapSales);
     if (pending) {
       // 2e partie : on enchaîne directement sur les articles restant à traiter.
       this._todoBanner = { deducted, pending };
@@ -1829,6 +1831,40 @@ const Ventes = {
       this.retourOpen = false; history.replaceState(null, '', '#/ventes'); this.render();
     }
     U.toast(`${created} ticket(s) créé(s) · ${deducted} article(s) déduits du stock événement${consoTxt}${pending ? ` · ${pending} à traiter` : ''}.`);
+  },
+  /* Récapitulatif vérifiable de ce qui a VRAIMENT été retiré du stock (espèces + SumUp + consommables) :
+     produit / variante, retiré, stock événement avant → après. Calculé depuis les opérations d'annulation
+     des tickets créés (donc exactement ce qui a été touché), affiché après chaque retour validé. */
+  _deductRecap(sales) {
+    const rows = {};
+    sales.forEach(sl => (sl.undoOps || []).forEach(op => {
+      let key, name, label, after;
+      if (op.kind === 'M') {
+        const p = Store.state.stockM.find(x => x.id === op.pId), v = p && p.variants.find(x => x.id === op.vId); if (!v) return;
+        key = 'M|' + op.pId + '|' + op.vId; name = p.name; label = Pricing.labelVariant(v);
+        after = v.lots.reduce((a, l) => a + U.num(l[op.field]), 0);
+      } else if (op.kind === 'A') {
+        const a = Store.state.catalogA.find(x => x.id === op.pId); if (!a) return;
+        key = 'A|' + op.pId; name = a.name; label = ''; after = U.num(a[op.field]);
+      } else if (op.kind === 'C') {
+        const c = Store.state.consumables.find(x => x.id === op.pId); if (!c) return;
+        key = 'C|' + op.pId; name = c.name; label = 'consommable'; after = U.num(c.qty);
+      } else return;
+      const r = rows[key] || (rows[key] = { name, label, taken: 0, after, field: op.field });
+      r.taken += U.num(op.qty);
+    }));
+    const missing = [];
+    sales.forEach(sl => (sl.items || []).forEach(i => { if (U.num(i.missing) > 0) missing.push(i); }));
+    const list = Object.values(rows).sort((x, y) => U.sortFr(x.name + x.label, y.name + y.label));
+    if (!list.length && !missing.length) return;
+    U.modal({
+      title: '🧾 Récapitulatif des déductions', hideOk: true, wide: true,
+      body: `<p class="muted" style="margin-top:0;">Voici ce qui a réellement été retiré du stock <b>événement</b> (espèces, SumUp, consommables). Vérifie que ça correspond à ce que tu attendais.</p>
+        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Retiré</th><th class="num">Avant</th><th class="num">Après</th></tr></thead><tbody>
+        ${list.map(r => `<tr><td class="col-name"><b>${U.esc(r.name)}</b></td><td>${U.esc(r.label)}</td><td class="num"><b>−${U.qty(r.taken)}</b></td><td class="num">${U.qty(r.after + r.taken)}</td><td class="num">${U.qty(r.after)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Rien n’a été retiré du stock.</td></tr>'}
+        </tbody></table></div>
+        ${missing.length ? `<p style="margin:10px 0 4px;"><b class="warn-txt">⚠️ Stock insuffisant (non déduit, mis à 0) :</b></p><ul style="margin:0;padding-left:20px;">${missing.map(i => `<li>${U.esc(i.name)} ${U.esc(i.label || '')} — vendu ${U.qty(i.qty)}, <b>${U.qty(i.missing)}</b> manquant(s)</li>`).join('')}</ul>` : ''}`
+    });
   },
   /* Lignes déduites à l'import : marquées déduites ; s'il manquait du stock, elles restent à vérifier. */
   _markImported(items) {
