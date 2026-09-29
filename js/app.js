@@ -121,6 +121,11 @@ const App = {
       else if (e.deltaMode === 2) dy *= (window.innerHeight || 800);
       let el = e.target;
       while (el && el.nodeType === 1 && el !== document.body && el !== document.documentElement) {
+        // Liste / menu qui défile déjà en hauteur : la molette sert à descendre dedans, pas à aller sur le côté.
+        if (el.scrollHeight > el.clientHeight + 2) {
+          const oy = getComputedStyle(el).overflowY;
+          if (oy === 'auto' || oy === 'scroll') return;
+        }
         if (el.scrollWidth > el.clientWidth + 2) {
           const ox = getComputedStyle(el).overflowX;
           if (ox === 'auto' || ox === 'scroll') {

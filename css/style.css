@@ -1137,3 +1137,4 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .opt-check { display:flex; gap:10px; align-items:center; text-transform:none; font-size:1rem; font-weight:600; color:var(--texte); cursor:pointer; padding:6px 12px; border:1px solid var(--card-border); border-radius:8px; }
 .opt-check input[type=checkbox] { width:20px; height:20px; accent-color:var(--caramel); flex:0 0 auto; }
 .opt-check:hover { border-color:var(--caramel); }
+.ac-list, .multiselect-panel, .nsel-panel { overflow-x: hidden; }
