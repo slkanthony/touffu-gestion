@@ -12,7 +12,7 @@ const App = {
     { id: 'calc', ico: '🧮', label: 'Calculateur', group: 'Catalogue & prix' },
     { id: 'b2b', ico: '🤝', label: 'Revente pro', group: 'Catalogue & prix' },
     { id: 'stats', ico: '📊', label: 'Statistiques', group: 'Analyse & site' },
-    { id: 'woo', ico: '🌐', label: 'Site (Woo)', group: 'Analyse & site' },
+    { id: 'woo', ico: '🌐', label: 'Synchro', group: 'Analyse & site' },
     { id: 'params', ico: '⚙️', label: 'Paramètres', group: '' }
   ],
   renderers: {
@@ -271,7 +271,7 @@ const App = {
     }
     // #/accessoires/<id> = ouvre et déplie cette fiche (lien ↗ depuis Ventes)
     if (id === 'accessoires') Accessoires.focusId = sub || null;
-    if (id === 'woo') Woo.tab = ['site', 'sumup'].includes(sub) ? sub : 'export';
+    if (id === 'woo') Woo.tab = ['site', 'sumup', 'sumupexp'].includes(sub) ? sub : 'export';
     if (id === 'catalogue') {
       if (sub === 'new') { Catalogue.mode = 'new'; Catalogue.editId = null; }
       else if (sub === 'edit' && parts[2]) { Catalogue.mode = 'edit'; Catalogue.editId = parts[2]; }

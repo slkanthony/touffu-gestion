@@ -1132,3 +1132,5 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .sku-cell { display: flex; gap: 4px; align-items: center; }
 .sku-cell .sku-input { flex: 1; min-width: 0; }
 .sku-cell .sku-gen { padding: 2px 4px; font-size: .95rem; }
+.woo-tabs.woo-sub { margin-top:-6px; }
+.woo-tabs.woo-sub button { flex:0 1 180px; padding:8px 14px; font-size:.92rem; }

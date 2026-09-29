@@ -10,6 +10,11 @@ const Woo = {
   /* Onglets de la page Site (2026-09-28, Antho : page interminable) : export / comparaison site / comparaison SumUp.
      Porté par l'URL (#/woo, #/woo/site, #/woo/sumup) → survit à un F5. */
   tab: 'export',
+  /* tab = 'export' (site, exporter) | 'site' (site, comparer) | 'sumupexp' (SumUp, exporter) | 'sumup' (SumUp, comparer) */
+  _target() { return this.tab === 'sumup' || this.tab === 'sumupexp' ? 'sumup' : 'site'; },
+  _mode() { return this.tab === 'site' || this.tab === 'sumup' ? 'compare' : 'export'; },
+  setTarget(t) { this.setTab(t === 'sumup' ? (this._mode() === 'compare' ? 'sumup' : 'sumupexp') : (this._mode() === 'compare' ? 'site' : 'export')); },
+  setMode(m) { this.setTab(this._target() === 'sumup' ? (m === 'compare' ? 'sumup' : 'sumupexp') : (m === 'compare' ? 'site' : 'export')); },
   setTab(t) {
     this.tab = t;
     history.replaceState(null, '', '#/woo' + (t === 'export' ? '' : '/' + t));
@@ -387,10 +392,20 @@ const Woo = {
      on ne peut mettre \u00e0 jour dans SumUp qu'un article qu'il conna\u00eet d\u00e9j\u00e0 par ce SKU. La s\u00e9lection
      (_sumupSel) et les 2 cases prix/quantit\u00e9 sont PARTAG\u00c9ES avec le rapport d\u00e9taill\u00e9 ci-dessous et
      exportSumupImport() \u2014 un seul m\u00e9canisme de g\u00e9n\u00e9ration, juste une 2e fa\u00e7on de le piloter. */
-  _renderSumupExport(r) {
+  _renderSumupExport() {
     const f = this.sumupExpFilters;
-    const exportable = r.matched.filter(m => !this._isSumupExcluded(m.sku));
-    const excludedCount = r.matched.length - exportable.length;
+    // Liste = les produits de l'appli (avec SKU), SANS besoin du fichier SumUp : simple réglage en
+    // amont (quoi exporter / ne jamais exporter). Le fichier SumUp n'est requis qu'au moment de
+    // générer (identifiants cachés des articles → mise à jour sans doublons).
+    const r = this._sumup ? this._sumupReport() : null;
+    const inSumup = new Map(); if (r) r.matched.forEach(m => inSumup.set(m.sku.toUpperCase(), m));
+    const units = Ventes.units().filter(u => u.sku).map(u => ({
+      sku: u.sku.trim(), name: u.name, variant: u.label || '', appType: u.kind === 'A' ? 'Accessoires' : (u.type || ''),
+      appPrice: u.price, appQty: u.availE
+    }));
+    const isExcl = u => this._isSumupExcluded(u.sku);
+    const exportable = units.filter(u => !isExcl(u));
+    const excludedCount = units.length - exportable.length;
     const typeCounts = {};
     exportable.forEach(m => { const t = m.appType || 'Autre'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
     const typeOpts = [{ v: 'all', l: `Tous (${exportable.length})` }].concat(Object.keys(typeCounts).sort(U.sortFr).map(t => ({ v: t, l: `${t} (${typeCounts[t]})` })));
@@ -400,39 +415,53 @@ const Woo = {
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
     const allVisSel = visible.length > 0 && visible.every(m => this._sumupSel[m.sku.toUpperCase()]);
     const selCount = exportable.filter(m => this._sumupSel[m.sku.toUpperCase()]).length;
-    const exportLabel = selCount > 0 ? `\u2b07 G\u00e9n\u00e9rer le fichier d'import SumUp (${selCount} s\u00e9lectionn\u00e9(s))` : `\u2b07 G\u00e9n\u00e9rer le fichier d'import SumUp (${exportable.length} produit${exportable.length > 1 ? 's' : ''})`;
+    const exportLabel = selCount > 0 ? `⬇ Générer le fichier d'import SumUp (${selCount} sélectionné(s))` : `⬇ Générer le fichier d'import SumUp (${exportable.length} produit${exportable.length > 1 ? 's' : ''})`;
+    const refBlock = this._sumup
+      ? `<div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+          <span class="muted" style="font-size:.85rem;">✅ Référence SumUp : ${U.esc(this._sumup.file)}</span>
+          <input type="file" id="woo_sumup_file" accept=".csv,text/csv" style="flex:1 1 200px;">
+          <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Rafraîchir</button>
+        </div>`
+      : `<div class="card" style="border-left:4px solid var(--warn);margin:10px 0 0;">
+          <b>Pour générer le fichier, il me faut ton export d'articles SumUp</b> (me.sumup.com → Articles → Exporter) : il contient les identifiants cachés qui permettent à SumUp de mettre à jour tes articles au lieu d'en créer en double. À déposer <b>une seule fois</b> — il est ensuite gardé en mémoire.
+          <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+            <input type="file" id="woo_sumup_file" accept=".csv,text/csv" style="flex:1 1 200px;">
+            <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Charger</button>
+          </div></div>`;
     return `
-      <div class="frow" style="gap:18px;flex-wrap:wrap;margin:10px 0 4px;">
+      <div class="frow" style="gap:18px;flex-wrap:wrap;margin:0 0 4px;">
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> Envoyer les prix (TTC public)</label>
-        <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantit\u00e9s (stock \u00e9v\u00e9nement)</label>
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantités (stock événement)</label>
       </div>
-      <div class="grid c2">
-        <div class="fg"><label>Recherche</label><input id="sumup_exp_q" value="${U.esc(f.q)}" placeholder="nom du produit ou SKU\u2026" oninput="Woo._setSumupExpQ(this.value)"></div>
+      <div class="grid c2 mt">
+        <div class="fg"><label>Recherche</label><input id="sumup_exp_q" value="${U.esc(f.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSumupExpQ(this.value)"></div>
         <div class="fg"><label>Type / viande</label>${U.customSelect({ value: f.meat, options: typeOpts, onPick: 'Woo._setSumupExpMeat' })}</div>
       </div>
       <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
-        <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)"> Tout s\u00e9lectionner (${visible.length} affich\u00e9(s))</label>
-        <span class="muted">${selCount > 0 ? `${selCount} produit(s) s\u00e9lectionn\u00e9(s)` : 'Aucune s\u00e9lection \u2192 tout est export\u00e9'}</span>
-        ${excludedCount > 0 ? `<span class="tag" style="border-color:var(--alerte);">\ud83d\udeab ${excludedCount} exclu(s) de SumUp</span>` : ''}
-        ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSumupSel()">Vider la s\u00e9lection</button>` : ''}
+        <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
+        <span class="muted">${selCount > 0 ? `${selCount} produit(s) sélectionné(s)` : 'Aucune sélection → tout est exporté'}</span>
+        ${excludedCount > 0 ? `<span class="tag" style="border-color:var(--alerte);">🚫 ${excludedCount} exclu(s) de SumUp</span>` : ''}
+        ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSumupSel()">Vider la sélection</button>` : ''}
       </div>
+      ${refBlock}
       <button id="sumup_exp_btn2" class="btn-cta mt" onclick="Woo.exportSumupImport()">${exportLabel}</button>
-      <p class="muted help mt">Dans SumUp : Articles \u2192 Importer \u2192 choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> et v\u00e9rifie que SumUp met bien \u00e0 jour l'existant (pas de doublon cr\u00e9\u00e9) avant de faire un export complet.</p>
+      <p class="muted help mt">Dans SumUp : Articles → Importer → choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> et vérifie que SumUp met bien à jour l'existant (pas de doublon créé) avant de faire un export complet. Un produit « absent » de SumUp n'est pas mis à jour : crée-le d'abord dans SumUp puis rafraîchis la référence. 🚫 = exclu définitivement (mémorisé).</p>
       <div class="table-wrap mt"><table><thead><tr>
-        <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout s\u00e9lectionner"></th>
-        <th>SKU</th><th class="col-name">Produit</th><th>Type / viande</th><th class="num">Prix TTC</th><th class="num">Stock \u00e9v\u00e9n.</th><th>Envoi SumUp</th></tr></thead>
+        <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout sélectionner"></th>
+        <th>SKU</th><th class="col-name">Produit</th><th>Type / viande</th><th class="num">Prix TTC</th><th class="num">Stock évén.</th><th>Dans SumUp</th><th>Envoi SumUp</th></tr></thead>
         <tbody>${visible.slice(0, 200).map(m => { const sku = m.sku.toUpperCase(); const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<tr>
           <td><input type="checkbox" ${this._sumupSel[sku] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${skuJs}',this.checked);Woo.render();"></td>
           <td><span class="tag">${U.esc(m.sku)}</span></td>
-          <td class="col-name">${U.esc(m.name)}${m.variant ? ' \u2014 ' + U.esc(m.variant) : ''}</td>
-          <td>${m.appType ? `<span class="badge info">${U.esc(m.appType)}</span>` : '\u2014'}</td>
-          <td class="num">${this.sumupExpPrice ? U.eur(m.appPrice) : '\u2014'}</td>
-          <td class="num">${this.sumupExpQty ? U.qty(m.appQty) : '\u2014'}</td>
-          <td><button class="btn-icon" title="Exclure d\u00e9finitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">\ud83d\udeab</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
-        ${visible.length > 200 ? `<p class="muted">\u2026 et ${visible.length - 200} autres non affich\u00e9s (affine la recherche pour les voir \u2014 \u00ab Tout s\u00e9lectionner \u00bb couvre bien les ${visible.length}).</p>` : ''}
+          <td class="col-name">${U.esc(m.name)}${m.variant ? ' — ' + U.esc(m.variant) : ''}</td>
+          <td>${m.appType ? `<span class="badge info">${U.esc(m.appType)}</span>` : '—'}</td>
+          <td class="num">${this.sumupExpPrice ? U.eur(m.appPrice) : '—'}</td>
+          <td class="num">${this.sumupExpQty ? U.qty(m.appQty) : '—'}</td>
+          <td>${!r ? '<span class="muted">—</span>' : inSumup.has(sku) ? '<span class="pos">✅</span>' : '<span class="badge warn">absent</span>'}</td>
+          <td><button class="btn-icon" title="Exclure définitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">🚫</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
+        ${visible.length > 200 ? `<p class="muted">… et ${visible.length - 200} autres non affichés (affine la recherche pour les voir — « Tout sélectionner » couvre bien les ${visible.length}).</p>` : ''}
       </div>
-      ${excludedCount > 0 ? `<details class="fold mt" ${this._sumupExclOpen ? 'open' : ''} ontoggle="Woo._sumupExclOpen=this.open"><summary>\ud83d\udeab ${excludedCount} article(s) exclu(s) de SumUp</summary><div class="fold-body">
-        ${r.matched.filter(m => this._isSumupExcluded(m.sku)).sort((a, b) => U.sortFr(a.name, b.name)).map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(m.name)}${m.variant ? ' \u2014 ' + U.esc(m.variant) : ''}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">\u21a9 Inclure</button></div>`; }).join('')}
+      ${excludedCount > 0 ? `<details class="fold mt" ${this._sumupExclOpen ? 'open' : ''} ontoggle="Woo._sumupExclOpen=this.open"><summary>🚫 ${excludedCount} article(s) exclu(s) de SumUp</summary><div class="fold-body">
+        ${units.filter(isExcl).sort((a, b) => U.sortFr(a.name, b.name)).map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(m.name)}${m.variant ? ' — ' + U.esc(m.variant) : ''}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">↩ Inclure</button></div>`; }).join('')}
       </div></details>` : ''}
     `;
   },
@@ -497,18 +526,9 @@ const Woo = {
         <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
         <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()">⬇ Liste à corriger (CSV)</button>
       </div>
-      <div class="sumup-import mt">
-        <b>📥 Fichier d'import SumUp</b>
-        <label class="ms-opt"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> quantités (stock événement)</label>
-        <label class="ms-opt"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> prix TTC de l'appli</label>
-        <span id="sumup_selinfo" class="muted">${selN ? `${selN} article(s) sélectionné(s)` : 'Aucune sélection → tous les articles reliés'}</span>
-        ${selN ? `<button class="btn-ghost btn-sm" onclick="Woo.clearSumupSel()">Vider la sélection</button>` : ''}
-        <button id="sumup_exp_btn" class="btn-cta btn-sm" onclick="Woo.exportSumupImport()">${selN ? `⬇ Fichier d'import SumUp (${selN})` : '⬇ Fichier d\'import SumUp (tous)'}</button>
-      </div>
-      <p class="muted help">Coche les articles à mettre à jour (1 seul pour un premier essai), puis « Fichier d'import SumUp ». Le fichier repart de ton export SumUp : mêmes lignes, mêmes identifiants SumUp — seuls la quantité (et le prix si coché) des articles cochés changent. Seuls les articles reliés par SKU peuvent être cochés.</p>
       <table class="sumup-table mt">
-        <colgroup><col style="width:4%"><col style="width:25%"><col style="width:12%"><col style="width:9%"><col style="width:18%"><col style="width:16%"><col style="width:16%"></colgroup>
-        <thead><tr><th><input type="checkbox" title="Cocher tous les articles reliés affichés" ${visKeys.length && visKeys.every(k => this._sumupSel[k]) ? 'checked' : ''} onchange="Woo.sumupSelectVisible(this.checked)"></th>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
+        <colgroup><col style="width:28%"><col style="width:13%"><col style="width:10%"><col style="width:17%"><col style="width:16%"><col style="width:16%"></colgroup>
+        <thead><tr>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
         <tbody>${rows.map(m => {
           const same = m.appName && U.normSearch(m.appName) === U.normSearch(m.name + (m.variant ? ' — ' + m.variant : ''));
           const price = m.priceOk === null
@@ -519,16 +539,14 @@ const Woo = {
             : m.qtyOk === null ? `<span class="muted">SumUp ${m.qty != null ? U.qty(m.qty) : '—'}</span>`
             : m.qtyOk ? `${yes} ${U.qty(m.qty)}`
             : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
-          const sk = m.st === 'matched' ? m.sku.toUpperCase() : '';
           return `<tr>
-          <td>${sk ? `<input type="checkbox" ${this._sumupSel[sk] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${U.esc(sk).replace(/&#39;/g, "\\'")}',this.checked)">` : ''}</td>
           <td><b>${U.esc(m.name)}</b>${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
           <td><span class="muted">${U.esc(m.meat || '—')}</span></td>
           <td><b>${U.esc(m.fmt)}</b></td>
           <td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>
           <td>${price}</td>
           <td>${qty}</td>
-        </tr>`; }).join('') || `<tr><td colspan="7" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+        </tr>`; }).join('') || `<tr><td colspan="6" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
       </table>
       <p class="muted help">Prix : ✅ = identique ; ❌ = écart (« + » = l'appli est plus chère que SumUp), avec les deux prix en dessous. Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l'appli a plus que SumUp). Clique « Prix TTC » ou « Quantité » pour trier par écart.</p>
       ${this._renderSumupPairs(r)}`;
@@ -668,7 +686,7 @@ const Woo = {
     const exportLabel = selCount > 0 ? `⬇️ Exporter le CSV (${selCount} sélectionné(s))` : `⬇️ Exporter le CSV pour WooCommerce (${exportable} produit${exportable > 1 ? 's' : ''})`;
 
     App.mount(`
-      <div class="view-title"><h1>Site (WooCommerce)</h1><span class="sub">liaison par SKU · prix & stock</span></div>
+      <div class="view-title"><h1>Synchro — Site & SumUp</h1><span class="sub">liaison par SKU · prix & stock</span></div>
 
       <div>
         <p class="muted help mb0" data-help-anchor=".view-title h1">Le <b>SKU</b> (référence unique d'un produit sur ton site) relie chaque produit de l'app à sa fiche WooCommerce. L'app calcule le <b>prix de vente</b> et le <b>stock</b> ; tu les envoies vers le site via un fichier CSV que WooCommerce applique aux produits existants (il les retrouve par leur SKU). Ton <b>coût d'achat et tes marges restent dans l'app</b> — WooCommerce n'en a pas besoin.</p>
@@ -676,7 +694,10 @@ const Woo = {
 
 
       <div class="woo-tabs">
-        ${[['export', '📤 Export vers le site'], ['site', '🔄 Comparer avec le site'], ['sumup', '💳 Comparer avec SumUp']].map(([k, l]) => `<button class="${this.tab === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setTab('${k}')">${l}</button>`).join('')}
+        ${[['site', '🌐 Site (WooCommerce)'], ['sumup', '💳 SumUp']].map(([k, l]) => `<button class="${this._target() === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setTarget('${k}')">${l}</button>`).join('')}
+      </div>
+      <div class="woo-tabs woo-sub">
+        ${[['export', '📤 Exporter'], ['compare', '🔄 Comparer']].map(([k, l]) => `<button class="${this._mode() === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setMode('${k}')">${l}</button>`).join('')}
       </div>
 
       ${this.tab === 'export' ? `      <div class="card">
@@ -718,25 +739,24 @@ const Woo = {
 
 ` : ''}
 
-      ${this.tab === 'sumup' ? `      <div class="card">
+      ${this.tab === 'sumupexp' ? `      <div class="card">
         <h2>📤 Export vers SumUp</h2>
-        <p class="muted help">Dépose <b>une fois</b> l'export d'articles SumUp (me.sumup.com → <b>Articles → Exporter</b>) : l'appli le garde en mémoire et te propose direct un aperçu à sélectionner, comme pour l'export site — plus besoin de le redéposer à chaque visite. Redépose un fichier seulement pour <b>rafraîchir</b> la référence (nouvel article créé dans SumUp…).</p>
-        <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="woo_sumup_file" accept=".csv,text/csv">
-          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">${this._sumup ? 'Rafraîchir la référence' : 'Charger'}</button>
-          ${this._sumup ? `<span class="muted" style="font-size:.8rem;">Référence : ${U.esc(this._sumup.file)}</span><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearSumup()">Effacer</button>` : ''}
-        </div>
-        ${this._sumup ? this._renderSumupExport(this._sumupReport()) : ''}
+        <p class="muted help">Choisis ici les produits de Touffu Gestion à envoyer à SumUp (ou à ne jamais envoyer avec 🚫 — c'est mémorisé). Aucun fichier n'est nécessaire pour trier : ton export d'articles SumUp (me.sumup.com → <b>Articles → Exporter</b>) n'est demandé qu'au moment de générer le fichier, une seule fois (il est ensuite gardé en mémoire).</p>
+        ${this._renderSumupExport()}
       </div>
 
-      ${this._sumup ? `<div class="card">
-        <details class="fold" ${this._sumupReportOpen ? 'open' : ''} ontoggle="Woo._sumupReportOpen=this.open"><summary><h2 style="display:inline;margin:0;">🔍 Rapport détaillé (écarts par SKU, sans SKU, inconnus…)</h2></summary>
-          <div class="fold-body">
-            <p class="muted help">Lecture seule — rien n'est modifié, ni dans l'appli ni dans SumUp. Utile pour repérer précisément ce qui diffère avant de générer le fichier dans la carte ci-dessus.</p>
-            ${this._renderSumup()}
-          </div>
-        </details>
-      </div>` : ''}
+` : ''}
+
+      ${this.tab === 'sumup' ? `      <div class="card">
+        <h2>🔍 Comparer avec SumUp</h2>
+        <p class="muted help">Dépose l'export d'articles SumUp (me.sumup.com → <b>Articles → Exporter</b>) pour comparer <b>prix</b> et <b>quantités</b> (stock événement) par SKU. <b>Lecture seule</b> — rien n'est modifié.</p>
+        <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="woo_sumup_file" accept=".csv,text/csv">
+          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">${this._sumup ? 'Rafraîchir la référence' : 'Comparer'}</button>
+          ${this._sumup ? `<span class="muted" style="font-size:.8rem;">Référence : ${U.esc(this._sumup.file)}</span><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearSumup()">Effacer</button>` : ''}
+        </div>
+        ${this._sumup ? this._renderSumup() : ''}
+      </div>
 
 ` : ''}
 
