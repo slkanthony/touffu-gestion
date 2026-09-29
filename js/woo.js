@@ -41,7 +41,7 @@ const Woo = {
     const meat = this.filters.meat;
     return linked.filter(l => {
       if (meat !== 'all' && (l.meat || '') !== meat) return false;
-      if ((this.filters.fmts || []).length && !this.filters.fmts.includes(this._fmtOfName(l.name))) return false;
+      if (!this._siteFmtSel().includes(this._fmtOfName(l.name))) return false;
       if (q && !((l.name || '').toLowerCase().includes(q) || (l.sku || '').toLowerCase().includes(q))) return false;
       return true;
     });
@@ -206,7 +206,8 @@ const Woo = {
   _sumupFmtAll(all) { this.sumupExpFilters.fmts = all ? [...(this._sumupFmtList || [])] : []; this.render(); },
   sumupExpSelectNoBig() { (this._sumupExpVisible || []).forEach(k => { const m = (this._sumupExpMap || {})[k]; this._sumupSel[k] = !(m && this._isBigFmt(m.fmt)); }); this.render(); },
   _sumupFmtOpen(o) { this.sumupExpFilters.fmtOpen = o; },
-  _siteFmtToggle(v) { const a = this.filters.fmts || (this.filters.fmts = []); const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); this.render(); },
+  _siteFmtSel() { const list = this._siteFmtList || []; return (this.filters.fmts || list).filter(x => list.includes(x)); },
+  _siteFmtToggle(v) { const cur = this._siteFmtSel(); this.filters.fmts = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); this.render(); },
   _siteFmtAll(all) { this.filters.fmts = all ? [...(this._siteFmtList || [])] : []; this.render(); },
   _siteFmtOpen(o) { this.filters.fmtOpen = o; },
   _fmtCmp(a, b) { const x = Woo._fmtRank(a), y = Woo._fmtRank(b); return x[0] - y[0] || x[1] - y[1] || U.sortFr(x[2], y[2]); },
@@ -691,6 +692,8 @@ const Woo = {
     const all = this.lines();
     const linked = all.filter(l => l.sku);
     const missing = all.filter(l => !l.sku);
+    const siteFmts = [...new Set(linked.map(l => this._fmtOfName(l.name)))];
+    this._siteFmtList = siteFmts;
     const visible = this._visible(linked);
     // Tri cliquable (même patron que Stock : clic = trie, re-clic = inverse le sens)
     const f = this.filters;
@@ -706,8 +709,6 @@ const Woo = {
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Woo.setSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const selCount = this._selCount(linked.filter(l => !this._isExcluded(l.sku)));
     // Options « type de viande » construites à partir des lignes réellement liées
-    const siteFmts = [...new Set(linked.map(l => this._fmtOfName(l.name)))];
-    this._siteFmtList = siteFmts;
     const meatCounts = {};
     linked.forEach(l => { if (l.meat) meatCounts[l.meat] = (meatCounts[l.meat] || 0) + 1; });
     const meatOpts = [{ v: 'all', l: `Tous (${linked.length})` }]
@@ -742,7 +743,7 @@ const Woo = {
         <div class="grid c3 mt">
           <div class="fg"><label>Recherche</label><input id="woo_q" value="${U.esc(this.filters.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSearch(this.value)"></div>
           <div class="fg"><label>Type de viande</label>${U.customSelect({ value: this.filters.meat, options: meatOpts, onPick: 'Woo._setMeat' })}</div>
-          <div class="fg"><label>Variantes (format)</label>${U.multiSelect({ groups: this._fmtGroups(siteFmts), selected: (this.filters.fmts || []).filter(x => siteFmts.includes(x)), toggle: 'Woo._siteFmtToggle', setAll: 'Woo._siteFmtAll', open: this.filters.fmtOpen, onOpen: 'Woo._siteFmtOpen' })}</div>
+          <div class="fg"><label>Variantes (format)</label>${U.multiSelect({ groups: this._fmtGroups(siteFmts), selected: this._siteFmtSel(), toggle: 'Woo._siteFmtToggle', setAll: 'Woo._siteFmtAll', open: this.filters.fmtOpen, onOpen: 'Woo._siteFmtOpen' })}</div>
         </div>
         <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
           <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.selectAllVisible(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
