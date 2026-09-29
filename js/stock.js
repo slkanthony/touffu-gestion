@@ -156,6 +156,14 @@ const Stock = {
     this._allVariantsCache = allVariants;
     f.variants = f.variants.filter(v => allVariants.includes(v));
 
+    // Produit à UNE seule variante reliée à une fiche prix : le produit est relié à la même fiche (rattrape l'existant).
+    { let fixed = false;
+      Store.state.stockM.forEach(p => {
+        if (p.variants.length !== 1 || (p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId))) return;
+        const cid = p.variants[0].catalogId;
+        if (cid && Store.state.catalogM.some(c => c.id === cid)) { p.catalogId = cid; fixed = true; }
+      });
+      if (fixed) Store.save('stockM'); }
     const list = Store.state.stockM.filter(p => {
       if (f.q && !p.name.toLowerCase().includes(f.q.toLowerCase())) return false;
       if (f.meat !== 'all' && (p.meatType || '').toLowerCase() !== f.meat.toLowerCase()) return false;
