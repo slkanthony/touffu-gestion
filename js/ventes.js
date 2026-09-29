@@ -377,12 +377,12 @@ const Ventes = {
      pas de séparation gén./évén. (les consommables n'ont qu'un seul stock, contrairement
      à Mastication/Accessoires). */
   consoSection() {
-    const avail = Store.state.consumables.filter(c => U.num(c.qty) > 0).sort((a, b) => U.sortFr(a.name, b.name));
+    const avail = Store.state.consumables.filter(c => U.num(c.qty) > 0).sort((a, b) => Ventes._consoCmp(a, b));
     return `<div class="card">
       <h2>📦 Consommable utilisé</h2>
       <div class="grid c2">
         <div class="fg"><label>Article</label>
-          ${U.customSelect({ value: this.consoId, options: [{v:'',l:'— choisir —'}].concat(avail.map(c => ({v:c.id,l:Ventes._consoLabel(c)}))), onPick: 'Ventes._setConso' })}
+          ${U.customSelect({ value: this.consoId, options: [{v:'',l:'— choisir —'}].concat(avail.map(c => ({v:c.id,l:Ventes._consoLabel(c)}))), onPick: 'Ventes._setConso', cls: 'conso-pick' })}
         </div>
         <div class="fg"><label>Quantité</label><input id="v_conso_qty" type="number" step="1" min="1" value="${this.consoQty || 1}" onchange="Ventes.consoQty=U.num(this.value)"></div>
       </div>
@@ -604,6 +604,15 @@ const Ventes = {
   },
 
   /* Libellé d'un consommable dans les menus : nom — dimensions — dispo · coût/u (les dimensions permettent de reconnaître le bon carton). */
+  /* Tri des consommables : par nom, puis par dimensions croissantes (1re valeur, puis 2e, puis 3e) ; sans dimensions en dernier. */
+  _consoCmp(a, b) {
+    const n = U.sortFr(a.name, b.name); if (n) return n;
+    const dims = c => { const m = String(Stock.consoDims(c) || '').match(/\d+(?:[.,]\d+)?/g); return m ? m.map(x => parseFloat(x.replace(',', '.'))) : null; };
+    const x = dims(a), y = dims(b);
+    if (!x && !y) return 0; if (!x) return 1; if (!y) return -1;
+    for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] ?? -1) - (y[i] ?? -1); if (d) return d; }
+    return 0;
+  },
   _consoLabel(c) {
     const d = Stock.consoDims(c);
     return c.name + (d ? ' — ' + d : '') + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '');
@@ -1480,14 +1489,14 @@ const Ventes = {
   removeRetourConso(i) { this.retourData.consoLines.splice(i, 1); this.render(); },
   retourConsoSection() {
     const d = this.retourData;
-    const avail = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const avail = Store.state.consumables.slice().sort((a, b) => Ventes._consoCmp(a, b));
     const cons = d.consoLines || [];
     const totalCost = cons.reduce((a, l) => a + l.costUnit * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--caramel);margin-top:12px;">
       <h3 style="margin-top:0;">📦 Consommables utilisés (sacs, étiquettes…)</h3>
       <p class="muted help">Indique ce que tu as consommé pendant l'événement (ex : sacs donnés aux clients). ${this.retourDeduct ? 'Déduit du stock consommable' : 'Non déduit (mode historique)'} et compté en <b>coût</b> pour une marge plus précise dans les stats.</p>
       ${avail.length ? `<div class="grid c2">
-        <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.retourConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setRetourConso' })}</div>
+        <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.retourConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setRetourConso', cls: 'conso-pick' })}</div>
         <div class="fg"><label>Quantité utilisée</label><input id="retour_conso_qty" type="number" step="1" min="1" value="${this.retourConsoQty || 1}" onchange="Ventes.retourConsoQty=U.num(this.value)"></div>
       </div>
       <button class="btn-cta btn-sm" onclick="Ventes.addRetourConso()">＋ Ajouter</button>` : '<p class="muted">Aucun consommable en stock. Ajoute-les dans Stock → Consommables.</p>'}
@@ -1669,7 +1678,7 @@ const Ventes = {
     const isEv = this._isEventSale(s);
     const consoItems = (s.items || []).map((it, i) => ({ it, i })).filter(x => x.it.kind === 'C');
     const soldItems = (s.items || []).map((it, i) => ({ it, i })).filter(x => x.it.kind !== 'C');
-    const avail = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const avail = Store.state.consumables.slice().sort((a, b) => Ventes._consoCmp(a, b));
     const consoCost = consoItems.reduce((a, x) => a + U.num(x.it.cost), 0);
     App.mount(`
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;">
@@ -1699,7 +1708,7 @@ const Ventes = {
         <h2>📦 Consommables utilisés (sacs, étiquettes…)</h2>
         <p class="muted help">${s.historical ? 'Événement <b>historique</b> → coût compté sans toucher au stock actuel.' : 'Déduit du stock consommable'} et compté en <b>coût</b> dans la marge du mois de cet événement.</p>
         ${avail.length ? `<div class="grid c2">
-          <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.ticketConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setTicketConso' })}</div>
+          <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.ticketConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setTicketConso', cls: 'conso-pick' })}</div>
           <div class="fg"><label>Quantité utilisée</label><input id="ticket_conso_qty" type="number" step="1" min="1" value="${this.ticketConsoQty || 1}" onchange="Ventes.ticketConsoQty=U.num(this.value)"></div>
         </div>
         <button class="btn-cta btn-sm" onclick="Ventes.addTicketConso()">＋ Ajouter</button>` : '<p class="muted">Aucun consommable en stock. Ajoute-les dans Stock → Consommables.</p>'}
