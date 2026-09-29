@@ -1134,3 +1134,6 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .sku-cell .sku-gen { padding: 2px 4px; font-size: .95rem; }
 .woo-tabs.woo-sub { margin-top:-6px; }
 .woo-tabs.woo-sub button { flex:0 1 180px; padding:8px 14px; font-size:.92rem; }
+.opt-check { display:flex; gap:10px; align-items:center; text-transform:none; font-size:1rem; font-weight:600; color:var(--texte); cursor:pointer; padding:6px 12px; border:1px solid var(--card-border); border-radius:8px; }
+.opt-check input[type=checkbox] { width:20px; height:20px; accent-color:var(--caramel); flex:0 0 auto; }
+.opt-check:hover { border-color:var(--caramel); }

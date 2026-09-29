@@ -435,8 +435,8 @@ const Woo = {
           </div></div>`;
     return `
       <div class="frow" style="gap:18px;flex-wrap:wrap;margin:0 0 4px;">
-        <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> Envoyer les prix (TTC public)</label>
-        <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantités (stock événement)</label>
+        <label class="opt-check"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> Envoyer les prix (TTC public)</label>
+        <label class="opt-check"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantités (stock événement)</label>
       </div>
       <div class="grid c3 mt">
         <div class="fg"><label>Recherche</label><input id="sumup_exp_q" value="${U.esc(f.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSumupExpQ(this.value)"></div>
@@ -710,8 +710,8 @@ const Woo = {
         <h2>⚙️ Ce que j'exporte</h2>
         <p class="muted" style="margin-top:0;margin-bottom:12px;">Le stock envoyé au site = <b>la totalité</b> (général + événement) — c'est l'ensemble de ta marchandise que ton site met en ligne.</p>
         <div class="frow" style="gap:18px;flex-wrap:wrap;margin-bottom:4px;">
-          <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.includePrice ? 'checked' : ''} onchange="Woo.includePrice=this.checked"> Envoyer les prix (TTC public)</label>
-          <label style="display:flex;gap:8px;align-items:center;text-transform:none;"><input type="checkbox" ${this.includeStock ? 'checked' : ''} onchange="Woo.includeStock=this.checked"> Envoyer les quantités de stock</label>
+          <label class="opt-check"><input type="checkbox" ${this.includePrice ? 'checked' : ''} onchange="Woo.includePrice=this.checked"> Envoyer les prix (TTC public)</label>
+          <label class="opt-check"><input type="checkbox" ${this.includeStock ? 'checked' : ''} onchange="Woo.includeStock=this.checked"> Envoyer les quantités de stock</label>
         </div>
         <div class="grid c2 mt">
           <div class="fg"><label>Recherche</label><input id="woo_q" value="${U.esc(this.filters.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSearch(this.value)"></div>
