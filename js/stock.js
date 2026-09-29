@@ -167,9 +167,8 @@ const Stock = {
       if (f.dluo === 'multilot') return p.variants.some(v => new Set(v.lots.filter(l => (U.num(l.qtyGeneral)+U.num(l.qtyEvent))>0).map(l => (l.lotNumber||'').trim()).filter(Boolean)).size >= 2);
       if (f.dluo === 'reminder') return p.variants.some(v => v.lots.some(l => l.reminder && l.reminder.date));
       if (f.dluo === 'nourl') return !p.url;
-      const anyCat = (p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId)) || p.variants.some(v => v.catalogId && Store.state.catalogM.some(c => c.id === v.catalogId));
-      if (f.dluo === 'nocat') return !anyCat;
-      if (f.dluo === 'hascat') return !!anyCat;
+      if (f.dluo === 'nocat') return !p.catalogId || !Store.state.catalogM.some(c => c.id === p.catalogId);
+      if (f.dluo === 'hascat') return p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId);
       return true;
     }).sort((a, b) => {
       const dir = f.sortDir === 'desc' ? -1 : 1;
@@ -671,6 +670,9 @@ const Stock = {
           else { U.toast('Choisis une fiche dans la liste déroulante (ou vide le champ).', true); return false; }
         }
         v.catalogId = finalCatId;
+        // Produit à UNE seule variante : relier la variante relie aussi le produit (aucune ambiguïté).
+        // Avec plusieurs variantes on ne devine jamais : le lien produit reste un choix explicite.
+        if (finalCatId && p.variants.length === 1 && !(p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId))) p.catalogId = finalCatId;
         let catSkuChanged = false;
         if (finalCatId) {
           const cat = Store.state.catalogM.find(c=>c.id===finalCatId);
