@@ -130,7 +130,12 @@ const Pricing = {
 
   labelVariant(v) {
     if (v.label) return v.label;
-    if (v.mode === 'gram') return U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
+    if (v.mode === 'gram') {
+      const auto = U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
+      // Variante renommée à la main (ex. créée en « 30 g » puis corrigée en « 30CM ») : le nom fait foi.
+      const lab = String(v.label || '').toUpperCase().replace(/\s+/g, '');
+      return lab && lab !== auto.toUpperCase() && !/^\d+([.,]\d+)?(G|KG)$/.test(lab) ? lab : auto;
+    }
     if (v.mode === 'piece') return U.num(v.value) > 1 ? 'Lot de ' + v.value + ' pc' : '1 pièce';
     return 'Taille';
   },
