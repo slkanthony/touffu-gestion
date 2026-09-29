@@ -603,6 +603,24 @@ const Ventes = {
     return s.delivery === 'livraison' ? '📦 Livraison' : '🏬 Click & Collect';
   },
 
+  _retotal(s) { s.total = (s.items || []).reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0); },
+  setItemPrice(id, idx, val) {
+    const s = Store.state.sales.find(x => x.id === id), it = s && s.items[idx]; if (!it) return;
+    const snap = Store.snapshot('sales', s);
+    it.price = Math.max(0, U.num(val)); if (it.free && it.price > 0) { it.free = false; delete it.origPrice; }
+    this._retotal(s);
+    const entry = Store.commitSnapshot(snap, 'vente', `Prix modifié — ${it.name} : ${U.eur(it.price)}`);
+    Store.save('sales'); U.toast('Prix mis à jour.', false, entry.id); this.render();
+  },
+  toggleItemFree(id, idx, on) {
+    const s = Store.state.sales.find(x => x.id === id), it = s && s.items[idx]; if (!it) return;
+    const snap = Store.snapshot('sales', s);
+    if (on) { it.origPrice = U.num(it.price); it.price = 0; it.free = true; }
+    else { it.price = U.num(it.origPrice); delete it.origPrice; it.free = false; }
+    this._retotal(s);
+    const entry = Store.commitSnapshot(snap, 'vente', `${on ? 'Offert' : 'Prix rétabli'} — ${it.name}`);
+    Store.save('sales'); U.toast(on ? 'Produit offert : valeur de vente 0 € (le stock reste sorti).' : 'Prix rétabli.', false, entry.id); this.render();
+  },
   setShippingCost(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
@@ -778,7 +796,9 @@ const Ventes = {
      Une ligne par vente (repliée), filtres période / stock / origine / recherche, tri, 25 par page,
      suppression ciblée (une vente ou une sélection) et changement d'origine d'une vente. */
   _saleOrigin(s) { return s.historical ? 'import' : s.fromImport ? 'retour' : 'manual'; },
-  _saleKind(s) { return s.source === 'event' ? 'event' : s.channel === 'online' ? 'online' : 'direct'; },
+  _saleKind(s) { return s.channel === 'online' ? 'online' : s.source === 'event' ? 'event' : 'direct'; },
+  /* Vrai événement (marché) = stock événement ET pas une vente en ligne. */
+  _isEventSale(s) { return s.source === 'event' && s.channel !== 'online'; },
   histFiltered() {
     const f = this.histF, now = new Date(), y = now.getFullYear();
     let lo = -Infinity, hi = Infinity;
@@ -890,7 +910,7 @@ const Ventes = {
     U.toast(`${sales.length} vente(s) supprimée(s)` + (restock ? ', stock remis' : '') + '.', false, entry.id);
   },
 
-  _isRealEvent(s) { return s.source === 'event' && !!(s.eventName || s.fromImport || U.num(s.eventFee) || U.num(s.travelCost) || U.num(s.mealFee)); },
+  _isRealEvent(s) { return this._isEventSale(s) && !!(s.eventName || s.fromImport || U.num(s.eventFee) || U.num(s.travelCost) || U.num(s.mealFee)); },
   historyTable() {
     const f = U.syncFilters('ventes_hist', this.histF) || this.histF;
     const all = this.histFiltered();
@@ -908,7 +928,7 @@ const Ventes = {
     const pBtn = (k, l) => `<button class="${f.period === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistF('period','${k}')">${l}</button>`;
     const sortBtn = (key, label) => `<button class="${f.sort === key ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistorySort('${key}')">${label} ${f.sort === key ? (f.dir === 'asc' ? '▲' : '▼') : ''}</button>`;
     const originBadge = s => s.historical ? '<span class="badge" title="Import historique : n\'a pas touché au stock">📚 historique</span>' : s.fromImport ? '<span class="badge" title="Import d\'un retour d\'événement SumUp">📥 retour</span>' : '';
-    const kindLbl = s => s.source === 'event' ? 'Événement' : s.channel === 'online' ? 'En ligne' : 'Général';
+    const kindLbl = s => s.channel === 'online' ? 'En ligne' : s.source === 'event' ? 'Événement' : 'Général';
     const field = (label, html) => `<span class="sh-field"><span class="sh-lbl">${label}</span>${html}</span>`;
     // Regroupement visuel (2026-09-30) : Antho a fait un retour d'événement avec ventes SumUp +
     // espèces → même événement, même journée de marché, mais 2 tickets séparés (frais de
@@ -935,7 +955,7 @@ const Ventes = {
           <span class="hc-prod muted" title="${U.esc(s.items.map(i => i.name).join(', '))}">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm hc-todo" title="${nTodo} article(s) pas encore déduit(s) du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button> ` : ''}${s.items.length ? U.esc(s.items[0].name) + (s.items.length > 1 ? ` <b>+${s.items.length - 1}</b>` : '') : '—'}</span>
           <span class="hc-n">${s.items.length}</span>
           <span class="hc-tot"><b>${U.eur(s.total)}</b></span>
-          <span class="hc-act"><span class="a1">${!s.cancelled && s.source === 'event' ? `<button class="btn-ghost btn-sm" title="Nom de l'événement, frais de stand, consommables" onclick="Ventes.editEventTicket('${s.id}')">🎪 Modifier</button>` : ''}</span><span class="a2">${s.cancelled ? '<span class="badge bad">annulée</span>' : s.historical ? '' : `<button class="btn-ghost btn-sm" title="Annuler la sortie et remettre le stock (la vente reste, marquée annulée)" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span><span class="a3"><button class="btn-ghost btn-sm" title="Supprimer de l'historique" onclick="Ventes.deleteSales('${s.id}')">🗑</button></span></span>
+          <span class="hc-act"><span class="a1">${!s.cancelled ? `<button class="btn-ghost btn-sm" title="${this._isEventSale(s) ? 'Événement, frais de stand, consommables, prix' : 'Frais d envoi, consommables (carton), prix'}" onclick="Ventes.editEventTicket('${s.id}')">${this._isEventSale(s) ? '🎪 Modifier' : '✏️ Modifier'}</button>` : ''}</span><span class="a2">${s.cancelled ? '<span class="badge bad">annulée</span>' : s.historical ? '' : `<button class="btn-ghost btn-sm" title="Annuler la sortie et remettre le stock (la vente reste, marquée annulée)" onclick="Ventes.cancelSale('${s.id}')">Annuler</button>`}</span><span class="a3"><button class="btn-ghost btn-sm" title="Supprimer de l'historique" onclick="Ventes.deleteSales('${s.id}')">🗑</button></span></span>
         </div></td></tr>`;
       if (!open) return head;
       const kind = this._saleKind(s);
@@ -1641,16 +1661,17 @@ const Ventes = {
   renderTicketEditor() {
     const s = Store.state.sales.find(x => x.id === this.editTicketId);
     if (!s) { this.editTicketId = ''; this.render(); return; }
+    const isEv = this._isEventSale(s);
     const consoItems = (s.items || []).map((it, i) => ({ it, i })).filter(x => x.it.kind === 'C');
-    const soldItems = (s.items || []).filter(it => it.kind !== 'C');
+    const soldItems = (s.items || []).map((it, i) => ({ it, i })).filter(x => x.it.kind !== 'C');
     const avail = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
     const consoCost = consoItems.reduce((a, x) => a + U.num(x.it.cost), 0);
     App.mount(`
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;">
-        <div><h1>Modifier l'événement</h1><span class="sub">${U.frDateTime(s.ts)} · frais de stand & consommables</span></div>
+        <div><h1>${isEv ? "Modifier l'événement" : 'Modifier la vente'}</h1><span class="sub">${U.frDateTime(s.ts)} · ${isEv ? 'frais de stand, consommables & prix' : "frais d'envoi, consommables & prix"}</span></div>
         <button class="btn-ghost" style="flex:0 0 auto;white-space:nowrap;" onclick="Ventes.closeEditTicket()">← Retour à l'historique</button>
       </div>
-      ${s.source !== 'event' ? '<div class="card"><p class="muted">Ce ticket n\'est pas un événement — rien à modifier ici.</p></div>' : `
+      ${isEv ? `
       <div class="card">
         <h2>🎪 Événement & frais de stand</h2>
         ${this.eventNamesDatalist()}
@@ -1660,7 +1681,14 @@ const Ventes = {
           <div class="fg"><label>🍽️ Repas (€) <span class="muted help">repas de midi (toi + ta compagne) — imputé au bénéfice de cet événement</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.mealFee) || ''}" onchange="Ventes.setMealFee('${s.id}',this.value)"></div>
         </div>
         <div class="fg" style="margin-top:2px;"><label>🚗 Déplacement</label>${this.travelWidget(s.travelDet, 's:' + s.id, s.travelCost)}</div>
-      </div>
+      </div>` : ''}
+      ${s.delivery === 'livraison' ? `<div class="card">
+        <h2>📦 Expédition</h2>
+        <div class="grid c3">
+          <div class="fg"><label>Frais d'envoi réels (€) <span class="muted help">ce que tu paies au transporteur (Mondial Relay…). Le carton se déduit plus bas dans « Consommables ». Ensemble ils donnent le vrai coût d'expédition de la commande.</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.shippingCost) || ''}" onchange="Ventes.setShippingCost('${s.id}',this.value)"></div>
+          <div class="fg"><label>Port payé par le client</label><div><span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}');Ventes.render();">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span></div></div>
+        </div>
+      </div>` : ''}
 
       <div class="card" style="border-left:3px solid var(--caramel);">
         <h2>📦 Consommables utilisés (sacs, étiquettes…)</h2>
@@ -1675,13 +1703,13 @@ const Ventes = {
           <tfoot><tr><th colspan="2">Coût total consommables</th><th class="num">${U.eur(consoCost)}</th><th></th></tr></tfoot></table></div>` : ''}
       </div>
 
-      ${this.ticketCashCard(s)}
+      ${isEv ? this.ticketCashCard(s) : ''}
       ${s.payment !== 'cash' ? `<div class="card">
         <h2 class="mb0">🧾 Articles vendus</h2>
-        <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr></thead>
-        <tbody>${soldItems.length ? soldItems.map(it => `<tr><td class="col-name"><b>${U.esc(it.name)}</b></td><td>${it.label ? U.esc(it.label) : '—'}</td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num">${U.eur(it.price)}</td><td class="num"><b>${U.eur(U.num(it.price) * U.num(it.qty))}</b></td></tr>`).join('') : '<tr><td colspan="6" class="muted">Aucun article vendu sur ce ticket.</td></tr>'}</tbody></table></div>
+        <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th>🎁 Offert</th><th class="num">Total</th></tr></thead>
+        <tbody>${soldItems.length ? soldItems.map(({ it, i }) => `<tr><td class="col-name"><b>${U.esc(it.name)}</b></td><td>${it.label ? U.esc(it.label) : '—'}</td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num"><input type="number" step="0.01" min="0" style="width:90px;text-align:right;" value="${U.num(it.price)}" onchange="Ventes.setItemPrice('${s.id}',${i},this.value)"></td><td style="text-align:center;"><input type="checkbox" ${it.free ? 'checked' : ''} title="Produit offert : sorti du stock mais valeur de vente 0 €" onchange="Ventes.toggleItemFree('${s.id}',${i},this.checked)"></td><td class="num"><b>${U.eur(U.num(it.price) * U.num(it.qty))}</b></td></tr>`).join('') : '<tr><td colspan="7" class="muted">Aucun article vendu sur ce ticket.</td></tr>'}</tbody></table></div>
       </div>` : ''}
-      `}`);
+      `);
   },
 
   retourDayCard(g, imported) {
