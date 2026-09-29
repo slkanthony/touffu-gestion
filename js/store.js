@@ -116,9 +116,15 @@ const Store = {
     this.state = this.merge(parsed);
   },
 
+  _saveSeq: 0,
   async loadRemote() {
+    const seq = this._saveSeq;
     const { data, error } = await this.sb.from('app_state').select('key,data');
     if (error) throw error;
+    // ⚠️ Course corrigée (2026-09-30, « je dois enregistrer plusieurs fois ») : la réponse arrive APRÈS coup. Si pendant
+    // l'attente une fenêtre d'édition s'est ouverte (elle garde des références vers l'ANCIENS objets) ou si on a modifié /
+    // enregistré quelque chose, appliquer cette réponse écraserait le travail en cours → on l'abandonne.
+    if (this._saveSeq !== seq || this._dirty.size || this._flushing || this._modalOpen()) { if (this._modalOpen()) this._pendingReload = true; return; }
     const obj = {};
     (data || []).forEach(r => obj[r.key] = r.data);
     this.state = this.merge(obj);
@@ -321,6 +327,7 @@ const Store = {
       if (!domains.length) return;
     }
     domains.forEach(d => this._dirty.add(d));
+    this._saveSeq++;
     clearTimeout(this._saveT);
     this._saveT = setTimeout(() => this.flush(), 500);
     this.updateSyncBadge('…');
