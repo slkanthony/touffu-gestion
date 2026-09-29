@@ -362,15 +362,18 @@ const Pricing = {
   },
   skuWithBase(base, v) { const lab = this.slugify(this.skuVariantLabel(v)); return lab ? base + '-' + lab : base; },
   skuVariantLabel(v) {
+    // Le NOM affiché de la variante fait foi (le type poids / pièce / taille n'est jamais choisi par l'utilisateur
+    // et une même variante peut changer de nom). Repli sur la valeur seulement si le nom est vide.
+    const lab = String(v.label || '').toUpperCase().replace(/\s+/g, '');
     if (v.mode === 'gram') {
-      const auto = U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
-      // Variante renommée à la main (ex. créée en « 30 g » puis corrigée en « 30CM ») : le nom fait foi.
-      const lab = String(v.label || '').toUpperCase().replace(/\s+/g, '');
-      return lab && !/^\d+([.,]\d+)?(G|KG)$/.test(lab) ? lab : auto;
+      if (lab) return lab;
+      return U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
     }
-    // Une seule pièce → AUCUN suffixe (le « -1PC » est redondant : c'est une pièce par défaut).
-    // Le suffixe n'a de sens que pour différencier (lot de 2+ → LOT2, LOT5…).
-    if (v.mode === 'piece') return U.num(v.value) > 1 ? 'LOT' + v.value : '';
+    // Une seule pièce → AUCUN suffixe (le « -1PC » est redondant). Lot de 2+ → LOT2, LOT5…
+    if (v.mode === 'piece') {
+      if (lab && !/^(LOTDE|LOT|PC|PCS|PI[EÈ]CES?)?\d*(LOT|PC|PCS|PI[EÈ]CES?)?$/.test(lab)) return lab;
+      return U.num(v.value) > 1 ? 'LOT' + v.value : '';
+    }
     return v.label || '';
   },
 
