@@ -201,7 +201,7 @@ const Woo = {
   },
   _fmtOfName(name) { const i = String(name || '').lastIndexOf(' — '); return i < 0 ? '—' : this._fmtKey(name.slice(i + 3)); },
   // Export SumUp : par défaut les 500 g et plus sont décochés (fmts === null), le reste coché.
-  _sumupFmtSel() { const f = this.sumupExpFilters, list = this._sumupFmtList || []; return (f.fmts || []).filter(x => list.includes(x)); },
+  _sumupFmtSel() { const f = this.sumupExpFilters, list = this._sumupFmtList || []; return (f.fmts || list).filter(x => list.includes(x)); },
   _sumupFmtToggle(v) { const f = this.sumupExpFilters; const cur = this._sumupFmtSel(); f.fmts = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); this.render(); },
   _sumupFmtAll(all) { this.sumupExpFilters.fmts = all ? [...(this._sumupFmtList || [])] : []; this.render(); },
   sumupExpSelectNoBig() { (this._sumupExpVisible || []).forEach(k => { const m = (this._sumupExpMap || {})[k]; this._sumupSel[k] = !(m && this._isBigFmt(m.fmt)); }); this.render(); },
@@ -437,7 +437,7 @@ const Woo = {
     const fmtList = [...new Set(exportable.map(m => m.fmt))];
     this._sumupFmtList = fmtList;
     const fmtSel = this._sumupFmtSel();
-    const visible = exportable.filter(m => (!fmtSel.length || fmtSel.includes(m.fmt)) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
+    const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
       .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
     this._sumupExpMap = Object.fromEntries(visible.map(m => [m.sku.toUpperCase(), m]));
