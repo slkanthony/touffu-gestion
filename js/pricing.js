@@ -362,7 +362,12 @@ const Pricing = {
   },
   skuWithBase(base, v) { const lab = this.slugify(this.skuVariantLabel(v)); return lab ? base + '-' + lab : base; },
   skuVariantLabel(v) {
-    if (v.mode === 'gram') return U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
+    if (v.mode === 'gram') {
+      const auto = U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';
+      // Variante renommée à la main (ex. créée en « 30 g » puis corrigée en « 30CM ») : le nom fait foi.
+      const lab = String(v.label || '').toUpperCase().replace(/\s+/g, '');
+      return lab && !/^\d+([.,]\d+)?(G|KG)$/.test(lab) ? lab : auto;
+    }
     // Une seule pièce → AUCUN suffixe (le « -1PC » est redondant : c'est une pièce par défaut).
     // Le suffixe n'a de sens que pour différencier (lot de 2+ → LOT2, LOT5…).
     if (v.mode === 'piece') return U.num(v.value) > 1 ? 'LOT' + v.value : '';
