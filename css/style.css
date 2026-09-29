@@ -1142,3 +1142,8 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .cat-head-inputs .b2b-disc-badge > input { width: 64px; -moz-appearance: textfield; appearance: textfield; }
 .cat-head-inputs .b2b-disc-badge > input::-webkit-outer-spin-button, .cat-head-inputs .b2b-disc-badge > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .cat-head-inputs .b2b-disc-badge:first-child > input { width: 72px; }
+
+/* Toutes les lignes de produits repliables ont la même hauteur (celle de Stock) */
+@media (min-width: 861px) {
+  details.fold.prod-fold > summary, details.fold.b2b-fold > summary { min-height: 96px; box-sizing: border-box; align-items: center; }
+}
