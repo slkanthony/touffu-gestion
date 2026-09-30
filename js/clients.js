@@ -172,7 +172,11 @@ const Clients = {
     const prods = a ? Object.entries(a.prods).sort((x, y) => y[1].qty - x[1].qty) : [];
     const orders = a ? a.sales.slice().sort((x, y) => y.ts - x.ts) : [];
     return `<tr class="cl-fiche"><td colspan="6"><div class="cl-body">
-      ${this.ro() ? '' : `<div class="cl-id">${inp('firstName', 'Prénom', '')}${inp('lastName', 'Nom', '')}${inp('phone', 'Téléphone', '', 'tel')}${inp('email', 'Email', '', 'email')}${inp('note', 'Note', 'ex : rencontré au marché de…')}</div>`}
+      ${this.ro() ? '' : `<div class="cl-id">${inp('firstName', 'Prénom', '')}${inp('lastName', 'Nom', '')}${inp('phone', 'Téléphone', '', 'tel')}${inp('email', 'Email', '', 'email')}${inp('note', 'Note', 'ex : rencontré au marché de…')}</div>
+      <div class="cl-id mt">
+        <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
+        ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
+      </div>`}
       <h3 class="mt">🐕 Chiens (${c.dogs.length})</h3>
       ${c.dogs.map(d => this._dogCard(c, d)).join('') || '<p class="muted">Aucun chien renseigné.</p>'}
       ${this.ro() ? '' : `<button class="btn-cta btn-sm" onclick="Clients.addDog('${c.id}')">＋ Ajouter un chien</button>`}
