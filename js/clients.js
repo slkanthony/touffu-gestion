@@ -15,10 +15,10 @@ const Clients = {
     return [...set.values()].sort((a, b) => a.localeCompare(b, 'fr'));
   },
   datalist() { return `<datalist id="dl_clients">${this.names().map(n => `<option value="${U.esc(this.show(n))}">`).join('')}</datalist>`; },
-  ro() { return !!App.isViewer; },   // profil visite : lecture seule, prénom uniquement, pas de coordonnées
+  ro() { return !!App.isViewer || (!!App.visitMode && !App.isTeam); },   // profil visite OU mode « masquer » de l'admin : comme si un visiteur regardait l'écran   // profil visite : lecture seule, prénom uniquement, pas de coordonnées
   split(name) { const t = String(name || '').trim(), i = t.indexOf(' '); return i < 0 ? { first: t, last: '' } : { first: t.slice(0, i), last: t.slice(i + 1).trim() }; },
   show(name) {   // nom affiché : complet, ou prénom seul pour le profil visite
-    const n = String(name || '').trim(); if (!n || !App.isViewer) return n;
+    const n = String(name || '').trim(); if (!n || !this.ro()) return n;
     const c = this.find(n); return c && c.firstName ? c.firstName : this.split(n).first;
   },
   _new(name) { const p = this.split(name); return { id: U.uid(), name: String(name).trim(), firstName: p.first, lastName: p.last, phone: '', email: '', note: '', dogs: [] }; },
