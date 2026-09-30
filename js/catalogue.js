@@ -1013,3 +1013,13 @@ _saveTeam() {
     this.mode = 'list'; this.editId = null; this._loadedKey = null; location.hash = '/catalogue'; App.rerender();
   }
 };
+
+/* Saisies directes dans la liste (coeff, décote, prix TTC) : si une erreur survient, elle est AFFICHÉE (et rendue dans la console)
+   au lieu d'échouer en silence, et la page revient à l'état enregistré. */
+['setCardPriceTTC', 'setCardCoeff', 'setCardCommonCoeff', 'setCardBulkDiscount', 'resetCardLine'].forEach(name => {
+  const fn = Catalogue[name];
+  Catalogue[name] = function (...a) {
+    try { return fn.apply(this, a); }
+    catch (e) { console.error('Catalogue.' + name, e); U.toast('⚠️ Enregistrement impossible : ' + (e && e.message ? e.message : e), true); App.rerender(); }
+  };
+});
