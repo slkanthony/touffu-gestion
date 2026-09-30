@@ -863,7 +863,7 @@ const Ventes = {
       if (f.src !== 'all' && this._saleKind(s) !== f.src) return false;
       if (f.origin !== 'all' && this._saleOrigin(s) !== f.origin) return false;
       if (q) {
-        const hay = [s.customerName, s.eventName, ...(s.items || []).flatMap(i => [i.name, i.label, i.sku, i.desc])].filter(Boolean).join(' ').toLowerCase();
+        const hay = [Clients.show(s.customerName), s.eventName, ...(s.items || []).flatMap(i => [i.name, i.label, i.sku, i.desc])].filter(Boolean).join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -1001,7 +1001,7 @@ const Ventes = {
           <span class="hc-date sh-date">${U.frDateTime(s.ts)}</span>
           <span class="hc-kind"><span class="badge info">${kindLbl(s)}</span></span>
           <span class="hc-orig">${originBadge(s) || '<span class="muted">manuelle</span>'}</span>
-          <span class="hc-ev">${s.eventName ? `<span class="sh-event" title="${U.esc(s.eventName)}${s.customerName ? ' — client : ' + U.esc(s.customerName) : ''}">🎪 ${U.esc(s.eventName)}</span>` : s.customerName ? `<span title="Client">👤 ${U.esc(s.customerName)}</span>` : '<span class="muted">—</span>'}</span>
+          <span class="hc-ev">${s.eventName ? `<span class="sh-event" title="${U.esc(s.eventName)}${s.customerName ? ' — client : ' + U.esc(Clients.show(s.customerName)) : ''}">🎪 ${U.esc(s.eventName)}</span>` : s.customerName ? `<span title="Client">👤 ${U.esc(Clients.show(s.customerName))}</span>` : '<span class="muted">—</span>'}</span>
           <span class="hc-pay">${this.paymentLabel(s)}</span>
           <span class="hc-prod muted" title="${U.esc(s.items.map(i => i.name).join(', '))}">${nTodo && !s.cancelled ? `<button class="btn-ghost btn-sm hc-todo" title="${nTodo} article(s) pas encore déduit(s) du stock" onclick="Ventes.openTodo()">🧩 ${nTodo}</button> ` : ''}${s.items.length ? U.esc(s.items[0].name) + (s.items.length > 1 ? ` <b>+${s.items.length - 1}</b>` : '') : '—'}</span>
           <span class="hc-n">${s.items.length}</span>
@@ -1014,7 +1014,7 @@ const Ventes = {
       const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
-          ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(s.customerName || '')}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
+          ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
           ${field('Remise', this.deliveryLabel(s))}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
@@ -1089,7 +1089,7 @@ const Ventes = {
     list.forEach(s => s.items.forEach((i, idx) => {
       rows.push([U.frDateTime(s.ts), s.source === 'event' ? 'Evenement' : 'General',
         s.channel === 'online' ? 'En ligne' : s.channel === 'direct' ? 'Directe' : '', s.payment || '',
-        s.delivery === 'livraison' ? 'Livraison' : s.delivery === 'clickcollect' ? 'Click and Collect' : '', s.customerName || '',
+        s.delivery === 'livraison' ? 'Livraison' : s.delivery === 'clickcollect' ? 'Click and Collect' : '', Clients.show(s.customerName) || '',
         s.delivery === 'livraison' ? (s.shippingChargedToCustomer ? 'oui' : 'non') : '',
         idx === 0 && s.delivery === 'livraison' ? U.num(s.shippingFeeCollected).toFixed(2) : '',
         idx === 0 ? U.num(s.shippingCost).toFixed(2) : '',
@@ -1730,7 +1730,7 @@ const Ventes = {
       </div>
       <div class="card">
         <h2>👤 Client</h2>
-        <div class="fg" style="max-width:360px;"><label>Nom du client (optionnel)</label><input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(s.customerName || '')}" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}</div>
+        <div class="fg" style="max-width:360px;"><label>Nom du client (optionnel)</label><input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}</div>
       </div>
       ${isEv ? `
       <div class="card">

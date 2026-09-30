@@ -1170,3 +1170,11 @@ table.sale-sum tr.sale-sum-net td { border-top: 2px solid var(--caramel); border
 .cl-chip.avoid { background: rgba(200,80,70,.25); border-color: #c8564b; font-weight: 600; }
 .cl-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
 @media (max-width: 800px) { .cl-cols { grid-template-columns: 1fr; } }
+
+.cl-id { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .cl-id { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cl-body .fg { display: flex; flex-direction: column; justify-content: flex-start; }
+.cl-body .fg > label { min-height: 2.5em; display: block; }
+.cl-body .fg > :not(label) { margin-top: 0 !important; }
+.cl-body input:not([type=checkbox]), .cl-body select, .cl-body .nsel-trig, .cl-body .dsel-trig { height: 40px; box-sizing: border-box; }
+.cl-body .nsel-trig { width: 100%; }
