@@ -785,3 +785,16 @@ document.addEventListener('keydown', (e) => {
   // Pas de preventDefault : le navigateur valide lui-même (événement « change ») sur Entrée ; on retire juste le focus ensuite.
   if (t.hasAttribute('onchange') && !t.hasAttribute('oninput')) setTimeout(() => { if (document.activeElement === t) t.blur(); }, 0);
 });
+
+/* Ctrl+Z / Ctrl+Y (hors champs de saisie et hors fenêtres) : annuler / refaire la dernière action du journal. */
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = String(e.key).toLowerCase();
+  if (k !== 'z' && k !== 'y') return;
+  const t = e.target;
+  if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+  if (document.getElementById('modalBg') || document.getElementById('askBg')) return;
+  if (typeof Store === 'undefined' || !Store.state || typeof Params === 'undefined') return;
+  e.preventDefault();
+  if (k === 'y' || e.shiftKey) Params.redo(); else Params.undoLast();
+});

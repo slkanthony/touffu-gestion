@@ -381,6 +381,7 @@ const Store = {
   // Retourne l'entrée créée (id notamment) pour que l'appelant puisse la passer à
   // U.toast(msg, err, entry.id) et afficher un "↺ Annuler" directement dans le toast.
   log(action, label, undo) {
+    if (action !== 'annulation' && action !== 'refaire' && typeof Params !== 'undefined') Params._redo = [];   // une nouvelle action vide la pile « refaire »
     const entry = { id: U.uid(), ts: Date.now(), action, label, undo: undo || null, user: this.session?.user?.email || '' };
     this.state.journal.unshift(entry);
     if (this.state.journal.length > 600) this.state.journal.length = 600;

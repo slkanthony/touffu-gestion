@@ -2449,10 +2449,49 @@ const Params = {
     App.rerender();
   },
 
+  _redo: [],
+  /* Opération inverse (état actuel) d'une annulation de fiche(s) : sert à « refaire » (Ctrl+Y). Null si non supporté. */
+  _inverse(u) {
+    const cur = (domain, id) => { const f = (Store.state[domain] || []).find(x => x.id === id); return f ? JSON.parse(JSON.stringify(f)) : null; };
+    if (u.type === 'restoreItem') return { type: 'restoreItem', data: { domain: u.data.domain, id: u.data.id, before: cur(u.data.domain, u.data.id) } };
+    if (u.type === 'restoreBatch') return { type: 'restoreBatch', data: u.data.map(sn => ({ domain: sn.domain, id: sn.id, before: cur(sn.domain, sn.id) })) };
+    if (u.type === 'deleteCreated') return { type: 'restoreItem', data: { domain: u.data.domain, id: u.data.id, before: cur(u.data.domain, u.data.id) } };
+    return null;
+  },
+  _apply(u) {
+    const one = (sn, doms) => {
+      const arr = Store.state[sn.domain]; if (!Array.isArray(arr)) return;
+      const idx = arr.findIndex(x => x.id === sn.id);
+      if (sn.before === null) { if (idx >= 0) arr.splice(idx, 1); }
+      else if (idx >= 0) arr[idx] = sn.before; else arr.push(sn.before);
+      doms.add(sn.domain);
+    };
+    const doms = new Set();
+    if (u.type === 'restoreItem') one(u.data, doms); else u.data.forEach(sn => one(sn, doms));
+    Store.save(...doms);
+  },
+  /* Ctrl+Z : annule la dernière action annulable du journal. Ctrl+Y : refait la dernière action annulée (fiches uniquement). */
+  undoLast() {
+    const j = (Store.state.journal || []).find(x => x.undo && x.undo.type !== 'receive');
+    if (!j) { U.toast('Rien à annuler.'); return; }
+    this.undo(j.id);
+  },
+  redo() {
+    const r = this._redo.pop();
+    if (!r) { U.toast('Rien à refaire.'); return; }
+    try {
+      const inv = this._inverse(r.u);
+      this._apply(r.u);
+      Store.log('refaire', 'Refait : ' + r.label, inv);
+      App.rerender();
+      U.toast('Action refaite : ' + r.label);
+    } catch (e) { U.toast('Impossible de refaire : ' + e.message, true); }
+  },
   undo(journalId) {
     const j = Store.state.journal.find(x => x.id === journalId);
     if (!j || !j.undo) return;
     const u = j.undo;
+    const inv = this._inverse(u);   // pour « refaire » (Ctrl+Y) : l'état tel qu'il est AVANT cette annulation
     try {
       if (u.type === 'sale') { Ventes.cancelSale(u.data.saleId); return; }
       if (u.type === 'setQty') { const l = Stock.findLot(u.data.pId, u.data.vId, u.data.lId); if (l) l.lot[u.data.field] = u.data.before; Store.save('stockM'); }
@@ -2475,7 +2514,8 @@ const Params = {
         const arr = Store.state[u.data.domain];
         if (Array.isArray(arr)) {
           const idx = arr.findIndex(x => x.id === u.data.id);
-          if (idx >= 0) arr[idx] = u.data.before; else arr.push(u.data.before);
+          if (u.data.before === null) { if (idx >= 0) arr.splice(idx, 1); }
+          else if (idx >= 0) arr[idx] = u.data.before; else arr.push(u.data.before);
         }
         Store.save(u.data.domain);
       }
@@ -2485,7 +2525,8 @@ const Params = {
           const arr = Store.state[snap.domain];
           if (Array.isArray(arr)) {
             const idx = arr.findIndex(x => x.id === snap.id);
-            if (idx >= 0) arr[idx] = snap.before; else arr.push(snap.before);
+            if (snap.before === null) { if (idx >= 0) arr.splice(idx, 1); }
+            else if (idx >= 0) arr[idx] = snap.before; else arr.push(snap.before);
             domains.add(snap.domain);
           }
         });
@@ -2535,6 +2576,7 @@ const Params = {
         Store.save('stockM', 'consumables');
       }
       j.undo = null;
+      if (inv) this._redo.push({ label: j.label, u: inv });
       Store.log('annulation', 'Annulation : ' + j.label);
       App.rerender();
       U.toast('Mouvement annulé.');
