@@ -31,6 +31,7 @@ const Clients = {
   _sync() {   // crée les fiches manquantes pour les noms déjà présents sur des ventes
     let added = false;
     if (this.ro()) return;
+    this.list().forEach(c => { const dp = c.dogs.filter(d => d.pets); if (dp.length) { if (!c.pets) c.pets = [...new Set(dp.map(d => d.pets))].join(', '); dp.forEach(d => delete d.pets); added = true; } });
     this.list().forEach(c => { if (c.firstName === undefined) { const p = this.split(c.name); c.firstName = p.first; c.lastName = p.last; added = true; } });
     (Store.state.sales || []).forEach(s => { const n = (s.customerName || '').trim(); if (n && !this.find(n)) { this.list().push(this._new(n)); added = true; } });
     if (added) Store.save('clients');
@@ -111,7 +112,7 @@ const Clients = {
   addDog(cid) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); if (!c) return;
-    c.dogs.push({ id: U.uid(), name: '', breed: '', birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', pets: '', hair: '', odor: '', fat: '', liked: '', note: '' });
+    c.dogs.push({ id: U.uid(), name: '', breed: '', birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', hair: '', odor: '', fat: '', liked: '', note: '' });
     this._dogOpen[c.dogs[c.dogs.length - 1].id] = true; Store.save('clients'); Stats.render();
   },
   async delDog(cid, did) {
@@ -162,7 +163,6 @@ const Clients = {
       <div class="grid c2 mt">
         ${inp('allergies', '⚠️ Allergies / intolérances', 'ex : poulet, céréales')}${inp('health', 'Maladie / santé', 'ex : pancréatite')}
         ${inp('food', 'Croquettes / alimentation', 'marque, ration…')}${inp('liked', 'Produits préférés / déjà mastiqués', 'ex : oreilles de porc, tendons')}
-        ${inp('pets', 'Vit avec d\'autres animaux ?', 'ex : un chat, un lapin — vide = vit seul')}
       </div>
       ${inp('note', 'Note', 'autre chose à retenir')}
       </div></details>`;
@@ -177,6 +177,7 @@ const Clients = {
         <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
         ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
       </div>`}
+      <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><input ${this.ro() ? 'disabled' : ''} value="${U.esc(c.pets || '')}" placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)"></div></div>
       <h3 class="mt">🐕 Chiens (${c.dogs.length})</h3>
       ${c.dogs.map(d => this._dogCard(c, d)).join('') || '<p class="muted">Aucun chien renseigné.</p>'}
       ${this.ro() ? '' : `<button class="btn-cta btn-sm" onclick="Clients.addDog('${c.id}')">＋ Ajouter un chien</button>`}
