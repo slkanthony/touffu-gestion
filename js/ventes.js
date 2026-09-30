@@ -694,6 +694,24 @@ const Ventes = {
     Store.save('sales'); U.toast('Client enregistré.', false, entry.id);
     this.render();
   },
+  /* Réduction ajoutée / corrigée / retirée après coup : les prix des articles (hors consommables) sont
+     recalculés depuis leur prix avant réduction ; total et stats suivent. Le stock n'est pas touché. */
+  setDiscount(id, val) {
+    const s = Store.state.sales.find(x => x.id === id); if (!s || s.cancelled) return;
+    const nw = Math.min(99, Math.max(0, U.num(val))), old = U.num(s.discountPct);
+    if (nw === old) return;
+    const snap = Store.snapshot('sales', s);
+    const f = (1 - nw / 100) / (1 - old / 100);
+    const gross = s.items.reduce((a, i) => a + (i.kind === 'C' ? 0 : U.num(i.price) * U.num(i.qty)), 0) / (1 - old / 100);
+    s.items.forEach(i => { if (i.kind !== 'C') i.price = U.num(i.price) * f; });
+    s.total = Math.round(s.items.reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0) * 100) / 100;
+    if (nw > 0) { s.discountPct = nw; s.discountAmount = Math.round((gross - s.total) * 100) / 100; }
+    else { delete s.discountPct; delete s.discountAmount; }
+    const entry = Store.commitSnapshot(snap, 'vente', `Réduction — ${U.frDateTime(s.ts)} : ${nw} % → ${U.eur(s.total)}`);
+    U.toast('Réduction mise à jour · total ' + U.eur(s.total) + '.', false, entry.id);
+    Store.save('sales');
+    this.render();
+  },
   setShippingCost(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
@@ -1041,7 +1059,7 @@ const Ventes = {
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
           ${field('Remise', this.deliveryLabel(s))}
-          ${s.discountPct ? field('Réduction', '−' + U.qty(s.discountPct) + ' % (−' + U.eur(s.discountAmount) + ')') : ''}
+          ${s.cancelled ? (s.discountPct ? field('Réduction', '−' + U.qty(s.discountPct) + ' %') : '') : field('Réduction %', `<input type="number" step="0.5" min="0" max="99" value="${U.num(s.discountPct) || ''}" placeholder="0" style="width:70px;" onchange="Ventes.setDiscount('${s.id}',this.value)">${s.discountAmount ? ` <span class="muted">(−${U.eur(s.discountAmount)})</span>` : ''}`)}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
