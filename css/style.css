@@ -1192,3 +1192,7 @@ tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
 .cl-card tbody tr:nth-child(even):hover > td { background: rgba(166,113,83,.05) !important; }
 :root[data-theme="dark"] .cl-card tbody tr:nth-child(even):hover > td { background: rgba(255,255,255,.03) !important; }
 .cl-card tbody tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
+/* Tableaux imbriqués dans la fiche client (achats, commandes) : la règle de survol générale s'applique aussi à leurs cellules quand la fiche est survolée */
+.cl-card tr.cl-fiche table tbody tr > td { background: transparent !important; }
+.cl-card tr.cl-fiche table tbody tr:nth-child(even) > td { background: rgba(166,113,83,.05) !important; }
+:root[data-theme="dark"] .cl-card tr.cl-fiche table tbody tr:nth-child(even) > td { background: rgba(255,255,255,.03) !important; }
