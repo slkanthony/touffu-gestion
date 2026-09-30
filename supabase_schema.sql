@@ -58,12 +58,12 @@ drop policy if exists "app_state maj" on public.app_state;
 drop policy if exists "app_state suppr" on public.app_state;
 create policy "app_state ecriture" on public.app_state for insert to authenticated
   with check ((auth.jwt()->'app_metadata'->>'role') is null
-    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM')));
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients')));
 create policy "app_state maj" on public.app_state for update to authenticated
   using ((auth.jwt()->'app_metadata'->>'role') is null
-    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM')))
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients')))
   with check ((auth.jwt()->'app_metadata'->>'role') is null
-    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM')));
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients')));
 create policy "app_state suppr" on public.app_state for delete to authenticated
   using ((auth.jwt()->'app_metadata'->>'role') is null);
 drop policy if exists "snapshots écriture" on public.snapshots;

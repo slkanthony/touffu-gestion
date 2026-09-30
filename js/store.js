@@ -309,7 +309,7 @@ const Store = {
 
   /* ---------- sauvegarde ---------- */
   /* Domaines qu'un compte « équipe » a le droit d'enregistrer (stock + journal). */
-  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta'],
+  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta', 'clients'],
 
   save(...domains) {
     if (window.App && window.App.isViewer) {

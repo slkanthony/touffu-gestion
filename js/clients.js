@@ -92,6 +92,7 @@ const Clients = {
       const first = String(f === 'firstName' ? v : c.firstName || '').trim(), last = String(f === 'lastName' ? v : c.lastName || '').trim();
       const full = (first + ' ' + last).trim();
       if (!first) { U.toast('Le prénom ne peut pas être vide.', true); Stats.render(); return; }
+      if (App.isTeam) { U.toast('Seul un administrateur peut renommer un client (ses ventes sont liées à son nom).', true); Stats.render(); return; }
       const other = this.find(full); if (other && other.id !== cid) { U.toast('Un autre client porte déjà ce nom.', true); Stats.render(); return; }
       const ok = this.key(c.name);
       (Store.state.sales || []).forEach(s => { if (this.key(s.customerName) === ok) s.customerName = full; });
