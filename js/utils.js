@@ -764,8 +764,17 @@ U.dsel = {
 /* Touche Entrée (2026-09-30) : dans une fenêtre, Entrée depuis un champ = bouton principal (Valider/Enregistrer) ;
    sur la page, Entrée dans un champ « au changement » (onchange, sans saisie en direct) = valide la saisie. */
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
   const t = e.target;
+  if (t && t.tagName === 'TEXTAREA' && t.classList.contains('note-area')) {   // zone de note : Shift+Entrée = nouvelle ligne, Entrée = valider
+    if (e.shiftKey) return;
+    e.preventDefault();
+    const okb = document.getElementById('modalOk');
+    if (t.closest('#modalBg') && okb && !okb.disabled) okb.click(); else t.blur();
+    return;
+  }
+  if (e.shiftKey) return;
   if (!t || t.tagName !== 'INPUT' || ['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'color'].includes(t.type)) return;
   if (document.getElementById('askBg') || t.classList.contains('nsel-search') || t.classList.contains('dsel-trig') || t.closest('.autocomplete, .nsel-panel, .dsel-panel')) return;
   const ok = document.getElementById('modalOk');

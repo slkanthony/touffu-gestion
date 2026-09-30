@@ -452,7 +452,7 @@ const Params = {
               <div class="fg"><label>Péages / parking (€)</label><input type="number" step="0.01" min="0" value="${e.tolls ?? ''}" onchange="Params.setEventInfo('${enc(n)}','tolls',this.value)"></div>
               <div class="fg"><label>Hébergement / autres (€)</label><input type="number" step="0.01" min="0" value="${e.other ?? ''}" onchange="Params.setEventInfo('${enc(n)}','other',this.value)"></div>
             </div>
-            <div class="fg"><label>Note</label><input value="${U.esc(e.note || '')}" placeholder="ex : installation 7h, prévoir tonnelle" onchange="Params.setEventInfo('${enc(n)}','note',this.value)"></div>
+            <div class="fg"><label>Note</label><textarea class="note-area" rows="1" placeholder="ex : installation 7h, prévoir tonnelle" onchange="Params.setEventInfo('${enc(n)}','note',this.value)">${U.esc(e.note || '')}</textarea></div>
             <p class="muted" style="font-size:.8rem;margin:4px 0;">🚗 Déplacement calculé : ${U.num(e.km)} km × ${String(U.num(Store.state.settings.fuelConsumption ?? 7)).replace(".", ",")} L/100 km × ${U.eur(U.num(Store.state.settings.fuelPrice ?? 1.85))}/L (soit ${U.eur(Store.fuelCostPerKm(), 3)}/km) + péages + autres = <b>${U.eur(tc)}</b> — pré-rempli au retour d'événement (modifiable).</p>
             <button class="btn-ghost btn-sm" onclick="Params.delEvent('${enc(n)}')">🗑️ Retirer cet événement</button>
           </div></details>`; }).join('') || '<span class="muted">Aucun événement.</span>'}

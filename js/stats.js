@@ -125,7 +125,7 @@ const Stats = {
     const simName = this._evSim && allNames.includes(this._evSim) ? this._evSim : '';   // aucun événement présélectionné : on choisit dans le menu
     const encN = encodeURIComponent(simName).replace(/'/g, '%27');
     const fi = simName ? Store.eventInfo(simName) : {};
-    const inp = (key, lbl, ph, step) => `<div class="fg"><label>${lbl}</label><input id="evf_${key}" ${step ? `type="number" step="${step}" min="0"` : ''} value="${U.esc(fi[key] ?? '')}" placeholder="${ph}" oninput="Stats._evFicheDirty()"></div>`;
+    const inp = (key, lbl, ph, step) => key === 'note' ? `<div class="fg"><label>${lbl}</label><textarea class="note-area" id="evf_note" rows="1" placeholder="${ph}" oninput="Stats._evFicheDirty()">${U.esc(fi[key] ?? '')}</textarea></div>` : `<div class="fg"><label>${lbl}</label><input id="evf_${key}" ${step ? `type="number" step="${step}" min="0"` : ''} value="${U.esc(fi[key] ?? '')}" placeholder="${ph}" oninput="Stats._evFicheDirty()"></div>`;
     const Sx = Store.state.settings, consX = U.num(Sx.fuelConsumption ?? 7), priceX = U.num(Sx.fuelPrice ?? 1.85);
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">rentabilité par événement</span></div>

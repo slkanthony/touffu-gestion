@@ -1196,3 +1196,6 @@ tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
 .cl-card tr.cl-fiche table tbody tr > td { background: transparent !important; }
 .cl-card tr.cl-fiche table tbody tr:nth-child(even) > td { background: rgba(166,113,83,.05) !important; }
 :root[data-theme="dark"] .cl-card tr.cl-fiche table tbody tr:nth-child(even) > td { background: rgba(255,255,255,.03) !important; }
+
+/* Zones de note : une ligne au départ, s'agrandissent avec le texte (Shift+Entrée = nouvelle ligne) */
+textarea.note-area { resize: none; overflow: hidden; width: 100%; min-height: 40px; line-height: 1.35; field-sizing: content; font-family: inherit; }

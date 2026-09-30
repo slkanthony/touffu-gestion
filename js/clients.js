@@ -4,7 +4,7 @@
    Le lien avec les ventes se fait par le NOM (sale.customerName, casse/espaces ignorés) : renommer un client met à jour ses ventes.
    Affiché dans Statistiques → 👤 Clients (admin seulement : données personnelles). */
 const Clients = {
-  _open: {}, _dogOpen: {}, _q: '', _sort: { k: 'ca', dir: 'desc' },
+  _open: {}, _dogOpen: {}, _q: '', _sort: { k: 'name', dir: 'asc' },
   key(n) { return String(n || '').trim().toLowerCase(); },
   list() { return Store.state.clients || (Store.state.clients = []); },
   find(name) { const k = this.key(name); return k ? this.list().find(c => this.key(c.name) === k) : null; },
@@ -143,7 +143,9 @@ const Clients = {
   _dogCard(c, d) {
     const meats = (Store.state.settings.meatTypes || []).slice().sort(U.sortFr);
     const ro = this.ro() ? 'disabled' : '';
-    const inp = (f, lbl, ph) => `<div class="fg"><label>${lbl}</label><input ${ro} value="${U.esc(d[f] || '')}" placeholder="${ph || ''}" onchange="Clients.setDog('${c.id}','${d.id}','${f}',this.value)"></div>`;
+    const inp = (f, lbl, ph) => ['allergies', 'health', 'food', 'liked', 'note'].includes(f)
+      ? `<div class="fg"><label>${lbl}</label><textarea class="note-area" rows="1" ${ro} placeholder="${ph || ''}" onchange="Clients.setDog('${c.id}','${d.id}','${f}',this.value)">${U.esc(d[f] || '')}</textarea></div>`
+      : `<div class="fg"><label>${lbl}</label><input ${ro} value="${U.esc(d[f] || '')}" placeholder="${ph || ''}" onchange="Clients.setDog('${c.id}','${d.id}','${f}',this.value)"></div>`;
     const yn = [['', '— ?'], ['ok', 'Oui, aucun souci'], ['non', 'Non, ça le dérange']];
     const chips = meats.map(m => { const st = (d.meats || {})[m]; return `<span class="cl-chip ${st || ''}" title="Clique : aime ❤ → évite ⛔ → neutre" onclick="Clients.cycleMeat('${c.id}','${d.id}','${U.esc(m).replace(/'/g, '&#39;')}')">${st === 'like' ? '❤ ' : st === 'avoid' ? '⛔ ' : ''}${U.esc(m)}</span>`; }).join('');
     const age = this.ageTxt(d.birth);
@@ -169,7 +171,7 @@ const Clients = {
       </div></details>`;
   },
   _fiche(c, a) {
-    const inp = (f, lbl, ph, type) => `<div class="fg"><label>${lbl}</label><input ${type ? `type="${type}"` : ''} value="${U.esc(c[f] || '')}" placeholder="${ph || ''}" onchange="Clients.setField('${c.id}','${f}',this.value)"></div>`;
+    const inp = (f, lbl, ph, type) => f === 'note' ? `<div class="fg"><label>${lbl}</label><textarea class="note-area" rows="1" placeholder="${ph || ''}" onchange="Clients.setField('${c.id}','${f}',this.value)">${U.esc(c[f] || '')}</textarea></div>` : `<div class="fg"><label>${lbl}</label><input ${type ? `type="${type}"` : ''} value="${U.esc(c[f] || '')}" placeholder="${ph || ''}" onchange="Clients.setField('${c.id}','${f}',this.value)"></div>`;
     const prods = a ? Object.entries(a.prods).sort((x, y) => y[1].qty - x[1].qty) : [];
     const orders = a ? a.sales.slice().sort((x, y) => y.ts - x.ts) : [];
     return `<tr class="cl-fiche"><td colspan="6"><div class="cl-body">
@@ -178,7 +180,7 @@ const Clients = {
         <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
         ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
       </div>`}
-      <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><input ${this.ro() ? 'disabled' : ''} value="${U.esc(c.pets || '')}" placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)"></div></div>
+      <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><textarea class="note-area" rows="1" ${this.ro() ? 'disabled' : ''} placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)">${U.esc(c.pets || '')}</textarea></div></div>
       <h3 class="mt">🐕 Chiens (${c.dogs.length})</h3>
       ${c.dogs.map(d => this._dogCard(c, d)).join('') || '<p class="muted">Aucun chien renseigné.</p>'}
       ${this.ro() ? '' : `<button class="btn-cta btn-sm" onclick="Clients.addDog('${c.id}')">＋ Ajouter un chien</button>`}

@@ -1589,7 +1589,7 @@ const Stock = {
       okLabel: 'Enregistrer',
       body: `<p class="muted mb0">Pense-bête daté : mise en promo, recommande, vérification…</p>
         ${U.datePickerHTML('rm_date', 'Date du rappel')}
-        <div class="fg"><label>Note</label><input id="rm_note" value="${U.esc(r.note || '')}" placeholder="ex : mettre en réduction, recommander…"></div>
+        <div class="fg"><label>Note</label><textarea class="note-area" id="rm_note" rows="1" placeholder="ex : mettre en réduction, recommander…">${U.esc(r.note || '')}</textarea></div>
         ${r.date ? `<button class="btn-ghost btn-sm" onclick="Stock._delReminder('${pId}','${vId}','${lId}')">🗑️ Supprimer ce rappel</button>` : ''}`,
       onOk: () => {
         const d = U.val('rm_date');
@@ -2246,7 +2246,7 @@ const Stock = {
       <div class="fg" style="margin-top:6px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;"><input type="checkbox" id="c_toReplace" ${c.toReplace?'checked':''} style="width:auto;"> 🚩 À ne plus racheter (à remplacer ou supprimer)</label></div>
       <div class="frow">
         <div class="fg"><label>Remplacer par (optionnel)</label><select id="c_replaceBy">${this._replaceOpts(c.id, c.category, c.replaceBy)}</select></div>
-        <div class="fg" style="flex:2;"><label>Note (optionnel)</label><input id="c_replaceNote" value="${U.esc(c.replaceNote||'')}" placeholder="ex : trop cher, finir le stock puis passer au 23×5×35"></div>
+        <div class="fg" style="flex:2;"><label>Note (optionnel)</label><textarea class="note-area" id="c_replaceNote" rows="1" placeholder="ex : trop cher, finir le stock puis passer au 23×5×35">${U.esc(c.replaceNote||'')}</textarea></div>
       </div>`,
       onOk:()=>{
         if(!U.val('c_name').trim()){U.toast('Nom obligatoire',true);return false;}
