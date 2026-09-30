@@ -642,6 +642,23 @@ const Catalogue = {
     App.rerender();
   },
 
+  /* Prix / coeff tapé sur une ligne → la décote du PRODUIT est déduite de cet écart (2026-09-30, demande d'Antho) :
+     décote de la ligne = 1 − coeff de la ligne ÷ coeff commun ; la décote paliers monte progressivement (0 sur la 1re
+     variante active, pleine sur la dernière), donc décote du produit = décote de la ligne × (n−1) ÷ rang de la ligne.
+     Retourne la valeur posée (en %), ou null si rien à déduire (1re variante, une seule variante, prix au-dessus du coeff commun). */
+  _deriveBulk(p, v) {
+    const actives = (p.variants || []).filter(x => x.enabled !== false);
+    const n = actives.length, idx = actives.findIndex(x => x.id === v.id);
+    if (n < 2 || idx < 1) return null;
+    const c = Pricing.variantCalc(p, v, idx, Pricing.baseUnitCost(p), n);
+    const common = U.num(p.coefficient) || 2;
+    if (!(c.coeff > 0) || c.cost <= 0) return null;
+    const d = 1 - c.coeff / common;
+    if (d <= 0) return null;
+    const bulk = Math.min(100, Math.round(d * 100 * (n - 1) / idx * 10) / 10);
+    p.bulkDiscount = bulk;
+    return bulk;
+  },
   setCardPriceTTC(prodId, varId, val, idxActive) {
     const p = Store.state.catalogM.find(x => x.id === prodId);
     if (!p) return;
@@ -654,10 +671,11 @@ const Catalogue = {
     } else {
       v.priceTTCManual = ttc;
     }
+    const bulk = ttc > 0 ? this._deriveBulk(p, v) : null;
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Prix TTC modifié — ' + p.name + ' ' + Pricing.labelVariant(v));
     Store.save('catalogM', 'stockM');
-    U.toast('Prix TTC mis à jour.', false, entry.id);
+    U.toast(bulk !== null ? `Prix TTC mis à jour · décote du produit : ${bulk} %` : 'Prix TTC mis à jour.', false, entry.id);
     App.rerender();
   },
 
@@ -671,10 +689,11 @@ const Catalogue = {
     const snap = Store.snapshot('catalogM', p);
     v.coeff = k;
     delete v.priceTTCManual;
+    const bulk = this._deriveBulk(p, v);
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient modifié — ' + p.name + ' ' + Pricing.labelVariant(v) + ' : ' + k);
     Store.save('catalogM', 'stockM');
-    U.toast('Coefficient mis à jour.', false, entry.id);
+    U.toast(bulk !== null ? `Coefficient mis à jour · décote du produit : ${bulk} %` : 'Coefficient mis à jour.', false, entry.id);
     App.rerender();
   },
 
