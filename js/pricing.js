@@ -373,6 +373,8 @@ const Pricing = {
     // Le NOM affiché de la variante fait foi (le type poids / pièce / taille n'est jamais choisi par l'utilisateur
     // et une même variante peut changer de nom). Repli sur la valeur seulement si le nom est vide.
     const lab = String(v.label || '').toUpperCase().replace(/\s+/g, '');
+    // « Unité » / « Pièce » / « 1 pièce » seul = variante unique : AUCUN suffixe, quel que soit le type de variante
+    if (v.mode !== 'gram' && U.num(v.value) <= 1 && /^(1|UN|UNE)?(PC|PCS|PI[EÈ]CES?|UNIT[EÉ]S?|UNIT|U)$/.test(lab.normalize('NFC'))) return '';
     if (v.mode === 'gram') {
       if (lab) return lab;
       return U.num(v.value) >= 1000 ? (U.num(v.value) / 1000) + 'KG' : v.value + 'G';

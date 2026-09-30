@@ -1822,7 +1822,7 @@ const Params = {
     // pas la suggestion auto) : il ne doit ni être compté ni être écrasé.
     // Le « -1PC » redondant (ancien format auto d'une pièce) est le SEUL cas où un SKU non vide/non
     // doublon est quand même proposé à la normalisation — car c'est un SKU auto obsolète, pas un choix.
-    const redundant1pc = r => r.sku && r.sku.trim().toUpperCase() === (r.suggested + '-1PC').toUpperCase();
+    const redundant1pc = r => r.sku && ['-1PC', '-UNITE', '-PIECE', '-1PIECE', '-PCS'].some(x => r.sku.trim().toUpperCase() === (r.suggested + x).toUpperCase());
     const needsSku = r => !r.sku || dupes[skuKey(r)] > 1 || redundant1pc(r);
     const allDiff = rows.filter(needsSku);
     const view = this._skuView;
@@ -1889,7 +1889,7 @@ const Params = {
     const skuKey = r => (r.sku || r.suggested || '').trim().toUpperCase();
     const dupes = {};
     rows.forEach(r => { const k = skuKey(r); if (k) dupes[k] = (dupes[k] || 0) + 1; });
-    const redundant1pc = r => r.sku && r.sku.trim().toUpperCase() === (r.suggested + '-1PC').toUpperCase();
+    const redundant1pc = r => r.sku && ['-1PC', '-UNITE', '-PIECE', '-1PIECE', '-PCS'].some(x => r.sku.trim().toUpperCase() === (r.suggested + x).toUpperCase());
     const diffRows = rows.filter(r => !r.sku || dupes[skuKey(r)] > 1 || redundant1pc(r));
     if (!diffRows.length) { U.toast('Aucun SKU manquant, en doublon ou à normaliser — rien à corriger.'); return; }
     const meat = this._skuMeat || 'all';
