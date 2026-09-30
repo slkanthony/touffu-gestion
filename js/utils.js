@@ -760,3 +760,18 @@ U.dsel = {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => U.dsel.scan(document));
   else U.dsel.scan(document);
 })();
+
+/* Touche Entrée (2026-09-30) : dans une fenêtre, Entrée depuis un champ = bouton principal (Valider/Enregistrer) ;
+   sur la page, Entrée dans un champ « au changement » (onchange, sans saisie en direct) = valide la saisie. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  const t = e.target;
+  if (!t || t.tagName !== 'INPUT' || ['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'color'].includes(t.type)) return;
+  if (document.getElementById('askBg') || t.classList.contains('nsel-search') || t.classList.contains('dsel-trig') || t.closest('.autocomplete, .nsel-panel, .dsel-panel')) return;
+  const ok = document.getElementById('modalOk');
+  if (t.closest('#modalBg')) {
+    if (ok && !ok.disabled && ok.offsetParent !== null) { e.preventDefault(); ok.click(); }
+    return;
+  }
+  if (t.hasAttribute('onchange') && !t.hasAttribute('oninput')) { e.preventDefault(); t.blur(); }
+});
