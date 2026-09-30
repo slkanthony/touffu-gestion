@@ -242,6 +242,7 @@ const Ventes = {
   setQ(v) {
     const freshOpen = !this.qOpen && v === this.q;
     this.qFreshOpen = freshOpen;
+    this.catOpen = false; this.catFreshOpen = false;   // un seul menu ouvert à la fois (et pas de re-rendu qui ferait perdre le focus au 1er clic)
     this.q = v; this.qOpen = true;
     if (!freshOpen) this.selKey = '';
     this.render();
@@ -249,6 +250,7 @@ const Ventes = {
   setCatQ(v) {
     const freshOpen = !this.catOpen && v === this.catQ;
     this.catFreshOpen = freshOpen;
+    this.qOpen = false; this.qFreshOpen = false;
     this.catQ = v; this.catOpen = true;
     if (!freshOpen) {
       const types = [...new Set(this.units().map(u => u.type))];
