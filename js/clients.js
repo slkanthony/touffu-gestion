@@ -147,7 +147,7 @@ const Clients = {
     const chips = meats.map(m => { const st = (d.meats || {})[m]; return `<span class="cl-chip ${st || ''}" title="Clique : aime ❤ → évite ⛔ → neutre" onclick="Clients.cycleMeat('${c.id}','${d.id}','${U.esc(m).replace(/'/g, '&#39;')}')">${st === 'like' ? '❤ ' : st === 'avoid' ? '⛔ ' : ''}${U.esc(m)}</span>`; }).join('');
     const age = this.ageTxt(d.birth);
     const sub = [age, d.allergies ? '⚠️ ' + U.esc(d.allergies) : ''].filter(Boolean).join(' · ');
-    return `<details class="cl-dog fold" ${this._dogOpen[d.id] || !d.name ? 'open' : ''} ontoggle="Clients._dogOpen['${d.id}']=this.open"><summary class="cl-dog-h"><b>🐕 ${U.esc(d.name || 'Nouveau chien')}</b>${sub ? ` <span class="muted">· ${sub}</span>` : ''}</summary>
+    return `<details class="cl-dog fold" ${this._dogOpen[d.id] ? 'open' : ''} ontoggle="Clients._dogOpen['${d.id}']=this.open"><summary class="cl-dog-h"><b>🐕 ${U.esc(d.name || 'Nouveau chien')}</b>${sub ? ` <span class="muted">· ${sub}</span>` : ''}</summary>
       <div class="cl-dog-b">
       ${ro ? '' : `<div style="text-align:right;margin-bottom:6px;"><button class="btn-danger btn-sm" onclick="Clients.delDog('${c.id}','${d.id}')">🗑 Retirer ce chien</button></div>`}
       <div class="grid c4">
