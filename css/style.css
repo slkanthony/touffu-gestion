@@ -1184,3 +1184,5 @@ details.cl-dog > summary::-webkit-details-marker { display: none; }
 details.cl-dog > summary::before { content: '▸'; color: var(--caramel); margin-right: 8px; display: inline-block; }
 details.cl-dog[open] > summary::before { content: '▾'; }
 .cl-dog-b { margin-top: 8px; }
+
+tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
