@@ -39,7 +39,7 @@ const Stats = {
       <button class="${t === 'sales' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('sales')">🛒 Ventes</button>
       <button class="${t === 'pack' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('pack')">📦 Emballages</button>
       <button class="${t === 'events' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('events')">🎪 Événements</button>
-      <button class="${t === 'clients' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('clients')">👤 Clients</button>
+      ${App.isViewer || App.isTeam ? '' : `<button class="${t === 'clients' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('clients')">👤 Clients</button>`}
     </div></div>`;
   },
 
@@ -48,7 +48,7 @@ const Stats = {
     if ((this.tab || 'price') === 'sales') return this.renderSales();
     if (this.tab === 'pack') return this.renderPack();
     if (this.tab === 'events') return this.renderEvents();
-    if (this.tab === 'clients') return this.renderClients();
+    if (this.tab === 'clients' && !App.isViewer && !App.isTeam) return this.renderClients();
     return this.renderPrice();
   },
 
@@ -163,55 +163,7 @@ const Stats = {
     this._evSimCur = simName;
     if (simName) this._simEvent();
   },
-  /* ═══════════ Onglet « 👤 Clients » (2026-09-30) ═══════════
-     Suivi par client : regroupe les ventes non annulées par sale.customerName (casse/espaces ignorés).
-     Le nom se saisit à la vente, ou après coup (Ventes → historique → détail, ou ✏️ Modifier). */
-  _clientAgg() {
-    const map = {};
-    let noName = 0;
-    Store.state.sales.filter(s => !s.cancelled).forEach(s => {
-      const nm = (s.customerName || '').trim();
-      if (!nm) { noName++; return; }
-      const k = nm.toLowerCase();
-      const c = map[k] || (map[k] = { name: nm, n: 0, ca: 0, net: 0, last: 0, first: Infinity, prods: {}, sales: [] });
-      c.n++; c.ca += U.num(s.total); c.net += Pricing.saleProfit(s).net;
-      c.last = Math.max(c.last, s.ts); c.first = Math.min(c.first, s.ts);
-      c.sales.push(s);
-      (s.items || []).filter(i => i.kind !== 'C').forEach(i => { const pk = i.name + (i.label ? ' ' + i.label : ''); c.prods[pk] = (c.prods[pk] || 0) + U.num(i.qty); });
-    });
-    return { list: Object.values(map), noName };
-  },
-  _toggleCl(enc) { const k = decodeURIComponent(enc); const o = this._clOpen || (this._clOpen = {}); o[k] = !o[k]; this.render(); },
-  setClientSort(k) {
-    const cur = this._clSort || { k: 'ca', dir: 'desc' };
-    this._clSort = cur.k === k ? { k, dir: cur.dir === 'asc' ? 'desc' : 'asc' } : { k, dir: k === 'name' ? 'asc' : 'desc' };
-    this.render();
-  },
-  renderClients() {
-    const { list, noName } = this._clientAgg();
-    const q = (this._clQ || '').toLowerCase();
-    const so = this._clSort || { k: 'ca', dir: 'desc' }, dir = so.dir === 'asc' ? 1 : -1;
-    const shown = list.filter(c => !q || c.name.toLowerCase().includes(q)).sort((a, b) => so.k === 'name' ? dir * U.sortFr(a.name, b.name) : dir * ((so.k === 'basket' ? a.ca / a.n - b.ca / b.n : a[so.k] - b[so.k])));
-    const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Stats.setClientSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
-    const open = this._clOpen || (this._clOpen = {});
-    const rows = shown.map(c => {
-      const top = Object.entries(c.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q2]) => `${U.esc(n)} ×${q2}`).join(' · ');
-      const k = encodeURIComponent(c.name).replace(/'/g, '%27');
-      const detail = open[c.name] ? `<tr class="ev-year"><td colspan="7" style="padding:6px 12px 10px 28px;"><div class="muted" style="font-size:.85rem;margin-bottom:4px;">Produits favoris : ${top || '—'}</div>${c.sales.slice().sort((a, b) => b.ts - a.ts).map(s => `<div style="font-size:.85rem;">${U.frDateTime(s.ts)} — ${s.eventName ? '🎪 ' + U.esc(s.eventName) + ' · ' : ''}${(s.items || []).filter(i => i.kind !== 'C').map(i => U.esc(i.name) + (i.label ? ' ' + U.esc(i.label) : '') + ' ×' + i.qty).join(', ')} — <b>${U.eur(s.total)}</b></div>`).join('')}</td></tr>` : '';
-      return `<tr style="cursor:pointer;" onclick="Stats._toggleCl('${k}')"><td class="col-name" style="text-align:left;"><b>${open[c.name] ? '▾' : '▸'} 👤 ${U.esc(c.name)}</b></td><td class="num">${c.n}</td><td class="num sensitive">${U.eur(c.ca)}</td><td class="num sensitive">${U.eur(c.ca / c.n)}</td><td class="num sensitive ${c.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(c.net)}</b></td><td class="num">${new Date(c.last).toLocaleDateString('fr-FR')}</td><td class="muted" style="font-size:.82rem;">${top}</td></tr>${detail}`;
-    }).join('');
-    App.mount(`
-      <div class="view-title"><h1>Statistiques</h1><span class="sub">suivi des clients</span></div>
-      ${this.tabBar()}
-      <div class="card">
-        <h2>👤 Mes clients</h2>
-        <div class="fg" style="max-width:300px;"><label>Rechercher</label><input id="cl_q" value="${U.esc(this._clQ || '')}" placeholder="nom du client…" oninput="Stats._clQ=this.value;Stats.render();U.refocus('cl_q')"></div>
-        ${list.length ? `<div class="table-wrap mt"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Client')}</th><th class="num">${sh('n', 'Commandes')}</th><th class="num">${sh('ca', 'CA total')}</th><th class="num">${sh('basket', 'Panier moyen')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('last', 'Dernière commande')}</th><th style="text-align:left;">Top produits</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <p class="muted help" style="font-size:.82rem;">Clique un client pour voir ses commandes. Le bénéfice net tient compte du coût de revient, des frais et des cotisations de chaque commande.</p>`
-        : '<p class="muted mt">Aucun client renseigné pour l&#39;instant. Saisis un nom à la vente (champ « Client »), ou après coup dans <b>Ventes → historique → détail d&#39;une vente</b>.</p>'}
-        ${noName ? `<p class="muted" style="font-size:.85rem;">ℹ️ ${noName} vente(s) sans nom de client ne sont pas comptées ici.</p>` : ''}
-      </div>`);
-  },
+  renderClients() { return Clients.render(); },
   _evFicheDirty() { const e = document.getElementById('evf_state'); if (e) { e.textContent = '● Modifications non enregistrées'; e.style.color = '#f5b041'; } },
   saveEventFiche() {
     const name = this._evSimCur; if (!name) return;

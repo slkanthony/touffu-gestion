@@ -459,6 +459,7 @@ const Ventes = {
   _finalizeSale(channel, payment, delivery) {
     U.closeModal();
     if (!this.cart.length) return;
+    Clients.ensure(this.customerName);
     const sale = { id: U.uid(), ts: Date.now(), source: this.source, channel, payment, delivery, customerName: (this.customerName || '').trim(), items: [], total: 0, cancelled: false, undoOps: [] };
     const shortfalls = this._deductSale(sale, this.cart, this.source);
     if (delivery === 'livraison') {
@@ -659,14 +660,11 @@ const Ventes = {
     if (e.target.closest('button,input,select,a,label,textarea,.badge[onclick]')) return;
     this.toggleHistOpen(id);
   },
-  clientsDatalist() {
-    const names = [...new Set((Store.state.sales || []).map(x => (x.customerName || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-    return `<datalist id="dl_clients">${names.map(n => `<option value="${U.esc(n)}">`).join('')}</datalist>`;
-  },
+  clientsDatalist() { return Clients.datalist(); },
   setCustomerName(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
-    s.customerName = String(val || '').trim();
+    s.customerName = String(val || '').trim(); Clients.ensure(s.customerName);
     const entry = Store.commitSnapshot(snap, 'vente', `Client — ${U.frDateTime(s.ts)} : ${s.customerName || '(aucun)'}`);
     Store.save('sales'); U.toast('Client enregistré.', false, entry.id);
     this.render();

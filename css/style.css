@@ -1159,3 +1159,14 @@ table.sale-sum td { padding: 5px 10px; border: 0; border-bottom: 1px solid var(-
 table.sale-sum td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 table.sale-sum tr.sale-sum-net td { border-top: 2px solid var(--caramel); border-bottom: 0; font-size: 1.05rem; padding-top: 8px; }
 .sales-hist tr.hist-click { cursor: pointer; }
+
+.cl-body { padding: 8px 4px 12px; text-align: left; }
+.cl-fiche > td { background: rgba(166,113,83,.06); border-left: 3px solid var(--caramel); }
+.cl-dog { border: 1px solid rgba(166,113,83,.45); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: var(--card-bg); }
+.cl-dog-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cl-chip { padding: 3px 10px; border: 1px solid var(--card-border); border-radius: 999px; font-size: .82rem; cursor: pointer; user-select: none; }
+.cl-chip.like { background: rgba(80,160,90,.25); border-color: #5aa469; font-weight: 600; }
+.cl-chip.avoid { background: rgba(200,80,70,.25); border-color: #c8564b; font-weight: 600; }
+.cl-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .cl-cols { grid-template-columns: 1fr; } }

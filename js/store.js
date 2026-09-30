@@ -5,7 +5,7 @@
                  journal + instantanés quotidiens, temps réel)
    ============================================================ */
 const Store = {
-  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'journal', 'meta'],
+  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'journal', 'meta'],
   state: null,
   sb: null,            // client supabase
   session: null,
@@ -359,7 +359,7 @@ const Store = {
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
-        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', journal: 'journal', meta: 'infos techniques' };
+        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', journal: 'journal', meta: 'infos techniques' };
         U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => names[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
       }
     } else {
