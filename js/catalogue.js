@@ -148,7 +148,7 @@ const Catalogue = {
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
         <td class="num sensitive">${U.eur(c.cost, 3)}</td>
-        <td class="num sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`)}</td>
+        <td class="num sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, U.num(p.coefficient) || 2)}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
@@ -601,11 +601,19 @@ const Catalogue = {
   /* Case Coeff d'une ligne (fiche + éditeur) : coefficient réel de la ligne ; gris = calculé (coeff commun
      − décote), normal + ↺ = propre à la ligne (coefficient tapé ou prix TTC fixé). Le ↺ remet la ligne sur
      le calcul automatique. La place du ↺ est toujours réservée → cases alignées. */
-  coeffCell(c, onChange, onReset) {
+  /* Décote de la ligne par rapport au coeff commun (petit texte sous la case) : décote paliers exacte pour une ligne
+     automatique, écart réel pour une ligne dont le prix / coeff est fixé. Masquée sous 1 %. */
+  decoteTag(c, common) {
+    const k = U.num(common) || 2;
+    const d = c.ownCoeff ? (c.effCoeff > 0 ? 1 - c.effCoeff / k : 0) : U.num(c.discount);
+    if (Math.abs(d) < 0.01) return '';
+    return `<span class="coeff-dec${d < 0 ? ' plus' : ''}" title="Écart de cette ligne par rapport au coeff commun (${k})">${d > 0 ? 'décote ' : '+'}${U.pct(Math.abs(d) * 100)}</span>`;
+  },
+  coeffCell(c, onChange, onReset, common) {
     const own = !!c.ownCoeff;
     const tip = own ? (c.priceFixed ? 'Prix TTC fixé à la main — le coefficient en découle. Modifier le coefficient retire le prix fixé.' : 'Coefficient propre à cette variante')
       : ('Calculé : coeff commun' + (c.discount ? ' − décote ' + U.pct(c.discount * 100) : ''));
-    return `<span class="coeff-cell"><input type="number" step="0.01" min="0" value="${(c.effCoeff || 0).toFixed(2)}" class="coeff-in${own ? '' : ' auto'}" title="${tip}" onchange="${onChange}"><button type="button" class="btn-icon coeff-reset" title="Revenir au calcul automatique (coeff commun − décote)" ${own ? '' : 'style="visibility:hidden" tabindex="-1"'} onclick="${onReset}">↺</button></span>`;
+    return `<span class="coeff-wrap"><span class="coeff-cell"><input type="number" step="0.01" min="0" value="${(c.effCoeff || 0).toFixed(2)}" class="coeff-in${own ? '' : ' auto'}" title="${tip}" onchange="${onChange}"><button type="button" class="btn-icon coeff-reset" title="Revenir au calcul automatique (coeff commun − décote)" ${own ? '' : 'style="visibility:hidden" tabindex="-1"'} onclick="${onReset}">↺</button></span>${common !== undefined ? this.decoteTag(c, common) : ''}</span>`;
   },
   setCardCommonCoeff(prodId, val) {
     const p = Store.state.catalogM.find(x => String(x.id) === String(prodId)); if (!p) return;
@@ -790,7 +798,7 @@ const Catalogue = {
       </td>
       <td>${firstCell}
         <div class="mini-coeff"><label>Coeff${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</label>
-          ${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</div>
+          ${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`, U.num(this._d.coefficient) || 2)}</div>
       </td>
       <td>${this.packPicker(i, v.sachetId, v.mode)}
         <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>

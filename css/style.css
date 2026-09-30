@@ -1199,3 +1199,8 @@ tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
 
 /* Zones de note : une ligne au départ, s'agrandissent avec le texte (Shift+Entrée = nouvelle ligne) */
 textarea.note-area { resize: none; overflow: hidden; width: 100%; min-height: 40px; line-height: 1.35; field-sizing: content; font-family: inherit; }
+
+/* Décote de la ligne sous le coeff */
+.coeff-dec { display: block; font-size: .72rem; font-weight: 600; color: #e6c44d; line-height: 1.1; margin-top: 2px; text-align: left; padding-left: 4px; white-space: nowrap; }
+.coeff-dec.plus { color: var(--gris); }
+.coeff-wrap { display: inline-flex; flex-direction: column; align-items: flex-start; }
