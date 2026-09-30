@@ -206,7 +206,7 @@ const Clients = {
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">clients &amp; chiens</span></div>
       ${Stats.tabBar()}
-      <div class="card">
+      <div class="card cl-card">
         <h2>👤 Mes clients</h2>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:280px;"><label>Rechercher (client ou chien)</label><input id="cl_q" value="${U.esc(this._q)}" placeholder="nom…" oninput="Clients.setQ(this.value)"></div>

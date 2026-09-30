@@ -1186,3 +1186,9 @@ details.cl-dog[open] > summary::before { content: '▾'; }
 .cl-dog-b { margin-top: 8px; }
 
 tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
+
+/* Onglet Clients : aucun changement de couleur au survol (les lignes de tableau gardent leur teinte habituelle) */
+.cl-card tbody tr:hover > td { background: transparent !important; }
+.cl-card tbody tr:nth-child(even):hover > td { background: rgba(166,113,83,.05) !important; }
+:root[data-theme="dark"] .cl-card tbody tr:nth-child(even):hover > td { background: rgba(255,255,255,.03) !important; }
+.cl-card tbody tr.cl-fiche:hover > td { background: rgba(166,113,83,.06) !important; }
