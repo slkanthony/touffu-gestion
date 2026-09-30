@@ -119,7 +119,10 @@ const Store = {
   _saveSeq: 0,
   async loadRemote() {
     const seq = this._saveSeq;
-    const { data, error } = await this.sb.from('app_state').select('key,data');
+    // Profil visite : la base refuse la lecture directe (données personnelles des clients) ; il passe par une fonction
+    // SQL qui renvoie les données SANS clients, journal ni noms de clients sur les ventes (voir supabase_schema.sql).
+    const isViewer = (this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role) === 'viewer';
+    const { data, error } = isViewer ? await this.sb.rpc('app_state_safe') : await this.sb.from('app_state').select('key,data');
     if (error) throw error;
     // ⚠️ Course corrigée (2026-09-30, « je dois enregistrer plusieurs fois ») : la réponse arrive APRÈS coup. Si pendant
     // l'attente une fenêtre d'édition s'est ouverte (elle garde des références vers l'ANCIENS objets) ou si on a modifié /

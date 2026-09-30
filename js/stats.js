@@ -39,7 +39,7 @@ const Stats = {
       <button class="${t === 'sales' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('sales')">🛒 Ventes</button>
       <button class="${t === 'pack' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('pack')">📦 Emballages</button>
       <button class="${t === 'events' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('events')">🎪 Événements</button>
-      <button class="${t === 'clients' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('clients')">👤 Clients</button>
+      ${App.isViewer ? '' : `<button class="${t === 'clients' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('clients')">👤 Clients</button>`}
     </div></div>`;
   },
 
@@ -48,7 +48,7 @@ const Stats = {
     if ((this.tab || 'price') === 'sales') return this.renderSales();
     if (this.tab === 'pack') return this.renderPack();
     if (this.tab === 'events') return this.renderEvents();
-    if (this.tab === 'clients') return this.renderClients();
+    if (this.tab === 'clients' && !App.isViewer) return this.renderClients();
     return this.renderPrice();
   },
 

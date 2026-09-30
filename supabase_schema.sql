@@ -39,15 +39,36 @@ alter table public.app_state  enable row level security;
 alter table public.snapshots  enable row level security;
 alter table public.connexions enable row level security;
 
--- Lecture : tout compte connecté
+-- Lecture : l'admin et l'équipe lisent tout. Le profil VISITE (viewer) n'a AUCUN accès direct : ni app_state, ni snapshots
+-- (sauvegardes complètes). Il lit via la fonction app_state_safe() = mêmes données SANS clients/journal et sans le nom
+-- des clients sur les ventes (données personnelles : jamais envoyées au navigateur d'un visiteur).
 drop policy if exists "app_state connectés" on public.app_state;
 drop policy if exists "app_state lecture" on public.app_state;
 create policy "app_state lecture" on public.app_state
-  for select to authenticated using (true);
+  for select to authenticated using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer');
 drop policy if exists "snapshots connectés" on public.snapshots;
 drop policy if exists "snapshots lecture" on public.snapshots;
 create policy "snapshots lecture" on public.snapshots
-  for select to authenticated using (true);
+  for select to authenticated using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer');
+
+create or replace function public.app_state_safe()
+returns table(key text, data jsonb)
+language plpgsql security definer set search_path = public as $fn$
+begin
+  if coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer' then
+    return query select a.key, a.data from public.app_state a;
+  else
+    return query
+      select a.key,
+        case when a.key = 'sales' and jsonb_typeof(a.data) = 'array'
+             then (select coalesce(jsonb_agg(e - 'customerName'), '[]'::jsonb) from jsonb_array_elements(a.data) e)
+             else a.data end
+      from public.app_state a
+      where a.key not in ('clients', 'journal');
+  end if;
+end $fn$;
+revoke all on function public.app_state_safe() from public, anon;
+grant execute on function public.app_state_safe() to authenticated;
 
 -- Écriture app_state : admin (aucun rôle) = tout ; équipe ('team') = stock + fiches prix
 -- (l'appli ne laisse l'équipe modifier QUE lien / réf. / notes fournisseur des fiches prix) ;
