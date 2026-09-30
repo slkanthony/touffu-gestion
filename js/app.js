@@ -286,7 +286,8 @@ const App = {
   },
 
   _render(id) {
-    if (this.current !== id) this._resetFolds();
+    if (this.current !== id) { this._resetFolds(); if (this._rendered) U.resetFiltersExcept(id); }
+    this._rendered = true;
     this.current = id;
     localStorage.setItem('touffu_lastView', id);
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === id));

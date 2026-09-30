@@ -58,12 +58,26 @@ const U = {
      persistées : on ne veut pas rouvrir un panneau de filtre tout seul au chargement.
      `keys` optionnel : liste de propriétés à cibler sur un objet qui n'est pas dédié aux
      filtres (ex: un module entier avec quelques propriétés éparses) — sinon Object.keys(obj). */
+  /* (2026-09-30) Les filtres survivent à un F5 (sessionStorage) mais sont REMIS À ZÉRO dès qu'on quitte la page pour une autre
+     page de l'appli (App._render → U.resetFiltersExcept). Changer d'onglet à l'intérieur d'une même page (ex. Stock) les garde. */
+  _filtReg: {},
+  _filtView(name) {
+    if (name.startsWith('stock_')) return 'stock';
+    return { catalogue: 'catalogue', b2b: 'b2b', woo: 'woo', accessoires: 'accessoires', stats: 'stats', clients_ui: 'stats', paniers: 'paniers', ventes_hist: 'ventes' }[name] || name;
+  },
   syncFilters(name, obj, keys) {
     const lsKey = 'touffu_filt_' + name;
     const isSkipped = k => k === '__fLoaded' || /open$/i.test(k);
+    if (!this._filtCleaned) {   // ancienne version : filtres gardés indéfiniment dans localStorage
+      this._filtCleaned = true;
+      try { Object.keys(localStorage).filter(k => k.startsWith('touffu_filt_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    }
     if (!obj.__fLoaded) {
+      const defs = {};
+      (keys || Object.keys(obj)).forEach(k => { if (!isSkipped(k) && obj[k] !== undefined) defs[k] = JSON.parse(JSON.stringify(obj[k])); });
+      this._filtReg[name] = { obj, keys, defs, view: this._filtView(name) };
       try {
-        const saved = JSON.parse(localStorage.getItem(lsKey) || '{}');
+        const saved = JSON.parse(sessionStorage.getItem(lsKey) || '{}');
         Object.keys(saved).forEach(k => { if (!isSkipped(k) && (!keys || keys.includes(k))) obj[k] = saved[k]; });
       } catch (e) {}
       obj.__fLoaded = true;
@@ -72,8 +86,16 @@ const U = {
       const list = keys || Object.keys(obj);
       const out = {};
       list.forEach(k => { if (!isSkipped(k)) out[k] = obj[k]; });
-      localStorage.setItem(lsKey, JSON.stringify(out));
+      sessionStorage.setItem(lsKey, JSON.stringify(out));
     } catch (e) {}
+  },
+  resetFiltersExcept(viewId) {
+    Object.keys(this._filtReg).forEach(name => {
+      const r = this._filtReg[name];
+      if (r.view === viewId) return;
+      (r.keys || Object.keys(r.defs)).forEach(k => { if (/open$/i.test(k) || k === '__fLoaded') return; r.obj[k] = k in r.defs ? JSON.parse(JSON.stringify(r.defs[k])) : undefined; });
+      try { sessionStorage.removeItem('touffu_filt_' + name); } catch (e) {}
+    });
   },
 
   frDateLong(iso) {
