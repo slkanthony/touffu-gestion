@@ -782,5 +782,6 @@ document.addEventListener('keydown', (e) => {
     if (ok && !ok.disabled && ok.offsetParent !== null) { e.preventDefault(); ok.click(); }
     return;
   }
-  if (t.hasAttribute('onchange') && !t.hasAttribute('oninput')) { e.preventDefault(); t.blur(); }
+  // Pas de preventDefault : le navigateur valide lui-même (événement « change ») sur Entrée ; on retire juste le focus ensuite.
+  if (t.hasAttribute('onchange') && !t.hasAttribute('oninput')) setTimeout(() => { if (document.activeElement === t) t.blur(); }, 0);
 });
