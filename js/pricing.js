@@ -87,7 +87,7 @@ const Pricing = {
      sur les événements, coût variable selon ce qu'ils trouvent à manger). */
   eventCost(s) { return U.num(s && s.eventFee) + U.num(s && s.travelCost) + U.num(s && s.mealFee); },
 
-  variantCalc(p, v, idxActive, base, nActive) {
+  variantCalc(p, v, idxActive, base, nActive, _noRec) {
     const S = Store.state.settings;
     const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
     const prodCost = this.variantProdCost(p, v, base);
@@ -125,7 +125,10 @@ const Pricing = {
     const vatAmt = priceTTC - priceHT;
     const profit = margin - social - vatAmt;
     const effCoeff = cost > 0 ? priceHT / cost : 0;
-    return { prodCost, sacCost, labelCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, ownCoeff: priceFixed || U.num(v.coeff) > 0, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
+    // Réglage propre à la ligne (coeff ou prix tapé) : signalé (↺) seulement s'il donne un prix DIFFÉRENT du calcul automatique
+    let own = priceFixed || U.num(v.coeff) > 0;
+    if (own && !_noRec) { const auto = this.variantCalc(p, { ...v, coeff: '', priceTTCManual: undefined }, idxActive, base, nActive, true); if (Math.abs(auto.priceTTC - priceTTC) < 0.005) own = false; }
+    return { prodCost, sacCost, labelCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
   },
 
   labelVariant(v) {
