@@ -587,7 +587,7 @@ const Catalogue = {
 
   /* Bascule rapide du fournisseur principal, directement depuis la carte */
   setMain(prodId, supplierId) {
-    const p = Store.state.catalogM.find(x => x.id === prodId);
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId));
     if (!p) return;
     const snap = Store.snapshot('catalogM', p);
     p.mainSupplierId = supplierId;
@@ -608,7 +608,7 @@ const Catalogue = {
     return `<span class="coeff-cell"><input type="number" step="0.01" min="0" value="${(c.effCoeff || 0).toFixed(2)}" class="coeff-in${own ? '' : ' auto'}" title="${tip}" onchange="${onChange}"><button type="button" class="btn-icon coeff-reset" title="Revenir au calcul automatique (coeff commun − décote)" ${own ? '' : 'style="visibility:hidden" tabindex="-1"'} onclick="${onReset}">↺</button></span>`;
   },
   setCardCommonCoeff(prodId, val) {
-    const p = Store.state.catalogM.find(x => x.id === prodId); if (!p) return;
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId)); if (!p) return;
     const k = U.num(val);
     if (k <= 0) { App.rerender(); return; }
     const snap = Store.snapshot('catalogM', p);
@@ -620,8 +620,8 @@ const Catalogue = {
     App.rerender();
   },
   resetCardLine(prodId, varId) {
-    const p = Store.state.catalogM.find(x => x.id === prodId); if (!p) return;
-    const v = (p.variants || []).find(x => x.id === varId); if (!v) return;
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId)); if (!p) return;
+    const v = (p.variants || []).find(x => String(x.id) === String(varId)); if (!v) return;
     const snap = Store.snapshot('catalogM', p);
     delete v.priceTTCManual; v.coeff = '';
     Stock.syncPricesFromCatalog(p.id);
@@ -631,7 +631,7 @@ const Catalogue = {
     App.rerender();
   },
   setCardBulkDiscount(prodId, val) {
-    const p = Store.state.catalogM.find(x => x.id === prodId);
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId));
     if (!p) return;
     const snap = Store.snapshot('catalogM', p);
     p.bulkDiscount = val === '' ? undefined : U.num(val);
@@ -648,7 +648,7 @@ const Catalogue = {
      Retourne la valeur posée (en %), ou null si rien à déduire (1re variante, une seule variante, prix au-dessus du coeff commun). */
   _deriveBulk(p, v) {
     const actives = (p.variants || []).filter(x => x.enabled !== false);
-    const n = actives.length, idx = actives.findIndex(x => x.id === v.id);
+    const n = actives.length, idx = actives.findIndex(x => String(x.id) === String(v.id));
     if (n < 2 || idx < 1) return null;
     const c = Pricing.variantCalc(p, v, idx, Pricing.baseUnitCost(p), n);
     const common = U.num(p.coefficient) || 2;
@@ -660,9 +660,9 @@ const Catalogue = {
     return bulk;
   },
   setCardPriceTTC(prodId, varId, val, idxActive) {
-    const p = Store.state.catalogM.find(x => x.id === prodId);
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId));
     if (!p) return;
-    const v = (p.variants || []).find(x => x.id === varId);
+    const v = (p.variants || []).find(x => String(x.id) === String(varId));
     if (!v) return;
     const snap = Store.snapshot('catalogM', p);
     const ttc = U.num(val);
@@ -682,8 +682,8 @@ const Catalogue = {
   /* Coefficient modifié directement dans la fiche (2026-09-27, demande d'Antho, comme son ancienne appli) :
      le prix de vente suit le coefficient ; si la variante avait un prix fixé, il est retiré. */
   setCardCoeff(prodId, varId, val) {
-    const p = Store.state.catalogM.find(x => x.id === prodId); if (!p) return;
-    const v = (p.variants || []).find(x => x.id === varId); if (!v) return;
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId)); if (!p) return;
+    const v = (p.variants || []).find(x => String(x.id) === String(varId)); if (!v) return;
     const k = U.num(val);
     if (k <= 0) { App.rerender(); return; }
     const snap = Store.snapshot('catalogM', p);
@@ -1003,7 +1003,7 @@ _saveTeam() {
   },
 
   async remove(id) {
-    const p = Store.state.catalogM.find(x => x.id === id);
+    const p = Store.state.catalogM.find(x => String(x.id) === String(id));
     if (!await U.confirm(`Supprimer "${p.name}" du catalogue ? (le stock existant est conservé)`)) return;
     const snap = Store.snapshot('catalogM', p);
     Store.state.catalogM = Store.state.catalogM.filter(x => x.id !== id);

@@ -364,7 +364,7 @@ const B2B = {
      logique que l'ancien calculateur : c'est une donnée de tarification
      pro, pas une donnée produit). */
   setProductDiscount(pId, val) {
-    const p = Store.state.catalogM.find(x => x.id === pId); if (!p) return;
+    const p = Store.state.catalogM.find(x => String(x.id) === String(pId)); if (!p) return;
     const snap = Store.snapshot('catalogM', p);
     p.b2bDiscount = val;
     const entry = Store.commitSnapshot(snap, 'b2b', 'Décote B2B modifiée — ' + p.name);
@@ -375,7 +375,7 @@ const B2B = {
 
   /* Idem pour un accessoire (`a.b2bDiscount` sur catalogA). */
   setAccDiscount(aId, val) {
-    const a = Store.state.catalogA.find(x => x.id === aId); if (!a) return;
+    const a = Store.state.catalogA.find(x => String(x.id) === String(aId)); if (!a) return;
     const snap = Store.snapshot('catalogA', a);
     a.b2bDiscount = val;
     const entry = Store.commitSnapshot(snap, 'b2b', 'Décote B2B modifiée — ' + a.name);
