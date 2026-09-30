@@ -209,7 +209,7 @@ const Clients = {
         <h2>👤 Mes clients</h2>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:280px;"><label>Rechercher (client ou chien)</label><input id="cl_q" value="${U.esc(this._q)}" placeholder="nom…" oninput="Clients.setQ(this.value)"></div>
-          ${this.ro() ? '' : `<div class="fg" style="max-width:280px;"><label>Nouveau client <span class="muted" style="font-weight:400;">(prénom puis nom)</span></label><input id="cl_new" placeholder="ex : Justine Saoudi" onkeydown="if(event.key==='Enter')Clients.create()"></div>
+          ${this.ro() ? '' : `<div class="fg" style="max-width:280px;"><label>Nouveau client <span class="muted" style="font-weight:400;">(prénom puis nom)</span></label><input id="cl_new" placeholder="ex : Jean Dupont" onkeydown="if(event.key==='Enter')Clients.create()"></div>
           <button class="btn-cta" onclick="Clients.create()">＋ Créer la fiche</button>`}
         </div>
         ${rowsData.length ? `<div class="table-wrap mt"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Client')}</th><th style="text-align:left;">${sh('dogs', 'Chiens')}</th><th class="num">${sh('n', 'Commandes')}</th><th class="num">${sh('ca', 'CA total')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('last', 'Dernière commande')}</th></tr></thead><tbody>${rows}</tbody></table></div>
