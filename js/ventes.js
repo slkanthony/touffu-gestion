@@ -296,6 +296,18 @@ const Ventes = {
   },
 
   addLine() {
+    // Alerte intolérance : le client choisi a un chien qui évite / est allergique à ce produit (jamais bloquant).
+    const u0 = this.units().find(x => x.key === this.selKey);
+    const cf = u0 ? Clients.conflicts(this.customerName, u0) : [];
+    if (cf.length) {
+      U.ask({ title: '⚠️ Allergie / intolérance', okLabel: 'Ajouter quand même', cancelLabel: 'Annuler', danger: true,
+        html: `<p><b>${U.esc(u0.name)}</b> ${u0.label ? '(' + U.esc(u0.label) + ') ' : ''}pose problème pour un chien de <b>${U.esc(Clients.show(this.customerName))}</b> :</p><ul>${cf.map(x => `<li>${U.esc(x)}</li>`).join('')}</ul>` })
+        .then(ok => { if (ok) this._addLineCore(); });
+      return;
+    }
+    this._addLineCore();
+  },
+  _addLineCore() {
     const u = this.units().find(x => x.key === this.selKey);
     if (!u && !this.consoId) { U.toast('Choisis un produit ou un consommable.', true); return; }
     if (!u && this.consoId) { if (this._pushConsoIfSelected()) { this.render(); U.toast('Ajouté au ticket.'); } return; }

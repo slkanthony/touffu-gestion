@@ -4,7 +4,7 @@
    Le lien avec les ventes se fait par le NOM (sale.customerName, casse/espaces ignorés) : renommer un client met à jour ses ventes.
    Affiché dans Statistiques → 👤 Clients (admin seulement : données personnelles). */
 const Clients = {
-  _open: {}, _q: '', _sort: { k: 'ca', dir: 'desc' },
+  _open: {}, _dogOpen: {}, _q: '', _sort: { k: 'ca', dir: 'desc' },
   key(n) { return String(n || '').trim().toLowerCase(); },
   list() { return Store.state.clients || (Store.state.clients = []); },
   find(name) { const k = this.key(name); return k ? this.list().find(c => this.key(c.name) === k) : null; },
@@ -34,6 +34,21 @@ const Clients = {
     this.list().forEach(c => { if (c.firstName === undefined) { const p = this.split(c.name); c.firstName = p.first; c.lastName = p.last; added = true; } });
     (Store.state.sales || []).forEach(s => { const n = (s.customerName || '').trim(); if (n && !this.find(n)) { this.list().push(this._new(n)); added = true; } });
     if (added) Store.save('clients');
+  },
+  _norm(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); },
+  /* Alerte intolérance à la vente : viande cochée ⛔ sur un chien du client, ou mot des « allergies / intolérances » présent dans la viande ou le nom du produit. */
+  conflicts(clientName, u) {
+    const c = this.find(clientName); if (!c || !u || u.kind !== 'M') return [];
+    const meat = this._norm(u.type), prod = this._norm(u.name), out = [];
+    c.dogs.forEach(d => {
+      const who = d.name || 'Un chien';
+      const av = Object.keys(d.meats || {}).find(m => d.meats[m] === 'avoid' && this._norm(m) === meat);
+      if (av) out.push(`${who} évite / n'aime pas : ${av}`);
+      String(d.allergies || '').split(/[,;/+\n]| et /).map(t => this._norm(t).trim().replace(/s$/, '')).filter(t => t.length >= 3).forEach(t => {
+        if (meat.includes(t) || t.includes(meat) && meat.length >= 3 || prod.includes(t)) out.push(`${who} : allergie / intolérance « ${t} »`);
+      });
+    });
+    return [...new Set(out)];
   },
   ageTxt(birth) {
     if (!birth) return '';
@@ -96,8 +111,8 @@ const Clients = {
   addDog(cid) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); if (!c) return;
-    c.dogs.push({ id: U.uid(), name: '', breed: '', birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', hair: '', odor: '', fat: '', liked: '', note: '' });
-    Store.save('clients'); Stats.render();
+    c.dogs.push({ id: U.uid(), name: '', breed: '', birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', pets: '', hair: '', odor: '', fat: '', liked: '', note: '' });
+    this._dogOpen[c.dogs[c.dogs.length - 1].id] = true; Store.save('clients'); Stats.render();
   },
   async delDog(cid, did) {
     if (this.ro()) return;
@@ -130,8 +145,10 @@ const Clients = {
     const yn = [['', '— ?'], ['ok', 'Oui, aucun souci'], ['non', 'Non, ça le dérange']];
     const chips = meats.map(m => { const st = (d.meats || {})[m]; return `<span class="cl-chip ${st || ''}" title="Clique : aime ❤ → évite ⛔ → neutre" onclick="Clients.cycleMeat('${c.id}','${d.id}','${U.esc(m).replace(/'/g, '&#39;')}')">${st === 'like' ? '❤ ' : st === 'avoid' ? '⛔ ' : ''}${U.esc(m)}</span>`; }).join('');
     const age = this.ageTxt(d.birth);
-    return `<div class="cl-dog">
-      <div class="cl-dog-h"><b>🐕 ${U.esc(d.name || 'Nouveau chien')}</b>${age ? ` <span class="muted">· ${age}</span>` : ''}${ro ? '' : `<button class="btn-danger btn-sm" style="margin-left:auto;" onclick="Clients.delDog('${c.id}','${d.id}')">🗑 Retirer</button>`}</div>
+    const sub = [age, d.allergies ? '⚠️ ' + U.esc(d.allergies) : ''].filter(Boolean).join(' · ');
+    return `<details class="cl-dog fold" ${this._dogOpen[d.id] || !d.name ? 'open' : ''} ontoggle="Clients._dogOpen['${d.id}']=this.open"><summary class="cl-dog-h"><b>🐕 ${U.esc(d.name || 'Nouveau chien')}</b>${sub ? ` <span class="muted">· ${sub}</span>` : ''}</summary>
+      <div class="cl-dog-b">
+      ${ro ? '' : `<div style="text-align:right;margin-bottom:6px;"><button class="btn-danger btn-sm" onclick="Clients.delDog('${c.id}','${d.id}')">🗑 Retirer ce chien</button></div>`}
       <div class="grid c4">
         ${inp('name', 'Nom', 'Rex')}${inp('breed', 'Race', 'Berger allemand')}
         <div class="fg"><label>Date de naissance</label><input ${ro} type="date" value="${U.esc(d.birth || '')}" onchange="Clients.setDog('${c.id}','${d.id}','birth',this.value)"></div>
@@ -145,9 +162,10 @@ const Clients = {
       <div class="grid c2 mt">
         ${inp('allergies', '⚠️ Allergies / intolérances', 'ex : poulet, céréales')}${inp('health', 'Maladie / santé', 'ex : pancréatite')}
         ${inp('food', 'Croquettes / alimentation', 'marque, ration…')}${inp('liked', 'Produits préférés / déjà mastiqués', 'ex : oreilles de porc, tendons')}
+        ${inp('pets', 'Vit avec d\'autres animaux ?', 'ex : un chat, un lapin — vide = vit seul')}
       </div>
       ${inp('note', 'Note', 'autre chose à retenir')}
-    </div>`;
+      </div></details>`;
   },
   _fiche(c, a) {
     const inp = (f, lbl, ph, type) => `<div class="fg"><label>${lbl}</label><input ${type ? `type="${type}"` : ''} value="${U.esc(c[f] || '')}" placeholder="${ph || ''}" onchange="Clients.setField('${c.id}','${f}',this.value)"></div>`;

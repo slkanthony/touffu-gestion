@@ -1178,3 +1178,9 @@ table.sale-sum tr.sale-sum-net td { border-top: 2px solid var(--caramel); border
 .cl-body .fg > :not(label) { margin-top: 0 !important; }
 .cl-body input:not([type=checkbox]), .cl-body select, .cl-body .nsel-trig, .cl-body .dsel-trig { height: 40px; box-sizing: border-box; }
 .cl-body .nsel-trig { width: 100%; }
+
+details.cl-dog > summary { cursor: pointer; list-style: none; padding: 2px 0; }
+details.cl-dog > summary::-webkit-details-marker { display: none; }
+details.cl-dog > summary::before { content: '▸'; color: var(--caramel); margin-right: 8px; display: inline-block; }
+details.cl-dog[open] > summary::before { content: '▾'; }
+.cl-dog-b { margin-top: 8px; }
