@@ -28,6 +28,7 @@ const Ventes = {
   retourConsoId: '', retourConsoQty: 1, // saisie des consommables (sacs…) utilisés pendant l'événement
   kind: 'M',           // 'M' mastication (défaut) | 'A' accessoires — bascule le sélecteur de produit à sortir
   accWidth: 'all',     // filtre largeur de sangle en mode Accessoires
+  discOn: false, discPct: 5,   // réduction sur le ticket (clients partenaires…), 5 % par défaut, modifiable
   editTicketId: '', ticketConsoId: '', ticketConsoQty: 1,
   ticketCashQ: '', ticketCashOpen: false, ticketCashSelKey: '', ticketCashQty: 1, ticketCashPrice: '', // vente en liquide ajoutée après coup sur un ticket événement déjà validé
   todoOpen: false, todoFilter: 'all', todoShowDone: false, _tt: {}, _todoBanner: null, _memOpen: false, // page « 🧩 Articles à traiter » // édition d'un ticket d'événement déjà validé (frais de stand + consommables)
@@ -366,7 +367,9 @@ const Ventes = {
     const pk = u.vLots ? { vLots: u.vLots } : {};   // variante lot sans stock propre : converti en pièces à la validation
     this.cart.push({ key: u.key, kind: u.kind, pId: u.pId, vId: u.vId, lotId, lotLabel, name: u.name, label: u.label, sku: u.sku, price: u.price, qty, ...pk });
     this._pushConsoIfSelected();
-    this.qty = 1; this.selKey = ''; this.q = ''; this.lotId = '';
+    this.qty = 1; this.selKey = ''; this.q = ''; this.qFreshOpen = false; this.lotId = '';
+    // Filtres remis à zéro pour choisir le prochain produit depuis une liste complète
+    this.cat = 'all'; this.catQ = ''; this.catFreshOpen = false; this.variant = 'all'; this.accWidth = 'all';
     this.render();
     U.toast('Ajouté au ticket.');
   },
@@ -403,7 +406,10 @@ const Ventes = {
   },
 
   ticketCard() {
-    const total = this.cart.reduce((a, c) => a + c.price * c.qty, 0);
+    const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0);
+    const pct = Math.min(100, Math.max(0, U.num(this.discPct)));
+    const disc = this.discOn ? Math.round(gross * pct) / 100 : 0;
+    const total = gross - disc;
     return `<div class="card" style="border-left:4px solid var(--caramel);">
       <h2>🛒 Ticket en cours (${this.cart.length}) — stock ${this.source === 'event' ? 'événement' : 'général'}</h2>
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
@@ -414,11 +420,13 @@ const Ventes = {
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
           <td class="num"><b>${U.eur(c.price * c.qty)}</b></td>
           <td><button class="btn-icon" onclick="Ventes.cart.splice(${i},1);Ventes.render()">🗑️</button></td></tr>`).join('')}</tbody>
-        <tfoot><tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr></tfoot></table></div>
+        <tfoot>${this.discOn ? `<tr><th colspan="4">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="4">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr></tfoot></table></div>
+      <div class="fg mt" style="max-width:420px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${this.discOn ? 'checked' : ''} onchange="Ventes.discOn=this.checked;Ventes.render()"> 🏷️ Réduction sur la commande (client partenaire…)</label>
+        ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span></div>` : ''}</div>
       <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value"></div>
       <div class="frow mt">
         <button class="btn-ok" onclick="Ventes.validate()">✅ Valider la sortie de stock</button>
-        <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.render()">Vider le ticket</button>
+        <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes.render()">Vider le ticket</button>
       </div>
     </div>`;
   },
@@ -473,7 +481,11 @@ const Ventes = {
     if (!this.cart.length) return;
     Clients.ensure(this.customerName);
     const sale = { id: U.uid(), ts: Date.now(), source: this.source, channel, payment, delivery, customerName: (this.customerName || '').trim(), items: [], total: 0, cancelled: false, undoOps: [] };
-    const shortfalls = this._deductSale(sale, this.cart, this.source);
+    // Réduction : appliquée sur le prix de chaque article (les stats et le CA restent justes)
+    const pct = this.discOn ? Math.min(100, Math.max(0, U.num(this.discPct))) : 0;
+    const lines = pct > 0 ? this.cart.map(c => c.kind === 'C' ? c : { ...c, price: U.num(c.price) * (1 - pct / 100) }) : this.cart;
+    const shortfalls = this._deductSale(sale, lines, this.source);
+    if (pct > 0) { const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = pct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; }
     if (delivery === 'livraison') {
       const S = Store.state.settings;
       sale.shippingChargedToCustomer = sale.total < U.num(S.freeShippingThreshold ?? 69);
@@ -484,6 +496,7 @@ const Ventes = {
     Store.save('sales', 'stockM', 'catalogA', 'consumables');
     this.cart = [];
     this.customerName = '';
+    this.discOn = false;
     this.render();
     U.toast(`Sortie enregistrée : ${U.eur(sale.total)} · stock à jour.`, false, entry.id);
     if (shortfalls.length) this._alertShortfalls(shortfalls);
@@ -1028,6 +1041,7 @@ const Ventes = {
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
           ${field('Remise', this.deliveryLabel(s))}
+          ${s.discountPct ? field('Réduction', '−' + U.qty(s.discountPct) + ' % (−' + U.eur(s.discountAmount) + ')') : ''}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
