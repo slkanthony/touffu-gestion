@@ -87,8 +87,6 @@ const Paniers = {
     return '🐕 ' + r.dogs.map(d => d.name || 'chien').join(', ') + ' — ' + (parts.length ? parts.join(' · ') + ' → exclus à la génération' : 'aucune contrainte renseignée');
   },
   /* ---------- Panier chien par chien (cliente avec 2 chiens ou plus aux profils différents) ---------- */
-  _dog: null,
-  _dogRules(d) { const r = this._clientRules(); return { c: r ? r.c : null, dogs: [d], sensitive: !!d.sensitive, hair: d.hair === 'non', odor: d.odor === 'non', fat: d.fat === 'non' }; },
   _dogList() { const r = this._clientRules(); return r ? r.dogs.map((d, i) => Object.assign({}, d, { _n: String(d.name || '').trim() || 'Chien ' + (i + 1) })) : []; },
   _dogAges(d) {   // tranche d'âge de la fiche (naissance) → valeurs du filtre « Âge du chien » ; null si inconnue
     if (!d.birth) return null; const b = new Date(d.birth), n = new Date(); if (isNaN(b)) return null;
@@ -101,31 +99,21 @@ const Paniers = {
     return JSON.stringify([(this._dogAges(d) || []).join(), d.gabarit || '', avoid, String(d.allergies || '').trim().toLowerCase(), d.hair === 'non', d.odor === 'non', d.fat === 'non', !!d.sensitive]);
   },
   _perDog() { const dogs = this._dogList(); return dogs.length >= 2 && new Set(dogs.map(d => this._profKey(d))).size > 1; },
-  _compose(maxAvailable, locked) {
-    if (!this._perDog()) return this._buildBasket(maxAvailable, locked);
-    const dogs = this._dogList(), keep = { age: this.ageInclude, gab: this.gabaritInclude, n: this.nbChiens, hypo: this.hypoOnly, dog: this._dog };
-    let basket = locked.map(b => ({ ...b }));
-    const key = b => b.pId + '|' + b.vId + '|' + b.lotId;
-    try {
-      dogs.forEach((d, k) => {
-        const spent = basket.reduce((a, b) => a + b.price * b.qty, 0);
-        const target = spent + (maxAvailable - spent) / (dogs.length - k);   // budget réparti à parts égales, le reliquat passe au chien suivant
-        this._dog = d; this.nbChiens = 1;
-        const ages = this._dogAges(d); if (ages) this.ageInclude = ages;
-        if (d.gabarit) this.gabaritInclude = [d.gabarit];
-        if (d.sensitive) this.hypoOnly = true;
-        const before = new Map(basket.map(b => [key(b), b.qty]));
-        const res = this._buildBasket(target, basket);
-        res.forEach(b => {
-          if (!before.has(key(b))) b.dog = d._n;                       // nouveau produit : pensé pour ce chien
-          else if (b.qty > before.get(key(b))) b.dog = '';             // déjà choisi pour un autre chien et repris pour celui-ci : convient aux deux
-        });
-        basket = res;
-        this.ageInclude = keep.age; this.gabaritInclude = keep.gab; this.nbChiens = keep.n; this.hypoOnly = keep.hypo; this._dog = keep.dog;
-      });
-    } finally { this.ageInclude = keep.age; this.gabaritInclude = keep.gab; this.nbChiens = keep.n; this.hypoOnly = keep.hypo; this._dog = keep.dog; }
-    return basket;
+  _compose(maxAvailable, locked) { return this._buildBasket(maxAvailable, locked); },
+  /* Ce chien peut-il manger ce produit ? (viande évitée, allergie, poils, odeur, gras, sensible, âge, gabarit) */
+  _dogSuits(d, p, pTags, tags) {
+    if (Clients.conflictsFor([d], { kind: 'M', type: p.meatType || '', name: p.name }).length) return false;
+    if (d.hair === 'non' && pTags.poil === 'avec') return false;
+    if (d.odor === 'non' && tags.odeur === 'forte') return false;
+    if (d.fat === 'non' && tags.gras === 'gras') return false;
+    if (d.sensitive && !pTags.hypo) return false;
+    const da = this._dogAges(d);
+    if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return false;
+    if (d.gabarit && tags.gabarit.length > 0 && !tags.gabarit.includes(d.gabarit)) return false;
+    return true;
   },
+  /* Étiquette « pour X » : seulement si le produit ne convient pas à tous les chiens */
+  _dogTag(c) { return c && c.forDogs && c.forDogs.length < this._dogList().length ? c.forDogs.join(' et ') : ''; },
   _dogChoices() { return Clients.ro() ? [] : this._dogList().map(d => d._n); },
   setItemDog(i, v) { if (this.basket[i]) { this.basket[i].dog = v; this.render(); } },
   setClient(v) {
@@ -133,7 +121,7 @@ const Paniers = {
     const c = Clients.find(v);
     this.client = c ? c.name : v;
     if (c && (c.dogs || []).length) this.nbChiens = c.dogs.length;
-    const sens = c && !Clients.ro() && (c.dogs || []).some(d => d.sensitive);
+    const sens = c && !Clients.ro() && (c.dogs || []).some(d => d.sensitive) && !this._perDog();
     if (sens) this.hypoOnly = true;
     this.render();
     if (sens) U.toast('Chien sensible : « Hypoallergénique uniquement » est coché — décoche-le dans les filtres si besoin.');
@@ -142,7 +130,8 @@ const Paniers = {
   /* ---------- Données disponibles ---------- */
   candidates() {
     const out = [];
-    const cl = this._dog ? this._dogRules(this._dog) : this._clientRules();
+    const pd = this._perDog() ? this._dogList() : null;   // profils différents : on regarde, pour chaque produit, quels chiens peuvent le manger
+    const cl = pd ? null : this._clientRules();
 
     Store.state.stockM.forEach(p => {
       if (this.excludeMeats.includes(p.meatType)) return;
@@ -173,6 +162,8 @@ const Paniers = {
         if (this.grasInclude.length && tags.gras && !this.grasInclude.includes(tags.gras)) return;
         if (this.ageInclude.length && tags.age.length > 0 && !tags.age.some(a => this.ageInclude.includes(a))) return;
         if (this.gabaritInclude.length && tags.gabarit.length > 0 && !tags.gabarit.some(g => this.gabaritInclude.includes(g))) return;
+        let suits = null;
+        if (pd) { suits = pd.filter(d => this._dogSuits(d, p, pTags, tags)); if (!suits.length) return; }
 
         const lots = v.lots.filter(l => {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
@@ -209,7 +200,8 @@ const Paniers = {
             lotNumber: l.lotNumber || '',
             tags,
             mode: v.mode || '', value: v.value,
-            ...this._famInfo(p, v)
+            ...this._famInfo(p, v),
+            ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : {})
           });
         });
       });
@@ -234,13 +226,14 @@ const Paniers = {
   },
   _sizePrefScore(c) {
     // Taille déclinée en lots : plusieurs chiens → le lot, un seul chien → la pièce.
+    const nn = c.forDogs ? c.forDogs.length : this.nbChiens;   // chiens concernés par CE produit
     if (c.hasPack) {
-      if (c.packQty > 1) return this.nbChiens > 1 ? 1.0 : 0.25;
-      return this.nbChiens > 1 ? 0.3 : 0.8;
+      if (c.packQty > 1) return nn > 1 ? 1.0 : 0.25;
+      return nn > 1 ? 0.3 : 0.8;
     }
     if (c.mode !== 'gram') return 0.5;
     const v = U.num(c.value);
-    if (this.nbChiens > 1) {
+    if (nn > 1) {
       if (v >= 250) return 1.0;
       if (v >= 100) return 0.5;
       return 0.2;
@@ -259,7 +252,7 @@ const Paniers = {
   },
 
   _meatAgePrefScore(c) {
-    const ages = this.ageInclude;
+    const ages = c.ages || this.ageInclude;
     if (!ages.length || (ages.length === 1 && ages[0] === '11+')) return 0.5;
     const m = (c.meat || '').toLowerCase();
     const volaille = m === 'poulet' || m === 'canard' || m === 'dinde';
@@ -283,7 +276,7 @@ const Paniers = {
   },
 
   _gabaritResistScore(c) {
-    const gabs = this.gabaritInclude;
+    const gabs = c.gabs || this.gabaritInclude;
     if (!gabs.length) return 0.5;
     const r = (c.tags && c.tags.resistance) || '';
     if (!r) return 0.5;
@@ -349,7 +342,9 @@ const Paniers = {
     });
 
     const mult = Math.max(1, this.nbChiens);
-    const maxPer = this.maxPerProduct * mult;
+    const nd = this._perDog() ? this._dogList().length : 0, shareCap = nd ? maxAvailable / nd : Infinity;   // budget « réservé » à chaque chien pour ses produits à lui
+    const spentBy = {};
+    basket.forEach(b => { if (b.dog && !b.dog.includes(' et ')) spentBy[b.dog] = (spentBy[b.dog] || 0) + b.price * b.qty; });
 
     basket.forEach(b => {
       const c = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId);
@@ -364,7 +359,13 @@ const Paniers = {
 
       const productQties = {};
       basket.forEach(b => { productQties[b.pId] = (productQties[b.pId] || 0) + b.qty; });
-      let eligible = affordable.filter(c => (productQties[c.pId] || 0) < maxPer && !this._famTaken(c, basket));
+      let eligible = affordable.filter(c => {
+        const mu = c.forDogs ? c.forDogs.length : mult;   // chiens concernés par ce produit
+        if ((productQties[c.pId] || 0) >= this.maxPerProduct * mu) return false;
+        if (c.mode === 'gram' && (mu > 1 || c.forDogs) && basket.some(b => b.pId === c.pId)) return false;   // un sachet (plusieurs morceaux) suffit : pas deux fois le même produit au gramme
+        if (c.forDogs && c.forDogs.length === 1 && (spentBy[c.forDogs[0]] || 0) + c.price > shareCap) return false;
+        return !this._famTaken(c, basket);
+      });
       const hardInBasket = basket.some(b => {
         const sp = Store.state.stockM.find(x => x.id === b.pId);
         if (!sp) return false;
@@ -386,9 +387,10 @@ const Paniers = {
           pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
           name: pick.name, meat: pick.meat, variant: pick.variant,
           price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family
+          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick)
         });
       }
+      if (pick.forDogs && pick.forDogs.length === 1) spentBy[pick.forDogs[0]] = (spentBy[pick.forDogs[0]] || 0) + pick.price;
 
       spent += pick.price;
       pick.avail--;
@@ -541,7 +543,7 @@ const Paniers = {
       pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
       name: pick.name, meat: pick.meat, variant: pick.variant,
       price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family
+      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick)
     };
     this.render();
     U.toast(`${oldName} exclu → ${pick.name}`);
@@ -614,7 +616,7 @@ const Paniers = {
       pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
       name: pick.name, meat: pick.meat, variant: pick.variant,
       price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family,
+      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick),
       _swapRejected: rejected // mémorise la série de refus pour les prochains 🔄 sur ce créneau
     };
     this.render();
@@ -623,7 +625,7 @@ const Paniers = {
   /* Fenêtre « client » : produit, variante, prix TTC seulement (pas de coeff, DLUO, viande…) — pour capture d'écran ou copie du texte */
   _shareData() {
     const dn = this._dogChoices();
-    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price, dog: (b.dog && dn.includes(b.dog)) ? b.dog : '' }));
+    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price, dog: (b.dog && dn.length >= 2) ? b.dog : '' }));
     const sub = lines.reduce((a, l) => a + l.total, 0);
     const ship = this.livraison > 0 ? this.livraison : 0;
     return { lines, sub, ship, total: sub + ship, x: this._shareExtras() };
@@ -1311,7 +1313,7 @@ const Paniers = {
             const dluoClass = daysLeft !== null && daysLeft < 0 ? 'bad' : daysLeft !== null && daysLeft <= 30 ? 'warn' : '';
             return `<tr${b.locked ? ' style="background:var(--th-bg);"' : ''}>
               <td><button class="btn-icon" onclick="Paniers.toggleLock(${i})" title="${b.locked ? 'Déverrouiller (sera remplacé à la régénération)' : 'Verrouiller (sera gardé à la régénération)'}">${b.locked ? '🔒' : '🔓'}</button></td>
-              <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
+              <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.concat(b.dog && !dogOpts.includes(b.dog) ? [b.dog] : []).map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
               <td><span class="tag">${U.esc(b.variant)}</span></td>
               <td><span class="badge info">${U.esc(b.meat || '—')}</span></td>
               <td class="num">${U.eur(b.price)}</td>
