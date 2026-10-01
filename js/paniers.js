@@ -66,7 +66,7 @@ const Paniers = {
     const c = Clients.find(this.client);
     if (!c || Clients.ro()) return null;
     const dogs = c.dogs || [];
-    return { c, dogs, hair: dogs.some(d => d.hair === 'non'), odor: dogs.some(d => d.odor === 'non'), fat: dogs.some(d => d.fat === 'non') };
+    return { c, dogs, sensitive: dogs.some(d => d.sensitive), hair: dogs.some(d => d.hair === 'non'), odor: dogs.some(d => d.odor === 'non'), fat: dogs.some(d => d.fat === 'non') };
   },
   _clientSummary() {
     if (!String(this.client || '').trim()) return 'Sa fiche (viandes évitées, allergies, poils, odeurs fortes, gras) filtre automatiquement les produits à la génération.';
@@ -76,7 +76,7 @@ const Paniers = {
     if (!r.dogs.length) return 'Fiche sans chien renseigné : aucun filtre appliqué.';
     const avoid = [...new Set(r.dogs.flatMap(d => Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid')))];
     const allergies = [...new Set(r.dogs.map(d => String(d.allergies || '').trim()).filter(Boolean))];
-    const parts = [].concat(avoid.length ? ['évite : ' + avoid.join(', ')] : [], allergies.length ? ['allergies : ' + allergies.join(' · ')] : [], r.hair ? ['pas de produits avec poils'] : [], r.odor ? ['pas d\'odeurs fortes'] : [], r.fat ? ['pas de produits gras'] : []);
+    const parts = [].concat(r.sensitive ? ['🌿 sensible : « Hypoallergénique uniquement » coché'] : [], avoid.length ? ['évite : ' + avoid.join(', ')] : [], allergies.length ? ['allergies : ' + allergies.join(' · ')] : [], r.hair ? ['pas de produits avec poils'] : [], r.odor ? ['pas d\'odeurs fortes'] : [], r.fat ? ['pas de produits gras'] : []);
     return '🐕 ' + r.dogs.map(d => d.name || 'chien').join(', ') + ' — ' + (parts.length ? parts.join(' · ') + ' → exclus à la génération' : 'aucune contrainte renseignée');
   },
   setClient(v) {
@@ -84,7 +84,10 @@ const Paniers = {
     const c = Clients.find(v);
     this.client = c ? c.name : v;
     if (c && (c.dogs || []).length) this.nbChiens = c.dogs.length;
+    const sens = c && !Clients.ro() && (c.dogs || []).some(d => d.sensitive);
+    if (sens) this.hypoOnly = true;
     this.render();
+    if (sens) U.toast('Chien sensible : « Hypoallergénique uniquement » est coché — décoche-le dans les filtres si besoin.');
   },
 
   /* ---------- Données disponibles ---------- */

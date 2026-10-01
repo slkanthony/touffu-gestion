@@ -149,7 +149,7 @@ const Clients = {
     const yn = [['', '— ?'], ['ok', 'Oui, aucun souci'], ['non', 'Non, ça le dérange']];
     const chips = meats.map(m => { const st = (d.meats || {})[m]; return `<span class="cl-chip ${st || ''}" title="Clique : aime ❤ → évite ⛔ → neutre" onclick="Clients.cycleMeat('${c.id}','${d.id}','${U.esc(m).replace(/'/g, '&#39;')}')">${st === 'like' ? '❤ ' : st === 'avoid' ? '⛔ ' : ''}${U.esc(m)}</span>`; }).join('');
     const age = this.ageTxt(d.birth);
-    const sub = [age, d.allergies ? '⚠️ ' + U.esc(d.allergies) : ''].filter(Boolean).join(' · ');
+    const sub = [age, d.sensitive ? '🌿 sensible' : '', d.allergies ? '⚠️ ' + U.esc(d.allergies) : ''].filter(Boolean).join(' · ');
     return `<details class="cl-dog fold" ${this._dogOpen[d.id] ? 'open' : ''} ontoggle="Clients._dogOpen['${d.id}']=this.open"><summary class="cl-dog-h"><b>🐕 ${U.esc(d.name || 'Nouveau chien')}</b>${sub ? ` <span class="muted">· ${sub}</span>` : ''}</summary>
       <div class="cl-dog-b">
       ${ro ? '' : `<div style="text-align:right;margin-bottom:6px;"><button class="btn-danger btn-sm" onclick="Clients.delDog('${c.id}','${d.id}')">🗑 Retirer ce chien</button></div>`}
@@ -161,6 +161,7 @@ const Clients = {
         <div class="fg"><label>Aime les produits avec poils</label>${this._sel(c.id, d.id, 'hair', d.hair, yn)}</div>
         <div class="fg"><label>Supporte les odeurs fortes</label>${this._sel(c.id, d.id, 'odor', d.odor, yn)}</div>
         <div class="fg"><label>Supporte les produits gras</label>${this._sel(c.id, d.id, 'fat', d.fat, yn)}</div>
+        <div class="fg"><label>🌿 Chien sensible</label><label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;" title="Peau / digestion fragiles : à la création d'un panier, « Hypoallergénique uniquement » est coché pour sa cliente (tu peux le décocher)."><input type="checkbox" ${ro} ${d.sensitive ? 'checked' : ''} onchange="Clients.setDog('${c.id}','${d.id}','sensitive',this.checked)"> Privilégier l'hypoallergénique</label></div>
       </div>
       <div class="fg mt"><label>Viandes <span class="muted" style="font-weight:400;">(clique : ❤ aime · ⛔ évite / n'aime pas)</span></label><div class="cl-chips">${chips}</div></div>
       <div class="grid c2 mt">
