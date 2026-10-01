@@ -970,8 +970,7 @@ const Paniers = {
           return true;
         });
         if (!lots.length) return;
-        const price = U.num(v.priceTTC);
-        if (price <= 0) return;
+        const price = U.num(v.priceTTC);   // ajout manuel : même sans prix de vente renseigné (affiché 0,00 €)
         let coeff = 0;
         if (cat) {
           const cv = v.catalogVariantId ? (cat.variants || []).find(x => x.id === v.catalogVariantId) : null;
