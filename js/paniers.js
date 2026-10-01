@@ -497,6 +497,11 @@ const Paniers = {
     this.render();
     if (delta > 0) this._stockWarn(item.pId, item.vId);
   },
+  setItemPrice(idx, v) {   // prix TTC modifié à la main pour CE panier seulement (le stock n'est pas touché)
+    const item = this.basket[idx]; if (!item) return;
+    item.price = Math.max(0, Math.round(U.num(v) * 100) / 100);
+    this.render();
+  },
   toggleLock(idx) {
     const item = this.basket[idx];
     if (item) item.locked = !item.locked;
@@ -1353,7 +1358,7 @@ const Paniers = {
               <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.concat(b.dog && !dogOpts.includes(b.dog) ? [b.dog] : []).map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
               <td><span class="tag">${U.esc(b.variant)}</span></td>
               <td><span class="badge info">${U.esc(b.meat || '—')}</span></td>
-              <td class="num">${U.eur(b.price)}</td>
+              <td class="num"><input type="number" step="0.1" min="0" value="${(Math.round(U.num(b.price) * 100) / 100)}" style="width:84px;text-align:right;" title="Prix TTC modifiable pour ce panier (le prix du stock ne change pas)" onchange="Paniers.setItemPrice(${i},this.value)"></td>
               <td class="num" style="white-space:nowrap;">
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},-1)">−</button>
                 <b>${b.qty}</b>
