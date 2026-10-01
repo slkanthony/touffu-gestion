@@ -539,14 +539,31 @@ const Paniers = {
     const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price }));
     const sub = lines.reduce((a, l) => a + l.total, 0);
     const ship = this.livraison > 0 ? this.livraison : 0;
-    return { lines, sub, ship, total: sub + ship };
+    return { lines, sub, ship, total: sub + ship, x: this._shareExtras() };
   },
-  share() {
-    if (!this.basket.length) return;
-    const d = this._shareData();
+  /* Blocs facultatifs sous le total (réglés dans Paramètres → Paniers & livraison) : n'apparaissent que s'ils sont remplis */
+  _payList() {
+    const S = Store.state.settings, l = [];
+    if (S.payCash) l.push('espèces');
+    if (S.payVirement) l.push('virement');
+    String(S.payOther || '').split(',').map(t => t.trim()).filter(Boolean).forEach(t => l.push(t.toLowerCase()));
+    return l;
+  },
+  _shOpt: { pay: true, iban: true },
+  _shMsg: null,
+  _shareExtras() {
+    const S = Store.state.settings, o = this._shOpt || {};
+    const pl = this._payList();
+    const pay = (o.pay !== false && pl.length) ? 'Moyens de paiement acceptés : ' + pl.join(', ') : '';
+    const holder = String(S.payHolder || '').trim(), iban = String(S.payIban || '').trim(), bic = String(S.payBic || '').trim();
+    const ibanLines = (o.iban !== false && iban) ? [].concat(holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
+    const msg = String(this._shMsg != null ? this._shMsg : (S.payMessage || '')).trim();
+    return { pay, ibanLines, msg };
+  },
+  _shareInner(d) {
     const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
-    const body = `<div id="pan_share" style="padding:4px 2px;">
-      <table style="width:100%;border-collapse:collapse;font-size:1rem;">
+    const x = d.x;
+    return `<table style="width:100%;border-collapse:collapse;font-size:1rem;">
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:right;">Prix TTC</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
@@ -554,10 +571,32 @@ const Paniers = {
           <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
       </table>
+      ${x.pay ? `<p style="margin:12px 10px 0;">${U.esc(x.pay)}</p>` : ''}
+      ${x.ibanLines.length ? `<p style="margin:8px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
+      ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
+  },
+  _shareRefresh() {
+    const box = document.getElementById('pan_share');
+    if (box) box.innerHTML = this._shareInner(this._shareData());
+  },
+  _shToggle(k, v) { this._shOpt = Object.assign({}, this._shOpt, { [k]: !!v }); this._shareRefresh(); },
+  _shSetMsg(v) { this._shMsg = v; this._shareRefresh(); },
+  share() {
+    if (!this.basket.length) return;
+    const S = Store.state.settings;
+    this._shOpt = { pay: true, iban: true }; this._shMsg = null;
+    const hasPay = this._payList().length > 0, hasIban = !!String(S.payIban || '').trim();
+    const chk = (k, label) => `<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" checked onchange="Paniers._shToggle('${k}',this.checked)"> ${label}</label>`;
+    const body = `<div id="pan_share" style="padding:4px 2px;">${this._shareInner(this._shareData())}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')">🖼️ Copier l'image</button>
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
-      </div></div>`;
+      </div>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
+        <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message pour ce client (vide = rien d'affiché)" oninput="Paniers._shSetMsg(this.value)">${U.esc(String(S.payMessage || ''))}</textarea>
+      </div>`;
     U.modal({ title: '🧺 Votre panier Touffu', body, okLabel: '📋 Copier le texte', onOk: () => { Paniers.copyShare(); return false; } });
   },
   /* Image du panier (dessinée sur un canvas, aucune librairie) : copie dans le presse-papiers (HTTPS seulement) ou téléchargement PNG */
@@ -570,7 +609,15 @@ const Paniers = {
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
     const W = 720, pad = 32, rowH = 46;
     const rows = d.lines.length + (d.ship > 0 ? 1 : 0);
-    const H = pad + 50 + 44 + rows * rowH + 70 + pad;
+    // blocs facultatifs sous le total : lignes déjà coupées à la largeur utile
+    const tmp = document.createElement('canvas').getContext('2d');
+    const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > W - 2 * pad - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
+    const blocks = [];
+    if (d.x.pay) blocks.push({ f: font(500, 16), l: wrap(d.x.pay, font(500, 16)) });
+    if (d.x.ibanLines.length) blocks.push({ f: font(700, 16), l: d.x.ibanLines });
+    if (d.x.msg) blocks.push({ f: font(500, 16), l: wrap(d.x.msg, font(500, 16)) });
+    const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
+    const H = pad + 50 + 44 + rows * rowH + 70 + extraH + pad;
     const k = 2, cv = document.createElement('canvas');
     cv.width = W * k; cv.height = H * k;
     const x = cv.getContext('2d'); x.scale(k, k);
@@ -603,6 +650,8 @@ const Paniers = {
     x.strokeStyle = car; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
     x.fillStyle = fg; x.font = font(800, 21); x.textAlign = 'right';
     x.fillText('Total TTC', pad + (W - 2 * pad) * 0.62 + 40, y + 36); x.fillText(U.eur(d.total), W - pad - 12, y + 36);
+    y += 72; x.textAlign = 'left';
+    blocks.forEach(b => { x.font = b.f; x.fillStyle = fg; b.l.forEach(t => { x.fillText(t, pad + 12, y + 12); y += 24; }); y += 12; });
     return cv;
   },
   async shareImage(mode) {
@@ -632,7 +681,8 @@ const Paniers = {
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu', ''].concat(
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}`),
-      [''], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)]).join('\n');
+      [''], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
+      d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
   },

@@ -136,6 +136,19 @@ const Params = {
           <div class="fg"><label>Frais de livraison facturés au client (€)</label><input id="p_shipping" type="number" step="0.01" value="${S.shippingCost ?? 6.8}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Seuil livraison offerte (€) ${U.info("Sous ce seuil, une vente en ligne livrée est considérée comme facturée au client (frais ci-contre) ; au-dessus, offerte (à ta charge). Modifiable au cas par cas sur chaque vente dans l'historique des sorties.")}</label><input id="p_freethr" type="number" step="1" value="${S.freeShippingThreshold ?? 69}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
+        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:14px 0 8px;">💳 Paiement affiché sur le panier partagé ${U.info("Ce qui apparaît sous le total quand tu partages un panier à un client (fenêtre, image et texte copié). Chaque bloc n'apparaît que s'il est rempli. Tu peux le masquer au cas par cas dans la fenêtre « Partager ».")}</div>
+        <div class="grid c3">
+          <div class="fg"><label>Moyens de paiement acceptés</label>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;padding:6px 0;">
+              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="p_pay_cash" ${S.payCash ? 'checked' : ''}> Espèces</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="p_pay_vir" ${S.payVirement ? 'checked' : ''}> Virement</label>
+            </div>
+            <input id="p_pay_other" value="${U.esc(S.payOther || '')}" placeholder="Autres (séparés par une virgule) : chèque, PayPal…" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Titulaire du compte</label><input id="p_pay_holder" value="${U.esc(S.payHolder || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>IBAN</label><input id="p_pay_iban" value="${U.esc(S.payIban || '')}" placeholder="FR76 …" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>BIC (option)</label><input id="p_pay_bic" value="${U.esc(S.payBic || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg" style="grid-column:span 2;"><label>Message (option)</label><textarea id="p_pay_msg" class="note-area" rows="2" placeholder="Ex : Merci pour votre confiance 🐾">${U.esc(S.payMessage || '')}</textarea></div>
+        </div>
         </div>
         <div class="fin-block" style="order:${finPos('events')}">${finTools('events')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚗 Événements & déplacements ${U.info("Sert à calculer les frais de déplacement de chaque événement (km aller-retour de sa fiche × consommation × prix du litre), pré-remplis au retour d'événement. Les fiches se gèrent dans Paramètres → Référentiels → Événements.")}</div>
@@ -656,6 +669,10 @@ const Params = {
     S.uvMaintHoursPerYear = U.numVal('p_uv_maint_h') + U.numVal('p_uv_maint_min') / 60;
     // L'amortissement matériel (S.uvEquip) est édité en direct dans sa liste (addUvEquip/setUvEquip/delUvEquip), pas ici.
     S.shippingCost = U.numVal('p_shipping'); S.freeShippingThreshold = U.numVal('p_freethr');
+    if (document.getElementById('p_pay_iban')) {
+      S.payCash = U.chk('p_pay_cash'); S.payVirement = U.chk('p_pay_vir'); S.payOther = U.val('p_pay_other');
+      S.payHolder = U.val('p_pay_holder'); S.payIban = U.val('p_pay_iban'); S.payBic = U.val('p_pay_bic'); S.payMessage = U.val('p_pay_msg');
+    }
     // recalcule les prix TTC du stock lié
     Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
     Store.log('paramètres', 'Réglages financiers mis à jour');
