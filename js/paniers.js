@@ -169,7 +169,7 @@ const Paniers = {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           if (q <= 0) return false;
           const d = U.daysTo(l.dluo);
-          if (d !== null && d < 0) return false;
+          if (d !== null && d < 0 && this.priority !== 'dluo') return false;   // périmés : seulement si « DLUO courtes » est choisi (ex. paniers pour associations)
           return true;
         });
         if (!lots.length) return;
@@ -966,7 +966,7 @@ const Paniers = {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           if (q <= 0) return false;
           const d = U.daysTo(l.dluo);
-          if (d !== null && d < 0) return false;
+          // ajout manuel : les lots périmés restent proposés (badge « périmé »)
           return true;
         });
         if (!lots.length) return;
@@ -1036,6 +1036,7 @@ const Paniers = {
     const cands = this.allCandidates();
     const c = cands.find(x => x.pId === pId && x.vId === vId && x.lotId === lotId);
     if (!c) { U.toast('Produit introuvable ou plus en stock.', true); return; }
+    if (c.daysLeft < 0) U.toast('⚠️ Lot périmé ajouté au panier : ' + c.name + ' (DLUO ' + U.frDate(c.dluo) + ').');
     const existing = this.basket.find(b => b.pId === pId && b.vId === vId && b.lotId === lotId);
     if (existing) { existing.qty++; }
     else {
@@ -1368,7 +1369,7 @@ const Paniers = {
               <input id="pan_add_q" type="text" autocomplete="off" placeholder="Chercher un produit…"
                 value="${U.esc(this.addQ)}" oninput="Paniers.setAddQ(this.value)" onfocus="Paniers.openAddMenu()">
             ${this.addOpen && addResults.length ? `<div class="ac-list" style="max-height:250px;overflow:auto;">${addResults.map(c =>
-              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
+              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}${c.daysLeft < 0 ? ' <span class="badge bad">⚠ périmé</span>' : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
             ).join('')}</div>` : ''}
             </div>
           </div>
