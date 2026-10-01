@@ -1035,9 +1035,12 @@ const Paniers = {
     this.addVariants = all ? Stock.allVariantGroups().flatMap(g => g.items) : [];
     this.render();
   },
-  setAddVariantsOpen(v) { this.addVariantsOpen = v; },
+  setAddVariantsOpen(v) {   // un seul menu ouvert à la fois : ouvrir « Variantes » ferme la liste des produits
+    this.addVariantsOpen = v;
+    if (v && this.addOpen) { this.addOpen = false; this.render(); }
+  },
   setAddQ(v) { this.addQ = v; this.addOpen = true; this.render(); U.refocus('pan_add_q'); },
-  openAddMenu() { if (this.addOpen) return; this.addOpen = true; this.render(); U.refocus('pan_add_q'); },
+  openAddMenu() { if (this.addOpen) return; this.addOpen = true; this.addVariantsOpen = false; this.render(); U.refocus('pan_add_q'); },   // ouvrir la liste des produits ferme le menu « Variantes »
   closeAddMenu() {
     if (!this.addOpen) return;
     // Le clic dans le champ arrive après son « focus » (qui a redessiné l'écran) : l'ancien champ est détaché, donc ce clic ressemblait à un clic extérieur et refermait la liste aussitôt.
