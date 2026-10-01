@@ -629,7 +629,7 @@ const B2B = {
   async qtCopy(i) {
     const im = (this._qtImgs || [])[i]; if (!im) return;
     if (await U.copyImage(im.blob, im.url)) { U.toast(`Image ${i + 1} copiée — colle-la dans ta conversation.`); return; }
-    U.toast(window.isSecureContext ? 'Copie impossible : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».' : 'Chrome interdit la copie d\'image sur une adresse http:// : ouvre l\'appli en https://touffu-antho.duckdns.org, ou utilise « Enregistrer ».', true);
+    U.toast(window.isSecureContext ? 'Copie impossible : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».' : 'Chrome interdit la copie d\'image sur une adresse http:// : ouvre l\'appli en https://touffu-antho.duckdns.org, ou utilise « Enregistrer ». (Adresse vue par Chrome : ' + location.origin + ')', true);
   },
   async qtSave(i) {
     const imgs = this._qtImgs || [], list = i < 0 ? imgs.map((im, k) => [im, k]) : (imgs[i] ? [[imgs[i], i]] : []);

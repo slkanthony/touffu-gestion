@@ -140,14 +140,14 @@ const Params = {
         <div class="grid c3">
           <div class="fg"><label>Moyens de paiement acceptés</label>
             <div style="display:flex;gap:14px;flex-wrap:wrap;padding:6px 0;">
-              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="p_pay_cash" ${S.payCash ? 'checked' : ''}> Espèces</label>
-              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="p_pay_vir" ${S.payVirement ? 'checked' : ''}> Virement</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="p_pay_cash" onchange="Params.savePay()" ${S.payCash ? 'checked' : ''}> Espèces</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="p_pay_vir" onchange="Params.savePay()" ${S.payVirement ? 'checked' : ''}> Virement</label>
             </div>
-            <input id="p_pay_other" value="${U.esc(S.payOther || '')}" placeholder="Autres (séparés par une virgule) : chèque, PayPal…" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Titulaire du compte</label><input id="p_pay_holder" value="${U.esc(S.payHolder || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>IBAN</label><input id="p_pay_iban" value="${U.esc(S.payIban || '')}" placeholder="FR76 …" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>BIC (option)</label><input id="p_pay_bic" value="${U.esc(S.payBic || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg" style="grid-column:span 2;"><label>Message (option)</label><textarea id="p_pay_msg" class="note-area" rows="2" placeholder="Ex : Merci pour votre confiance 🐾">${U.esc(S.payMessage || '')}</textarea></div>
+            <input id="p_pay_other" onchange="Params.savePay()" value="${U.esc(S.payOther || '')}" placeholder="Autres (séparés par une virgule) : chèque, PayPal…" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Titulaire du compte</label><input id="p_pay_holder" onchange="Params.savePay()" value="${U.esc(S.payHolder || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>IBAN</label><input id="p_pay_iban" onchange="Params.savePay()" value="${U.esc(S.payIban || '')}" placeholder="FR76 …" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>BIC (option)</label><input id="p_pay_bic" onchange="Params.savePay()" value="${U.esc(S.payBic || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg" style="grid-column:span 2;"><label>Message (option)</label><textarea id="p_pay_msg" onchange="Params.savePay()" class="note-area" rows="2" placeholder="Ex : Merci pour votre confiance 🐾">${U.esc(S.payMessage || '')}</textarea></div>
         </div>
         </div>
         <div class="fin-block" style="order:${finPos('events')}">${finTools('events')}
@@ -657,6 +657,13 @@ const Params = {
     Store.save('settings'); App.rerender();
   },
 
+  /* Paiement affiché sur le panier partagé : enregistré dès qu'on quitte la case (rien à perdre si l'écran se redessine). */
+  savePay() {
+    const S = Store.state.settings;
+    S.payCash = U.chk('p_pay_cash'); S.payVirement = U.chk('p_pay_vir'); S.payOther = U.val('p_pay_other');
+    S.payHolder = U.val('p_pay_holder'); S.payIban = U.val('p_pay_iban'); S.payBic = U.val('p_pay_bic'); S.payMessage = U.val('p_pay_msg');
+    Store.save('settings');
+  },
   saveSettings() {
     const S = Store.state.settings;
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
