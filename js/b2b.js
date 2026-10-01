@@ -450,25 +450,28 @@ const B2B = {
      • entreprise (collecte la TVA) : Prix HT avec la remise · Prix de vente conseillé TTC
      Produits cochés (sinon tous), onglet actif. Pied : IBAN + message (jamais « espèces »), nom de l'entreprise modifiable. */
   _qt: null,
-  _qtRows() {
+  _qtRows(all) {
     const acc = (this.tab || 'mast') === 'acc';
     const items = this._curItems();
     let chosen = items.filter(x => this._sel[x.id]);
     if (!chosen.length) chosen = items;
     const micro = this._qt && this._qt.type === 'micro';
     const price = r => micro ? r.ttcB2B : r.priceHTB2B;
-    const rows = [], keys = [];
+    const list = [];
     chosen.forEach(x => {
       if (acc) {
         const r = x.it, mainW = r.a.mainWidth || this.accWidths(r.a)[0] || '';
-        rows.push({ name: r.a.name, variant: mainW || 'Standard', price: price(r), reco: r.priceTTCPublic });
-        keys.push(['a:' + r.a.id, r.priceHTB2B]);
+        list.push({ key: 'a:' + r.a.id, name: r.a.name, variant: mainW || 'Standard', price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
       } else x.it.rows.forEach(r => {
-        rows.push({ name: x.it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic });
-        keys.push([this._expKeyM(x.it.p.id, r.label), r.priceHTB2B]);
+        list.push({ key: this._expKeyM(x.it.p.id, r.label), name: x.it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
       });
     });
-    return { rows, keys };
+    const q = (this._qt && this._qt.qty) || {};
+    list.forEach(r => { r.qty = Math.max(0, Math.round(U.num(q[r.key]))); r.sub = r.qty * r.price; });
+    // Dès qu'une quantité est saisie : mode « devis » (seules les lignes avec une quantité, + Qté / Sous-total / Total). Sinon : simple liste de prix.
+    const devis = list.some(r => r.qty > 0);
+    const rows = (all || !devis) ? list : list.filter(r => r.qty > 0);
+    return { rows, all: list, devis, keys: rows.map(r => [r.key, r.ht]), total: list.reduce((a, r) => a + r.sub, 0) };
   },
   _qtCols() {
     const micro = this._qt.type === 'micro';
@@ -481,23 +484,36 @@ const B2B = {
     const msg = String(q.msg != null ? q.msg : (S.payMessage || '')).trim();
     return { ibanLines, msg };
   },
+  _qtTotalLabel() { return this._qt.type === 'micro' ? 'Total' : 'Total HT'; },
   _qtInner() {
-    const { rows } = this._qtRows(), c = this._qtCols(), x = this._qtExtras();
+    const { all, devis, total } = this._qtRows(true), c = this._qtCols(), x = this._qtExtras();
     const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
     return `<div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
-      <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);">${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}</tr></thead>
-      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td></tr>`).join('')}</tbody></table></div>
+      <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);">${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
+      <tbody>${all.map((r, i) => `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="0" step="1" value="${r.qty || ''}" placeholder="0" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${r.qty ? U.eur(r.sub) : ''}</td></tr>`).join('')}</tbody></table></div>
+      <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${devis ? this._qtTotalLabel() + ' : ' + U.eur(total) : ''}</div>
       ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
   },
+  /* Quantité saisie : mise à jour sur place (sous-total + total), sans redessiner le tableau (le défilement reste). */
+  _qtQty(i, val) {
+    const all = this._qtRows(true).all, r = all[i]; if (!r) return;
+    this._qt.qty = this._qt.qty || {};
+    this._qt.qty[r.key] = Math.max(0, Math.round(U.num(val)));
+    const { all: a2, devis, total } = this._qtRows(true), r2 = a2[i];
+    const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.qty ? U.eur(r2.sub) : '';
+    const tot = document.getElementById('qt_total'); if (tot) tot.textContent = devis ? this._qtTotalLabel() + ' : ' + U.eur(total) : '';
+    const h = document.getElementById('qt_hint'); if (h) h.textContent = devis ? `Mode devis : seules les ${a2.filter(x => x.qty > 0).length} ligne(s) avec une quantité seront dans les images et le texte.` : 'Saisis des quantités pour en faire un devis (sous-total + total) ; sans quantité, c\'est une simple liste de prix.';
+  },
   _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
   openQuote(type) {
-    const { rows } = (this._qt = { type, who: '', iban: true, msg: null, per: 20 }, this._qtRows());
+    const { all: rows } = (this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {} }, this._qtRows(true));
     if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
     const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
     const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value"></div>
-      <p class="muted" style="margin:0 0 8px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
+      <p class="muted" style="margin:0 0 4px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
+      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Saisis des quantités pour en faire un devis (sous-total + total) ; sans quantité, c'est une simple liste de prix.</p>
       <div id="qt_box">${this._qtInner()}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>
@@ -525,49 +541,56 @@ const B2B = {
     return pages;
   },
   async _qtCanvas(pageRows, pageNo, pageCount) {
-    const c = this._qtCols(), x = this._qtExtras(), last = pageNo === pageCount;
+    const c = this._qtCols(), x = this._qtExtras(), last = pageNo === pageCount, { devis, total } = this._qtRows();
     if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
     const cs = getComputedStyle(document.documentElement), col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
     const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), th = col('--th-bg', '#1c2b38');
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
-    const W = 820, pad = 32, rowH = 40, innerW = W - 2 * pad;
+    const W = devis ? 1000 : 820, pad = 32, rowH = 40, innerW = W - 2 * pad;
     const tmp = document.createElement('canvas').getContext('2d');
     const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > innerW - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
     const blocks = [];
     if (last && x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines });
     if (last && x.msg) blocks.push({ f: font(500, 16), l: wrap(x.msg, font(500, 16)) });
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
-    const H = pad + 56 + 54 + pageRows.length * rowH + (extraH ? 24 : 0) + extraH + pad;
+    const totalH = last && devis ? 48 : 0;
+    const H = pad + 56 + 54 + pageRows.length * rowH + totalH + (extraH ? 24 : 0) + extraH + pad;
     const k = 2, cv = document.createElement('canvas');
     cv.width = W * k; cv.height = H * k;
     const g = cv.getContext('2d'); g.scale(k, k);
     g.fillStyle = bg; g.fillRect(0, 0, W, H); g.textBaseline = 'middle';
-    g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'right';
     const pg = pageCount > 1 ? `${pageNo}/${pageCount}` : '';
-    if (pg) { g.fillStyle = car; g.font = font(700, 16); g.fillText(pg, W - pad, pad + 14); }
+    if (pg) { g.fillStyle = car; g.font = font(700, 16); g.textAlign = 'right'; g.fillText(pg, W - pad, pad + 14); }
     g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'left';
     let ttl = this._qtTitle(); while (g.measureText(ttl).width > innerW - (pg ? 70 : 0) && ttl.length > 8) ttl = ttl.slice(0, -2);
     g.fillText(ttl, pad, pad + 14);
     let y = pad + 56;
-    const cV = pad + innerW * 0.52, cP = pad + innerW * 0.74, cR = W - pad - 12;
+    // colonnes : liste de prix (4) ou devis (6, avec Qté et Sous-total)
+    const L = devis ? { v: .36, p: .53, q: .61, s: .78, r: 1 } : { v: .52, p: .74, q: 0, s: 0, r: 1 };
+    const cV = pad + innerW * L.v, cP = pad + innerW * L.p, cQ = pad + innerW * L.q, cS = pad + innerW * L.s, cR = W - pad - 12;
     g.fillStyle = th; g.fillRect(pad, y, innerW, 54);
     g.fillStyle = car; g.font = font(700, 12);
     g.textAlign = 'left'; g.fillText('PRODUIT', pad + 12, y + 27);
     g.textAlign = 'center'; g.fillText('VARIANTE', cV, y + 27);
     const hdr = (t, xx) => { const ls = t.toUpperCase().split('\n'); g.textAlign = 'right'; ls.forEach((l, i) => g.fillText(l, xx, y + 27 + (i - (ls.length - 1) / 2) * 15)); };
-    hdr(c.price, cP); hdr(c.reco, cR);
+    hdr(c.price, cP);
+    if (devis) { g.textAlign = 'center'; g.fillText('QTÉ', cQ, y + 27); hdr('Sous-total', cS); }
+    hdr(c.reco, cR);
     y += 54; g.strokeStyle = car; g.lineWidth = 2; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
+    const nameW = innerW * (devis ? .31 : .46);
     pageRows.forEach((r, i) => {
       if (i % 2) { g.fillStyle = th; g.globalAlpha = .45; g.fillRect(pad, y, innerW, rowH); g.globalAlpha = 1; }
       g.fillStyle = fg; g.font = font(700, 16); g.textAlign = 'left';
-      let nm = r.name; while (g.measureText(nm).width > innerW * 0.46 && nm.length > 4) nm = nm.slice(0, -2);
+      let nm = r.name; while (g.measureText(nm).width > nameW && nm.length > 4) nm = nm.slice(0, -2);
       g.fillText(nm + (nm.length < r.name.length ? '…' : ''), pad + 12, y + rowH / 2);
-      g.font = font(500, 15); g.textAlign = 'center'; let vt = r.variant; while (g.measureText(vt).width > innerW * 0.2 && vt.length > 3) vt = vt.slice(0, -2); g.fillText(vt, cV, y + rowH / 2);
+      g.font = font(500, 15); g.textAlign = 'center'; let vt = r.variant; while (g.measureText(vt).width > innerW * 0.15 && vt.length > 3) vt = vt.slice(0, -2); g.fillText(vt, cV, y + rowH / 2);
       g.font = font(700, 16); g.textAlign = 'right'; g.fillText(U.eur(r.price), cP, y + rowH / 2);
-      g.font = font(500, 16); g.fillText(U.eur(r.reco), cR, y + rowH / 2);
+      if (devis) { g.font = font(700, 16); g.textAlign = 'center'; g.fillText(String(r.qty), cQ, y + rowH / 2); g.textAlign = 'right'; g.fillText(U.eur(r.sub), cS, y + rowH / 2); }
+      g.font = font(500, 16); g.textAlign = 'right'; g.fillText(U.eur(r.reco), cR, y + rowH / 2);
       y += rowH;
     });
     g.strokeStyle = car; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
+    if (totalH) { g.fillStyle = fg; g.font = font(800, 20); g.textAlign = 'right'; g.fillText(this._qtTotalLabel(), cS - 90, y + 26); g.fillText(U.eur(total), cS, y + 26); y += totalH; }
     y += 24; g.textAlign = 'left';
     blocks.forEach(b => { g.font = b.f; g.fillStyle = fg; b.l.forEach(t => { g.fillText(t, pad + 12, y + 12); y += 24; }); y += 12; });
     return cv;
@@ -617,10 +640,11 @@ const B2B = {
     }
   },
   quoteText() {
-    const { rows, keys } = this._qtRows(), c = this._qtCols(), x = this._qtExtras(), micro = this._qt.type === 'micro';
+    const { rows, keys, devis, total } = this._qtRows(), x = this._qtExtras(), micro = this._qt.type === 'micro';
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = [this._qtTitle(), ''].concat(
-      rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${micro ? '' : 'HT '}${eur(r.price)} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
+      rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${devis ? r.qty + ' × ' : ''}${micro ? '' : 'HT '}${eur(r.price)}${devis ? ' = ' + eur(r.sub) : ''} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
+      devis ? ['', this._qtTotalLabel() + ' : ' + eur(total)] : [],
       x.ibanLines.length ? [''].concat(x.ibanLines) : [], x.msg ? ['', x.msg] : []).join('\n');
     this._recordExport(keys);
     const fb = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
