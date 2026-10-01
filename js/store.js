@@ -5,7 +5,7 @@
                  journal + instantanés quotidiens, temps réel)
    ============================================================ */
 const Store = {
-  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'journal', 'meta'],
+  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'journal', 'meta'],
   state: null,
   sb: null,            // client supabase
   session: null,
@@ -65,6 +65,7 @@ const Store = {
       catalogA: [],    // accessoires finis : {id,name,category,bom:[{materialId,qty}],laborMinutes,extraCost,coefficient,stockGeneral,stockEvent,low,sku}
       consumables: [], // {id,name,category,unit,qty,low,costUnit}
       sales: [],       // ventes — voir ventes.js
+      baskets: [],     // paniers / devis en attente (admin seulement) : {id,ts,name,label,note,validUntil,items,budget,livraison}
       journal: [],     // {id,ts,action,label,undo}
       meta: { lastSnapshotDay: '' }
     };
@@ -130,6 +131,7 @@ const Store = {
     if (this._saveSeq !== seq || this._dirty.size || this._flushing || this._modalOpen()) { if (this._modalOpen()) this._pendingReload = true; return; }
     const obj = {};
     (data || []).forEach(r => obj[r.key] = r.data);
+    if (isViewer) delete obj.baskets;   // paniers en attente = noms de clientes : jamais pour un visiteur
     this.state = this.merge(obj);
     // première utilisation : pousser les valeurs par défaut
     if (!data || !data.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
@@ -362,7 +364,7 @@ const Store = {
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
-        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', journal: 'journal', meta: 'infos techniques' };
+        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', journal: 'journal', meta: 'infos techniques' };
         U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => names[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
       }
     } else {

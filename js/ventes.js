@@ -16,6 +16,7 @@ const Ventes = {
   selKey: '', lotId: '', qty: 1,
   consoId: '', consoQty: 1,
   cart: [],
+  _basketId: null,     // panier en attente d'où vient le ticket en cours (supprimé de la liste à la validation)
   customerName: '',
   // Historique des sorties : filtres (persistés), pagination, dépliage, sélection (2026-09-29)
   histF: { period: 'year', from: '', to: '', src: 'all', origin: 'all', q: '', sort: 'date', dir: 'desc', page: 1 },
@@ -407,6 +408,45 @@ const Ventes = {
     </div>`;
   },
 
+  /* Panier / devis en attente → ticket. Aucun lot n'est rempli : c'est toi qui choisis, ligne par ligne
+     (le lot à la DLUO la plus courte est seulement suggéré). Rien n'est déduit ni compté en stats tant que
+     le ticket n'est pas validé. */
+  loadFromBasket(rec, lines) {
+    this.source = 'general'; this.kind = 'M';
+    this.cart = lines.map(({ u, qty, price }) => ({ key: u.key, kind: 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, needLot: !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
+    this.customerName = rec.name; this.discOn = false; this._basketId = rec.id;
+    this.retourOpen = false; this.todoOpen = false; this.editTicketId = '';
+    if (/^#\/ventes\/?$/.test(location.hash)) this.render(); else location.hash = '#/ventes';
+    U.toast('Panier chargé dans le ticket — choisis le lot de chaque ligne, puis valide.');
+  },
+  _shortestLot(c) {
+    const u = this.units().find(x => x.key === c.key);
+    const lots = u ? u.lots.filter(l => this.lotQty(l) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999')) : [];
+    return { u, lots, shortest: lots[0] };
+  },
+  _lotPicker(c, i) {
+    const { lots, shortest } = this._shortestLot(c);
+    if (!lots.length) return '<span class="warn-txt">aucun lot en stock</span>';
+    const lab = l => (l.lotNumber || 'sans n°') + (l.dluo ? ' · ' + U.frDate(l.dluo) : ' · sans DLUO') + ' · dispo ' + U.qty(this.lotQty(l)) + (l === shortest ? ' · ⭐ DLUO la plus courte' : '');
+    return `<select onchange="Ventes.setCartLot(${i},this.value)" style="min-width:220px;"><option value="">⚠ Choisir le lot…</option>${lots.map(l => `<option value="${l.id}" ${c.lotId === l.id ? 'selected' : ''}>${U.esc(lab(l))}</option>`).join('')}</select>`;
+  },
+  setCartLot(i, lotId) {
+    const c = this.cart[i]; if (!c) return;
+    const apply = () => {
+      const { u } = this._shortestLot(c); const lot = u && u.lots.find(l => l.id === lotId);
+      c.lotId = lot ? lot.id : ''; c.lotLabel = lot ? (lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') : '';
+      this.render();
+      if (lot && this.lotQty(lot) < c.qty) U.toast(`Ce lot n'a que ${U.qty(this.lotQty(lot))} : le reste sera pris sur le lot suivant (DLUO la plus courte).`);
+    };
+    if (!lotId) { apply(); return; }
+    const { lots, shortest } = this._shortestLot(c); const lot = lots.find(l => l.id === lotId);
+    if (shortest && lot && shortest.id !== lot.id && (shortest.dluo || '9999') < (lot.dluo || '9999')) {
+      U.ask({ title: '⚠️ Attention péremption', okLabel: 'Garder ce lot', cancelLabel: 'Annuler',
+        html: `<p>Un lot avec une DLUO plus courte est disponible :</p><p>Lot choisi : <b>${U.esc(lot.lotNumber || 'sans n°')}</b> (${lot.dluo ? U.frDate(lot.dluo) : 'sans DLUO'})<br>Lot suggéré : <b>${U.esc(shortest.lotNumber || 'sans n°')}</b> (${shortest.dluo ? U.frDate(shortest.dluo) : 'sans DLUO'}) — dispo ${U.qty(this.lotQty(shortest))}</p>` })
+        .then(ok => { if (ok) apply(); else this.render(); });
+    } else apply();
+  },
+
   ticketCard() {
     const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0);
     const pct = Math.min(100, Math.max(0, U.num(this.discPct)));
@@ -414,10 +454,11 @@ const Ventes = {
     const total = gross - disc;
     return `<div class="card" style="border-left:4px solid var(--caramel);">
       <h2>🛒 Ticket en cours (${this.cart.length}) — stock ${this.source === 'event' ? 'événement' : 'général'}</h2>
+      ${this._basketId && this.cart.some(c => c.needLot) ? `<div class="badge warn" style="margin-bottom:8px;white-space:normal;">📋 Venant d'un panier en attente — choisis le lot de chaque ligne (vérifie le n° de lot / la DLUO du produit que tu as en main). La validation est bloquée tant qu'un lot manque.</div>` : ''}
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
           <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
-          <td>${c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—'}</td>
+          <td>${c.needLot ? this._lotPicker(c, i) : (c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—')}</td>
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
           <td class="num"><b>${U.eur(c.price * c.qty)}</b></td>
@@ -428,13 +469,15 @@ const Ventes = {
       <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value"></div>
       <div class="frow mt">
         <button class="btn-ok" onclick="Ventes.validate()">✅ Valider la sortie de stock</button>
-        <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes.render()">Vider le ticket</button>
+        <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes._basketId=null;Ventes.render()">Vider le ticket</button>
       </div>
     </div>`;
   },
 
   validate() {
     if (!this.cart.length) return;
+    const miss = this.cart.filter(c => c.needLot && !c.lotId);
+    if (miss.length) { U.alert('Choisis le lot de chaque ligne avant de valider :\n• ' + miss.map(c => c.name + (c.label ? ' ' + c.label : '')).join('\n• '), '⚠️ Lot manquant'); return; }
     U.modal({
       title: '🧾 Origine de la vente',
       hideOk: true,
@@ -499,6 +542,11 @@ const Ventes = {
     this.cart = [];
     this.customerName = '';
     this.discOn = false;
+    if (this._basketId) {   // le panier en attente est maintenant une vraie vente : il quitte la liste
+      Store.state.baskets = (Store.state.baskets || []).filter(x => x.id !== this._basketId);
+      if (typeof Paniers !== 'undefined' && Paniers._pendId === this._basketId) Paniers._pendId = null;
+      this._basketId = null; Store.save('baskets');
+    }
     this.render();
     U.toast(`Sortie enregistrée : ${U.eur(sale.total)} · stock à jour.`, false, entry.id);
     if (shortfalls.length) this._alertShortfalls(shortfalls);

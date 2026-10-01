@@ -390,6 +390,7 @@ const Paniers = {
     item.qty = Math.max(0, item.qty + delta);
     if (item.qty <= 0) this.basket.splice(idx, 1);
     this.render();
+    if (delta > 0) this._stockWarn(item.pId, item.vId);
   },
   toggleLock(idx) {
     const item = this.basket[idx];
@@ -549,8 +550,20 @@ const Paniers = {
     String(S.payOther || '').split(',').map(t => t.trim()).filter(Boolean).forEach(t => l.push(t.toLowerCase()));
     return l;
   },
-  _shOpt: { pay: true, iban: true },
+  _shOpt: { pay: true, iban: true, who: true },
   _shMsg: null,
+  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _pendId: null,
+  _dogsOf(name) {   // chiens référencés de la cliente (nom + race) — jamais en mode visite
+    const c = Clients.find(name);
+    return (c && !Clients.ro() ? (c.dogs || []) : []).filter(d => String(d.name || '').trim());
+  },
+  _whoLine() {
+    const n = String(this._shClient || '').trim();
+    if (!n) return '';
+    const dogs = this._dogsOf(n).map(d => String(d.name).trim());
+    const list = dogs.length > 1 ? dogs.slice(0, -1).join(', ') + ' et ' + dogs[dogs.length - 1] : (dogs[0] || '');
+    return 'Panier de ' + Clients.show(n) + (list ? ' — pour ' + list : '');
+  },
   _shareExtras() {
     const S = Store.state.settings, o = this._shOpt || {};
     const pl = this._payList();
@@ -558,12 +571,14 @@ const Paniers = {
     const holder = String(S.payHolder || '').trim(), iban = String(S.payIban || '').trim(), bic = String(S.payBic || '').trim();
     const ibanLines = (o.iban !== false && iban) ? [].concat(holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
     const msg = String(this._shMsg != null ? this._shMsg : (S.payMessage || '')).trim();
-    return { pay, ibanLines, msg };
+    const who = o.who !== false ? this._whoLine() : '';
+    const valid = this._shValid ? 'Devis valable jusqu\'au ' + U.frDate(this._shValid) : '';
+    return { pay, ibanLines, msg, who, valid };
   },
   _shareInner(d) {
     const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
     const x = d.x;
-    return `<table style="width:100%;border-collapse:collapse;font-size:1rem;">
+    return `${x.who ? `<p style="margin:0 10px 8px;font-weight:700;color:var(--caramel);">${U.esc(x.who)}</p>` : ''}<table style="width:100%;border-collapse:collapse;font-size:1rem;">
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:right;">Prix TTC</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
@@ -571,6 +586,7 @@ const Paniers = {
           <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
       </table>
+      ${x.valid ? `<p style="margin:10px 10px 0;font-style:italic;">${U.esc(x.valid)}</p>` : ''}
       ${x.pay ? `<p style="margin:12px 10px 0;">${U.esc(x.pay)}</p>` : ''}
       ${x.ibanLines.length ? `<p style="margin:8px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
@@ -578,15 +594,19 @@ const Paniers = {
   _shareRefresh() {
     const box = document.getElementById('pan_share');
     if (box) box.innerHTML = this._shareInner(this._shareData());
+    const dg = document.getElementById('pan_dogs');
+    if (dg) { const dogs = this._dogsOf(this._shClient); dg.textContent = dogs.length ? '🐕 ' + dogs.map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ') : ''; }
   },
   _shToggle(k, v) { this._shOpt = Object.assign({}, this._shOpt, { [k]: !!v }); this._shareRefresh(); },
   _shSetMsg(v) { this._shMsg = v; this._shareRefresh(); },
+  _shSet(k, v) { this['_sh' + k] = v; this._shareRefresh(); },
   share() {
     if (!this.basket.length) return;
     const S = Store.state.settings;
-    this._shOpt = { pay: true, iban: true }; this._shMsg = null;
+    this._shOpt = { pay: true, iban: true, who: true }; this._shMsg = null;
     const hasPay = this._payList().length > 0, hasIban = !!String(S.payIban || '').trim();
-    const chk = (k, label) => `<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" checked onchange="Paniers._shToggle('${k}',this.checked)"> ${label}</label>`;
+    const chk = (k, label, on = true) => `<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ${on ? 'checked' : ''} onchange="Paniers._shToggle('${k}',this.checked)"> ${label}</label>`;
+    const fld = (label, inner) => `<div class="fg" style="margin:0;"><label>${label}</label>${inner}</div>`;
     const body = `<div id="pan_share" style="padding:4px 2px;">${this._shareInner(this._shareData())}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')">🖼️ Copier l'image</button>
@@ -594,10 +614,127 @@ const Paniers = {
       </div>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${chk('who', 'Nom de la cliente et des chiens')}${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
         <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message pour ce client (vide = rien d'affiché)" oninput="Paniers._shSetMsg(this.value)">${U.esc(String(S.payMessage || ''))}</textarea>
+      </div>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">⏳ Mettre en attente (en attendant l'accord de la cliente)</div>
+        <div class="grid c2" style="gap:10px;">
+          ${fld('Nom de la cliente', `<input type="text" list="dl_clients" value="${U.esc(this._shClient)}" placeholder="nom de la cliente…" oninput="Paniers._shSet('Client',this.value)">${Clients.datalist()}`)}
+          ${fld('Valable jusqu\'au (option)', `<input type="date" value="${U.esc(this._shValid)}" onchange="Paniers._shSet('Valid',this.value)">`)}
+          ${fld('Intitulé (option)', `<input type="text" value="${U.esc(this._shLabel)}" placeholder="ex : version 2, sans le sprat…" oninput="Paniers._shLabel=this.value">`)}
+          ${fld('Note interne (jamais affichée à la cliente)', `<input type="text" value="${U.esc(this._shNote)}" placeholder="ex : retrait samedi" oninput="Paniers._shNote=this.value">`)}
+        </div>
+        <div id="pan_dogs" class="muted" style="margin:6px 0 0;font-size:.85rem;"></div>
+        <div style="margin-top:10px;text-align:center;"><button class="btn-cta btn-sm" onclick="Paniers.savePending()">💾 ${this._pendId ? 'Mettre à jour le panier en attente' : 'Mettre en attente'}</button></div>
       </div>`;
-    U.modal({ title: '🧺 Votre panier Touffu', body, okLabel: '📋 Copier le texte', onOk: () => { Paniers.copyShare(); return false; } });
+    U.modal({ title: '🧺 Votre panier Touffu', body, okLabel: '📋 Copier le texte', wide: true, onOk: () => { Paniers.copyShare(); return false; } });
+    this._shareRefresh();
+  },
+
+  /* ---------- Paniers / devis en attente ---------- */
+  _pending() { return Store.state.baskets || (Store.state.baskets = []); },
+  savePending() {
+    const name = String(this._shClient || '').trim();
+    if (!name) { U.toast('Indique le nom de la cliente pour mettre le panier en attente.', true); return; }
+    if (!this.basket.length) return;
+    const list = this._pending(), now = Date.now();
+    let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
+    const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '',
+      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, nbChiens: this.nbChiens, updated: now };
+    if (rec) Object.assign(rec, data);
+    else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
+    this._pendId = rec.id;
+    Store.log('panier', `Panier en attente — ${name}`);
+    Store.save('baskets', 'journal');
+    U.closeModal();
+    U.toast('Panier mis en attente.');
+    this.render();
+  },
+  _ageTxt(rec) {
+    const d = Math.floor((Date.now() - (rec.updated || rec.ts)) / 86400000);
+    return { d, txt: d <= 0 ? 'aujourd\'hui' : d === 1 ? 'depuis 1 jour' : `depuis ${d} jours` };
+  },
+  _pendingCard() {
+    const list = this._pending().slice().sort((a, b) => (b.updated || b.ts) - (a.updated || a.ts));
+    if (!list.length) return '';
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = list.map(r => {
+      const tot = (r.items || []).reduce((a, b) => a + U.num(b.price) * U.num(b.qty), 0) + (U.num(r.livraison) > 0 ? U.num(r.livraison) : 0);
+      const nb = (r.items || []).reduce((a, b) => a + U.num(b.qty), 0);
+      const age = this._ageTxt(r);
+      const dogs = this._dogsOf(r.name).map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ');
+      const exp = r.validUntil && r.validUntil < today;
+      return `<tr${this._pendId === r.id ? ' style="background:var(--th-bg);"' : ''}>
+        <td class="col-name"><b>${U.esc(Clients.show(r.name))}</b>${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
+        <td><span class="badge ${age.d >= 7 ? 'warn' : ''}">⏳ ${age.txt}</span>${r.validUntil ? `<div class="${exp ? 'warn-txt' : 'muted'}" style="font-size:.8rem;">${exp ? '⚠ expiré le ' : 'valable jusqu\'au '}${U.frDate(r.validUntil)}</div>` : ''}</td>
+        <td class="num" style="white-space:nowrap;">${nb} art.<br><b>${U.eur(tot)}</b></td>
+        <td style="white-space:nowrap;text-align:right;">
+          <button class="btn-ghost btn-sm" onclick="Paniers.resume('${r.id}')" title="Recharger ce panier pour le modifier">✏️ Reprendre</button>
+          <button class="btn-ghost btn-sm" onclick="Paniers.dupPending('${r.id}')" title="Garder cette version et en proposer une autre">📋 Dupliquer</button>
+          <button class="btn-cta btn-sm" onclick="Paniers.sendToSale('${r.id}')" title="La cliente est d'accord : charge les produits dans le ticket de la page Ventes">🛒 Envoyer en vente</button>
+          <button class="btn-icon" onclick="Paniers.delPending('${r.id}')" title="Supprimer">🗑️</button>
+        </td></tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--caramel);">
+      <h2>⏳ Paniers en attente (${list.length})</h2>
+      <div class="table-wrap"><table><thead><tr><th class="col-name">Cliente</th><th>En attente</th><th class="num">Panier</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
+  },
+  async resume(id) {
+    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+    if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
+    this.basket = JSON.parse(JSON.stringify(rec.items || []));
+    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
+    this._pendId = id; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || '';
+    this.proposals = null;
+    this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    U.toast('Panier rechargé — modifie-le puis « Partager » → « Mettre à jour ».');
+  },
+  dupPending(id) {
+    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+    const now = Date.now();
+    const copy = Object.assign(JSON.parse(JSON.stringify(rec)), { id: U.uid(), ts: now, updated: now, label: (rec.label ? rec.label + ' ' : '') + '(copie)' });
+    this._pending().push(copy);
+    Store.save('baskets'); this.render(); U.toast('Panier dupliqué.');
+  },
+  async delPending(id) {
+    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+    if (!await U.confirm('Supprimer le panier en attente de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Supprimer' })) return;
+    Store.state.baskets = this._pending().filter(x => x.id !== id);
+    if (this._pendId === id) this._pendId = null;
+    Store.save('baskets'); this.render();
+  },
+  async sendToSale(id) {
+    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+    const units = Ventes.units(), merged = new Map(), problems = [];
+    (rec.items || []).forEach(b => {
+      const key = 'M|' + b.pId + '|' + b.vId;
+      if (merged.has(key)) merged.get(key).qty += U.num(b.qty);
+      else merged.set(key, { key, name: b.name, variant: b.variant, price: U.num(b.price), qty: U.num(b.qty) });
+    });
+    const lines = [];
+    merged.forEach(m => {
+      const u = units.find(x => x.key === m.key);
+      if (!u) { problems.push(`<b>${U.esc(m.name)}</b> ${U.esc(m.variant || '')} : produit introuvable dans le stock (ignoré).`); return; }
+      if (u.availG < m.qty) problems.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : ${U.qty(m.qty)} demandé(s), ${U.qty(u.availG)} en stock général${U.num(u.availE) > 0 ? ` (${U.qty(u.availE)} en événement)` : ''}.`);
+      if (Math.abs(u.price - m.price) > 0.004) problems.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : prix modifié depuis (${U.eur(m.price)} dans le panier, ${U.eur(u.price)} aujourd'hui). Le prix du panier est conservé.`);
+      Clients.conflicts(rec.name, u).forEach(c => problems.push(`🐕 <b>${U.esc(m.name)}</b> : ${U.esc(c)}`));
+      lines.push({ u, qty: m.qty, price: m.price });
+    });
+    if (!lines.length) { U.toast('Aucun produit à envoyer.', true); return; }
+    if (problems.length && !await U.ask({ title: '⚠️ À vérifier avant l\'envoi en vente', okLabel: 'Envoyer quand même', cancelLabel: 'Annuler', html: `<ul style="padding-left:18px;">${problems.map(p => `<li>${p}</li>`).join('')}</ul>` })) return;
+    if (Ventes.cart.length && !await U.confirm('Le ticket en cours de la page Ventes contient déjà des articles. Le remplacer par le panier de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
+    Ventes.loadFromBasket(rec, lines);
+  },
+
+  _stockWarn(pId, vId) {
+    const p = Store.state.stockM.find(x => x.id === pId), v = p && (p.variants || []).find(x => x.id === vId);
+    if (!v || Stock.isVirtual(p, v)) return;
+    const want = this.basket.filter(b => b.pId === pId && b.vId === vId).reduce((a, b) => a + U.num(b.qty), 0);
+    const g = (v.lots || []).reduce((a, l) => a + U.num(l.qtyGeneral), 0), e = (v.lots || []).reduce((a, l) => a + U.num(l.qtyEvent), 0);
+    if (want > g + e) U.toast(`⚠️ Stock insuffisant : ${U.qty(want)} ${p.name} ${Pricing.labelVariant(v)} dans le panier, ${U.qty(g + e)} en stock (général + événement).`, true);
+    else if (want > g) U.toast(`⚠️ Stock général insuffisant : ${U.qty(want)} ${p.name} ${Pricing.labelVariant(v)} demandé(s), ${U.qty(g)} en général (le reste est en événement).`, true);
   },
   /* Image du panier (dessinée sur un canvas, aucune librairie) : copie dans le presse-papiers (HTTPS seulement) ou téléchargement PNG */
   async _shareCanvas() {
@@ -616,8 +753,10 @@ const Paniers = {
     if (d.x.pay) blocks.push({ f: font(500, 16), l: wrap(d.x.pay, font(500, 16)) });
     if (d.x.ibanLines.length) blocks.push({ f: font(700, 16), l: d.x.ibanLines });
     if (d.x.msg) blocks.push({ f: font(500, 16), l: wrap(d.x.msg, font(500, 16)) });
+    if (d.x.valid) blocks.unshift({ f: font(500, 16), l: [d.x.valid] });
+    const whoH = d.x.who ? 30 : 0;
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
-    const H = pad + 50 + 44 + rows * rowH + 70 + extraH + pad;
+    const H = pad + 50 + whoH + 44 + rows * rowH + 70 + extraH + pad;
     const k = 2, cv = document.createElement('canvas');
     cv.width = W * k; cv.height = H * k;
     const x = cv.getContext('2d'); x.scale(k, k);
@@ -625,6 +764,7 @@ const Paniers = {
     x.fillStyle = fg; x.textBaseline = 'middle';
     x.font = font(700, 26); x.textAlign = 'left'; x.fillText('Votre panier Touffu', pad, pad + 14);
     let y = pad + 50;
+    if (d.x.who) { x.fillStyle = car; x.font = font(700, 17); x.textAlign = 'left'; let wt = d.x.who; while (x.measureText(wt).width > W - 2 * pad && wt.length > 6) wt = wt.slice(0, -2); x.fillText(wt + (wt.length < d.x.who.length ? '…' : ''), pad, y + 6); y += whoH; }
     x.fillStyle = th; x.fillRect(pad, y, W - 2 * pad, 38);
     x.fillStyle = car; x.font = font(700, 13);
     x.textAlign = 'left'; x.fillText('PRODUIT', pad + 12, y + 19);
@@ -679,16 +819,17 @@ const Paniers = {
   copyShare() {
     const d = this._shareData();
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
-    const text = ['Votre panier Touffu', ''].concat(
+    const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}`),
       [''], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
-      d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
+      d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
   },
 
   clearBasket() {
     this.basket = [];
+    this._pendId = null; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = '';
     this.proposals = null;
     this.render();
   },
@@ -787,6 +928,7 @@ const Paniers = {
     }
     this.addQ = ''; this.addOpen = false;
     this.render();
+    this._stockWarn(pId, vId);
   },
 
   /* ---------- Filtres ---------- */
@@ -934,6 +1076,7 @@ const Paniers = {
     App.mount(`
       <div class="view-title"><h1>🧺 Paniers personnalisés</h1><span class="sub">Compose un panier mixte de mastication en fonction du budget, des préférences du chien et de la rentabilité.</span></div>
 
+      ${this._pendingCard()}
       <div class="paniers-layout">
 
       <div class="card">
