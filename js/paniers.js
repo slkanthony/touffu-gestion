@@ -614,7 +614,12 @@ const Paniers = {
         if (navigator.clipboard && window.ClipboardItem) {
           try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); U.toast('Image copiée — colle-la dans ta conversation.'); return; } catch (e) {}
         }
-        U.toast('Copie de l’image impossible ici (connexion non sécurisée) — image enregistrée à la place.', true);
+        // Connexion non sécurisée (http) : le navigateur refuse l'écriture dans le presse-papiers → on affiche l'image, clic droit > Copier l'image
+        const box = document.getElementById('pan_share');
+        if (box) {
+          box.innerHTML = `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Panier Touffu">`;
+          return;
+        }
       }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = 'panier-touffu.png';
@@ -982,13 +987,15 @@ const Paniers = {
           <button class="btn-cta" onclick="Paniers.generate()">🎲 Générer le panier</button>
           ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.regenerate()" title="Garde les produits verrouillés 🔒 et recompose le reste du panier">🔄 Recomposer le reste</button>` : ''}
           ${this.basket.length || this.proposals ? `<button class="btn-ghost" onclick="Paniers.clearBasket()">🧹 Vider</button>` : ''}
-          ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.share()" title="Fenêtre propre à montrer au client : produit, variante et prix TTC">📤 Partager</button>` : ''}
         </div>
       </div>
 
       <div class="card">
         ${this.proposals ? this._renderProposals() : `
-        <h2>🧺 Panier composé${this.nbChiens > 1 ? ` <span class="muted">(${this.nbChiens} chiens)</span>` : ''}</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <h2 style="margin:0;">🧺 Panier composé${this.nbChiens > 1 ? ` <span class="muted">(${this.nbChiens} chiens)</span>` : ''}</h2>
+          ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.share()" title="Fenêtre propre à montrer au client : produit, variante et prix TTC">📤 Partager</button>` : ''}
+        </div>
 
         <div class="kpi-row" id="pan_kpi" style="margin-bottom:16px;">
           <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
