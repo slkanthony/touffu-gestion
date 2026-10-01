@@ -39,9 +39,13 @@ const Clients = {
   _norm(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); },
   /* Alerte intolérance à la vente : viande cochée ⛔ sur un chien du client, ou mot des « allergies / intolérances » présent dans la viande ou le nom du produit. */
   conflicts(clientName, u) {
-    const c = this.find(clientName); if (!c || !u || u.kind !== 'M') return [];
+    const c = this.find(clientName); if (!c) return [];
+    return this.conflictsFor(c.dogs, u);
+  },
+  conflictsFor(dogs, u) {   // même contrôle, pour une liste de chiens donnée (ex. un seul chien d'un panier « chien par chien »)
+    if (!u || u.kind !== 'M') return [];
     const meat = this._norm(u.type), prod = this._norm(u.name), out = [];
-    c.dogs.forEach(d => {
+    (dogs || []).forEach(d => {
       const who = d.name || 'Un chien';
       const av = Object.keys(d.meats || {}).find(m => d.meats[m] === 'avoid' && this._norm(m) === meat);
       if (av) out.push(`${who} évite / n'aime pas : ${av}`);

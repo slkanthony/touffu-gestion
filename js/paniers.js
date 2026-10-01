@@ -74,11 +74,60 @@ const Paniers = {
     const r = this._clientRules();
     if (!r) return 'Pas de fiche pour cette cliente : aucun filtre appliqué (elle sera créée à la vente).';
     if (!r.dogs.length) return 'Fiche sans chien renseigné : aucun filtre appliqué.';
+    if (this._perDog()) {
+      const per = this._dogList().map(d => {
+        const av = Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid'), ex = [].concat(d.sensitive ? ['sensible'] : [], av.length ? ['évite : ' + av.join(', ')] : [], d.hair === 'non' ? ['pas de poils'] : [], d.odor === 'non' ? ['pas d\'odeurs fortes'] : [], d.fat === 'non' ? ['pas de gras'] : []);
+        return d._n + (ex.length ? ' (' + ex.join(', ') + ')' : '');
+      });
+      return '🐕 ' + per.join(' · ') + ' → panier composé chien par chien (budget partagé) ; un produit pensé pour un seul chien est annoté « pour … », tu peux le changer.';
+    }
     const avoid = [...new Set(r.dogs.flatMap(d => Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid')))];
     const allergies = [...new Set(r.dogs.map(d => String(d.allergies || '').trim()).filter(Boolean))];
     const parts = [].concat(r.sensitive ? ['🌿 sensible : « Hypoallergénique uniquement » coché'] : [], avoid.length ? ['évite : ' + avoid.join(', ')] : [], allergies.length ? ['allergies : ' + allergies.join(' · ')] : [], r.hair ? ['pas de produits avec poils'] : [], r.odor ? ['pas d\'odeurs fortes'] : [], r.fat ? ['pas de produits gras'] : []);
     return '🐕 ' + r.dogs.map(d => d.name || 'chien').join(', ') + ' — ' + (parts.length ? parts.join(' · ') + ' → exclus à la génération' : 'aucune contrainte renseignée');
   },
+  /* ---------- Panier chien par chien (cliente avec 2 chiens ou plus aux profils différents) ---------- */
+  _dog: null,
+  _dogRules(d) { const r = this._clientRules(); return { c: r ? r.c : null, dogs: [d], sensitive: !!d.sensitive, hair: d.hair === 'non', odor: d.odor === 'non', fat: d.fat === 'non' }; },
+  _dogList() { const r = this._clientRules(); return r ? r.dogs.map((d, i) => Object.assign({}, d, { _n: String(d.name || '').trim() || 'Chien ' + (i + 1) })) : []; },
+  _dogAges(d) {   // tranche d'âge de la fiche (naissance) → valeurs du filtre « Âge du chien » ; null si inconnue
+    if (!d.birth) return null; const b = new Date(d.birth), n = new Date(); if (isNaN(b)) return null;
+    let m = (n.getFullYear() - b.getFullYear()) * 12 + n.getMonth() - b.getMonth(); if (n.getDate() < b.getDate()) m--;
+    if (m < 0) return null;
+    return m < 3 ? ['0-3'] : m < 6 ? ['3-5'] : m < 11 ? ['6-10'] : m >= 96 ? ['11+', 'senior'] : ['11+'];
+  },
+  _profKey(d) {   // deux chiens avec la même clé = même profil (âge, gabarit, contraintes) ; la race ne compte pas
+    const avoid = Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid').sort();
+    return JSON.stringify([(this._dogAges(d) || []).join(), d.gabarit || '', avoid, String(d.allergies || '').trim().toLowerCase(), d.hair === 'non', d.odor === 'non', d.fat === 'non', !!d.sensitive]);
+  },
+  _perDog() { const dogs = this._dogList(); return dogs.length >= 2 && new Set(dogs.map(d => this._profKey(d))).size > 1; },
+  _compose(maxAvailable, locked) {
+    if (!this._perDog()) return this._buildBasket(maxAvailable, locked);
+    const dogs = this._dogList(), keep = { age: this.ageInclude, gab: this.gabaritInclude, n: this.nbChiens, hypo: this.hypoOnly, dog: this._dog };
+    let basket = locked.map(b => ({ ...b }));
+    const key = b => b.pId + '|' + b.vId + '|' + b.lotId;
+    try {
+      dogs.forEach((d, k) => {
+        const spent = basket.reduce((a, b) => a + b.price * b.qty, 0);
+        const target = spent + (maxAvailable - spent) / (dogs.length - k);   // budget réparti à parts égales, le reliquat passe au chien suivant
+        this._dog = d; this.nbChiens = 1;
+        const ages = this._dogAges(d); if (ages) this.ageInclude = ages;
+        if (d.gabarit) this.gabaritInclude = [d.gabarit];
+        if (d.sensitive) this.hypoOnly = true;
+        const before = new Map(basket.map(b => [key(b), b.qty]));
+        const res = this._buildBasket(target, basket);
+        res.forEach(b => {
+          if (!before.has(key(b))) b.dog = d._n;                       // nouveau produit : pensé pour ce chien
+          else if (b.qty > before.get(key(b))) b.dog = '';             // déjà choisi pour un autre chien et repris pour celui-ci : convient aux deux
+        });
+        basket = res;
+        this.ageInclude = keep.age; this.gabaritInclude = keep.gab; this.nbChiens = keep.n; this.hypoOnly = keep.hypo; this._dog = keep.dog;
+      });
+    } finally { this.ageInclude = keep.age; this.gabaritInclude = keep.gab; this.nbChiens = keep.n; this.hypoOnly = keep.hypo; this._dog = keep.dog; }
+    return basket;
+  },
+  _dogChoices() { return Clients.ro() ? [] : this._dogList().map(d => d._n); },
+  setItemDog(i, v) { if (this.basket[i]) { this.basket[i].dog = v; this.render(); } },
   setClient(v) {
     v = String(v || '').trim();
     const c = Clients.find(v);
@@ -93,7 +142,7 @@ const Paniers = {
   /* ---------- Données disponibles ---------- */
   candidates() {
     const out = [];
-    const cl = this._clientRules();
+    const cl = this._dog ? this._dogRules(this._dog) : this._clientRules();
 
     Store.state.stockM.forEach(p => {
       if (this.excludeMeats.includes(p.meatType)) return;
@@ -104,7 +153,7 @@ const Paniers = {
       if (this.poilFilter === 'sans' && pTags.poil !== 'sans' && pTags.poil !== 'les_deux') return;
       if (this.hypoOnly && !pTags.hypo) return;
       if (cl) {
-        if (Clients.conflicts(cl.c.name, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
+        if (Clients.conflictsFor(cl.dogs, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
         if (cl.hair && pTags.poil === 'avec') return;
       }
 
@@ -359,8 +408,8 @@ const Paniers = {
     // servent de BASE : la génération complète le panier autour d'eux au lieu de les écraser
     // (demande d'Antho : un produit ajouté avant de générer doit rester la base du panier).
     const locked = this.basket.filter(b => b.locked).map(b => ({ ...b }));
-    const b1 = this._buildBasket(available, locked);
-    const b2 = this._buildBasket(available + 1, locked);
+    const b1 = this._compose(available, locked);
+    const b2 = this._compose(available + 1, locked);
     const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
     const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
 
@@ -389,8 +438,8 @@ const Paniers = {
     if (available <= 0) { U.toast('Le budget disponible (après livraison) est nul ou négatif.', true); return; }
 
     const locked = this.basket.filter(b => b.locked).map(b => ({...b}));
-    const b1 = this._buildBasket(available, locked);
-    const b2 = this._buildBasket(available + 1, locked);
+    const b1 = this._compose(available, locked);
+    const b2 = this._compose(available + 1, locked);
     const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
     const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
 
@@ -573,7 +622,8 @@ const Paniers = {
   },
   /* Fenêtre « client » : produit, variante, prix TTC seulement (pas de coeff, DLUO, viande…) — pour capture d'écran ou copie du texte */
   _shareData() {
-    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price }));
+    const dn = this._dogChoices();
+    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price, dog: (b.dog && dn.includes(b.dog)) ? b.dog : '' }));
     const sub = lines.reduce((a, l) => a + l.total, 0);
     const ship = this.livraison > 0 ? this.livraison : 0;
     return { lines, sub, ship, total: sub + ship, x: this._shareExtras() };
@@ -612,7 +662,7 @@ const Paniers = {
     return { pay, ibanLines, msg, who, valid };
   },
   _shareInner(d) {
-    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
+    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
     const x = d.x;
     return `${x.who ? `<p style="margin:0 10px 8px;font-weight:700;color:var(--caramel);">${U.esc(x.who)}</p>` : ''}<table style="width:100%;border-collapse:collapse;font-size:1rem;">
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:right;">Prix TTC</th></tr></thead>
@@ -824,7 +874,8 @@ const Paniers = {
       x.fillStyle = fg; x.font = font(700, 18); x.textAlign = 'left';
       let nm = l.name + (l.qty > 1 ? ' × ' + l.qty : '');
       while (x.measureText(nm).width > (W - 2 * pad) * 0.5 && nm.length > 4) nm = nm.slice(0, -2);
-      x.fillText(nm + (nm.length < (l.name + (l.qty > 1 ? ' × ' + l.qty : '')).length ? '…' : ''), pad + 12, y + rowH / 2);
+      x.fillText(nm + (nm.length < (l.name + (l.qty > 1 ? ' × ' + l.qty : '')).length ? '…' : ''), pad + 12, y + rowH / 2 - (l.dog ? 8 : 0));
+      if (l.dog) { x.fillStyle = car; x.font = font(600, 13); x.fillText('→ pour ' + l.dog, pad + 12, y + rowH / 2 + 12); x.fillStyle = fg; }
       x.font = font(500, 17); x.textAlign = 'center'; x.fillText(l.variant || '', pad + (W - 2 * pad) * 0.62, y + rowH / 2);
       x.font = font(700, 18); x.textAlign = 'right'; x.fillText(U.eur(l.total), W - pad - 12, y + rowH / 2);
       y += rowH;
@@ -865,7 +916,7 @@ const Paniers = {
     const d = this._shareData();
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
-      d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}`),
+      d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
       [''], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
       d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
@@ -1076,7 +1127,7 @@ const Paniers = {
             const dl = U.daysTo(b.dluo);
             const dc = dl !== null && dl < 0 ? 'bad' : dl !== null && dl <= 30 ? 'warn' : '';
             return `<tr>
-              <td class="col-name">${U.esc(b.name)}</td>
+              <td class="col-name">${U.esc(b.name)}${b.dog ? `<div class="muted" style="font-size:.82rem;">→ pour ${U.esc(b.dog)}</div>` : ''}</td>
               <td><span class="tag">${U.esc(b.variant)}</span></td>
               <td><span class="badge info">${U.esc(b.meat || '—')}</span></td>
               <td class="num">${b.qty}</td>
@@ -1255,11 +1306,12 @@ const Paniers = {
             <th>DLUO</th><th class="num">Coeff</th><th></th>
           </tr></thead>
           <tbody>${this.basket.map((b, i) => {
+            const dogOpts = this._dogChoices();
             const daysLeft = U.daysTo(b.dluo);
             const dluoClass = daysLeft !== null && daysLeft < 0 ? 'bad' : daysLeft !== null && daysLeft <= 30 ? 'warn' : '';
             return `<tr${b.locked ? ' style="background:var(--th-bg);"' : ''}>
               <td><button class="btn-icon" onclick="Paniers.toggleLock(${i})" title="${b.locked ? 'Déverrouiller (sera remplacé à la régénération)' : 'Verrouiller (sera gardé à la régénération)'}">${b.locked ? '🔒' : '🔓'}</button></td>
-              <td class="col-name">${U.esc(b.name)}</td>
+              <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
               <td><span class="tag">${U.esc(b.variant)}</span></td>
               <td><span class="badge info">${U.esc(b.meat || '—')}</span></td>
               <td class="num">${U.eur(b.price)}</td>
