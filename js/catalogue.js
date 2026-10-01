@@ -185,18 +185,28 @@ const Catalogue = {
       if (isActive) return `<span class="sup-badge main" title="${isMain ? 'Fournisseur principal' : 'Comparaison — cliquer pour revenir au principal'}" onclick="event.preventDefault();event.stopPropagation();Catalogue.previewSup('${p.id}','${s.supplierId}')">${prefix}${U.esc(Store.supplierName(s.supplierId))}</span>`;
       return `<span class="sup-badge alt" title="Comparer avec ce fournisseur" onclick="event.preventDefault();event.stopPropagation();Catalogue.previewSup('${p.id}','${s.supplierId}')">${prefix}${U.esc(Store.supplierName(s.supplierId))}</span>`;
     }).join('');
+    // Produit « par taille » : chaque taille a son propre prix d'achat → base / coeff commun / décote n'ont pas de sens
+    const perSize = actives.length > 0 && actives.every(v => v.mode === 'size' && (U.num(v.value) > 0 || U.num(v.weight) > 0));
+    let sizeMeta = '', sizeCoeff = '';
+    if (perSize) {
+      const calcs = actives.map((v, k) => Pricing.variantCalc(p, v, k, base, na));
+      const costs = calcs.map(c => c.cost), cfs = calcs.map(c => c.effCoeff || c.coeff || 0);
+      const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' → ' + f(hi); };
+      sizeMeta = `${na} taille(s) · <span class="sensitive">coût ${rng(costs, x => U.eur(x))}</span>`;
+      sizeCoeff = `<span class="b2b-disc-badge sensitive" style="width:auto;" title="Chaque taille a son propre prix d'achat et son propre coefficient (voir le tableau)"><label>Coeff</label><span style="padding:0 8px;font-weight:700;">${rng(cfs, x => x.toFixed(2))}</span></span>`;
+    }
     return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
       <summary onclick="Catalogue.summaryNav(event,'${p.id}')" onauxclick="Catalogue.summaryNav(event,'${p.id}')">
         <b>${U.esc(p.name)}</b>
         <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
-        <span class="meta right">${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT, 3)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i></span>
-        <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()"><span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
+        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT, 3)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i>`}</span>
+        <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
           <label>Coeff</label><input type="number" min="0" step="0.01" value="${U.num(p.coefficient) || 2}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
         <span class="b2b-disc-badge">
           <label>Décote</label><input type="number" min="0" max="100" step="1" value="${p.bulkDiscount ?? ''}" placeholder="${S.bulkDiscount}" title="Décote paliers propre à ce produit — vide = suit le réglage global (${S.bulkDiscount}%)" onchange="Catalogue.setCardBulkDiscount('${p.id}',this.value)"><span>%</span>
-        </span></span>
+        </span>`}</span>
         <span onclick="event.stopPropagation();Catalogue.toggleSel('${p.id}')"><button class="btn btn-sm ${selected?'cat-sel-active':'btn-ghost'}">${selected?'✓ Sélectionné':'Sélectionner'}</button></span>
       </summary>
       <div class="fold-body">
@@ -764,6 +774,7 @@ const Catalogue = {
     box.innerHTML = this.varGroups.map(g => {
       const groupRows = rows.filter(r => r.v.mode === g.mode);
       if (!groupRows.length) return '';
+      if (g.mode === 'size') return this.sizeTable(g, groupRows, base);
       return `<h3 class="cp-var-title">${g.title}
           <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('${g.mode}')">🗑️</button></h3>
         <div class="table-wrap"><table class="cp-var-table">
@@ -772,6 +783,42 @@ const Catalogue = {
         </table></div>`;
     }).join('') || '<p class="muted">Aucune variante — ajoute au moins un conditionnement de vente.</p>';
     this._teamLock();
+  },
+
+  /* Tableau « par taille » : une ligne par taille, une colonne par donnée
+     (prix d'achat HT, poids, sachet, SKU, coût, coeff, prix…). Défile sur
+     place sans déborder de la page, colonne Taille fixe. */
+  sizeTable(g, groupRows, base) {
+    const S = Store.state.settings, kilo = base.unit === 'kilo';
+    const th = (t, cls) => `<th class="${cls || 'num'}">${t}</th>`;
+    const rows = groupRows.map((r, j) => {
+      const { v, i, c, on } = r;
+      const benef = S.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT;
+      return `<tr class="${on ? '' : 'dim'}">
+        <td class="sz-ck"><input type="checkbox" ${on ? 'checked' : ''} onchange="Catalogue._d.variants[${i}].enabled=this.checked;if(this.checked)Catalogue.autoFillSkus('size');Catalogue.drawVars()">
+          <span class="mini-reorder"><button class="btn-icon" title="Monter" ${j <= 0 ? 'disabled' : ''} onclick="Catalogue.moveVar(${i},-1)">↑</button><button class="btn-icon" title="Descendre" ${j >= groupRows.length - 1 ? 'disabled' : ''} onclick="Catalogue.moveVar(${i},1)">↓</button></span></td>
+        <td class="sz-name"><input value="${U.esc(v.label || '')}" class="v-num" placeholder="S, M, L…" onchange="Catalogue._d.variants[${i}].label=this.value;Catalogue.drawVars()">${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</td>
+        <td class="num sensitive"><input type="number" step="0.01" value="${v.value || ''}" class="v-price" placeholder="${kilo ? '—' : 'achat'}" title="Prix d'achat HT de cette taille (prioritaire sur le poids si renseigné)" onchange="Catalogue._d.variants[${i}].value=this.value;Catalogue.drawVars()"></td>
+        ${kilo ? `<td class="num sensitive"><input type="number" step="1" value="${v.weight || ''}" class="v-price" placeholder="g" title="Poids de cette taille en grammes (coût = prix au kilo × poids)" onchange="Catalogue._d.variants[${i}].weight=this.value;Catalogue.drawVars()"></td>` : ''}
+        <td>${this.packPicker(i, v.sachetId, v.mode)}</td>
+        <td><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('size');Catalogue.drawVars()" class="sz-sku"></td>
+        <td class="num sensitive">${U.eur(c.cost, 3)}</td>
+        <td class="num sensitive">${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</td>
+        <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
+        <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
+        <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
+        <td class="num sensitive ${S.vatActive ? 'num-cotis' : 'num-marge'}">${S.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
+        <td class="num num-benef sensitive ${benef >= 0 ? 'pos' : 'neg'}"><b>${U.eur(benef)}</b></td>
+        <td class="num"><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="v-price strong" onchange="Catalogue.setVariantPrice(${i},'ttc',this.value)"></td>
+        <td><button class="btn-icon" onclick="Catalogue._d.variants.splice(${i},1);Catalogue.drawVars()">🗑️</button></td>
+      </tr>`;
+    }).join('');
+    return `<h3 class="cp-var-title">${g.title}
+        <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button></h3>
+      <div class="table-wrap"><table class="cp-var-table cp-size-table">
+        <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Bénéfice')}${th('Prix vente TTC')}<th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
   },
 
   variantRow({ v, i, c, on }, base, j, groupLen) {

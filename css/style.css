@@ -1204,3 +1204,17 @@ textarea.note-area { resize: none; overflow: hidden; width: 100%; min-height: 40
 .coeff-dec { display: block; font-size: .72rem; font-weight: 600; color: #e6c44d; line-height: 1.1; margin-top: 2px; text-align: left; padding-left: 4px; white-space: nowrap; }
 .coeff-dec.plus { color: var(--gris); }
 .coeff-wrap { display: inline-flex; flex-direction: column; align-items: flex-start; }
+
+/* Tableau « par taille » (fiche prix, section 5) : défile sur place, colonne Taille fixe */
+.cp-size-table { min-width: 1180px; }
+.cp-size-table th { font-size: .72rem; white-space: normal; line-height: 1.15; vertical-align: bottom; }
+.cp-size-table td { vertical-align: middle; }
+.cp-size-table th.sz-name, .cp-size-table td.sz-name, .cp-size-table td.sz-ck { position: sticky; left: 0; z-index: 2; background: var(--card-bg); }
+.cp-size-table td.sz-ck { white-space: nowrap; }
+.cp-size-table td.sz-name { left: 62px; min-width: 96px; }
+.cp-size-table th:first-child { position: sticky; left: 0; z-index: 2; background: var(--th-bg); min-width: 62px; }
+.cp-size-table th.sz-name { left: 62px; background: var(--th-bg); text-align: left; }
+.cp-size-table .sz-sku { width: 150px; font-size: .82rem; }
+.cp-size-table .v-num { width: 80px; }
+.cp-size-table .v-price { width: 74px; }
+.cp-size-table .mini-reorder { display: inline-flex; margin: 0 0 0 4px; }
