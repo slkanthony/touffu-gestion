@@ -306,6 +306,16 @@ const Paniers = {
     return 0.1;
   },
 
+  /* Équilibre du panier : autant de produits au gramme que de produits en vrac (pièces / tailles), et un produit dur quand il n'y en a pas encore (si le filtre Résistance l'autorise) */
+  _bal: null,
+  _balScore(c) {
+    const b = this._bal; if (!b) return 0.5;
+    const n = b.gram + b.vrac, hard = ['forte', 'tres-forte'].includes((c.tags && c.tags.resistance) || '');
+    if (hard && !b.hard && n >= 2) return 1;
+    if (!n) return 0.5;
+    const gs = b.gram / n;
+    return c.mode === 'gram' ? 1 - gs : gs;
+  },
   _itemScore(c, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult) {
     const dluoScore = c.daysLeft >= 9999 ? 0.1 : Math.max(0, 1 - c.daysLeft / maxDays);
     const coeffScore = maxCoeff > 0 ? c.coeff / maxCoeff : 0;
@@ -318,7 +328,7 @@ const Paniers = {
     const meatScore = this._meatAgePrefScore(c);
     const gabScore = this._gabaritResistScore(c);
     const hypoGrasScore = this._hypoGrasScore(c);
-    return weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore;
+    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore;
   },
 
   _buildBasket(maxAvailable, lockedItems) {
@@ -375,6 +385,10 @@ const Paniers = {
       });
       if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
       if (!eligible.length) break;
+      const gramN = basket.filter(b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sv && sv.mode === 'gram'; }).length;
+      this._bal = { gram: gramN, vrac: basket.length - gramN, hard: hardInBasket };
+      // Alternance gramme / vrac : on prend le format le moins représenté tant qu'il en reste dans le budget
+      { const vracN = basket.length - gramN, want = gramN > vracN ? 'vrac' : gramN < vracN ? 'gram' : '', f = want ? eligible.filter(c => (c.mode === 'gram') === (want === 'gram')) : []; if (f.length) eligible = f; }
 
       // Plusieurs chiens : on élargit d'abord la gamme (produits pas encore dans le panier) avant de remettre un produit déjà choisi
       if (mult > 1 || nd) { const fresh = eligible.filter(c => !usedProducts.has(c.pId)); if (fresh.length) eligible = fresh; }
@@ -400,6 +414,7 @@ const Paniers = {
       usedMeats[pick.meat] = (usedMeats[pick.meat] || 0) + 1;
     }
 
+    this._bal = null;
     return basket;
   },
 
