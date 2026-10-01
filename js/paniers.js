@@ -534,6 +534,38 @@ const Paniers = {
     this.render();
     U.toast(`${oldName} → ${pick.name}`);
   },
+  /* Fenêtre « client » : produit, variante, prix TTC seulement (pas de coeff, DLUO, viande…) — pour capture d'écran ou copie du texte */
+  _shareData() {
+    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price }));
+    const sub = lines.reduce((a, l) => a + l.total, 0);
+    const ship = this.livraison > 0 ? this.livraison : 0;
+    return { lines, sub, ship, total: sub + ship };
+  },
+  share() {
+    if (!this.basket.length) return;
+    const d = this._shareData();
+    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
+    const body = `<div id="pan_share" style="padding:4px 2px;">
+      <table style="width:100%;border-collapse:collapse;font-size:1rem;">
+        <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:right;">Prix TTC</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="2" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
+          <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
+        </tfoot>
+      </table></div>`;
+    U.modal({ title: '🧺 Votre panier Touffu', body, okLabel: '📋 Copier le texte', onOk: () => { Paniers.copyShare(); return false; } });
+  },
+  copyShare() {
+    const d = this._shareData();
+    const eur = n => n.toFixed(2).replace('.', ',') + ' €';
+    const text = ['Votre panier Touffu', ''].concat(
+      d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}`),
+      [''], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)]).join('\n');
+    const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
+  },
+
   clearBasket() {
     this.basket = [];
     this.proposals = null;
@@ -884,6 +916,7 @@ const Paniers = {
           <button class="btn-cta" onclick="Paniers.generate()">🎲 Générer le panier</button>
           ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.regenerate()" title="Garde les produits verrouillés 🔒 et recompose le reste du panier">🔄 Recomposer le reste</button>` : ''}
           ${this.basket.length || this.proposals ? `<button class="btn-ghost" onclick="Paniers.clearBasket()">🧹 Vider</button>` : ''}
+          ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.share()" title="Fenêtre propre à montrer au client : produit, variante et prix TTC">📤 Partager</button>` : ''}
         </div>
       </div>
 
