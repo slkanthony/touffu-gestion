@@ -553,8 +553,74 @@ const Paniers = {
           ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="2" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
           <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
-      </table></div>`;
+      </table>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
+        <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')">🖼️ Copier l'image</button>
+        <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
+      </div></div>`;
     U.modal({ title: '🧺 Votre panier Touffu', body, okLabel: '📋 Copier le texte', onOk: () => { Paniers.copyShare(); return false; } });
+  },
+  /* Image du panier (dessinée sur un canvas, aucune librairie) : copie dans le presse-papiers (HTTPS seulement) ou téléchargement PNG */
+  async _shareCanvas() {
+    const d = this._shareData();
+    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
+    const cs = getComputedStyle(document.documentElement);
+    const col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
+    const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), line = col('--card-border', '#3a5266'), th = col('--th-bg', '#1c2b38');
+    const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
+    const W = 720, pad = 32, rowH = 46;
+    const rows = d.lines.length + (d.ship > 0 ? 1 : 0);
+    const H = pad + 50 + 44 + rows * rowH + 70 + pad;
+    const k = 2, cv = document.createElement('canvas');
+    cv.width = W * k; cv.height = H * k;
+    const x = cv.getContext('2d'); x.scale(k, k);
+    x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    x.fillStyle = fg; x.textBaseline = 'middle';
+    x.font = font(700, 26); x.textAlign = 'left'; x.fillText('Votre panier Touffu', pad, pad + 14);
+    let y = pad + 50;
+    x.fillStyle = th; x.fillRect(pad, y, W - 2 * pad, 38);
+    x.fillStyle = car; x.font = font(700, 13);
+    x.textAlign = 'left'; x.fillText('PRODUIT', pad + 12, y + 19);
+    x.textAlign = 'center'; x.fillText('VARIANTE', pad + (W - 2 * pad) * 0.62, y + 19);
+    x.textAlign = 'right'; x.fillText('PRIX TTC', W - pad - 12, y + 19);
+    y += 38;
+    x.strokeStyle = car; x.lineWidth = 2; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
+    d.lines.forEach((l, i) => {
+      if (i % 2) { x.fillStyle = th; x.globalAlpha = .45; x.fillRect(pad, y, W - 2 * pad, rowH); x.globalAlpha = 1; }
+      x.fillStyle = fg; x.font = font(700, 18); x.textAlign = 'left';
+      let nm = l.name + (l.qty > 1 ? ' × ' + l.qty : '');
+      while (x.measureText(nm).width > (W - 2 * pad) * 0.5 && nm.length > 4) nm = nm.slice(0, -2);
+      x.fillText(nm + (nm.length < (l.name + (l.qty > 1 ? ' × ' + l.qty : '')).length ? '…' : ''), pad + 12, y + rowH / 2);
+      x.font = font(500, 17); x.textAlign = 'center'; x.fillText(l.variant || '', pad + (W - 2 * pad) * 0.62, y + rowH / 2);
+      x.font = font(700, 18); x.textAlign = 'right'; x.fillText(U.eur(l.total), W - pad - 12, y + rowH / 2);
+      y += rowH;
+    });
+    if (d.ship > 0) {
+      x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
+      x.fillText('Livraison', pad + (W - 2 * pad) * 0.62 + 40, y + rowH / 2); x.fillText(U.eur(d.ship), W - pad - 12, y + rowH / 2);
+      y += rowH;
+    }
+    x.strokeStyle = car; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
+    x.fillStyle = fg; x.font = font(800, 21); x.textAlign = 'right';
+    x.fillText('Total TTC', pad + (W - 2 * pad) * 0.62 + 40, y + 36); x.fillText(U.eur(d.total), W - pad - 12, y + 36);
+    return cv;
+  },
+  async shareImage(mode) {
+    try {
+      const cv = await this._shareCanvas();
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (!blob) throw new Error('image');
+      if (mode === 'copy') {
+        if (navigator.clipboard && window.ClipboardItem) {
+          try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); U.toast('Image copiée — colle-la dans ta conversation.'); return; } catch (e) {}
+        }
+        U.toast('Copie de l’image impossible ici (connexion non sécurisée) — image enregistrée à la place.', true);
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'panier-touffu.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) { U.toast('Impossible de créer l’image.', true); }
   },
   copyShare() {
     const d = this._shareData();
