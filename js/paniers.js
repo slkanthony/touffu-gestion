@@ -1020,7 +1020,8 @@ const Paniers = {
       if (this.addVariants.length && !this.addVariants.includes(c.variant)) return false;
       if (!q && !this.addVariants.length) return false;
       return true;
-    }).sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 100);
+    }).filter((c, _i, arr) => !arr.some(o => o !== c && o.pId === c.pId && o.vId === c.vId && (o.daysLeft < c.daysLeft || (o.daysLeft === c.daysLeft && arr.indexOf(o) < arr.indexOf(c)))))   // une seule ligne par variante : le lot à la DLUO la plus courte (comme en vente)
+      .sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 100);
   },
   addVariantGroups() {
     return Stock.allVariantGroups();
