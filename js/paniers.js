@@ -664,7 +664,7 @@ const Paniers = {
   },
   _shOpt: { pay: true, iban: true, who: true },
   _shMsg: null,
-  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _pendId: null,
+  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _shMode: '', _pendId: null,   // _shMode : '' | 'cc' (Click & Collect) | 'liv' (livraison)
   _dogsOf(name) {   // chiens référencés de la cliente (nom + race) — jamais en mode visite
     const c = Clients.find(name);
     return (c && !Clients.ro() ? (c.dogs || []) : []).filter(d => String(d.name || '').trim());
@@ -681,11 +681,12 @@ const Paniers = {
     const pl = this._payList();
     const pay = (o.pay !== false && pl.length) ? 'Moyens de paiement acceptés : ' + pl.join(', ') : '';
     const holder = String(S.payHolder || '').trim(), iban = String(S.payIban || '').trim(), bic = String(S.payBic || '').trim();
-    const ibanLines = (o.iban !== false && iban) ? [].concat(holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
+    const ibanLines = (o.iban !== false && iban) ? [].concat(['RIB :'], holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
     const msg = String(this._shMsg != null ? this._shMsg : (S.payMessage || '')).trim();
     const who = o.who !== false ? this._whoLine() : '';
     const valid = this._shValid ? 'Devis valable jusqu\'au ' + U.frDate(this._shValid) : '';
-    return { pay, ibanLines, msg, who, valid };
+    const mode = this._shMode === 'cc' ? 'Mode de remise : Click & Collect (retrait)' : this._shMode === 'liv' ? 'Mode de remise : Livraison' : '';
+    return { pay, ibanLines, msg, who, valid, mode };
   },
   _shareInner(d) {
     const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
@@ -699,6 +700,7 @@ const Paniers = {
           <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
       </table>
+      ${x.mode ? `<p style="margin:10px 10px 0;font-weight:700;">${U.esc(x.mode)}</p>` : ''}
       ${x.valid ? `<p style="margin:10px 10px 0;font-style:italic;">${U.esc(x.valid)}</p>` : ''}
       ${x.pay ? `<p style="margin:12px 10px 0;">${U.esc(x.pay)}</p>` : ''}
       ${x.ibanLines.length ? `<p style="margin:8px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
@@ -709,6 +711,19 @@ const Paniers = {
     if (box) box.innerHTML = this._shareInner(this._shareData());
     const dg = document.getElementById('pan_dogs');
     if (dg) { const dogs = this._dogsOf(this._shClient); dg.textContent = dogs.length ? '🐕 ' + dogs.map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ') : ''; }
+  },
+  _modeBtns() {
+    const b = (m, label) => `<button class="btn-ghost btn-sm${this._shMode === m ? ' active' : ''}" onclick="Paniers._setMode('${m}')">${label}</button>`;
+    return b('cc', '🏬 Click & Collect') + b('liv', '📦 Livraison');
+  },
+  _setMode(m) {   // re-clic = on décoche ; Click & Collect = pas de frais de livraison, Livraison = frais habituels si aucun frais n'est saisi
+    this._shMode = this._shMode === m ? '' : m;
+    const S = Store.state.settings;
+    if (this._shMode === 'cc') this.livraison = 0;
+    else if (this._shMode === 'liv' && !this.livraison) this.livraison = U.num(S.shippingCost ?? 6.8);
+    const bx = document.getElementById('pan_mode'); if (bx) bx.innerHTML = this._modeBtns();
+    const li = document.getElementById('pan_livr'); if (li) li.value = this.livraison;
+    this._updateKPI(); this._shareRefresh(); this._draft();
   },
   _shToggle(k, v) { this._shOpt = Object.assign({}, this._shOpt, { [k]: !!v }); this._shareRefresh(); },
   _shSetMsg(v) { this._shMsg = v; this._shareRefresh(); },
@@ -727,6 +742,8 @@ const Paniers = {
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
       </div>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Mode de remise (affiché sur le devis)</div>
+        <div id="pan_mode" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${this._modeBtns()}</div>
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${chk('who', 'Nom de la cliente et des chiens')}${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
         <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message pour ce client (vide = rien d'affiché)" oninput="Paniers._shSetMsg(this.value)">${U.esc(String(S.payMessage || ''))}</textarea>
@@ -754,7 +771,7 @@ const Paniers = {
     if (!this.basket.length) return;
     const list = this._pending(), now = Date.now();
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
-    const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '',
+    const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '',
       items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
     if (rec) Object.assign(rec, data);
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
@@ -800,7 +817,7 @@ const Paniers = {
     if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
     this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
-    this._pendId = id; this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || '';
+    this._pendId = id; this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || '';
     this.proposals = null;
     this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
     U.toast('Panier rechargé — modifie-le puis « Partager » → « Mettre à jour ».');
@@ -878,6 +895,7 @@ const Paniers = {
     if (d.x.ibanLines.length) blocks.push({ f: font(700, 16), l: d.x.ibanLines });
     if (d.x.msg) blocks.push({ f: font(500, 16), l: wrap(d.x.msg, font(500, 16)) });
     if (d.x.valid) blocks.unshift({ f: font(500, 16), l: [d.x.valid] });
+    if (d.x.mode) blocks.unshift({ f: font(700, 16), l: [d.x.mode] });
     const whoH = d.x.who ? 30 : 0;
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
     const H = pad + 50 + whoH + 44 + rows * rowH + 70 + extraH + pad;
@@ -950,14 +968,14 @@ const Paniers = {
     const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
       [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
-      d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
+      d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
   },
 
   clearBasket() {
     this.basket = [];
-    this._pendId = null; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = '';
+    this._pendId = null; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = '';
     this.proposals = null;
     this.render();
   },
@@ -1072,7 +1090,7 @@ const Paniers = {
   /* Brouillon : le panier en cours (et sa cliente) survit à un rechargement de la page, un changement de fenêtre ou une fermeture d'onglet. « Vider » l'efface. */
   _DK: 'touffu_paniers_draft',
   _draft() {
-    const keys = ['basket', 'proposals', 'client', '_pendId', '_shClient', '_shLabel', '_shNote', '_shValid'];
+    const keys = ['basket', 'proposals', 'client', '_pendId', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
     try {
       if (!this._draftLoaded) {
         this._draftLoaded = true;

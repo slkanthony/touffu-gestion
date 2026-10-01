@@ -480,7 +480,7 @@ const B2B = {
   _qtExtras() {
     const S = Store.state.settings, q = this._qt;
     const iban = String(S.payIban || '').trim(), holder = String(S.payHolder || '').trim(), bic = String(S.payBic || '').trim();
-    const ibanLines = (q.iban !== false && iban) ? [].concat(holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
+    const ibanLines = (q.iban !== false && iban) ? [].concat(['RIB :'], holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
     const msg = String(q.msg != null ? q.msg : (S.payMessage || '')).trim();
     return { ibanLines, msg };
   },
