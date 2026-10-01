@@ -169,7 +169,7 @@ const Paniers = {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           if (q <= 0) return false;
           const d = U.daysTo(l.dluo);
-          if (d !== null && d < 0 && this.priority !== 'dluo') return false;   // périmés : seulement si « DLUO courtes » est choisi (ex. paniers pour associations)
+          // les lots périmés restent candidats (paniers pour associations) : ils passent en tête grâce au score de DLUO
           return true;
         });
         if (!lots.length) return;
@@ -1369,7 +1369,7 @@ const Paniers = {
               <input id="pan_add_q" type="text" autocomplete="off" placeholder="Chercher un produit…"
                 value="${U.esc(this.addQ)}" oninput="Paniers.setAddQ(this.value)" onfocus="Paniers.openAddMenu()">
             ${this.addOpen && addResults.length ? `<div class="ac-list" style="max-height:250px;overflow:auto;">${addResults.map(c =>
-              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}${c.daysLeft < 0 ? ' <span class="badge bad">⚠ périmé</span>' : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
+              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
             ).join('')}</div>` : ''}
             </div>
           </div>
