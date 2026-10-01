@@ -12,6 +12,7 @@
 const Paniers = {
   budget: 30,
   livraison: 0,
+  reduction: 0,   // code de réduction du client (%), appliqué sur les produits (pas sur la livraison)
   nbChiens: 1,
   priority: 'mix',    // 'dluo' | 'coeff' | 'mix'
   excludeMeats: [],
@@ -419,7 +420,7 @@ const Paniers = {
   },
 
   generate() {
-    const available = this.budget - this.livraison;
+    const available = this._avail();
     if (available <= 0) { U.toast('Le budget disponible (après livraison) est nul ou négatif.', true); return; }
     if (!this.candidates().length) { U.toast('Aucun produit ne correspond aux filtres.', true); return; }
 
@@ -453,7 +454,7 @@ const Paniers = {
     }
   },
   regenerate() {
-    const available = this.budget - this.livraison;
+    const available = this._avail();
     if (available <= 0) { U.toast('Le budget disponible (après livraison) est nul ou négatif.', true); return; }
 
     const locked = this.basket.filter(b => b.locked).map(b => ({...b}));
@@ -508,7 +509,7 @@ const Paniers = {
     if (!this.excludeProducts.includes(item.pId)) this.excludeProducts.push(item.pId);
 
     const otherTotal = this.basket.reduce((a, b, i) => i === idx ? a : a + b.price * b.qty, 0);
-    const maxPrice = this.budget - this.livraison - otherTotal;
+    const maxPrice = this._avail() - otherTotal;
     const cands = this.candidates();
 
     this.basket.forEach((b, i) => {
@@ -570,7 +571,7 @@ const Paniers = {
     if (!item) return;
 
     const otherTotal = this.basket.reduce((a, b, i) => i === idx ? a : a + b.price * b.qty, 0);
-    const maxPrice = this.budget - this.livraison - otherTotal;
+    const maxPrice = this._avail() - otherTotal;
 
     const cands = this.candidates();
     if (!cands.length) { U.toast('Aucun produit disponible.', true); return; }
@@ -645,7 +646,8 @@ const Paniers = {
     const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price, dog: (b.dog && dn.length >= 2) ? b.dog : '' }));
     const sub = lines.reduce((a, l) => a + l.total, 0);
     const ship = this.livraison > 0 ? this.livraison : 0;
-    return { lines, sub, ship, total: sub + ship, x: this._shareExtras() };
+    const red = this._disc() > 0 ? Math.round(sub * this._disc() * 100) / 100 : 0;
+    return { lines, sub, red, redPct: this.reduction, ship, total: sub - red + ship, x: this._shareExtras() };
   },
   /* Blocs facultatifs sous le total (réglés dans Paramètres → Paniers & livraison) : n'apparaissent que s'ils sont remplis */
   _payList() {
@@ -687,6 +689,7 @@ const Paniers = {
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:right;">Prix TTC</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
+          ${d.red > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="2" style="padding:7px 10px;text-align:right;">Réduction (${U.qty(d.redPct)} %)</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.red)}</td></tr>` : ''}
           ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="2" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
           <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
@@ -747,7 +750,7 @@ const Paniers = {
     const list = this._pending(), now = Date.now();
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
     const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '',
-      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, nbChiens: this.nbChiens, updated: now };
+      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
     if (rec) Object.assign(rec, data);
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._pendId = rec.id;
@@ -766,7 +769,7 @@ const Paniers = {
     if (!list.length) return '';
     const today = new Date().toISOString().slice(0, 10);
     const rows = list.map(r => {
-      const tot = (r.items || []).reduce((a, b) => a + U.num(b.price) * U.num(b.qty), 0) + (U.num(r.livraison) > 0 ? U.num(r.livraison) : 0);
+      const tot = (r.items || []).reduce((a, b) => a + U.num(b.price) * U.num(b.qty), 0) * (1 - Math.min(99, U.num(r.reduction)) / 100) + (U.num(r.livraison) > 0 ? U.num(r.livraison) : 0);
       const nb = (r.items || []).reduce((a, b) => a + U.num(b.qty), 0);
       const age = this._ageTxt(r);
       const dogs = this._dogsOf(r.name).map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ');
@@ -791,7 +794,7 @@ const Paniers = {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
     if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
-    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
+    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
     this._pendId = id; this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || '';
     this.proposals = null;
     this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -861,7 +864,7 @@ const Paniers = {
     const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), line = col('--card-border', '#3a5266'), th = col('--th-bg', '#1c2b38');
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
     const W = 720, pad = 32, rowH = 46;
-    const rows = d.lines.length + (d.ship > 0 ? 1 : 0);
+    const rows = d.lines.length + (d.ship > 0 ? 1 : 0) + (d.red > 0 ? 1 : 0);
     // blocs facultatifs sous le total : lignes déjà coupées à la largeur utile
     const tmp = document.createElement('canvas').getContext('2d');
     const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > W - 2 * pad - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
@@ -899,6 +902,11 @@ const Paniers = {
       x.font = font(700, 18); x.textAlign = 'right'; x.fillText(U.eur(l.total), W - pad - 12, y + rowH / 2);
       y += rowH;
     });
+    if (d.red > 0) {
+      x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
+      x.fillText('Réduction (' + U.qty(d.redPct) + ' %)', pad + (W - 2 * pad) * 0.62 + 40, y + rowH / 2); x.fillText('− ' + U.eur(d.red), W - pad - 12, y + rowH / 2);
+      y += rowH;
+    }
     if (d.ship > 0) {
       x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
       x.fillText('Livraison', pad + (W - 2 * pad) * 0.62 + 40, y + rowH / 2); x.fillText(U.eur(d.ship), W - pad - 12, y + rowH / 2);
@@ -936,7 +944,7 @@ const Paniers = {
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
-      [''], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
+      [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
       d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
@@ -960,7 +968,6 @@ const Paniers = {
     const out = [];
     Store.state.stockM.forEach(p => {
       p.variants.forEach(v => {
-        if (v.mode === 'vrac') return;
         const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
         const lots = v.lots.filter(l => {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
@@ -1008,7 +1015,7 @@ const Paniers = {
       if (this.addVariants.length && !this.addVariants.includes(c.variant)) return false;
       if (!q && !this.addVariants.length) return false;
       return true;
-    }).sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 30);
+    }).sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 100);
   },
   addVariantGroups() {
     return Stock.allVariantGroups();
@@ -1053,6 +1060,9 @@ const Paniers = {
   },
 
   /* ---------- Filtres ---------- */
+  _disc() { return Math.min(99, Math.max(0, U.num(this.reduction))) / 100; },
+  _avail() { return (this.budget - this.livraison) / (1 - this._disc()); },   // budget utilisable, exprimé en prix publics (avant réduction)
+  setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._updateKPI(); },
   setBudget(v) { this.budget = U.num(v); this._updateKPI(); },
   setLivraison(v) { this.livraison = U.num(v); this._updateKPI(); },
   setNbChiens(v) { this.nbChiens = Math.max(1, U.num(v)); this._updateKPI(); },
@@ -1082,7 +1092,7 @@ const Paniers = {
 
   _updateKPI() {
     const totalBasket = this.basket.reduce((a, b) => a + b.price * b.qty, 0);
-    const available = this.budget - this.livraison;
+    const available = this._avail();
     const remaining = available - totalBasket;
     const el = document.getElementById('pan_kpi');
     if (el) {
@@ -1091,7 +1101,8 @@ const Paniers = {
         <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
         ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
         <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
-        <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining)}</span><span class="kpi-label">Reste</span></div>
+        ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">Réduction (${U.qty(this.reduction)} %)</span></div>` : ''}
+        <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
       `;
     }
   },
@@ -1171,14 +1182,14 @@ const Paniers = {
   render() {
     // Préférences/filtres persistés (pas `basket` : un panier en cours ne doit jamais
     // réapparaître tout seul après un F5, contrairement à un simple filtre de recherche).
-    U.syncFilters('paniers', this, ['budget', 'livraison', 'nbChiens', 'priority', 'excludeMeats',
+    U.syncFilters('paniers', this, ['budget', 'livraison', 'reduction', 'nbChiens', 'priority', 'excludeMeats',
       'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
       'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct']);
     const S = Store.state.settings;
     const meatTypes = (S.meatTypes || []).slice().sort(U.sortFr);
     const products = Store.state.stockM;
     const totalBasket = this.basket.reduce((a, b) => a + b.price * b.qty, 0);
-    const available = this.budget - this.livraison;
+    const available = this._avail();
     const remaining = available - totalBasket;
     const nbArticles = this.basket.reduce((a, b) => a + b.qty, 0);
     const hasLocked = this.basket.some(b => b.locked);
@@ -1217,6 +1228,9 @@ const Paniers = {
               <button class="btn-ghost btn-sm${this.livraison===0?' active':''}" onclick="Paniers.setLivraisonQuick(0)">0 €</button>
               <button class="btn-ghost btn-sm${this.livraison===(Store.state.settings.shippingCost??6.8)?' active':''}" onclick="Paniers.setLivraisonQuick(${Store.state.settings.shippingCost??6.8})">${U.eur(Store.state.settings.shippingCost??6.8)}</button>
             </div>
+          </div>
+          <div class="fg"><label>🏷️ Réduction (%)</label>
+            <input type="number" id="pan_red" step="0.5" min="0" max="99" value="${this.reduction || ''}" placeholder="0" oninput="Paniers.setReduction(this.value)" title="Code de réduction du client : le budget restant et la génération en tiennent compte">
           </div>
           <div class="fg"><label>🐕 Chiens</label>
             <input type="number" id="pan_chiens" min="1" max="10" value="${this.nbChiens}" oninput="Paniers.setNbChiens(this.value)">
@@ -1319,7 +1333,8 @@ const Paniers = {
           <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
           ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
           <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
-          <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining)}</span><span class="kpi-label">Reste</span></div>
+        ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">Réduction (${U.qty(this.reduction)} %)</span></div>` : ''}
+          <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
         </div>
 
         ${this.basket.length ? `
@@ -1383,6 +1398,7 @@ const Paniers = {
     const S = Store.state.settings;
     const nbArticles = this.basket.reduce((a, b) => a + b.qty, 0);
     const hasLocked = this.basket.some(b => b.locked);
+    const fd = 1 - this._disc();   // réduction client : le prix encaissé baisse
     const rows = this.basket.map(b => {
       const sp = Store.state.stockM.find(x => x.id === b.pId);
       const sv = sp ? sp.variants.find(x => x.id === b.vId) : null;
@@ -1404,12 +1420,13 @@ const Paniers = {
         vatAmt = b.price - priceHT;
         profit = margin - social - vatAmt;
       }
+      if (fd < 1) { priceHT *= fd; vatAmt *= fd; social *= fd; margin = priceHT - cost; profit = margin - social - vatAmt; }
       // Non assujetti : la TVA reste dans le bénéfice (cohérent avec Prix mastication / Accessoires / compta).
       if (!S.vatActive) profit += vatAmt;
       return { ...b, cost, priceHT, margin, social, profit, coeff };
     });
 
-    const totVente = rows.reduce((a, r) => a + r.price * r.qty, 0);
+    const totVente = rows.reduce((a, r) => a + r.price * r.qty, 0) * fd;
     const totCost = rows.reduce((a, r) => a + r.cost * r.qty, 0);
     const totMargin = rows.reduce((a, r) => a + r.margin * r.qty, 0);
     const totSocial = rows.reduce((a, r) => a + r.social * r.qty, 0);

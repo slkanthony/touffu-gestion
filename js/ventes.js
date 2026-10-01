@@ -415,7 +415,8 @@ const Ventes = {
   loadFromBasket(rec, lines) {
     this.source = lines.some(l => l.src === 'event') ? 'event' : 'general'; this.kind = 'M';
     this.cart = lines.map(({ u, qty, price, src }) => ({ key: u.key, kind: 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
-    this.customerName = rec.name; this.discOn = false; this._basketId = rec.id;
+    this.customerName = rec.name; this._basketId = rec.id;
+    const rp = U.num(rec.reduction); this.discOn = rp > 0; if (rp > 0) this.discPct = rp;   // code de réduction du panier → réduction du ticket
     this.retourOpen = false; this.todoOpen = false; this.editTicketId = '';
     if (/^#\/ventes\/?$/.test(location.hash)) this.render(); else location.hash = '#/ventes';
     U.toast('Panier chargé dans le ticket — choisis le lot de chaque ligne, puis valide.');
