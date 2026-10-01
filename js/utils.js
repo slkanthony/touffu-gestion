@@ -357,6 +357,7 @@ const U = {
     if (navigator.clipboard && window.ClipboardItem) {
       try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); return true; } catch (e) {}
     }
+    if (!window.isSecureContext) return false; // http:// : Chrome refuse la copie d'image (l'astuce ci-dessous « réussit » sans rien copier)
     try {
       const box = document.createElement('div');
       box.contentEditable = 'true';

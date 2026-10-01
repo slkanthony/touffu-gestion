@@ -467,9 +467,9 @@ const B2B = {
       });
     });
     const q = (this._qt && this._qt.qty) || {};
-    list.forEach(r => { r.qty = Math.max(0, Math.round(U.num(q[r.key]))); r.sub = r.qty * r.price; r.subReco = r.qty * r.reco; });
+    list.forEach(r => { r.qty = Math.max(1, Math.round(U.num(q[r.key])) || 1); r.sub = r.qty * r.price; r.subReco = r.qty * r.reco; });
     // Dès qu'une quantité est saisie : mode « devis » (seules les lignes avec une quantité, + Qté / Sous-total / Total). Sinon : simple liste de prix.
-    const devis = list.some(r => r.qty > 0);
+    const devis = list.length > 0;
     const rows = (all || !devis) ? list : list.filter(r => r.qty > 0);
     return { rows, all: list, devis, keys: rows.map(r => [r.key, r.ht]), total: list.reduce((a, r) => a + r.sub, 0), totalReco: list.reduce((a, r) => a + r.subReco, 0) };
   },
@@ -492,7 +492,7 @@ const B2B = {
     const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
     return `<div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
       <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);">${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
-      <tbody>${all.map((r, i) => `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="0" step="1" value="${r.qty || ''}" placeholder="0" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${r.qty ? U.eur(r.sub) : ''}</td></tr>`).join('')}</tbody></table></div>
+      <tbody>${all.map((r, i) => `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="1" step="1" value="${r.qty}" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.sub)}</td></tr>`).join('')}</tbody></table></div>
       <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${this._qtTotalsTxt()}</div>
       ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
@@ -501,11 +501,11 @@ const B2B = {
   _qtQty(i, val) {
     const all = this._qtRows(true).all, r = all[i]; if (!r) return;
     this._qt.qty = this._qt.qty || {};
-    this._qt.qty[r.key] = Math.max(0, Math.round(U.num(val)));
+    this._qt.qty[r.key] = Math.max(1, Math.round(U.num(val)) || 1);
     const { all: a2, devis, total } = this._qtRows(true), r2 = a2[i];
-    const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.qty ? U.eur(r2.sub) : '';
+    const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = U.eur(r2.sub);
+    const inp = document.querySelectorAll('#qt_box input[type=number]')[i]; if (inp && String(inp.value) !== String(r2.qty)) inp.value = r2.qty;
     const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
-    const h = document.getElementById('qt_hint'); if (h) h.textContent = devis ? `Mode devis : seules les ${a2.filter(x => x.qty > 0).length} ligne(s) avec une quantité seront dans les images et le texte.` : 'Saisis des quantités pour en faire un devis (sous-total + total) ; sans quantité, c\'est une simple liste de prix.';
   },
   _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
   openQuote(type) {
@@ -515,7 +515,7 @@ const B2B = {
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
     const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value"></div>
       <p class="muted" style="margin:0 0 4px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
-      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Saisis des quantités pour en faire un devis (sous-total + total) ; sans quantité, c'est une simple liste de prix.</p>
+      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne (sous-total + total calculés).</p>
       <div id="qt_box">${this._qtInner()}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>
@@ -629,7 +629,7 @@ const B2B = {
   async qtCopy(i) {
     const im = (this._qtImgs || [])[i]; if (!im) return;
     if (await U.copyImage(im.blob, im.url)) { U.toast(`Image ${i + 1} copiée — colle-la dans ta conversation.`); return; }
-    U.toast('Copie impossible : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».', true);
+    U.toast(window.isSecureContext ? 'Copie impossible : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».' : 'Chrome interdit la copie d\'image sur une adresse http:// : ouvre l\'appli en https://touffu-antho.duckdns.org, ou utilise « Enregistrer ».', true);
   },
   async qtSave(i) {
     const imgs = this._qtImgs || [], list = i < 0 ? imgs.map((im, k) => [im, k]) : (imgs[i] ? [[imgs[i], i]] : []);
