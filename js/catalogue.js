@@ -125,6 +125,16 @@ const Catalogue = {
     const base = preview ? Pricing.baseUnitCost(p, preview) : baseMain;
     const actives = (p.variants || []).filter(v => v.enabled !== false);
     const na = actives.length;
+    // Produit « par taille » : chaque taille a son propre prix d'achat → base / coeff commun / décote n'ont pas de sens
+    const perSize = actives.length > 0 && actives.every(v => v.mode === 'size' && (U.num(v.value) > 0 || U.num(v.weight) > 0));
+    let sizeMeta = '', sizeCoeff = '';
+    if (perSize) {
+      const calcs = actives.map((v, k) => Pricing.variantCalc(p, v, k, base, na));
+      const costs = calcs.map(c => c.cost), cfs = calcs.map(c => c.effCoeff || c.coeff || 0);
+      const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' → ' + f(hi); };
+      sizeMeta = `<span style="white-space:nowrap;">${na} taille(s) · <span class="sensitive">coût ${rng(costs, x => U.eur(x))}</span></span>`;
+      sizeCoeff = `<span class="b2b-disc-badge sensitive" style="width:auto;" title="Chaque taille a son propre prix d'achat et son propre coefficient (voir le tableau)"><label>Coeff</label><span style="padding:0 8px;font-weight:700;">${rng(cfs, x => x.toFixed(2))}</span></span>`;
+    }
     let critCount = 0;
     let idx = 0;
     const varRow = (v, on) => {
@@ -148,7 +158,7 @@ const Catalogue = {
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
         <td class="num sensitive">${U.eur(c.cost, 3)}</td>
-        <td class="num sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, U.num(p.coefficient) || 2)}</td>
+        <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, perSize ? undefined : (U.num(p.coefficient) || 2))}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
@@ -185,16 +195,6 @@ const Catalogue = {
       if (isActive) return `<span class="sup-badge main" title="${isMain ? 'Fournisseur principal' : 'Comparaison — cliquer pour revenir au principal'}" onclick="event.preventDefault();event.stopPropagation();Catalogue.previewSup('${p.id}','${s.supplierId}')">${prefix}${U.esc(Store.supplierName(s.supplierId))}</span>`;
       return `<span class="sup-badge alt" title="Comparer avec ce fournisseur" onclick="event.preventDefault();event.stopPropagation();Catalogue.previewSup('${p.id}','${s.supplierId}')">${prefix}${U.esc(Store.supplierName(s.supplierId))}</span>`;
     }).join('');
-    // Produit « par taille » : chaque taille a son propre prix d'achat → base / coeff commun / décote n'ont pas de sens
-    const perSize = actives.length > 0 && actives.every(v => v.mode === 'size' && (U.num(v.value) > 0 || U.num(v.weight) > 0));
-    let sizeMeta = '', sizeCoeff = '';
-    if (perSize) {
-      const calcs = actives.map((v, k) => Pricing.variantCalc(p, v, k, base, na));
-      const costs = calcs.map(c => c.cost), cfs = calcs.map(c => c.effCoeff || c.coeff || 0);
-      const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' → ' + f(hi); };
-      sizeMeta = `${na} taille(s) · <span class="sensitive">coût ${rng(costs, x => U.eur(x))}</span>`;
-      sizeCoeff = `<span class="b2b-disc-badge sensitive" style="width:auto;" title="Chaque taille a son propre prix d'achat et son propre coefficient (voir le tableau)"><label>Coeff</label><span style="padding:0 8px;font-weight:700;">${rng(cfs, x => x.toFixed(2))}</span></span>`;
-    }
     return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
       <summary onclick="Catalogue.summaryNav(event,'${p.id}')" onauxclick="Catalogue.summaryNav(event,'${p.id}')">
         <b>${U.esc(p.name)}</b>
@@ -212,7 +212,7 @@ const Catalogue = {
       <div class="fold-body">
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — les prix ci-dessous sont temporaires, cliquer à nouveau pour revenir au principal</div>' : ''}
         <div class="table-wrap"><table>
-          <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="num">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num th-benef" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
+          <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="ctr">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num th-benef" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="9" class="muted">Aucune variante.</td></tr>'}</tbody></table></div>
         ${inactiveVars.length ? `<button class="btn-ghost btn-sm mt" onclick="Catalogue.toggleInactive('${p.id}')" style="font-size:.78rem;">${showInactive ? 'Masquer' : 'Afficher'} les ${inactiveVars.length} variante${inactiveVars.length > 1 ? 's' : ''} désactivée${inactiveVars.length > 1 ? 's' : ''}</button>` : ''}
         <p class="muted help mt" data-help-anchor="~ th.th-benef">* bénéfice = marge − cotisations URSSAF − TVA (toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
@@ -803,7 +803,7 @@ const Catalogue = {
         <td>${this.packPicker(i, v.sachetId, v.mode)}</td>
         <td><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('size');Catalogue.drawVars()" class="sz-sku"></td>
         <td class="num sensitive">${U.eur(c.cost, 3)}</td>
-        <td class="num sensitive">${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</td>
+        <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</td>
         <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
         <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
         <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
@@ -816,7 +816,7 @@ const Catalogue = {
     return `<h3 class="cp-var-title">${g.title}
         <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button></h3>
       <div class="table-wrap"><table class="cp-var-table cp-size-table">
-        <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Bénéfice')}${th('Prix vente TTC')}<th></th></tr></thead>
+        <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff', 'ctr')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Bénéfice')}${th('Prix vente TTC')}<th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   },

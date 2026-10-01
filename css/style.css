@@ -1218,3 +1218,9 @@ textarea.note-area { resize: none; overflow: hidden; width: 100%; min-height: 40
 .cp-size-table .v-num { width: 80px; }
 .cp-size-table .v-price { width: 74px; }
 .cp-size-table .mini-reorder { display: inline-flex; margin: 0 0 0 4px; }
+
+/* Colonne Coeff centrée : le ↺ sort du flux pour ne pas décaler le chiffre */
+th.ctr, td.ctr { text-align: center; }
+.coeff-cell { position: relative; }
+.coeff-cell .coeff-reset { position: absolute; left: 100%; margin-left: 2px; }
+.coeff-wrap { align-items: center; }
