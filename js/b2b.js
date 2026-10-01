@@ -467,10 +467,10 @@ const B2B = {
       });
     });
     const q = (this._qt && this._qt.qty) || {};
-    list.forEach(r => { r.qty = Math.max(1, Math.round(U.num(q[r.key])) || 1); r.sub = r.qty * r.price; r.subReco = r.qty * r.reco; });
+    list.forEach(r => { r.qty = Math.max(1, Math.round(U.num(q[r.key])) || 1); r.on = !(this._qt && this._qt.off && this._qt.off[r.key]); r.sub = r.on ? r.qty * r.price : 0; r.subReco = r.on ? r.qty * r.reco : 0; });
     // Dès qu'une quantité est saisie : mode « devis » (seules les lignes avec une quantité, + Qté / Sous-total / Total). Sinon : simple liste de prix.
-    const devis = list.length > 0;
-    const rows = (all || !devis) ? list : list.filter(r => r.qty > 0);
+    const devis = list.some(r => r.on);
+    const rows = all ? list : list.filter(r => r.on);
     return { rows, all: list, devis, keys: rows.map(r => [r.key, r.ht]), total: list.reduce((a, r) => a + r.sub, 0), totalReco: list.reduce((a, r) => a + r.subReco, 0) };
   },
   _qtCols() {
@@ -491,8 +491,8 @@ const B2B = {
     const { all, devis, total } = this._qtRows(true), c = this._qtCols(), x = this._qtExtras();
     const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
     return `<div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
-      <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);">${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
-      <tbody>${all.map((r, i) => `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="1" step="1" value="${r.qty}" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.sub)}</td></tr>`).join('')}</tbody></table></div>
+      <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);"><th style="padding:7px 10px;width:34px;"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th>${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
+      <tbody>${all.map((r, i) => `<tr id="qt_row_${i}" style="border-bottom:1px solid var(--card-border);${r.on ? '' : 'opacity:.4;'}"><td style="padding:6px 10px;"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="1" step="1" value="${r.qty}" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${r.on ? U.eur(r.sub) : ''}</td></tr>`).join('')}</tbody></table></div>
       <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${this._qtTotalsTxt()}</div>
       ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
@@ -503,19 +503,35 @@ const B2B = {
     this._qt.qty = this._qt.qty || {};
     this._qt.qty[r.key] = Math.max(1, Math.round(U.num(val)) || 1);
     const { all: a2, devis, total } = this._qtRows(true), r2 = a2[i];
-    const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = U.eur(r2.sub);
+    const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.on ? U.eur(r2.sub) : '';
     const inp = document.querySelectorAll('#qt_box input[type=number]')[i]; if (inp && String(inp.value) !== String(r2.qty)) inp.value = r2.qty;
     const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
   },
+  /* Case d'une ligne : la ligne décochée sort du devis (total, images, texte) mais reste affichée, grisée. */
+  _qtOn(i, on) {
+    const r = this._qtRows(true).all[i]; if (!r) return;
+    this._qt.off = this._qt.off || {};
+    if (on) delete this._qt.off[r.key]; else this._qt.off[r.key] = true;
+    const { all: a2 } = this._qtRows(true), r2 = a2[i];
+    const row = document.getElementById('qt_row_' + i); if (row) row.style.opacity = r2.on ? '' : '.4';
+    const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.on ? U.eur(r2.sub) : '';
+    const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
+    const all = document.getElementById('qt_all'); if (all) all.checked = a2.every(x => x.on);
+  },
+  _qtAll(on) {
+    this._qt.off = {};
+    if (!on) this._qtRows(true).all.forEach(r => { this._qt.off[r.key] = true; });
+    this._qtRefresh();
+  },
   _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
   openQuote(type) {
-    const { all: rows } = (this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {} }, this._qtRows(true));
+    const { all: rows } = (this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {}, off: {} }, this._qtRows(true));
     if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
     const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
     const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value"></div>
       <p class="muted" style="margin:0 0 4px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
-      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne (sous-total + total calculés).</p>
+      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne. Décoche les variantes que tu ne veux pas proposer.</p>
       <div id="qt_box">${this._qtInner()}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>
@@ -601,6 +617,7 @@ const B2B = {
   async quoteImages() {
     try {
       const pages = this._qtPages(), n = pages.length;
+      if (!n) { U.toast('Aucune ligne cochée.', true); return; }
       this._qtImgs = [];
       for (let i = 0; i < n; i++) {
         const cv = await this._qtCanvas(pages[i], i + 1, n);
@@ -642,6 +659,7 @@ const B2B = {
     }
   },
   quoteText() {
+    if (!this._qtRows().rows.length) { U.toast('Aucune ligne cochée.', true); return; }
     const { rows, keys, devis, total, totalReco } = this._qtRows(), x = this._qtExtras(), micro = this._qt.type === 'micro';
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = [this._qtTitle(), ''].concat(
