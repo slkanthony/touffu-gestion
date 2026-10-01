@@ -1065,6 +1065,20 @@ const Paniers = {
   },
 
   /* ---------- Filtres ---------- */
+  /* Brouillon : le panier en cours (et sa cliente) survit à un rechargement de la page, un changement de fenêtre ou une fermeture d'onglet. « Vider » l'efface. */
+  _DK: 'touffu_paniers_draft',
+  _draft() {
+    const keys = ['basket', 'proposals', 'client', '_pendId', '_shClient', '_shLabel', '_shNote', '_shValid'];
+    try {
+      if (!this._draftLoaded) {
+        this._draftLoaded = true;
+        const d = JSON.parse(localStorage.getItem(this._DK) || 'null');
+        if (d && !(this.basket || []).length && !this.proposals) keys.forEach(k => { if (d[k] !== undefined && d[k] !== null) this[k] = d[k]; });
+      }
+      const out = {}; keys.forEach(k => { out[k] = this[k]; });
+      localStorage.setItem(this._DK, JSON.stringify(out));
+    } catch (e) {}
+  },
   _disc() { return Math.min(99, Math.max(0, U.num(this.reduction))) / 100; },
   _avail() { return (this.budget - this.livraison) / (1 - this._disc()); },   // budget utilisable, exprimé en prix publics (avant réduction)
   setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._updateKPI(); },
@@ -1190,6 +1204,7 @@ const Paniers = {
     U.syncFilters('paniers', this, ['budget', 'livraison', 'reduction', 'nbChiens', 'priority', 'excludeMeats',
       'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
       'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct']);
+    this._draft();
     const S = Store.state.settings;
     const meatTypes = (S.meatTypes || []).slice().sort(U.sortFr);
     const products = Store.state.stockM;
