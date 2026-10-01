@@ -492,7 +492,7 @@ const B2B = {
   },
   _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
   openQuote(type) {
-    const { rows } = (this._qt = { type, who: '', iban: true, msg: null }, this._qtRows());
+    const { rows } = (this._qt = { type, who: '', iban: true, msg: null, per: 20 }, this._qtRows());
     if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
     const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
@@ -500,8 +500,8 @@ const B2B = {
       <p class="muted" style="margin:0 0 8px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
       <div id="qt_box">${this._qtInner()}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
-        <button class="btn-ghost btn-sm" onclick="B2B.quoteImage('copy')">🖼️ Copier l'image</button>
-        <button class="btn-ghost btn-sm" onclick="B2B.quoteImage('save')">⬇ Enregistrer l'image</button>
+        <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>
+        <label class="muted" style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" style="width:64px;" onchange="B2B._qt.per=this.value"></label>
       </div>
       <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher en bas</div>
@@ -511,8 +511,21 @@ const B2B = {
     U.modal({ title: type === 'micro' ? '🧑‍💼 Tarif — micro-entreprise' : '🏢 Tarif — entreprise (TVA collectée)', body, wide: true, okLabel: '📋 Copier le texte', onOk: () => { B2B.quoteText(); return false; } });
   },
   _qtTitle() { const w = String(this._qt.who || '').trim(); return 'Tarif Touffu' + (w ? ' — ' + w : ''); },
-  async _qtCanvas() {
-    const { rows } = this._qtRows(), c = this._qtCols(), x = this._qtExtras();
+  /* Découpe en pages : on remplit une page jusqu'à `per` lignes sans couper un produit en deux (sauf produit plus long qu'une page) */
+  _qtPages() {
+    const { rows } = this._qtRows(), per = Math.max(5, Math.round(U.num(this._qt.per) || 20));
+    const groups = [];
+    rows.forEach(r => { const g = groups[groups.length - 1]; if (g && g[0].name === r.name) g.push(r); else groups.push([r]); });
+    const pages = []; let cur = [];
+    groups.forEach(g => {
+      if (cur.length && cur.length + g.length > per) { pages.push(cur); cur = []; }
+      g.forEach(r => { if (cur.length >= per) { pages.push(cur); cur = []; } cur.push(r); });
+    });
+    if (cur.length) pages.push(cur);
+    return pages;
+  },
+  async _qtCanvas(pageRows, pageNo, pageCount) {
+    const c = this._qtCols(), x = this._qtExtras(), last = pageNo === pageCount;
     if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
     const cs = getComputedStyle(document.documentElement), col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
     const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), th = col('--th-bg', '#1c2b38');
@@ -521,16 +534,19 @@ const B2B = {
     const tmp = document.createElement('canvas').getContext('2d');
     const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > innerW - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
     const blocks = [];
-    if (x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines });
-    if (x.msg) blocks.push({ f: font(500, 16), l: wrap(x.msg, font(500, 16)) });
+    if (last && x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines });
+    if (last && x.msg) blocks.push({ f: font(500, 16), l: wrap(x.msg, font(500, 16)) });
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
-    const H = pad + 56 + 54 + rows.length * rowH + (extraH ? 24 : 0) + extraH + pad;
-    const k = rows.length > 150 ? 1 : 2, cv = document.createElement('canvas');
+    const H = pad + 56 + 54 + pageRows.length * rowH + (extraH ? 24 : 0) + extraH + pad;
+    const k = 2, cv = document.createElement('canvas');
     cv.width = W * k; cv.height = H * k;
     const g = cv.getContext('2d'); g.scale(k, k);
     g.fillStyle = bg; g.fillRect(0, 0, W, H); g.textBaseline = 'middle';
+    g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'right';
+    const pg = pageCount > 1 ? `${pageNo}/${pageCount}` : '';
+    if (pg) { g.fillStyle = car; g.font = font(700, 16); g.fillText(pg, W - pad, pad + 14); }
     g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'left';
-    let ttl = this._qtTitle(); while (g.measureText(ttl).width > innerW && ttl.length > 8) ttl = ttl.slice(0, -2);
+    let ttl = this._qtTitle(); while (g.measureText(ttl).width > innerW - (pg ? 70 : 0) && ttl.length > 8) ttl = ttl.slice(0, -2);
     g.fillText(ttl, pad, pad + 14);
     let y = pad + 56;
     const cV = pad + innerW * 0.52, cP = pad + innerW * 0.74, cR = W - pad - 12;
@@ -541,7 +557,7 @@ const B2B = {
     const hdr = (t, xx) => { const ls = t.toUpperCase().split('\n'); g.textAlign = 'right'; ls.forEach((l, i) => g.fillText(l, xx, y + 27 + (i - (ls.length - 1) / 2) * 15)); };
     hdr(c.price, cP); hdr(c.reco, cR);
     y += 54; g.strokeStyle = car; g.lineWidth = 2; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
-    rows.forEach((r, i) => {
+    pageRows.forEach((r, i) => {
       if (i % 2) { g.fillStyle = th; g.globalAlpha = .45; g.fillRect(pad, y, innerW, rowH); g.globalAlpha = 1; }
       g.fillStyle = fg; g.font = font(700, 16); g.textAlign = 'left';
       let nm = r.name; while (g.measureText(nm).width > innerW * 0.46 && nm.length > 4) nm = nm.slice(0, -2);
@@ -556,24 +572,51 @@ const B2B = {
     blocks.forEach(b => { g.font = b.f; g.fillStyle = fg; b.l.forEach(t => { g.fillText(t, pad + 12, y + 12); y += 24; }); y += 12; });
     return cv;
   },
-  async quoteImage(mode) {
+  /* Images à partager : une image par page, chacune avec ses boutons (copier / enregistrer) + « tout enregistrer » */
+  async quoteImages() {
     try {
-      const cv = await this._qtCanvas();
-      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
-      if (!blob) throw new Error('image');
-      this._recordExport(this._qtRows().keys);
-      if (mode === 'copy') {
-        if (navigator.clipboard && window.ClipboardItem) {
-          try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); U.toast('Image copiée — colle-la dans ta conversation.'); return; } catch (e) {}
-        }
-        const box = document.getElementById('qt_box');
-        if (box) { box.innerHTML = `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><div style="max-height:46vh;overflow:auto;"><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Tarif Touffu"></div>`; return; }
+      const pages = this._qtPages(), n = pages.length;
+      this._qtImgs = [];
+      for (let i = 0; i < n; i++) {
+        const cv = await this._qtCanvas(pages[i], i + 1, n);
+        const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+        if (!blob) throw new Error('image');
+        this._qtImgs.push({ blob, url: cv.toDataURL('image/png') });
       }
+      this._recordExport(this._qtRows().keys);
+      this._qtShowImages();
+    } catch (e) { U.toast('Impossible de créer les images.', true); }
+  },
+  _qtShowImages() {
+    const box = document.getElementById('qt_box'); if (!box) return;
+    const imgs = this._qtImgs || [], n = imgs.length;
+    box.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <button class="btn-ghost btn-sm" onclick="B2B._qtRefresh()">← Revenir au tableau</button>
+        <span class="muted" style="font-size:.85rem;">${n} image${n > 1 ? 's' : ''}${n > 1 ? ` · ${U.qty(this._qt.per || 20)} lignes max. par image` : ''}</span>
+        ${n > 1 ? `<button class="btn-ghost btn-sm" onclick="B2B.qtSave(-1)">⬇ Tout enregistrer (${n} images)</button>` : ''}
+      </div>
+      <div style="max-height:52vh;overflow:auto;">${imgs.map((im, i) => `<div style="margin-bottom:14px;">
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-bottom:4px;"><b>Image ${i + 1}${n > 1 ? ' / ' + n : ''}</b>
+          <span><button class="btn-ghost btn-sm" onclick="B2B.qtCopy(${i})">🖼️ Copier</button> <button class="btn-ghost btn-sm" onclick="B2B.qtSave(${i})">⬇ Enregistrer</button></span></div>
+        <img src="${im.url}" style="width:100%;border-radius:8px;display:block;" alt="Tarif Touffu ${i + 1}"></div>`).join('')}</div>
+      <p class="muted" style="margin:6px 0 0;font-size:.82rem;">Si « Copier » ne marche pas sur cette adresse, fais un clic droit sur l'image → « Copier l'image ».</p>`;
+  },
+  async qtCopy(i) {
+    const im = (this._qtImgs || [])[i]; if (!im) return;
+    if (navigator.clipboard && window.ClipboardItem) {
+      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': im.blob })]); U.toast(`Image ${i + 1} copiée — colle-la dans ta conversation.`); return; } catch (e) {}
+    }
+    U.toast('Copie impossible ici (connexion non sécurisée) : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».', true);
+  },
+  async qtSave(i) {
+    const imgs = this._qtImgs || [], list = i < 0 ? imgs.map((im, k) => [im, k]) : (imgs[i] ? [[imgs[i], i]] : []);
+    for (const [im, k] of list) {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'tarif-touffu.png';
+      a.href = URL.createObjectURL(im.blob); a.download = imgs.length > 1 ? `tarif-touffu-${k + 1}.png` : 'tarif-touffu.png';
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    } catch (e) { U.toast('Impossible de créer l’image.', true); }
+      if (list.length > 1) await new Promise(r => setTimeout(r, 500));
+    }
   },
   quoteText() {
     const { rows, keys } = this._qtRows(), c = this._qtCols(), x = this._qtExtras(), micro = this._qt.type === 'micro';
