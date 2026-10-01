@@ -603,10 +603,8 @@ const B2B = {
   },
   async qtCopy(i) {
     const im = (this._qtImgs || [])[i]; if (!im) return;
-    if (navigator.clipboard && window.ClipboardItem) {
-      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': im.blob })]); U.toast(`Image ${i + 1} copiée — colle-la dans ta conversation.`); return; } catch (e) {}
-    }
-    U.toast('Copie impossible ici (connexion non sécurisée) : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».', true);
+    if (await U.copyImage(im.blob, im.url)) { U.toast(`Image ${i + 1} copiée — colle-la dans ta conversation.`); return; }
+    U.toast('Copie impossible : clic droit sur l\'image → « Copier l\'image », ou « Enregistrer ».', true);
   },
   async qtSave(i) {
     const imgs = this._qtImgs || [], list = i < 0 ? imgs.map((im, k) => [im, k]) : (imgs[i] ? [[imgs[i], i]] : []);

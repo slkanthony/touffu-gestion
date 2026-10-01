@@ -847,9 +847,7 @@ const Paniers = {
       const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
       if (!blob) throw new Error('image');
       if (mode === 'copy') {
-        if (navigator.clipboard && window.ClipboardItem) {
-          try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); U.toast('Image copiée — colle-la dans ta conversation.'); return; } catch (e) {}
-        }
+        if (await U.copyImage(blob, cv.toDataURL('image/png'))) { U.toast('Image copiée — colle-la dans ta conversation.'); return; }
         // Connexion non sécurisée (http) : le navigateur refuse l'écriture dans le presse-papiers → on affiche l'image, clic droit > Copier l'image
         const box = document.getElementById('pan_share');
         if (box) {

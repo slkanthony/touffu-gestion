@@ -350,6 +350,28 @@ const U = {
   /* Petite icône ⓘ + bulle d'explication (2026-09-27) : survol = affiche, souris qui part = efface ;
      sur tactile, toucher = ouvre / toucher ailleurs = ferme. Une seule bulle globale (#tipBubble),
      positionnée en fixed et gardée dans l'écran (jamais coupée par un bloc qui défile). */
+  /* Copie une image (blob PNG + son data-URL) dans le presse-papiers.
+     1) API moderne (HTTPS / localhost) ; 2) sinon l'astuce « image sélectionnée dans une zone éditable + copy »,
+     qui marche aussi sur une adresse http:// (ex. http://192.168…). Renvoie true/false. */
+  async copyImage(blob, dataUrl) {
+    if (navigator.clipboard && window.ClipboardItem) {
+      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); return true; } catch (e) {}
+    }
+    try {
+      const box = document.createElement('div');
+      box.contentEditable = 'true';
+      box.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;overflow:hidden;opacity:0;z-index:-1;';
+      const img = document.createElement('img'); img.src = dataUrl;
+      box.appendChild(img); document.body.appendChild(box);
+      if (!img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
+      box.focus();
+      const range = document.createRange(); range.selectNode(img);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      sel.removeAllRanges(); box.remove();
+      return ok;
+    } catch (e) { return false; }
+  },
   info(html) {
     return `<span class="info-tip" tabindex="0" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onmouseenter="U.tipShow(this)" onmouseleave="U.tipHide()" onfocus="U.tipShow(this)" onblur="U.tipHide()" onclick="event.preventDefault();event.stopPropagation();U.tipToggle(this)">i<span class="info-src">${html}</span></span>`;
   },
