@@ -1026,7 +1026,12 @@ const Paniers = {
   setAddVariantsOpen(v) { this.addVariantsOpen = v; },
   setAddQ(v) { this.addQ = v; this.addOpen = true; this.render(); U.refocus('pan_add_q'); },
   openAddMenu() { if (this.addOpen) return; this.addOpen = true; this.render(); U.refocus('pan_add_q'); },
-  closeAddMenu() { if (!this.addOpen) return; this.addOpen = false; this.render(); },
+  closeAddMenu() {
+    if (!this.addOpen) return;
+    // Le clic dans le champ arrive après son « focus » (qui a redessiné l'écran) : l'ancien champ est détaché, donc ce clic ressemblait à un clic extérieur et refermait la liste aussitôt.
+    if (document.activeElement && document.activeElement.id === 'pan_add_q') return;
+    this.addOpen = false; this.render();
+  },
   pickManual(pId, vId, lotId) {
     const cands = this.allCandidates();
     const c = cands.find(x => x.pId === pId && x.vId === vId && x.lotId === lotId);
