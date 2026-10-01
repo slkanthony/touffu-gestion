@@ -62,7 +62,8 @@ const B2B = {
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;" title="Micro-entreprise : pas de TVA appliquée sur la revente pro"><input type="checkbox" ${this.noVat ? 'checked' : ''} onchange="B2B.setNoVat(this.checked)"> Hors TVA (micro-entreprise)</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button class="btn-ghost" onclick="B2B.exportQuote()">🧾 Exporter le tarif pro (CSV)</button>
-            <button class="btn-ghost" onclick="B2B.exportCommercial()" title="Export simplifié à envoyer au commercial : nom, variante, prix HT facturé, prix conseillé (public TTC)">🧑‍💼 Spécial commercial</button>
+            <button class="btn-ghost" onclick="B2B.openQuote('micro')" title="Pour une micro-entreprise (ne collecte pas la TVA) : prix TTC avec la remise + prix de vente conseillé — à copier en image ou en texte">🧑‍💼 Spécial micro-entreprises</button>
+            <button class="btn-ghost" onclick="B2B.openQuote('ent')" title="Pour une entreprise qui collecte la TVA : prix HT avec la remise + prix de vente conseillé TTC — à copier en image ou en texte">🏢 Spécial entreprises</button>
             <button class="btn-ghost btn-sm" onclick="B2B.expandAll()">📂 Tout développer</button>
             <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
           </div>
@@ -210,7 +211,7 @@ const B2B = {
       const socialB2B = priceHTB2B * U.num(S.socialTaxRate) / 100;
       const profitB2B = marginB2B - socialB2B;
       const critical = coeffB2B < U.num(S.b2bCoeffThreshold);
-      return { label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, critical };
+      return { label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
     });
     const activeSup = preview || p.mainSupplierId;
     return { p, rows, discPct, supplierName: activeSup ? Store.supplierName(activeSup) : '—', critical: rows.some(r => r.critical), preview };
@@ -233,7 +234,7 @@ const B2B = {
     // ⚠️ Accessoires (fait main) : leur propre seuil critique (S.accCoeffThreshold),
     // pas celui de la mastication — cohérent avec le calcul de prix public (Pricing.accCalc).
     const critical = coeffB2B < U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    return { a, discPct, cost, coeffPublic: c.effCoeff, priceTTCPublic: c.priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, critical };
+    return { a, discPct, cost, coeffPublic: c.effCoeff, priceTTCPublic: c.priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + U.num(S.vatRate) / 100), critical };
   },
 
   effectiveDiscount(p) {
@@ -443,6 +444,147 @@ const B2B = {
   _updateSelCount() { const el = document.getElementById('b2b_selcount'); if (el) el.textContent = this._selCount(); },
   toggleSel(id, checked) { this._sel[id] = !!checked; this._updateSelCount(); },
   selectAllVisible(checked) { this._curItems().forEach(x => { this._sel[x.id] = !!checked; }); this.render(); },
+
+  /* ═══════════ Tarif à partager : micro-entreprise / entreprise avec TVA (fenêtre + image + texte) ═══════════
+     • micro-entreprise (ne collecte pas la TVA) : Prix = TTC avec la remise · Prix de vente conseillé
+     • entreprise (collecte la TVA) : Prix HT avec la remise · Prix de vente conseillé TTC
+     Produits cochés (sinon tous), onglet actif. Pied : IBAN + message (jamais « espèces »), nom de l'entreprise modifiable. */
+  _qt: null,
+  _qtRows() {
+    const acc = (this.tab || 'mast') === 'acc';
+    const items = this._curItems();
+    let chosen = items.filter(x => this._sel[x.id]);
+    if (!chosen.length) chosen = items;
+    const micro = this._qt && this._qt.type === 'micro';
+    const price = r => micro ? r.ttcB2B : r.priceHTB2B;
+    const rows = [], keys = [];
+    chosen.forEach(x => {
+      if (acc) {
+        const r = x.it, mainW = r.a.mainWidth || this.accWidths(r.a)[0] || '';
+        rows.push({ name: r.a.name, variant: mainW || 'Standard', price: price(r), reco: r.priceTTCPublic });
+        keys.push(['a:' + r.a.id, r.priceHTB2B]);
+      } else x.it.rows.forEach(r => {
+        rows.push({ name: x.it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic });
+        keys.push([this._expKeyM(x.it.p.id, r.label), r.priceHTB2B]);
+      });
+    });
+    return { rows, keys };
+  },
+  _qtCols() {
+    const micro = this._qt.type === 'micro';
+    return { price: micro ? 'Prix' : 'Prix HT', reco: micro ? 'Prix de vente\nconseillé' : 'Prix de vente\nconseillé TTC' };
+  },
+  _qtExtras() {
+    const S = Store.state.settings, q = this._qt;
+    const iban = String(S.payIban || '').trim(), holder = String(S.payHolder || '').trim(), bic = String(S.payBic || '').trim();
+    const ibanLines = (q.iban !== false && iban) ? [].concat(holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
+    const msg = String(q.msg != null ? q.msg : (S.payMessage || '')).trim();
+    return { ibanLines, msg };
+  },
+  _qtInner() {
+    const { rows } = this._qtRows(), c = this._qtCols(), x = this._qtExtras();
+    const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
+    return `<div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
+      <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);">${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}</tr></thead>
+      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid var(--card-border);"><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td></tr>`).join('')}</tbody></table></div>
+      ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
+      ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
+  },
+  _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
+  openQuote(type) {
+    const { rows } = (this._qt = { type, who: '', iban: true, msg: null }, this._qtRows());
+    if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
+    const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
+    const nSel = this._curItems().filter(x => this._sel[x.id]).length;
+    const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value"></div>
+      <p class="muted" style="margin:0 0 8px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
+      <div id="qt_box">${this._qtInner()}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
+        <button class="btn-ghost btn-sm" onclick="B2B.quoteImage('copy')">🖼️ Copier l'image</button>
+        <button class="btn-ghost btn-sm" onclick="B2B.quoteImage('save')">⬇ Enregistrer l'image</button>
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--card-border);">
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher en bas</div>
+        ${hasIban ? `<label style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;"><input type="checkbox" checked onchange="B2B._qt.iban=this.checked;B2B._qtRefresh()"> IBAN</label>` : '<p class="muted" style="font-size:.85rem;margin:0 0 6px;">IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</p>'}
+        <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message (vide = rien d'affiché)" oninput="B2B._qt.msg=this.value;B2B._qtRefresh()">${U.esc(String(S.payMessage || ''))}</textarea>
+      </div>`;
+    U.modal({ title: type === 'micro' ? '🧑‍💼 Tarif — micro-entreprise' : '🏢 Tarif — entreprise (TVA collectée)', body, wide: true, okLabel: '📋 Copier le texte', onOk: () => { B2B.quoteText(); return false; } });
+  },
+  _qtTitle() { const w = String(this._qt.who || '').trim(); return 'Tarif Touffu' + (w ? ' — ' + w : ''); },
+  async _qtCanvas() {
+    const { rows } = this._qtRows(), c = this._qtCols(), x = this._qtExtras();
+    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
+    const cs = getComputedStyle(document.documentElement), col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
+    const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), th = col('--th-bg', '#1c2b38');
+    const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
+    const W = 820, pad = 32, rowH = 40, innerW = W - 2 * pad;
+    const tmp = document.createElement('canvas').getContext('2d');
+    const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > innerW - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
+    const blocks = [];
+    if (x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines });
+    if (x.msg) blocks.push({ f: font(500, 16), l: wrap(x.msg, font(500, 16)) });
+    const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
+    const H = pad + 56 + 54 + rows.length * rowH + (extraH ? 24 : 0) + extraH + pad;
+    const k = rows.length > 150 ? 1 : 2, cv = document.createElement('canvas');
+    cv.width = W * k; cv.height = H * k;
+    const g = cv.getContext('2d'); g.scale(k, k);
+    g.fillStyle = bg; g.fillRect(0, 0, W, H); g.textBaseline = 'middle';
+    g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'left';
+    let ttl = this._qtTitle(); while (g.measureText(ttl).width > innerW && ttl.length > 8) ttl = ttl.slice(0, -2);
+    g.fillText(ttl, pad, pad + 14);
+    let y = pad + 56;
+    const cV = pad + innerW * 0.52, cP = pad + innerW * 0.74, cR = W - pad - 12;
+    g.fillStyle = th; g.fillRect(pad, y, innerW, 54);
+    g.fillStyle = car; g.font = font(700, 12);
+    g.textAlign = 'left'; g.fillText('PRODUIT', pad + 12, y + 27);
+    g.textAlign = 'center'; g.fillText('VARIANTE', cV, y + 27);
+    const hdr = (t, xx) => { const ls = t.toUpperCase().split('\n'); g.textAlign = 'right'; ls.forEach((l, i) => g.fillText(l, xx, y + 27 + (i - (ls.length - 1) / 2) * 15)); };
+    hdr(c.price, cP); hdr(c.reco, cR);
+    y += 54; g.strokeStyle = car; g.lineWidth = 2; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
+    rows.forEach((r, i) => {
+      if (i % 2) { g.fillStyle = th; g.globalAlpha = .45; g.fillRect(pad, y, innerW, rowH); g.globalAlpha = 1; }
+      g.fillStyle = fg; g.font = font(700, 16); g.textAlign = 'left';
+      let nm = r.name; while (g.measureText(nm).width > innerW * 0.46 && nm.length > 4) nm = nm.slice(0, -2);
+      g.fillText(nm + (nm.length < r.name.length ? '…' : ''), pad + 12, y + rowH / 2);
+      g.font = font(500, 15); g.textAlign = 'center'; let vt = r.variant; while (g.measureText(vt).width > innerW * 0.2 && vt.length > 3) vt = vt.slice(0, -2); g.fillText(vt, cV, y + rowH / 2);
+      g.font = font(700, 16); g.textAlign = 'right'; g.fillText(U.eur(r.price), cP, y + rowH / 2);
+      g.font = font(500, 16); g.fillText(U.eur(r.reco), cR, y + rowH / 2);
+      y += rowH;
+    });
+    g.strokeStyle = car; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
+    y += 24; g.textAlign = 'left';
+    blocks.forEach(b => { g.font = b.f; g.fillStyle = fg; b.l.forEach(t => { g.fillText(t, pad + 12, y + 12); y += 24; }); y += 12; });
+    return cv;
+  },
+  async quoteImage(mode) {
+    try {
+      const cv = await this._qtCanvas();
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (!blob) throw new Error('image');
+      this._recordExport(this._qtRows().keys);
+      if (mode === 'copy') {
+        if (navigator.clipboard && window.ClipboardItem) {
+          try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); U.toast('Image copiée — colle-la dans ta conversation.'); return; } catch (e) {}
+        }
+        const box = document.getElementById('qt_box');
+        if (box) { box.innerHTML = `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><div style="max-height:46vh;overflow:auto;"><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Tarif Touffu"></div>`; return; }
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'tarif-touffu.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) { U.toast('Impossible de créer l’image.', true); }
+  },
+  quoteText() {
+    const { rows, keys } = this._qtRows(), c = this._qtCols(), x = this._qtExtras(), micro = this._qt.type === 'micro';
+    const eur = n => n.toFixed(2).replace('.', ',') + ' €';
+    const text = [this._qtTitle(), ''].concat(
+      rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${micro ? '' : 'HT '}${eur(r.price)} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
+      x.ibanLines.length ? [''].concat(x.ibanLines) : [], x.msg ? ['', x.msg] : []).join('\n');
+    this._recordExport(keys);
+    const fb = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fb); else fb();
+  },
 
   exportCommercial() {
     const acc = (this.tab || 'mast') === 'acc';

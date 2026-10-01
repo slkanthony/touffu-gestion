@@ -78,6 +78,7 @@ const Ventes = {
   },
   avail(u) { return this.source === 'event' ? u.availE : u.availG; },
   lotQty(l) { return this.source === 'event' ? l.qtyE : l.qtyG; },
+  lotQtyS(l, src) { return (src || this.source) === 'event' ? l.qtyE : l.qtyG; },
 
   match(u) {
     // Le produit déjà sélectionné reste "match" même si le texte affiché (avec
@@ -412,8 +413,8 @@ const Ventes = {
      (le lot à la DLUO la plus courte est seulement suggéré). Rien n'est déduit ni compté en stats tant que
      le ticket n'est pas validé. */
   loadFromBasket(rec, lines) {
-    this.source = 'general'; this.kind = 'M';
-    this.cart = lines.map(({ u, qty, price }) => ({ key: u.key, kind: 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, needLot: !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
+    this.source = lines.some(l => l.src === 'event') ? 'event' : 'general'; this.kind = 'M';
+    this.cart = lines.map(({ u, qty, price, src }) => ({ key: u.key, kind: 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
     this.customerName = rec.name; this.discOn = false; this._basketId = rec.id;
     this.retourOpen = false; this.todoOpen = false; this.editTicketId = '';
     if (/^#\/ventes\/?$/.test(location.hash)) this.render(); else location.hash = '#/ventes';
@@ -421,13 +422,13 @@ const Ventes = {
   },
   _shortestLot(c) {
     const u = this.units().find(x => x.key === c.key);
-    const lots = u ? u.lots.filter(l => this.lotQty(l) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999')) : [];
+    const lots = u ? u.lots.filter(l => this.lotQtyS(l, c.src) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999')) : [];
     return { u, lots, shortest: lots[0] };
   },
   _lotPicker(c, i) {
     const { lots, shortest } = this._shortestLot(c);
     if (!lots.length) return '<span class="warn-txt">aucun lot en stock</span>';
-    const lab = l => (l.lotNumber || 'sans n°') + (l.dluo ? ' · ' + U.frDate(l.dluo) : ' · sans DLUO') + ' · dispo ' + U.qty(this.lotQty(l)) + (l === shortest ? ' · ⭐ DLUO la plus courte' : '');
+    const lab = l => (l.lotNumber || 'sans n°') + (l.dluo ? ' · ' + U.frDate(l.dluo) : ' · sans DLUO') + ' · dispo ' + U.qty(this.lotQtyS(l, c.src)) + (l === shortest ? ' · ⭐ DLUO la plus courte' : '');
     return `<select onchange="Ventes.setCartLot(${i},this.value)" style="min-width:220px;"><option value="">⚠ Choisir le lot…</option>${lots.map(l => `<option value="${l.id}" ${c.lotId === l.id ? 'selected' : ''}>${U.esc(lab(l))}</option>`).join('')}</select>`;
   },
   setCartLot(i, lotId) {
@@ -436,13 +437,13 @@ const Ventes = {
       const { u } = this._shortestLot(c); const lot = u && u.lots.find(l => l.id === lotId);
       c.lotId = lot ? lot.id : ''; c.lotLabel = lot ? (lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') : '';
       this.render();
-      if (lot && this.lotQty(lot) < c.qty) U.toast(`Ce lot n'a que ${U.qty(this.lotQty(lot))} : le reste sera pris sur le lot suivant (DLUO la plus courte).`);
+      if (lot && this.lotQtyS(lot, c.src) < c.qty) U.toast(`Ce lot n'a que ${U.qty(this.lotQtyS(lot, c.src))} : le reste sera pris sur le lot suivant (DLUO la plus courte).`);
     };
     if (!lotId) { apply(); return; }
     const { lots, shortest } = this._shortestLot(c); const lot = lots.find(l => l.id === lotId);
     if (shortest && lot && shortest.id !== lot.id && (shortest.dluo || '9999') < (lot.dluo || '9999')) {
       U.ask({ title: '⚠️ Attention péremption', okLabel: 'Garder ce lot', cancelLabel: 'Annuler',
-        html: `<p>Un lot avec une DLUO plus courte est disponible :</p><p>Lot choisi : <b>${U.esc(lot.lotNumber || 'sans n°')}</b> (${lot.dluo ? U.frDate(lot.dluo) : 'sans DLUO'})<br>Lot suggéré : <b>${U.esc(shortest.lotNumber || 'sans n°')}</b> (${shortest.dluo ? U.frDate(shortest.dluo) : 'sans DLUO'}) — dispo ${U.qty(this.lotQty(shortest))}</p>` })
+        html: `<p>Un lot avec une DLUO plus courte est disponible :</p><p>Lot choisi : <b>${U.esc(lot.lotNumber || 'sans n°')}</b> (${lot.dluo ? U.frDate(lot.dluo) : 'sans DLUO'})<br>Lot suggéré : <b>${U.esc(shortest.lotNumber || 'sans n°')}</b> (${shortest.dluo ? U.frDate(shortest.dluo) : 'sans DLUO'}) — dispo ${U.qty(this.lotQtyS(shortest, c.src))}</p>` })
         .then(ok => { if (ok) apply(); else this.render(); });
     } else apply();
   },
@@ -457,7 +458,7 @@ const Ventes = {
       ${this._basketId && this.cart.some(c => c.needLot) ? `<div class="badge warn" style="margin-bottom:8px;white-space:normal;">📋 Venant d'un panier en attente — choisis le lot de chaque ligne (vérifie le n° de lot / la DLUO du produit que tu as en main). La validation est bloquée tant qu'un lot manque.</div>` : ''}
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
-          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
+          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${c.src && c.src !== this.source ? ` <span class="badge warn" title="Cette ligne sera déduite d'un autre stock que le reste du ticket">stock ${c.src === 'event' ? 'événement' : 'général'}</span>` : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
           <td>${c.needLot ? this._lotPicker(c, i) : (c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—')}</td>
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
@@ -562,6 +563,7 @@ const Ventes = {
     const touched = [];
     for (let c of lines) {
       let missing = 0;
+      const srcL = c.src || source;   // une ligne peut venir d'un autre stock que le ticket (panier : événement d'abord, général en repli)
       // Coût de revient FIGÉ sur la ligne au moment de la vente (pour la vraie marge) :
       // mastication = coût réel des lots consommés (FEFO) ; accessoire = coût calculé (matières+main d'œuvre) ; consommable = coût unitaire.
       let lineCost = 0;
@@ -573,7 +575,7 @@ const Ventes = {
         const p = Store.state.stockM.find(x => x.id === c.pId);
         const v = p && Stock.stockVar(p, c.vId);   // variante sans stock propre → stock de sa principale
         if (v) {
-          const field = source === 'event' ? 'qtyEvent' : 'qtyGeneral';
+          const field = srcL === 'event' ? 'qtyEvent' : 'qtyGeneral';
           let remaining = c.qty;
           const ordered = [...v.lots].sort((a, b) => (a.id === c.lotId ? -1 : b.id === c.lotId ? 1 : (a.dluo || '9999').localeCompare(b.dluo || '9999')));
           for (const l of ordered) {
@@ -581,14 +583,14 @@ const Ventes = {
             const take = Math.min(U.num(l[field]), remaining);
             if (take > 0) { l[field] = U.num(l[field]) - take; remaining -= take; lineCost += take * U.num(l.costUnit || v.costUnit); sale.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: l.id, field, qty: take, lotMeta: { lotNumber: l.lotNumber, dluo: l.dluo, costUnit: l.costUnit } }); }
           }
-          if (remaining > 0) { missing = remaining; shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: remaining, src: source }); lineCost += remaining * U.num(v.costUnit); }
+          if (remaining > 0) { missing = remaining; shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: remaining, src: srcL }); lineCost += remaining * U.num(v.costUnit); }
           if (!touched.includes(v)) touched.push(v);
         }
       } else if (c.kind === 'A') {
         const a = Store.state.catalogA.find(x => x.id === c.pId);
         if (a) {
           lineCost = U.num(Pricing.accCalc(a).cost) * c.qty;
-          const field = source === 'event' ? 'stockEvent' : 'stockGeneral';
+          const field = srcL === 'event' ? 'stockEvent' : 'stockGeneral';
           const take = Math.min(U.num(a[field]), c.qty);
           if (take > 0) { a[field] = U.num(a[field]) - take; sale.undoOps.push({ kind: 'A', pId: a.id, field, qty: take }); }
           // Pas d'alerte "manque" pour un accessoire : fait à la commande, le stock fini est optionnel

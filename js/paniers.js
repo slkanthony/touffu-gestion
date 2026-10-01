@@ -41,6 +41,7 @@ const Paniers = {
   addVariants: [],
   addVariantsOpen: false,
   proposals: null,
+  client: '',   // cliente choisie avant de générer : sa fiche (viandes évitées, allergies, poils, odeurs, gras) filtre les produits
 
   /* ---------- Fusion tags variante → produit ---------- */
   _mergeTags(pTags, vTags) {
@@ -60,9 +61,36 @@ const Paniers = {
     };
   },
 
+  /* ---------- Fiche cliente → filtres ---------- */
+  _clientRules() {
+    const c = Clients.find(this.client);
+    if (!c || Clients.ro()) return null;
+    const dogs = c.dogs || [];
+    return { c, dogs, hair: dogs.some(d => d.hair === 'non'), odor: dogs.some(d => d.odor === 'non'), fat: dogs.some(d => d.fat === 'non') };
+  },
+  _clientSummary() {
+    if (!String(this.client || '').trim()) return 'Sa fiche (viandes évitées, allergies, poils, odeurs fortes, gras) filtre automatiquement les produits à la génération.';
+    if (Clients.ro()) return '';
+    const r = this._clientRules();
+    if (!r) return 'Pas de fiche pour cette cliente : aucun filtre appliqué (elle sera créée à la vente).';
+    if (!r.dogs.length) return 'Fiche sans chien renseigné : aucun filtre appliqué.';
+    const avoid = [...new Set(r.dogs.flatMap(d => Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid')))];
+    const allergies = [...new Set(r.dogs.map(d => String(d.allergies || '').trim()).filter(Boolean))];
+    const parts = [].concat(avoid.length ? ['évite : ' + avoid.join(', ')] : [], allergies.length ? ['allergies : ' + allergies.join(' · ')] : [], r.hair ? ['pas de produits avec poils'] : [], r.odor ? ['pas d\'odeurs fortes'] : [], r.fat ? ['pas de produits gras'] : []);
+    return '🐕 ' + r.dogs.map(d => d.name || 'chien').join(', ') + ' — ' + (parts.length ? parts.join(' · ') + ' → exclus à la génération' : 'aucune contrainte renseignée');
+  },
+  setClient(v) {
+    v = String(v || '').trim();
+    const c = Clients.find(v);
+    this.client = c ? c.name : v;
+    if (c && (c.dogs || []).length) this.nbChiens = c.dogs.length;
+    this.render();
+  },
+
   /* ---------- Données disponibles ---------- */
   candidates() {
     const out = [];
+    const cl = this._clientRules();
 
     Store.state.stockM.forEach(p => {
       if (this.excludeMeats.includes(p.meatType)) return;
@@ -72,12 +100,17 @@ const Paniers = {
       if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return;
       if (this.poilFilter === 'sans' && pTags.poil !== 'sans' && pTags.poil !== 'les_deux') return;
       if (this.hypoOnly && !pTags.hypo) return;
+      if (cl) {
+        if (Clients.conflicts(cl.c.name, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
+        if (cl.hair && pTags.poil === 'avec') return;
+      }
 
       p.variants.forEach(v => {
         if (v.mode === 'vrac') return;
         const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
 
         const tags = this._mergeTags(pTags, Stock.variantTags(p, v));
+        if (cl && ((cl.odor && tags.odeur === 'forte') || (cl.fat && tags.gras === 'gras'))) return;
 
         if (this.resistanceInclude.length) {
           const r = tags.resistance;
@@ -604,6 +637,7 @@ const Paniers = {
     if (!this.basket.length) return;
     const S = Store.state.settings;
     this._shOpt = { pay: true, iban: true, who: true }; this._shMsg = null;
+    this._shClient = this._shClient || this.client || '';
     const hasPay = this._payList().length > 0, hasIban = !!String(S.payIban || '').trim();
     const chk = (k, label, on = true) => `<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ${on ? 'checked' : ''} onchange="Paniers._shToggle('${k}',this.checked)"> ${label}</label>`;
     const fld = (label, inner) => `<div class="fg" style="margin:0;"><label>${label}</label>${inner}</div>`;
@@ -686,7 +720,7 @@ const Paniers = {
     if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
     this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
-    this._pendId = id; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || '';
+    this._pendId = id; this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || '';
     this.proposals = null;
     this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
     U.toast('Panier rechargé — modifie-le puis « Partager » → « Mettre à jour ».');
@@ -707,7 +741,7 @@ const Paniers = {
   },
   async sendToSale(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
-    const units = Ventes.units(), merged = new Map(), problems = [];
+    const units = Ventes.units(), merged = new Map(), warns = [], general = [];
     (rec.items || []).forEach(b => {
       const key = 'M|' + b.pId + '|' + b.vId;
       if (merged.has(key)) merged.get(key).qty += U.num(b.qty);
@@ -716,14 +750,24 @@ const Paniers = {
     const lines = [];
     merged.forEach(m => {
       const u = units.find(x => x.key === m.key);
-      if (!u) { problems.push(`<b>${U.esc(m.name)}</b> ${U.esc(m.variant || '')} : produit introuvable dans le stock (ignoré).`); return; }
-      if (u.availG < m.qty) problems.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : ${U.qty(m.qty)} demandé(s), ${U.qty(u.availG)} en stock général${U.num(u.availE) > 0 ? ` (${U.qty(u.availE)} en événement)` : ''}.`);
-      if (Math.abs(u.price - m.price) > 0.004) problems.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : prix modifié depuis (${U.eur(m.price)} dans le panier, ${U.eur(u.price)} aujourd'hui). Le prix du panier est conservé.`);
-      Clients.conflicts(rec.name, u).forEach(c => problems.push(`🐕 <b>${U.esc(m.name)}</b> : ${U.esc(c)}`));
-      lines.push({ u, qty: m.qty, price: m.price });
+      if (!u) { warns.push(`<b>${U.esc(m.name)}</b> ${U.esc(m.variant || '')} : produit introuvable dans le stock (ignoré).`); return; }
+      // Règle : toujours le stock ÉVÉNEMENT d'abord ; le manquant vient du stock général (confirmé dans la fenêtre)
+      const e = Math.min(m.qty, Math.max(0, U.num(u.availE))), g = m.qty - e;
+      if (e > 0) lines.push({ u, qty: e, price: m.price, src: 'event' });
+      if (g > 0) {
+        lines.push({ u, qty: g, price: m.price, src: 'general' });
+        general.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : ${e > 0 ? `${U.qty(e)} en événement + ` : ''}<b>${U.qty(g)} en stock général</b>`);
+        if (g > U.num(u.availG)) warns.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : stock général insuffisant (${U.qty(g)} à prendre, ${U.qty(u.availG)} dispo).`);
+      }
+      if (Math.abs(u.price - m.price) > 0.004) warns.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : prix modifié depuis (${U.eur(m.price)} dans le panier, ${U.eur(u.price)} aujourd'hui). Le prix du panier est conservé.`);
+      Clients.conflicts(rec.name, u).forEach(c => warns.push(`🐕 <b>${U.esc(m.name)}</b> : ${U.esc(c)}`));
     });
     if (!lines.length) { U.toast('Aucun produit à envoyer.', true); return; }
-    if (problems.length && !await U.ask({ title: '⚠️ À vérifier avant l\'envoi en vente', okLabel: 'Envoyer quand même', cancelLabel: 'Annuler', html: `<ul style="padding-left:18px;">${problems.map(p => `<li>${p}</li>`).join('')}</ul>` })) return;
+    const allGen = lines.every(l => l.src === 'general');
+    const html = `<p>${allGen ? 'Aucun de ces produits n\'est en stock événement : tout sera déduit du stock <b>général</b>.' : 'Les produits seront déduits du stock <b>Événement</b>.'} Rien n'est déduit tant que tu n'as pas validé le ticket (et tu y choisis le lot de chaque ligne).</p>
+      ${general.length && !allGen ? `<p style="margin-top:10px;"><b>🏬 Pas assez en événement — le manquant vient du stock général :</b></p><ul style="padding-left:18px;">${general.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}
+      ${warns.length ? `<p style="margin-top:10px;"><b>⚠️ À vérifier :</b></p><ul style="padding-left:18px;">${warns.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}`;
+    if (!await U.ask({ title: '🛒 Envoyer en vente — confirmation', okLabel: 'Envoyer en vente', cancelLabel: 'Annuler', html })) return;
     if (Ventes.cart.length && !await U.confirm('Le ticket en cours de la page Ventes contient déjà des articles. Le remplacer par le panier de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
     Ventes.loadFromBasket(rec, lines);
   },
@@ -929,6 +973,7 @@ const Paniers = {
     this.addQ = ''; this.addOpen = false;
     this.render();
     this._stockWarn(pId, vId);
+    Clients.conflicts(this.client, { kind: 'M', type: c.meat, name: c.name }).forEach(t => U.toast('🐕 ' + c.name + ' : ' + t, true));
   },
 
   /* ---------- Filtres ---------- */
@@ -1081,6 +1126,10 @@ const Paniers = {
 
       <div class="card">
         <h2>⚙️ Configuration</h2>
+
+        <div class="fg" style="margin-bottom:12px;"><label>🐕 Cliente (option)</label>
+          <input type="text" list="dl_clients" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente…" onchange="Paniers.setClient(this.value)">${Clients.datalist()}
+          <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div></div>
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💰 Budget TTC</label>
