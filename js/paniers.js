@@ -376,6 +376,8 @@ const Paniers = {
       if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
       if (!eligible.length) break;
 
+      // Plusieurs chiens : on élargit d'abord la gamme (produits pas encore dans le panier) avant de remettre un produit déjà choisi
+      if (mult > 1 || nd) { const fresh = eligible.filter(c => !usedProducts.has(c.pId)); if (fresh.length) eligible = fresh; }
       eligible.sort((a, b) => score(b) - score(a));
       const pick = eligible[0];
 
