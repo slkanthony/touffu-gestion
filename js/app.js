@@ -105,7 +105,7 @@ const App = {
     if (this.visitMode) document.body.classList.add('visit-mode');
     if (this.isViewer || this.isTeam) { const b = document.querySelector('.topnav-brand'); if (b) b.title = this.isViewer ? 'Mode lecture seule' : 'Profil équipe'; }
     Store.logConnexion();
-    if (!this.isViewer && !this.isTeam) setTimeout(() => this._maybeAskCleanup(), 4000);
+    if (!this.isViewer && !this.isTeam) setTimeout(() => this._maybeAskCleanup(), 4000); setTimeout(() => { if (typeof Compta !== 'undefined') Compta.maybeRemind(); }, 7000);
     this._syncVisitEye();
     this.buildNav();
     // Molette → défilement horizontal sur TOUT bloc qui a une barre coulissante

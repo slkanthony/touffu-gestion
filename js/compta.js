@@ -13,6 +13,69 @@ const Compta = {
   PERIODS: [['year', 'Cette année'], ['lastyear', 'Année dernière'], ['12m', '12 derniers mois'], ['all', 'Depuis le début']],
   CATS: ['mastication', 'matiere', 'conso', 'equipement', 'outillage', 'frais'],
   setPeriod(v) { this.f.period = v; this.render(); },
+
+  /* ---------- Seuils & déclarations URSSAF (indicatif — à confirmer sur autoentrepreneur.urssaf.fr / avec un comptable) ---------- */
+  THRESH: { vente: 85000, venteMaj: 93500, services: 37500, servicesMaj: 41250, year: 2026 },   // franchise en base de TVA 2026
+  _split(s) {   // CA encaissé d'une vente : marchandises (+ port encaissé) / fait main
+    let m = 0, a = 0;
+    (s.items || []).forEach(i => { const v = U.num(i.price) * U.num(i.qty); if (i.kind === 'A') a += v; else if (i.kind !== 'C') m += v; });
+    return { m: m + U.num(s.shippingFeeCollected), a };
+  },
+  _sum(from, to) {
+    const S = Store.state.settings; let m = 0, a = 0;
+    (Store.state.sales || []).forEach(s => { if (s.cancelled || s.ts < from || s.ts >= to) return; const x = this._split(s); m += x.m; a += x.a; });
+    const cot = m * U.num(S.socialTaxRate) / 100 + a * (U.num(S.socialTaxRateHandmade) || U.num(S.socialTaxRate)) / 100;
+    return { m, a, cot };
+  },
+  _urssafPeriods() {
+    const f = Store.state.settings.urssafFreq === 'month' ? 'month' : 'quarter', now = new Date(), y = now.getFullYear(), mo = now.getMonth(), out = [];
+    const mk = (y0, m0, n) => { const from = new Date(y0, m0, 1), to = new Date(y0, m0 + n, 1); return { from, to, deadline: n === 1 ? new Date(y0, m0 + 2, 0) : new Date(y0, m0 + n + 1, 0) }; };
+    const cur = f === 'month' ? { y, m: mo, n: 1 } : { y, m: Math.floor(mo / 3) * 3, n: 3 };
+    const prev = f === 'month' ? { y: mo ? y : y - 1, m: mo ? mo - 1 : 11, n: 1 } : (cur.m ? { y, m: cur.m - 3, n: 3 } : { y: y - 1, m: 9, n: 3 });
+    [prev, cur].forEach((p, i) => { const r = mk(p.y, p.m, p.n), lab = f === 'month' ? this.monthLabel(p.y + '-' + String(p.m + 1).padStart(2, '0')) : 'T' + (p.m / 3 + 1) + ' ' + p.y + ' (' + this.monthLabel(p.y + '-' + String(p.m + 1).padStart(2, '0')) + ' à ' + this.monthLabel(p.y + '-' + String(p.m + 3).padStart(2, '0')) + ')'; out.push({ ...r, label: lab, current: i === 1, ...this._sum(r.from.getTime(), r.to.getTime()) }); });
+    return out;
+  },
+  setFreq(v) { Store.state.settings.urssafFreq = v; Store.save('settings'); this.render(); },
+  setExtra(v) { Store.state.settings.comptaExtraServices = Math.max(0, U.num(v)); Store.save('settings'); this.render(); },
+  _gauge(label, val, base, maj, note) {
+    const p = base ? val / base * 100 : 0, col = p >= 100 ? 'var(--alerte)' : p >= 80 ? 'var(--warn)' : 'var(--ok)';
+    return `<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><b>${label}</b><span class="sensitive"><b style="color:${col};">${U.eur(val, 0)}</b> / ${U.eur(base, 0)} <span class="muted">(${Math.round(p)} %)</span></span></div>
+      <div style="height:10px;border-radius:6px;background:var(--th-bg);overflow:hidden;margin:4px 0;"><div style="height:100%;width:${Math.min(100, p)}%;background:${col};"></div></div>
+      <div class="muted" style="font-size:.8rem;">Seuil majoré ${U.eur(maj, 0)} · ${p >= 100 ? '⚠️ seuil de base dépassé : la franchise s\'arrête au 1er janvier suivant (au 1er jour de dépassement si le seuil majoré est franchi)' : p >= 80 ? '⚠️ tu approches du seuil' : 'tu es loin du seuil'}${note ? ' · ' + note : ''}</div></div>`;
+  },
+  _watchCard() {
+    const S = Store.state.settings, y = new Date().getFullYear(), cur = this._sum(new Date(y, 0, 1).getTime(), new Date(y + 1, 0, 1).getTime()), T = this.THRESH, extra = U.num(S.comptaExtraServices);
+    const per = this._urssafPeriods(), d = x => x.deadline.toLocaleDateString('fr-FR');
+    return `<div class="card"><h2>🧭 Seuils &amp; déclaration URSSAF <span class="muted help">Indicatif : seuils de franchise de TVA ${T.year} (vente de marchandises ${U.eur(T.vente, 0)}, services ${U.eur(T.services, 0)}). Je ne sais pas à quelle catégorie ton URSSAF rattache le fait main : à confirmer. Les montants sont tes encaissements de l'application ; ajoute ci-dessous le CA réalisé hors application (éducation canine…).</span></h2>
+      ${this._gauge('🥩 Ventes de marchandises (mastication + port encaissé)', cur.m, T.vente, T.venteMaj, 'année ' + y)}
+      ${this._gauge('🐕 Fait main + services (accessoires + CA hors application)', cur.a + extra, T.services, T.servicesMaj, 'année ' + y)}
+      <div class="frow" style="align-items:flex-end;gap:10px;max-width:640px;"><div class="fg"><label>CA hors application cette année (€)</label><input type="number" step="any" min="0" value="${extra || ''}" placeholder="0 (éducation canine, autres)" onchange="Compta.setExtra(this.value)"></div>
+        <div class="fg"><label>Je déclare à l'URSSAF</label><select onchange="Compta.setFreq(this.value)"><option value="quarter" ${S.urssafFreq !== 'month' ? 'selected' : ''}>chaque trimestre</option><option value="month" ${S.urssafFreq === 'month' ? 'selected' : ''}>chaque mois</option></select></div></div>
+      <div class="table-wrap mt"><table class="pack-tbl"><thead><tr><th style="text-align:left;">Période</th><th class="num">Marchandises</th><th class="num">Fait main</th><th class="num">Cotisations estimées</th><th>À déclarer avant le</th></tr></thead><tbody>${per.map(p => `<tr><td style="text-align:left;"><b>${p.label}</b> ${p.current ? '<span class="badge info">en cours</span>' : '<span class="badge warn">à déclarer</span>'}</td><td class="num"><span class="sensitive">${U.eur(p.m)}</span></td><td class="num"><span class="sensitive">${U.eur(p.a)}</span></td><td class="num"><span class="sensitive">${U.eur(p.cot)}</span></td><td>${d(p)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="font-size:.8rem;">Dates indicatives (fin du mois ou du trimestre suivant) : vérifie-les sur ton espace autoentrepreneur.urssaf.fr. Le CA à déclarer est celui encaissé, hors éducation canine si tu la déclares à part.</p></div>`;
+  },
+  _todoCard() {
+    const noInv = Achats.list().filter(p => !String(p.invoiceNo || '').trim()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    if (!noInv.length) return '';
+    return `<div class="card"><h2>📋 À compléter <span class="muted" style="font-size:.85rem;font-weight:400;">— ${noInv.length} achat(s) sans n° de facture</span></h2>
+      <p class="muted help" style="font-size:.85rem;">Le registre des achats demande la référence de la pièce. Retrouve le n° dans ton compte fournisseur et ajoute-le.</p>
+      ${noInv.slice(0, 10).map(p => `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);flex-wrap:wrap;"><span>${U.frDate(p.date)} · <b>${U.esc(Achats.supplierLabel(p))}</b> <span class="muted">${(p.lines || []).length} ligne(s)</span>${p.payment === 'especes' ? ' <span class="badge warn">espèces</span>' : ''}</span><span><span class="sensitive">${U.eur(Achats.grandTotal(p))}</span> <button class="btn-ghost btn-sm" onclick="Achats.mode='list';location.hash='#/achats';setTimeout(()=>Achats.edit('${p.id}'),50)">Modifier</button></span></div>`).join('')}${noInv.length > 10 ? `<p class="muted">… et ${noInv.length - 10} autre(s).</p>` : ''}</div>`;
+  },
+  /* Rappel annuel (janvier → mars) : exporter le registre des achats et le livre des recettes de l'année écoulée */
+  _markExport(kind) {
+    const m = Store.state.meta, y = this.f.period === 'lastyear' ? new Date().getFullYear() - 1 : this.f.period === 'year' ? new Date().getFullYear() : 0; if (!y) return;
+    m.comptaExp = m.comptaExp || {}; (m.comptaExp[kind] = m.comptaExp[kind] || []); if (!m.comptaExp[kind].includes(y)) m.comptaExp[kind].push(y); Store.save('meta');
+  },
+  maybeRemind() {
+    if (App.isViewer || App.isTeam) return;
+    const now = new Date(), y = now.getFullYear() - 1, m = Store.state.meta, ex = m.comptaExp || {};
+    if (now.getMonth() > 2 || (m.comptaNext && m.comptaNext > U.today())) return;
+    const has = Achats.list().some(p => String(p.date).startsWith(String(y))) || (Store.state.sales || []).some(s => new Date(s.ts).getFullYear() === y);
+    if (!has || ((ex.achats || []).includes(y) && (ex.recettes || []).includes(y))) return;
+    U.ask({ title: '📒 Sauvegarde comptable ' + y, html: `<p>Pense à exporter le <b>registre des achats</b> et le <b>livre des recettes</b> de ${y} (à conserver 10 ans avec tes factures). Ton compte fournisseur peut disparaître : garde une copie.</p>`, okLabel: 'Ouvrir la Compta (' + y + ')', cancelLabel: 'Plus tard (7 jours)' }).then(ok => {
+      if (ok) { this.f.period = 'lastyear'; location.hash = '#/compta'; } else { const d = new Date(Date.now() + 7 * 86400000); m.comptaNext = d.toISOString().slice(0, 10); Store.save('meta'); }
+    });
+  },
   mk(ts) { return new Date(ts).toISOString().slice(0, 7); },
   monthLabel(k) { const [y, m] = k.split('-'); return ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][+m - 1] + ' ' + y; },
   _months() {
@@ -96,6 +159,7 @@ const Compta = {
         <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Compta.exportAchats()">⬇ Registre des achats (CSV)</button>
         <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Compta.exportRecettes()">⬇ Livre des recettes (CSV)</button></div>
         <p class="muted help" style="font-size:.82rem;margin-top:8px;">Les cotisations URSSAF sont estimées avec tes taux des Paramètres (marchandises / fait main). Ce n'est pas une déclaration officielle : un indicateur de gestion. Les ventes importées de l'ancien historique ont des prix estimés.</p></div>
+      ${this._watchCard()}
       <div class="grid c4" style="margin-bottom:16px;">
         <div class="kpi good sensitive"><div class="v">${U.eur(T.inc)}</div><div class="l">Entrées (encaissé)</div></div>
         <div class="kpi bad sensitive"><div class="v">${U.eur(T.out)}</div><div class="l">Sorties (payé)</div></div>
@@ -123,21 +187,22 @@ const Compta = {
           <tr style="border-top:2px solid var(--caramel);font-weight:800;"><td style="text-align:left;">= Bénéfice net</td><td class="num">${sg(T.net)}</td></tr></tbody></table>
           ${stockBuy > 0 ? `<p class="muted" style="font-size:.82rem;margin-top:8px;">ℹ️ ${U.eur(stockBuy)} d'achats de mastication, matières et consommables sur la période ne sont pas dans cette liste : ils passent par le « coût des marchandises vendues » au fur et à mesure des ventes (ce qui n'est pas encore vendu reste en stock).</p>` : ''}
         </div>
-      </div>`);
+      </div>
+      ${this._todoCard()}`);
   },
 
   /* ---------- exports ---------- */
   _periodPurchases() { const ks = new Set(this._months()); return Achats.list().filter(p => ks.has(String(p.date).slice(0, 7))); },
-  exportAchats() { Achats.exportCsv(this._periodPurchases()); },
+  exportAchats() { Achats.exportCsv(this._periodPurchases()); this._markExport('achats'); },
   exportRecettes() {
     const ks = new Set(this._months()), rows = (Store.state.sales || []).filter(s => !s.cancelled && ks.has(this.mk(s.ts))).sort((a, b) => a.ts - b.ts);
     if (!rows.length) { U.toast('Aucune vente sur cette période.', true); return; }
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', n = v => String(Math.round(U.num(v) * 100) / 100).replace('.', ',');
     const pay = { sumup: 'SumUp', stripe: 'Stripe', virement: 'Virement', cash: 'Especes' };
-    const out = ['Date;Client;Moyen_de_paiement;Montant_marchandises;Port_encaisse;Total_encaisse'];
-    rows.forEach(s => { const sp = Pricing.saleProfit(s); out.push([q(new Date(s.ts).toISOString().slice(0, 10)), q(s.customerName || ''), q(pay[s.payment] || ''), n(sp.ca), n(sp.shipFee), n(sp.ca + sp.shipFee)].join(';')); });
+    const out = ['Date;Reference;Client;Nature;Moyen_de_paiement;Montant_marchandises;Port_encaisse;Total_encaisse'];
+    rows.forEach(s => { const sp = Pricing.saleProfit(s); const x = this._split(s), d = new Date(s.ts).toISOString().slice(0, 10); out.push([q(d), q('V' + d.replace(/-/g, '') + '-' + String(s.id).slice(-4).toUpperCase()), q(s.customerName || ''), q(x.m && x.a ? 'Vente marchandises + fait main' : x.a ? 'Fait main' : 'Vente marchandises'), q(pay[s.payment] || ''), n(sp.ca), n(sp.shipFee), n(sp.ca + sp.shipFee)].join(';')); });
     const blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'recettes-' + U.today() + '.csv';
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); this._markExport('recettes');
   }
 };
