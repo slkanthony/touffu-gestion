@@ -195,6 +195,13 @@ const Params = {
         </div>
       </details>
 
+      <details class="fold card params-fold" ${this._shipOpen ? 'open' : ''} ontoggle="Params._shipOpen=this.open">
+        <summary><h2 style="display:inline;">📦 Expédition</h2> <span class="muted">(grille Boxtal / Mondial Relay, poids des emballages)</span></summary>
+        <div class="fold-body">
+          ${this.shipCard()}
+        </div>
+      </details>
+
       <details class="fold card params-fold" ${this._calcOpen ? 'open' : ''} ontoggle="Params._calcOpen=this.open">
         <summary><h2 style="display:inline;">🧮 Calculateur</h2> <span class="muted">(mode de référence par catégorie de matière)</span></summary>
         <div class="fold-body">
@@ -577,6 +584,27 @@ const Params = {
 
   /* 🧮 Calculateur : mode de référence par catégorie de matière (sangle/bouclerie/autre).
      'shared' = une référence partagée par largeur/type ; 'perItem' = une référence par article. */
+  /* ---------- Expédition (2026-10-02) : grille de tarifs par tranche de poids + poids des emballages (voir ship.js) ---------- */
+  shipCard() {
+    const S = Store.state.settings, t = Ship.tiers(), vat = U.num(S.vatRate ?? 20);
+    return `<p class="muted help" style="font-size:.85rem;">Grille de ton transporteur (Boxtal → Mondial Relay), prix <b>HT</b> par tranche : « jusqu'à X g ». Tu paies TTC et tu ne récupères pas la TVA : l'application affiche donc le prix TTC (HT + ${U.qty(vat)} %). Dans un panier ou une vente en livraison, elle estime le poids du colis, la tranche et le coût, et te dit quand il faut peser. Mets à jour la grille quand les tarifs changent.</p>
+      <div class="frow" style="max-width:520px;margin-bottom:10px;">
+        <div class="fg"><label>Poids du carton + calage (g)</label><input type="number" step="any" min="0" value="${U.num(S.shipBoxG) || ''}" placeholder="0" onchange="Params.setShipNum('shipBoxG',this.value)"></div>
+        <div class="fg"><label>Poids d'un sachet / article emballé (g)</label><input type="number" step="any" min="0" value="${U.num(S.shipBagG) || ''}" placeholder="0" onchange="Params.setShipNum('shipBagG',this.value)"></div>
+      </div>
+      <div class="label-types" style="max-width:520px;">
+        <div class="lt-head" style="display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:8px;"><span>Jusqu'à (g)</span><span>Prix HT (€)</span><span>Prix TTC</span><span></span></div>
+        ${t.map((x, i) => `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:8px;align-items:center;margin-bottom:6px;"><input type="number" step="any" min="1" value="${x.maxG}" onchange="Params.setShipTier(${i},'maxG',this.value)"><input type="number" step="0.01" min="0" value="${x.priceHT}" onchange="Params.setShipTier(${i},'priceHT',this.value)"><span class="muted">${U.eur(Ship.ttc(x.priceHT))}</span><button class="btn-icon" title="Retirer cette tranche" onclick="Params.delShipTier(${i})">🗑️</button></div>`).join('')}
+      </div>
+      <button class="btn-ghost btn-sm" onclick="Params.addShipTier()">＋ Ajouter une tranche</button>`;
+  },
+  setShipNum(k, v) { Store.state.settings[k] = Math.max(0, U.num(v)); Store.save('settings'); },
+  setShipTier(i, f, v) {
+    const t = Ship.tiers(); if (!t[i]) return; t[i][f] = Math.max(0, U.num(v));
+    Store.state.settings.shipTiers = t.filter(x => x.maxG > 0); Store.save('settings'); App.rerender();
+  },
+  delShipTier(i) { const t = Ship.tiers(); t.splice(i, 1); Store.state.settings.shipTiers = t; Store.save('settings'); App.rerender(); },
+  addShipTier() { const t = Ship.tiers(), last = t[t.length - 1]; t.push({ maxG: last ? last.maxG + 5000 : 1000, priceHT: last ? last.priceHT : 0 }); Store.state.settings.shipTiers = t; Store.save('settings'); App.rerender(); },
   calcModeCard() {
     const kinds = Store.materialKinds();
     const perItem = kinds.filter(k => Store.calcRefMode(k.value) === 'perItem');

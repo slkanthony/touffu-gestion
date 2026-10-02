@@ -248,6 +248,12 @@ const Achats = {
     this.list().forEach(p => (p.lines || []).forEach(l => { if (l.cat === 'mastication' && l.ref === pId && l.recv && !l.recv.closed) out.push({ pid: p.id, lid: l.id, date: p.date, lot: l.lot || '', dluo: l.dluo || '', label: `${U.frDate(p.date)} · ${this.supplierLabel(p)} · ${U.qty(l.qty)} ${l.unit || ''}${l.lot ? ' · lot ' + l.lot : ''}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}` }); }));
     return out.sort((a, b) => b.date.localeCompare(a.date));
   },
+  /* Poids moyen (g) d'une pièce d'après le dernier tri terminé d'un produit — sert à estimer le poids des colis (ship.js) */
+  avgPieceG(pId) {
+    let best = null;
+    this.list().forEach(p => (p.lines || []).forEach(l => { if (l.cat === 'mastication' && l.ref === pId && l.recv && l.recv.closed && U.num(l.recv.avgG) > 0 && (!best || (l.recv.closedAt || 0) > best.t)) best = { t: l.recv.closedAt || 0, g: U.num(l.recv.avgG) }; }));
+    return best ? best.g : 0;
+  },
   snapPurchase(pid) { const p = this.list().find(x => x.id === pid); return p ? Store.snapshot('purchases', p) : null; },
   addDist(pid, lid, entry) {
     const p = this.list().find(x => x.id === pid), l = p && p.lines.find(x => x.id === lid); if (!l || !l.recv) return;

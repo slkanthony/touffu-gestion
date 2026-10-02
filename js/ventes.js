@@ -450,6 +450,7 @@ const Ventes = {
     } else apply();
   },
 
+  _shipLines() { return this.cart.filter(c => c.kind === 'M').map(c => ({ pId: c.pId, vId: c.vId, qty: c.qty })); },
   _balApplied(total) {   // > 0 : avoir déduit ; < 0 : dette réglée (ajoutée au ticket)
     const b = Clients.balanceOf(this.customerName);
     if (!this.balOn || !b) return 0;
@@ -473,6 +474,7 @@ const Ventes = {
           <td class="num"><b>${U.eur(c.price * c.qty)}</b></td>
           <td><button class="btn-icon" onclick="Ventes.cart.splice(${i},1);Ventes.render()">🗑️</button></td></tr>`).join('')}</tbody>
         <tfoot>${this.discOn ? `<tr><th colspan="4">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="4">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr>${ba ? `<tr><th colspan="4">${ba > 0 ? 'Avoir déduit' : 'Solde à régler'}</th><th class="num">${ba > 0 ? '−' : '+'} ${U.eur(Math.abs(ba))}</th><th></th></tr><tr><th colspan="4">À payer</th><th class="num">${U.eur(total - ba)}</th><th></th></tr>` : ''}</tfoot></table></div>
+      ${this.source === 'general' || this._basketId ? `<div class="mt" id="v_shipinfo">${Ship.html(Ship.estimate(this._shipLines()))}</div>` : ''}
       <div class="fg mt" style="max-width:420px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${this.discOn ? 'checked' : ''} onchange="Ventes.discOn=this.checked;Ventes.render()"> 🏷️ Réduction sur la commande (client partenaire…)</label>
         ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span></div>` : ''}</div>
       <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value" onchange="Ventes.render()"></div>
@@ -547,6 +549,9 @@ const Ventes = {
       const S = Store.state.settings;
       sale.shippingChargedToCustomer = sale.total < U.num(S.freeShippingThreshold ?? 69);
       sale.shippingFeeCollected = sale.shippingChargedToCustomer ? U.num(S.shippingCost ?? 6.8) : 0;
+      // coût réel du transporteur PRÉ-REMPLI (TTC) d'après le poids estimé, seulement si tous les articles ont un poids ; à corriger avec le vrai montant Boxtal
+      const est = Ship.estimate(this._shipLines());
+      if (est && est.complete && est.ttc > 0) { sale.shippingCost = Math.round(est.ttc * 100) / 100; sale.shippingEstimated = true; }
     }
     Store.state.sales.unshift(sale);
     const entry = Store.log('vente', `Sortie ${U.eur(sale.total)} — ${sale.items.map(i => U.qty(i.qty) + '× ' + i.name).join(', ')}`, { type: 'sale', data: { saleId: sale.id } });
@@ -779,7 +784,7 @@ const Ventes = {
   setShippingCost(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
-    s.shippingCost = U.num(val);
+    s.shippingCost = U.num(val); delete s.shippingEstimated;
     const entry = Store.commitSnapshot(snap, 'vente', `Frais d'envoi — ${U.frDateTime(s.ts)} : ${U.eur(s.shippingCost)}`);
     U.toast('Frais d\'envoi mis à jour.', false, entry.id);
     Store.save('sales');
@@ -1126,7 +1131,7 @@ const Ventes = {
           ${s.balanceApplied ? field(s.balanceApplied > 0 ? 'Avoir déduit' : 'Solde réglé', U.eur(Math.abs(s.balanceApplied))) : ''}
           ${s.cancelled ? (s.discountPct ? field('Réduction', '−' + U.qty(s.discountPct) + ' %') : '') : field('Réduction %', `<input type="number" step="0.5" min="0" max="99" value="${U.num(s.discountPct) || ''}" placeholder="0" style="width:70px;" onchange="Ventes.setDiscount('${s.id}',this.value)">${s.discountAmount ? ` <span class="muted">(−${U.eur(s.discountAmount)})</span>` : ''}`)}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
-          ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
+          ${s.delivery === 'livraison' ? field('Frais d\'envoi TTC', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">${s.shippingEstimated ? ' <span class="badge info" title="Estimé d\'après le poids du colis : remplace par le vrai montant Boxtal (TTC)">estimé</span>' : ''}`) : ''}
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Repas', `<input type="number" step="0.01" min="0" value="${U.num(s.mealFee)}" style="width:80px;" onchange="Ventes.setMealFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
@@ -1855,7 +1860,7 @@ const Ventes = {
       ${s.delivery === 'livraison' ? `<div class="card">
         <h2>📦 Expédition</h2>
         <div class="grid c3">
-          <div class="fg"><label>Frais d'envoi réels (€) <span class="muted help">ce que tu paies au transporteur (Mondial Relay…). Le carton se déduit plus bas dans « Consommables ». Ensemble ils donnent le vrai coût d'expédition de la commande.</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.shippingCost) || ''}" onchange="Ventes.setShippingCost('${s.id}',this.value)"></div>
+          <div class="fg"><label>Frais d'envoi réels (€ TTC) <span class="muted help">ce que tu paies réellement au transporteur (Mondial Relay via Boxtal…), TTC : tu ne récupères pas la TVA, le montant est déduit tel quel de ton bénéfice. Le carton se déduit plus bas dans « Consommables ». Ensemble ils donnent le vrai coût d'expédition de la commande.</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.shippingCost) || ''}" onchange="Ventes.setShippingCost('${s.id}',this.value)"></div>
           <div class="fg"><label>Port payé par le client</label><div><span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}');Ventes.render();">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span></div></div>
         </div>
       </div>` : ''}

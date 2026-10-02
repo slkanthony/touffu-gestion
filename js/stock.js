@@ -600,6 +600,11 @@ const Stock = {
         <div class="fg"><label>Nom de la variante</label><input id="ev_label" value="${U.esc(Pricing.labelVariant(v))}" placeholder="ex: 25CM, 100G, LOT 2…"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
       </div>
+      ${v.mode==='vrac' ? '' : `<div class="frow">
+        <div class="fg"><label>⚖️ Poids moyen (g) <span class="muted help">Poids d'une pièce / d'un sachet de cette variante, pour estimer le poids des colis. Vide = calculé si possible (variante au poids, lot de N pièces, moyenne d'un tri d'achat).</span></label><input id="ev_wavg" type="number" step="any" min="0" value="${v.wAvg||''}" placeholder="${(()=>{const w=Ship.variantW(p,v);return w&&!(U.num(v.wAvg)>0)?Math.round(w.avg)+' (calculé)':'ex : 120';})()}"></div>
+        <div class="fg"><label>Mini (g)</label><input id="ev_wmin" type="number" step="any" min="0" value="${v.wMin||''}" placeholder="option"></div>
+        <div class="fg"><label>Maxi (g)</label><input id="ev_wmax" type="number" step="any" min="0" value="${v.wMax||''}" placeholder="option"></div>
+      </div>`}
       ${_kids.length ? `<p class="muted" style="font-size:.8rem;margin:6px 0 0;">Déclinaisons de cette variante : <b>${_kids.map(k=>U.esc(Pricing.labelVariant(k))).join(', ')}</b> — elles héritent de sa fiche prix et de ses tags.</p>` : `<div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Déclinaison de</label><select id="ev_parent" onchange="Stock._evParentChange()">
           <option value="">— aucune (variante de référence) —</option>
@@ -655,6 +660,7 @@ const Stock = {
         const snap=Store.snapshot('stockM',p);
         if (newLabel !== Pricing.labelVariant(v)) v.label = newLabel;
         v.sku=U.val('ev_sku');
+        if (document.getElementById('ev_wavg')) { const a=U.numVal('ev_wavg'), mn=U.numVal('ev_wmin'), mx=U.numVal('ev_wmax'); v.wAvg=a>0?a:0; v.wMin=mn>0?mn:0; v.wMax=mx>0?mx:0; if(!v.wAvg&&!v.wMin&&!v.wMax){delete v.wAvg;delete v.wMin;delete v.wMax;} }
         const parId = document.getElementById('ev_parent') ? U.val('ev_parent') : '';
         if (parId) {
           const par = p.variants.find(x => x.id === parId);

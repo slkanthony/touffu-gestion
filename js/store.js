@@ -17,6 +17,9 @@ const Store = {
     return {
       settings: {
         vatRate: 20, vatActive: false, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5,
+        // Expédition (Boxtal / Mondial Relay) : grille poids → prix HT (tranche = jusqu'à maxG grammes), poids du carton et d'un sachet
+        shipTiers: [{ maxG: 250, priceHT: 3.04 }, { maxG: 500, priceHT: 3.14 }, { maxG: 1000, priceHT: 3.51 }, { maxG: 2000, priceHT: 4.90 }, { maxG: 3000, priceHT: 5.21 }, { maxG: 4000, priceHT: 5.21 }, { maxG: 5000, priceHT: 9.44 }, { maxG: 7000, priceHT: 10.36 }, { maxG: 10000, priceHT: 10.36 }, { maxG: 15000, priceHT: 16.16 }, { maxG: 30000, priceHT: 16.26 }],
+        shipBoxG: 0, shipBagG: 0,
         laborRate: 20, labelCost: 0.10, bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
         uvCartridgePrice: 42, uvCartridgeVolume: 100, // impression UV : coût encre/ml = prix ÷ volume
         uvMaintPct: 0, // + majoration entretien optionnelle (% du coût encre) — filtres/nettoyage/entretien
