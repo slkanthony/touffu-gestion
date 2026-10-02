@@ -64,7 +64,7 @@ begin
              then (select coalesce(jsonb_agg(e - 'customerName'), '[]'::jsonb) from jsonb_array_elements(a.data) e)
              else a.data end
       from public.app_state a
-      where a.key not in ('clients', 'journal', 'baskets');
+      where a.key not in ('clients', 'journal', 'baskets', 'purchases');
   end if;
 end $fn$;
 revoke all on function public.app_state_safe() from public, anon;

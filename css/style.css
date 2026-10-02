@@ -1258,3 +1258,12 @@ th.ctr, td.ctr { text-align: center; }
 .kpi-label { display: block; font-size: .74rem; color: var(--gris); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
 @media (max-width: 700px) { .multiselect-panel { max-width: calc(100vw - 20px); } .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { table.stk td > .stk-v { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; } table.stk td:last-child > .stk-v { justify-content: flex-end; } }
+
+/* ---------- Achats : lignes de facture ---------- */
+.ach-line { border: 1px solid var(--card-border); border-radius: 10px; padding: 10px 12px 6px; margin-bottom: 10px; background: rgba(255,255,255,.02); }
+.ach-grid { display: grid; gap: 8px 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); align-items: end; }
+.ach-tot { padding: 9px 4px; font-weight: 700; font-size: 1.05rem; }
+.ach-sum { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; justify-content: flex-end; margin-top: 14px; padding-top: 10px; border-top: 2px solid var(--caramel); }
+.ach-sum .fg { max-width: 170px; margin: 0; }
+.ach-grand { font-size: 1.25rem; padding-bottom: 6px; }
+.ach-grand b { color: var(--caramel); margin-left: 6px; }
