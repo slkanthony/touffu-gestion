@@ -23,17 +23,48 @@ const Clients = {
   },
   /* Solde / avoir : c.balance > 0 = je lui dois (avoir à déduire de sa prochaine commande) ; < 0 = il me doit. Journal : c.balanceLog. */
   balanceOf(name) { if (this.ro()) return 0; const c = this.find(name); return c ? Math.round(U.num(c.balance) * 100) / 100 : 0; },
+  /* Le solde = la somme des lignes du journal (chaque ligne est modifiable / supprimable). */
+  _recalc(c) {
+    const log = c.balanceLog || [];
+    const diff = c.balMig ? 0 : Math.round((U.num(c.balance) - log.reduce((a, l) => a + U.num(l.amount), 0)) * 100) / 100;   // migration unique de l'ancien solde
+    c.balMig = true;
+    if (diff) log.push({ id: U.uid(), ts: 0, amount: diff, note: 'Solde initial', initial: true });   // ancien solde saisi avant le journal
+    log.forEach(l => { if (!l.id) l.id = U.uid(); });
+    c.balanceLog = log; c.balance = Math.round(log.reduce((a, l) => a + U.num(l.amount), 0) * 100) / 100;
+  },
   adjustBalance(name, delta, note) {
     delta = Math.round(U.num(delta) * 100) / 100; if (!delta) return;
     const c = this.ensure(name); if (!c) return;
-    c.balance = Math.round((U.num(c.balance) + delta) * 100) / 100;
-    c.balanceLog = [{ ts: Date.now(), amount: delta, note: note || '', after: c.balance }].concat(c.balanceLog || []).slice(0, 30);
+    this._recalc(c);
+    c.balanceLog.unshift({ id: U.uid(), ts: Date.now(), amount: delta, note: note || '' }); this._recalc(c);
     Store.save('clients');
   },
-  setBalance(cid, v) {
+  addBalEntry(cid) {
     if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
-    const nb = Math.round(U.num(v) * 100) / 100, note = (document.getElementById('cl_bn_' + cid) || {}).value || '';
-    this.adjustBalance(c.name, nb - U.num(c.balance), note.trim() || 'Correction manuelle'); Stats.render();
+    const a = Math.round(U.num((document.getElementById('cl_ba_' + cid) || {}).value) * 100) / 100;
+    if (!a) { U.toast('Tape un montant (positif = je lui dois, négatif = il me doit).', true); return; }
+    this.adjustBalance(c.name, a, ((document.getElementById('cl_bn_' + cid) || {}).value || '').trim() || 'Ajout manuel'); Stats.render();
+  },
+  editBalEntry(cid, eid, field, v) {
+    if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
+    const l = (c.balanceLog || []).find(x => x.id === eid); if (!l) return;
+    if (field === 'amount') l.amount = Math.round(U.num(v) * 100) / 100; else l.note = String(v || '').trim();
+    this._recalc(c); Store.save('clients'); Stats.render();
+  },
+  async delBalEntry(cid, eid) {
+    if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
+    if (!await U.confirm('Supprimer cette ligne du solde ?', { okLabel: 'Supprimer' })) return;
+    c.balanceLog = (c.balanceLog || []).filter(x => x.id !== eid); this._recalc(c); Store.save('clients'); Stats.render();
+  },
+  _balUI(c) {
+    this._recalc(c);
+    const b = c.balance, log = c.balanceLog.slice().sort((x, y) => (y.ts || 0) - (x.ts || 0));
+    const sum = !b ? 'Solde : 0 €' : b > 0 ? `Avoir : <b>${U.eur(b)}</b> (je lui dois)` : `Dette : <b>${U.eur(-b)}</b> (il me doit)`;
+    return `<div class="mt"><h3 style="margin-bottom:6px;">💶 Solde / avoir <span class="muted help">Positif = je lui dois (avoir : déduit automatiquement de sa prochaine commande). Négatif = il me doit (ajouté à sa prochaine commande). Le solde est la somme des lignes ci-dessous : tu peux modifier ou supprimer une ligne.</span></h3>
+      <div style="margin-bottom:8px;">${sum}</div>
+      <div class="frow" style="align-items:flex-end;gap:8px;"><div class="fg" style="max-width:150px;"><label>Montant (€)</label><input id="cl_ba_${c.id}" type="number" step="0.01" placeholder="ex : 1,70 ou -3"></div><div class="fg"><label>Motif</label><input id="cl_bn_${c.id}" placeholder="ex : monnaie rendue en trop le 02/10"></div><button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Clients.addBalEntry('${c.id}')">＋ Ajouter</button></div>
+      ${log.length ? `<table class="pack-tbl" style="margin-top:8px;"><tbody>${log.map(l => `<tr><td class="muted" style="white-space:nowrap;">${l.ts ? new Date(l.ts).toLocaleDateString('fr-FR') : '—'}</td><td style="width:110px;"><input type="number" step="0.01" value="${U.num(l.amount)}" onchange="Clients.editBalEntry('${c.id}','${l.id}','amount',this.value)"></td><td><input value="${U.esc(l.note || '')}" onchange="Clients.editBalEntry('${c.id}','${l.id}','note',this.value)"></td><td><button class="btn-icon" title="Supprimer cette ligne" onclick="Clients.delBalEntry('${c.id}','${l.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>` : ''}
+    </div>`;
   },
   balBadge(c) { const b = this.balanceOf(c.name); return !b ? '' : b > 0 ? ` <span class="badge info" title="Je lui dois cet avoir">💶 Avoir ${U.eur(b)}</span>` : ` <span class="badge warn" title="Il me doit cette somme">💶 Dette ${U.eur(-b)}</span>`; },
   _new(name) { const p = this.split(name); return { id: U.uid(), name: String(name).trim(), firstName: p.first, lastName: p.last, phone: '', email: '', note: '', dogs: [] }; },
@@ -200,7 +231,7 @@ const Clients = {
         <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
         ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
       </div>`}
-      ${this.ro() ? '' : `<div class="cl-id mt"><div class="fg"><label>💶 Solde / avoir (€) <span class="muted help">Positif = je lui dois (avoir : déduit automatiquement de sa prochaine commande). Négatif = il me doit (ajouté à sa prochaine commande). Tape le nouveau solde total.</span></label><input type="number" step="0.01" value="${U.num(c.balance) || ''}" placeholder="0" onchange="Clients.setBalance('${c.id}',this.value)"></div><div class="fg" style="grid-column:span 2;"><label>Motif (pour le journal)</label><input id="cl_bn_${c.id}" placeholder="ex : monnaie rendue en trop le 02/10"></div></div>${(c.balanceLog || []).length ? `<div class="muted" style="font-size:.8rem;margin-top:4px;">${c.balanceLog.slice(0, 5).map(l => new Date(l.ts).toLocaleDateString('fr-FR') + ' · ' + (l.amount > 0 ? '+' : '') + U.eur(l.amount) + (l.note ? ' — ' + U.esc(l.note) : '') + ' → solde ' + U.eur(l.after)).join('<br>')}</div>` : ''}`}
+      ${this.ro() ? '' : this._balUI(c)}
       <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><textarea class="note-area" rows="1" ${this.ro() ? 'disabled' : ''} placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)">${U.esc(c.pets || '')}</textarea></div></div>
       <h3 class="mt">🐕 Chiens (${c.dogs.length})</h3>
       ${c.dogs.map(d => this._dogCard(c, d)).join('') || '<p class="muted">Aucun chien renseigné.</p>'}
