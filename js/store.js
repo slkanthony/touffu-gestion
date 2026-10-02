@@ -522,7 +522,7 @@ const Store = {
   supplierName(id) {
     const list = this.state.settings.suppliers || [];
     const i = list.findIndex(s => s.id === id);
-    if (i < 0) return '—';
+    if (i < 0) { const o = (this.state.settings.suppliersOther || []).find(s => s.id === id); return o ? o.name : '—'; }   // fournisseurs « autres » (achats : outillage, équipement…)
     return (window.App && App.isViewer) ? 'Fournisseur ' + (i + 1) : list[i].name;
   },
   /* true si l'utilisateur courant ne doit voir ni liens, ni références, ni notes fournisseur. */

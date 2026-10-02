@@ -169,6 +169,7 @@ const Params = {
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Général (commun à tout)</div>
           <div class="grid c2">
             ${this.listCard('Fournisseurs', 'suppliers', S.suppliers.map(s => Store.supplierName(s.id)), true)}
+            ${typeof Achats !== 'undefined' && !App.isViewer && !App.isTeam ? Achats.othersCard() : ''}
             ${this.eventsCard()}
           </div>
 

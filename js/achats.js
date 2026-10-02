@@ -26,10 +26,36 @@ const Achats = {
   r2(n) { return Math.round(U.num(n) * 100) / 100; },
   lineTotal(l) { return this.r2(U.num(l.qty) * U.num(l.price)); },
   subTotal(p) { return this.r2((p.lines || []).reduce((a, l) => a + this.lineTotal(l), 0)); },
-  grandTotal(p) { return this.r2(this.subTotal(p) + U.num(p.shipping) - U.num(p.discount)); },
+  /* Facture saisie en TTC (défaut) ou en HT (fournisseur qui détaille la TVA en bas de page : p.vat = [{rate, amount}]).
+     base = lignes + livraison − remise (dans le mode de saisie) ; payé (TTC) = base + TVA si HT. */
+  isHT(p) { return p.taxMode === 'ht'; },
+  base(p) { return this.r2(this.subTotal(p) + U.num(p.shipping) - U.num(p.discount)); },
+  vatSum(p) { return this.isHT(p) ? this.r2((p.vat || []).reduce((a, v) => a + U.num(v.amount), 0)) : 0; },
+  grandTotal(p) { return this.r2(this.base(p) + this.vatSum(p)); },   // TOUJOURS ce qui a été payé (TTC)
+  /* TVA répartie au prorata (le fournisseur ne dit pas sur quel produit) : coût TTC = HT × (1 + TVA totale / base HT) */
+  ttcFactor(p) { const b = this.base(p); return this.isHT(p) && b > 0 ? 1 + this.vatSum(p) / b : 1; },
   supplierLabel(p) { return p.supplierId ? Store.supplierName(p.supplierId) : '—'; },
+  others() { const S = Store.state.settings; return S.suppliersOther || (S.suppliersOther = []); },   // fournisseurs hors produits (outillage, équipement, frais…)
+  /* Référentiel Paramètres : fournisseurs « autres » (outillage, équipement, frais…), séparés des fournisseurs de produits */
+  othersCard() {
+    const o = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Autres fournisseurs <span class="muted help">Outillage, équipement, lumières, assurance… : tout ce qui n'est pas de la mastication, de la matière première ou un consommable. Cette liste est distincte de celle des fournisseurs de produits et sert uniquement à la page Achats.</span></h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">${o.map(s => `<span class="tag" style="display:inline-flex;gap:6px;align-items:center;">${U.esc(s.name)} <button class="btn-icon" style="padding:0;" onclick="Achats.delOther('${s.id}')">×</button></span>`).join('') || '<span class="muted">Vide</span>'}</div>
+      <div class="frow mt"><input id="add_sup_other" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Achats.addOther()"><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.addOther()">Ajouter</button></div></div>`;
+  },
+  addOther() {
+    const n = U.val('add_sup_other').trim(); if (!n) return;
+    if (this.others().some(s => s.name.toLowerCase() === n.toLowerCase())) { U.toast('Ce fournisseur existe déjà.', true); return; }
+    this.others().push({ id: U.uid(), name: n }); Store.save('settings'); App.rerender();
+  },
+  async delOther(id) {
+    const used = this.list().filter(p => p.supplierId === id).length;
+    if (!await U.confirm(used ? `Ce fournisseur est utilisé par ${used} facture(s) : elles afficheront « — ». Le retirer quand même ?` : 'Retirer ce fournisseur ?', { okLabel: 'Retirer' })) return;
+    Store.state.settings.suppliersOther = this.others().filter(s => s.id !== id); Store.save('settings'); App.rerender();
+  },
   payLabel(v) { const x = this.PAYS.find(p => p[0] === v); return x ? x[1] : '—'; },
-  unitFrom(u) { const t = String(u || '').toLowerCase(); return t === 'piece' || t === 'pcs' || t === 'pc' ? 'pièce' : String(u || ''); },
+  UNITS: ['pièce', 'kg', 'g', 'm'],
+  unitFrom(u) { const t = String(u || '').toLowerCase(); return t === 'piece' || t === 'pcs' || t === 'pc' ? 'pièce' : t === 'ml' ? 'm' : String(u || ''); },
   itemName(kind, id) {
     if (kind === 'M') { const p = (Store.state.stockM || []).find(x => x.id === id); return p ? p.name : ''; }
     if (kind === 'T') { const m = (Store.state.materials || []).find(x => x.id === id); return m ? (m.product ? m.product + ' ' : '') + (m.variant || m.name || '') : ''; }
@@ -37,7 +63,7 @@ const Achats = {
   },
   _newLine(cat) {
     const c = this.cat(cat);
-    return { id: U.uid(), cat: c.id, ref: '', label: '', qty: 1, unit: c.id === 'mastication' ? 'kg' : '', price: 0, lot: '', dluo: '', years: '', toStock: false };
+    return { id: U.uid(), cat: c.id, ref: '', label: '', qty: 1, unit: c.id === 'mastication' ? 'kg' : c.detail ? 'pièce' : '', price: 0, lot: '', dluo: '', years: '', toStock: false };
   },
 
   /* ---------- mise à jour du stock (consommables + matières premières) ----------
@@ -52,10 +78,11 @@ const Achats = {
     const add = U.num(l.qty) * this._packOf(l, it);
     return { it, add, cur: U.num(it.qty), after: U.num(it.qty) + add };
   },
-  _eff(rec) {   // total de chaque ligne + sa part de livraison − sa part de remise
+  _eff(rec) {   // total de chaque ligne + sa part de livraison − sa part de remise (dans le mode de saisie)
     const sub = this.subTotal(rec), extra = U.num(rec.shipping) - U.num(rec.discount);
     return (rec.lines || []).map(l => this.lineTotal(l) + (sub ? extra * this.lineTotal(l) / sub : 0));
   },
+  _effHT(rec) { const g = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100; return this._eff(rec).map(x => this.isHT(rec) ? x : x / g); },   // coût réel HT de chaque ligne (livraison et remise comprises)
   _snapOnce(domain, item, snaps) { if (!snaps.some(s => s.domain === domain && s.id === item.id)) snaps.push(Store.snapshot(domain, item)); },
   _revertStock(rec, snaps) {
     (rec.lines || []).forEach(l => {
@@ -67,7 +94,7 @@ const Achats = {
     });
   },
   _applyStock(rec, snaps, notes) {
-    const eff = this._eff(rec), vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100;
+    const eff = this._effHT(rec);   // coût réel HT par ligne (TVA propre à la facture si saisie en HT)
     rec.lines.forEach((l, i) => {
       delete l.applied;
       if (!l.toStock || !l.ref || (l.cat !== 'conso' && l.cat !== 'matiere') || !(U.num(l.qty) > 0)) return;
@@ -76,10 +103,10 @@ const Achats = {
       const pack = this._packOf(l, it), add = U.num(l.qty) * pack, prevQty = U.num(it.qty), prevCost = U.num(it.costUnit);
       const perPack = eff[i] / U.num(l.qty), ap = { qty: add, prevCost };
       if (l.cat === 'conso') {
-        it.costTotal = Math.round(perPack * 10000) / 10000; it.costQtyPer = pack > 1 ? pack : 1; it.costTax = 'TTC';
-        it.costUnit = Stock.consoUnitCost(it.costTotal, it.costQtyPer, 'TTC'); it.qty = prevQty + add;
+        it.costTotal = Math.round(perPack * 10000) / 10000; it.costQtyPer = pack > 1 ? pack : 1; it.costTax = 'HT';
+        it.costUnit = Stock.consoUnitCost(it.costTotal, it.costQtyPer, 'HT'); it.qty = prevQty + add;
       } else {
-        it.costUnit = Math.round(perPack / vat * 10000) / 10000;
+        it.costUnit = Math.round(perPack * 10000) / 10000;
         if (it.kind === 'sangle') {
           if (!Array.isArray(it.rolls)) it.rolls = prevQty > 0 ? [{ id: U.uid(), label: 'Stock avant achat', qty: prevQty }] : [];
           const r = { id: U.uid(), label: 'Achat ' + U.frDate(rec.date) + (rec.invoiceNo ? ' · ' + rec.invoiceNo : ''), qty: add };
@@ -93,7 +120,7 @@ const Achats = {
     });
   },
   _newPurchase() {
-    return { id: U.uid(), date: U.today(), supplierId: '', invoiceNo: '', payment: 'carte', paidBy: 'pro', reimbursed: '', shipping: 0, discount: 0, note: '', lines: [this._newLine(this._lastCat)] };
+    return { id: U.uid(), date: U.today(), supplierId: '', invoiceNo: '', payment: 'carte', paidBy: 'pro', reimbursed: '', taxMode: 'ttc', vat: [], shipping: 0, discount: 0, note: '', lines: [this._newLine(this._lastCat)] };
   },
 
   /* ---------- brouillon (survit à F5 / changement de fenêtre) ---------- */
@@ -181,7 +208,7 @@ const Achats = {
         <div class="grid c4" style="align-items:end;">
           <div class="fg"><label>Période</label><select onchange="Achats.setF('period',this.value)">${periods.map(p => opt(p[0], p[1], f.period)).join('')}</select></div>
           ${f.period === 'custom' ? `<div class="fg"><label>Du</label><input type="date" value="${U.esc(f.from)}" onchange="Achats.setF('from',this.value)"></div><div class="fg"><label>Au</label><input type="date" value="${U.esc(f.to)}" onchange="Achats.setF('to',this.value)"></div>` : ''}
-          <div class="fg"><label>Fournisseur</label><select onchange="Achats.setF('supplier',this.value)">${opt('', 'Tous', f.supplier)}${sups.map(s => opt(s.id, s.name, f.supplier)).join('')}</select></div>
+          <div class="fg"><label>Fournisseur</label><select onchange="Achats.setF('supplier',this.value)">${opt('', 'Tous', f.supplier)}<optgroup label="Produits">${sups.map(s => opt(s.id, s.name, f.supplier)).join('')}</optgroup>${this.others().length ? `<optgroup label="Autres">${this.others().slice().sort((a, b) => U.sortFr(a.name, b.name)).map(s => opt(s.id, s.name, f.supplier)).join('')}</optgroup>` : ''}</select></div>
           <div class="fg"><label>Catégorie</label><select onchange="Achats.setF('cat',this.value)">${opt('', 'Toutes', f.cat)}${this.CATS.map(c => opt(c.id, c.ico + ' ' + c.label, f.cat)).join('')}</select></div>
           <div class="fg"><label>Paiement</label><select onchange="Achats.setF('pay',this.value)">${opt('', 'Tous', f.pay)}${this.PAYS.map(p => opt(p[0], p[1], f.pay)).join('')}</select></div>
           <div class="fg"><label>Recherche</label><input id="ach_q" value="${U.esc(f.q)}" placeholder="n° facture, produit, lot…" oninput="Achats.setQ(this.value)"></div>
@@ -224,7 +251,7 @@ const Achats = {
      Dans Stock → « ＋ Ajouter un lot », la réception est proposée (n° de lot + DLUO pré-remplis) ; chaque lot ajouté s'inscrit dans dist.
      « Terminer le tri » fige le coût réel par pièce (total de la ligne + livraison ÷ pièces triées) sur les lots concernés. */
   _applyRecv(rec, old, notes) {
-    const vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100, eff = this._eff(rec);
+    const eff = this._effHT(rec);
     rec.lines.forEach((l, i) => {
       if (l.cat !== 'mastication') return;
       const oldL = old && (old.lines || []).find(x => x.id === l.id);
@@ -234,7 +261,7 @@ const Achats = {
       delete l.priceCmp;
       const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
       if (!cat || !(U.num(l.qty) > 0)) return;
-      const b = Pricing.baseUnitCost(cat), u = String(l.unit || '').toLowerCase(), perUnitHT = eff[i] / U.num(l.qty) / vat;
+      const b = Pricing.baseUnitCost(cat), u = String(l.unit || '').toLowerCase(), perUnitHT = eff[i] / U.num(l.qty);
       const kg = u === 'kg' && b.unit === 'kilo', pc = (u === 'pièce' || u === 'piece' || u === 'pc') && b.unit !== 'kilo';
       if (!(kg || pc) || !(b.unitHT > 0)) return;
       l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
@@ -278,17 +305,17 @@ const Achats = {
   },
   closeRecv(pid, lid) {
     const p = this.list().find(x => x.id === pid), l = p && p.lines.find(x => x.id === lid); if (!l || !l.recv) return;
-    const r = l.recv, dist = r.dist || [], sum = dist.reduce((a, d) => a + U.num(d.qty), 0), eff = this._eff(p)[p.lines.indexOf(l)];
+    const r = l.recv, dist = r.dist || [], sum = dist.reduce((a, d) => a + U.num(d.qty), 0), eff = this._effHT(p)[p.lines.indexOf(l)];
     const kg = String(l.unit || '').toLowerCase() === 'kg';
     U.modal({ title: 'Terminer le tri — ' + U.esc(l.label), okLabel: 'Terminer le tri', body: `
       <p>${U.qty(l.qty)} ${U.esc(l.unit || '')} acheté(s) · ${U.qty(sum)} pièce(s) rangée(s) en stock.</p>
       <div class="frow"><div class="fg"><label>Pièces triées au total</label><input id="rc_pieces" type="number" step="1" min="1" value="${sum}"></div>
       <div class="fg"><label>Pertes / déchets (${kg ? 'kg' : 'pièces'}, option)</label><input id="rc_loss" type="number" step="any" min="0" value="${U.num(r.loss) || ''}" placeholder="0"></div></div>
-      <p class="muted">Le coût réel par pièce = total de la ligne (livraison comprise, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>`,
+      <p class="muted">Le coût réel par pièce = total HT de la ligne (livraison comprise, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>`,
       onOk: () => {
         const pieces = U.numVal('rc_pieces'), loss = U.numVal('rc_loss');
         if (!(pieces > 0)) { U.toast('Indique le nombre de pièces triées.', true); return false; }
-        const vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100, ht = Math.round(eff / pieces / vat * 10000) / 10000;
+        const ht = Math.round(eff / pieces * 10000) / 10000;
         const snaps = [Store.snapshot('purchases', p)], sp = Store.state.stockM.find(x => x.id === l.ref);
         if (sp) snaps.push(Store.snapshot('stockM', sp));
         let n = 0;
@@ -307,7 +334,8 @@ const Achats = {
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');
-    const extra = [U.num(p.shipping) ? `Livraison : ${U.eur(p.shipping)}` : '', U.num(p.discount) ? `Remise : − ${U.eur(p.discount)}` : ''].filter(Boolean).join(' · ');
+    const ht = this.isHT(p) ? ' HT' : '';
+    const extra = [this.isHT(p) ? 'Prix saisis HT' : '', U.num(p.shipping) ? `Livraison : ${U.eur(p.shipping)}${ht}` : '', U.num(p.discount) ? `Remise : − ${U.eur(p.discount)}${ht}` : '', this.isHT(p) ? 'TVA : ' + ((p.vat || []).map(v => U.qty(v.rate) + ' % = ' + U.eur(v.amount)).join(' + ') || '0 €') + ` → payé ${U.eur(this.grandTotal(p))} TTC` : ''].filter(Boolean).join(' · ');
     return `<tr class="sale-detail"><td colspan="9" style="text-align:left;">${lines}${extra ? `<div class="muted sensitive" style="padding-top:6px;">${extra}</div>` : ''}${p.note ? `<div class="muted" style="padding-top:4px;font-style:italic;">📝 ${U.esc(p.note)}</div>` : ''}</td></tr>`;
   },
 
@@ -346,15 +374,32 @@ const Achats = {
 
   /* ---------- éditeur ---------- */
   _touch() { this._dirty = true; this._saveDraft(); },
-  setHead(k, v) { this._d[k] = (k === 'shipping' || k === 'discount') ? U.num(v) : v; this._touch(); if (k === 'shipping' || k === 'discount') this._refreshTotals(); if (k === 'paidBy') { if (v === 'pro') this._d.reimbursed = ''; this.render(); } if (k === 'payment') this.render(); },
+  setHead(k, v) {
+    const d = this._d; d[k] = (k === 'shipping' || k === 'discount') ? U.num(v) : v; this._touch();
+    if (k === 'shipping' || k === 'discount') this._refreshTotals();
+    if (k === 'taxMode') { if (v === 'ht' && !(d.vat || []).length) d.vat = [{ rate: U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: true }]; this._autoVat(); this._touch(); this.render(); }
+    if (k === 'paidBy') { if (v === 'pro') d.reimbursed = ''; this.render(); }
+    if (k === 'payment') this.render();
+  },
+  /* TVA en HT : une seule ligne « auto » = base HT × taux (modifiable) ; dès qu'on tape un montant ou qu'on ajoute un taux, c'est à la main */
+  _autoVat() { const d = this._d; if (!d || !this.isHT(d)) return; const v = d.vat || []; if (v.length === 1 && v[0].auto) v[0].amount = this.r2(this.base(d) * U.num(v[0].rate) / 100); },
+  setVat(i, f, val) {
+    const v = this._d.vat[i]; if (!v) return; v[f] = U.num(val);
+    if (f === 'amount') v.auto = false; else this._autoVat();
+    this._touch(); this._refreshTotals();
+    if (f === 'rate') { const e = document.getElementById('ach_vatamt_' + i); if (e) e.value = v.amount || ''; }
+  },
+  addVat() { const d = this._d; d.vat = d.vat || []; d.vat.forEach(v => v.auto = false); d.vat.push({ rate: d.vat.length ? 10 : U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: false }); this._touch(); this.render(); },
+  delVat(i) { this._d.vat.splice(i, 1); this._touch(); this.render(); },
   _pickSup(sel) {
-    if (sel.value !== '__new') { this._d.supplierId = sel.value; this._touch(); return; }
+    const kind = sel.value === '__newP' ? 'P' : sel.value === '__newO' ? 'O' : '';
+    if (!kind) { this._d.supplierId = sel.value; this._touch(); return; }
     sel.value = this._d.supplierId || '';
-    U.modal({ title: 'Nouveau fournisseur', body: `<div class="fg"><label>Nom du fournisseur</label><input id="ach_newsup" placeholder="ex : Amazon, magasin de bricolage…" onkeydown="if(event.key==='Enter')document.getElementById('modalOk').click()"></div>`, okLabel: 'Ajouter',
+    U.modal({ title: kind === 'P' ? 'Nouveau fournisseur de produits' : 'Nouveau fournisseur (autre)', body: `<div class="fg"><label>Nom du fournisseur</label><input id="ach_newsup" placeholder="${kind === 'P' ? 'ex : un nouvel éleveur' : 'ex : Amazon, magasin de bricolage…'}" onkeydown="if(event.key==='Enter')document.getElementById('modalOk').click()"></div><p class="muted" style="font-size:.82rem;">${kind === 'P' ? 'Il rejoint la liste de tes fournisseurs de mastication / matières / consommables (aussi utilisée dans les fiches prix).' : 'Il rejoint la liste des fournisseurs « autres » (outillage, équipement, frais généraux), séparée de celle des produits.'}</p>`, okLabel: 'Ajouter',
       onOk: () => {
         const n = U.val('ach_newsup').trim(); if (!n) { U.toast('Donne un nom au fournisseur.', true); return false; }
-        const S = Store.state.settings; let s = S.suppliers.find(x => x.name.toLowerCase() === n.toLowerCase());
-        if (!s) { s = { id: U.uid(), name: n }; S.suppliers.push(s); Store.save('settings'); }
+        const S = Store.state.settings, list = kind === 'P' ? S.suppliers : this.others(); let s = list.find(x => x.name.toLowerCase() === n.toLowerCase());
+        if (!s) { s = { id: U.uid(), name: n }; list.push(s); Store.save('settings'); }
         this._d.supplierId = s.id; this._touch(); this.render();
       } });
     setTimeout(() => { const i = document.getElementById('ach_newsup'); if (i) i.focus(); }, 50);
@@ -383,8 +428,11 @@ const Achats = {
     const d = this._d; if (!d) return;
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_lt_' + i); if (e) e.textContent = U.eur(this.lineTotal(l)); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_pv_' + i); if (e) e.textContent = this._pvText(l); });
-    const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot');
+    this._autoVat();
+    if ((d.vat || []).length === 1 && d.vat[0].auto) { const e = document.getElementById('ach_vatamt_0'); if (e && document.activeElement !== e) e.value = d.vat[0].amount || ''; }
+    const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot'), b = document.getElementById('ach_base'), v = document.getElementById('ach_vat');
     if (s) s.textContent = U.eur(this.subTotal(d)); if (t) t.textContent = U.eur(this.grandTotal(d));
+    if (b) b.textContent = U.eur(this.base(d)); if (v) v.textContent = U.eur(this.vatSum(d));
   },
   _linkOpts(kind, cur) {
     let items;
@@ -413,15 +461,15 @@ const Achats = {
     let inner;
     if (!c.detail) {
       inner = `<div class="fg"><label>Catégorie</label>${catSel}</div><div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
-        <div class="fg"><label>Montant (€)</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>`;
+        <div class="fg"><label>Montant (€ ${this._d && this.isHT(this._d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>`;
     } else {
       inner = `<div class="fg"><label>Catégorie</label>${catSel}</div>
         ${c.link ? `<div class="fg"><label>${c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock'}</label><select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select></div>` : ''}
         <div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
         ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : ''}
         <div class="fg"><label>Quantité</label><input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)"></div>
-        <div class="fg"><label>Unité</label><input list="ach_units" value="${U.esc(l.unit || '')}" placeholder="kg, pièce…" onchange="Achats.setText(${i},'unit',this.value)"></div>
-        <div class="fg"><label>Prix unitaire (€)</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>
+        <div class="fg"><label>Unité</label><select onchange="Achats.setText(${i},'unit',this.value)">${(this.UNITS.includes(l.unit) || !l.unit ? this.UNITS : this.UNITS.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Prix unitaire (€ ${this._d && this.isHT(this._d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>
         ${c.id === 'mastication' ? `<div class="fg"><label>N° de lot</label><input value="${U.esc(l.lot || '')}" placeholder="n° de lot du fournisseur" onchange="Achats.setText(${i},'lot',this.value)"></div><div class="fg"><label>DLUO</label><input type="date" value="${U.esc(l.dluo || '')}" onchange="Achats.setText(${i},'dluo',this.value)"></div>` : ''}
         ${c.id === 'equipement' ? `<div class="fg"><label>Amortissement (ans, optionnel)</label><input type="number" step="any" min="0" value="${l.years || ''}" placeholder="ex : 5" onchange="Achats.setNum(${i},'years',this.value)"></div>` : ''}
         <div class="fg"><label>Total ligne</label><div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div></div>`;
@@ -429,20 +477,22 @@ const Achats = {
     return `<div class="ach-line"><div class="ach-grid">${inner}</div><div style="text-align:right;margin-top:4px;"><button class="btn-icon" title="Retirer cette ligne" onclick="Achats.delLine(${i})">🗑️</button></div></div>`;
   },
   renderEditor() {
-    const d = this._d, sups = (Store.state.settings.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const d = this._d, sups = (Store.state.settings.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name)), oth = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const supOpts = `<option value="">— choisir —</option><optgroup label="Fournisseurs de produits (mastication, matières, consommables)">${sups.map(s => `<option value="${s.id}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}</optgroup>${oth.length ? `<optgroup label="Autres fournisseurs (outillage, équipement, frais…)">${oth.map(s => `<option value="${s.id}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}</optgroup>` : ''}<optgroup label="Ajouter"><option value="__newP">＋ Nouveau fournisseur de produits…</option><option value="__newO">＋ Nouveau fournisseur « autre »…</option></optgroup>`;
+    const mode = [['ttc', 'TTC'], ['ht', 'HT (TVA détaillée en bas)']].map(p => `<button type="button" class="${(d.taxMode || 'ttc') === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('taxMode','${p[0]}')">${p[1]}</button>`).join('');
     const pay = this.PAYS.map(p => `<button type="button" class="${d.payment === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('payment','${p[0]}')">${p[1]}</button>`).join('');
     const who = [['pro', '🏢 Compte pro'], ['perso', '💳 Carte perso (à me rembourser)']].map(p => `<button type="button" class="${d.paidBy === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('paidBy','${p[0]}')">${p[1]}</button>`).join('');
     App.mount(`
       <div class="view-title"><h1>${this._editId ? 'Modifier la facture' : 'Nouvelle facture'}</h1><span class="sub">achat fournisseur</span></div>
-      <datalist id="ach_units">${['kg', 'g', 'pièce', 'lot', 'paquet', 'carton', 'rouleau', 'sachet', 'm', 'L'].map(u => `<option value="${u}">`).join('')}</datalist>
       <div class="card">
         <div class="grid c4">
           <div class="fg"><label>Date de la facture</label><input type="date" value="${U.esc(d.date)}" onchange="Achats.setHead('date',this.value)"></div>
-          <div class="fg"><label>Fournisseur</label><select onchange="Achats._pickSup(this)"><option value="">— choisir —</option>${sups.map(s => `<option value="${s.id}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}<option value="__new">＋ Autre fournisseur…</option></select></div>
+          <div class="fg"><label>Fournisseur</label><select onchange="Achats._pickSup(this)">${supOpts}</select></div>
           <div class="fg"><label>N° de facture / devis</label><input value="${U.esc(d.invoiceNo)}" placeholder="ex : FA-2026-0412" onchange="Achats.setHead('invoiceNo',this.value.trim())"></div>
           <div class="fg"><label>Note (option)</label><input value="${U.esc(d.note)}" placeholder="ex : commande de rentrée" onchange="Achats.setHead('note',this.value)"></div>
         </div>
         <div class="frow mt" style="gap:18px;align-items:center;">
+          <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Prix saisis sur la facture <span class="muted help">TTC : tu tapes ce que tu as payé (taux de TVA global des Paramètres pour le coût HT). HT : le fournisseur donne les prix hors taxe et la TVA par taux en bas de page (10 %, 20 %…) : tu la saisis en bas, elle est répartie au prorata sur les lignes.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${mode}</div></div>
           <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Moyen de paiement</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${pay}</div></div>
           <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Payé avec</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${who}</div></div>
           ${d.paidBy === 'perso' ? `<div class="fg" style="max-width:200px;"><label>Remboursé le (option)</label><input type="date" value="${U.esc(d.reimbursed || '')}" onchange="Achats.setHead('reimbursed',this.value)"></div>` : ''}
@@ -454,11 +504,15 @@ const Achats = {
         ${d.lines.map((l, i) => this._lineHTML(l, i)).join('')}
         <button class="btn-ghost btn-sm" onclick="Achats.addLine()">＋ Ajouter une ligne</button>
         <div class="ach-sum">
-          <div><span class="muted">Sous-total</span> <b class="sensitive" id="ach_sub">${U.eur(this.subTotal(d))}</b></div>
-          <div class="fg"><label>Frais de livraison (€)</label><input type="number" step="any" value="${d.shipping || ''}" placeholder="0" oninput="Achats.setHead('shipping',this.value)"></div>
-          <div class="fg"><label>Remise (€)</label><input type="number" step="any" value="${d.discount || ''}" placeholder="0" oninput="Achats.setHead('discount',this.value)"></div>
+          <div><span class="muted">Sous-total ${this.isHT(d) ? 'HT' : ''}</span> <b class="sensitive" id="ach_sub">${U.eur(this.subTotal(d))}</b></div>
+          <div class="fg"><label>Frais de livraison (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.shipping || ''}" placeholder="0" oninput="Achats.setHead('shipping',this.value)"></div>
+          <div class="fg"><label>Remise (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.discount || ''}" placeholder="0" oninput="Achats.setHead('discount',this.value)"></div>
+          ${this.isHT(d) ? `<div><span class="muted">Total HT</span> <b class="sensitive" id="ach_base">${U.eur(this.base(d))}</b></div>` : ''}
           <div class="ach-grand">Total payé <b class="sensitive" id="ach_tot">${U.eur(this.grandTotal(d))}</b></div>
         </div>
+        ${this.isHT(d) ? `<div class="ach-vat"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:6px;">TVA indiquée en bas de la facture</div>
+          ${(d.vat || []).map((v, i) => `<div class="frow" style="align-items:center;gap:8px;margin-bottom:6px;max-width:460px;"><div class="fg" style="max-width:110px;"><input type="number" step="any" min="0" value="${v.rate}" onchange="Achats.setVat(${i},'rate',this.value)" title="Taux (%)"></div><span>% →</span><div class="fg" style="max-width:150px;"><input id="ach_vatamt_${i}" type="number" step="any" min="0" value="${v.amount || ''}" placeholder="montant TVA" oninput="Achats.setVat(${i},'amount',this.value)"></div><span>€</span><button class="btn-icon" title="Retirer ce taux" onclick="Achats.delVat(${i})">🗑️</button></div>`).join('')}
+          <button class="btn-ghost btn-sm" onclick="Achats.addVat()">＋ Ajouter un taux de TVA</button> <span class="muted">TVA totale : <b class="sensitive" id="ach_vat">${U.eur(this.vatSum(d))}</b></span></div>` : ''}
         <div class="frow mt">
           <button class="btn-ok" style="flex:0 0 auto;" onclick="Achats.save()">✅ Enregistrer la facture</button>
           <button class="btn-ghost" style="flex:0 0 auto;" onclick="Achats.cancel()">Annuler</button>
@@ -482,7 +536,8 @@ const Achats = {
       lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0, toStock: !!l.toStock && !!l.ref && (c.id === 'conso' || c.id === 'matiere' || c.id === 'mastication'), ...(l.recv ? { recv: l.recv } : {}) });
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
-    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
+    this._autoVat();
+    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
     rec.total = this.grandTotal(rec);
     // doublons : même n° de facture chez le même fournisseur, ou même fournisseur + date + montant (alerte non bloquante)
     const msgs = [], others = this.list().filter(p => p.id !== rec.id && p.supplierId === rec.supplierId);
@@ -508,10 +563,10 @@ const Achats = {
   exportCsv() {
     const rows = this._filtered(); if (!rows.length) { U.toast('Aucune facture à exporter avec ces filtres.', true); return; }
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', n = v => String(this.r2(v)).replace('.', ',');
-    const head = ['Date', 'Fournisseur', 'N_facture', 'Paiement', 'Paye_par', 'Rembourse_le', 'Categorie', 'Designation', 'Quantite', 'Unite', 'Prix_unitaire', 'Total_ligne', 'Lot', 'DLUO', 'Livraison_facture', 'Remise_facture', 'Total_facture'];
+    const head = ['Date', 'Fournisseur', 'N_facture', 'Paiement', 'Paye_par', 'Rembourse_le', 'Categorie', 'Designation', 'Quantite', 'Unite', 'Prix_unitaire', 'Total_ligne', 'Lot', 'DLUO', 'Livraison_facture', 'Remise_facture', 'Mode_prix', 'TVA_facture', 'Total_paye_TTC'];
     const out = [head.join(';')];
     rows.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(p => (p.lines || []).forEach((l, i) => {
-      out.push([q(p.date), q(this.supplierLabel(p)), q(p.invoiceNo), q(this.payLabel(p.payment).replace(/^\S+\s/, '')), q(p.paidBy === 'perso' ? 'carte perso' : 'compte pro'), q(p.reimbursed), q(this.cat(l.cat).label), q(l.label), n(l.qty), q(l.unit), n(l.price), n(this.lineTotal(l)), q(l.lot), q(l.dluo), i ? '' : n(p.shipping), i ? '' : n(p.discount), i ? '' : n(this.grandTotal(p))].join(';'));
+      out.push([q(p.date), q(this.supplierLabel(p)), q(p.invoiceNo), q(this.payLabel(p.payment).replace(/^\S+\s/, '')), q(p.paidBy === 'perso' ? 'carte perso' : 'compte pro'), q(p.reimbursed), q(this.cat(l.cat).label), q(l.label), n(l.qty), q(l.unit), n(l.price), n(this.lineTotal(l)), q(l.lot), q(l.dluo), i ? '' : n(p.shipping), i ? '' : n(p.discount), q(this.isHT(p) ? 'HT' : 'TTC'), i ? '' : (this.isHT(p) ? n(this.vatSum(p)) : ''), i ? '' : n(this.grandTotal(p))].join(';'));
     }));
     const blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'achats-' + U.today() + '.csv';
