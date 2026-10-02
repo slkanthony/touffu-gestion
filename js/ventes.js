@@ -1896,7 +1896,7 @@ const Ventes = {
       </div>
 
       ${isEv ? this.ticketCashCard(s) : ''}
-      ${s.payment !== 'cash' ? `<div class="card">
+      ${!(isEv && s.payment === 'cash') ? `<div class="card">
         <h2 class="mb0">🧾 Articles vendus</h2>
         <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th>🎁 Offert</th><th class="num">Total</th></tr></thead>
         <tbody>${soldItems.length ? soldItems.map(({ it, i }) => `<tr><td class="col-name"><b>${U.esc(it.name)}</b></td><td>${it.label ? U.esc(it.label) : '—'}</td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num"><input type="number" step="0.01" min="0" style="width:90px;text-align:right;" value="${U.num(it.price)}" onchange="Ventes.setItemPrice('${s.id}',${i},this.value)"></td><td style="text-align:center;"><input type="checkbox" ${it.free ? 'checked' : ''} title="Produit offert : sorti du stock mais valeur de vente 0 €" onchange="Ventes.toggleItemFree('${s.id}',${i},this.checked)"></td><td class="num"><b>${U.eur(U.num(it.price) * U.num(it.qty))}</b></td></tr>`).join('') : '<tr><td colspan="7" class="muted">Aucun article vendu sur ce ticket.</td></tr>'}</tbody></table></div>
