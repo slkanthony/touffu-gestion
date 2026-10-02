@@ -289,6 +289,8 @@ const App = {
   },
 
   _render(id) {
+    // On revient toujours sur la LISTE des ventes (jamais coincé sur l'écran d'édition d'un ticket après avoir changé de page)
+    if (id === 'ventes' && (this.current !== 'ventes' || !this._rendered) && typeof Ventes !== 'undefined') Ventes.editTicketId = '';
     if (this.current !== id) { this._resetFolds(); if (this._rendered) U.resetFiltersExcept(id); }
     this._rendered = true;
     this.current = id;

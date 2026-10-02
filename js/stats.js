@@ -90,7 +90,7 @@ const Stats = {
       add(e.tot, c, day);
       add(e.years[y] || (e.years[y] = zero()), c, day);
     });
-    const unnamed = Store.state.sales.filter(s => !s.cancelled && s.source === 'event' && !s.eventName).length;
+    const unnamed = Store.state.sales.filter(s => !s.cancelled && Ventes._isEventSale(s) && !s.eventName).length;
     const list = Object.values(byName).map(e => ({ ...e, editions: Object.keys(e.years).length, nDays: e.tot.days.size, perDay: e.tot.net / (e.tot.days.size || 1), basket: e.tot.ca / (e.tot.tx || 1) }));
     return { list, unnamed };
   },
@@ -586,9 +586,7 @@ const Stats = {
   _monthLabels: ['Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'],
 
   _saleChannelLabel(s) {
-    if (s.source === 'event') return 'Événement';
-    if (s.channel === 'online') return 'En ligne';
-    return 'Directe';
+    return ({ event: 'Événement', online: 'En ligne', direct: 'Directe' })[Ventes._saleKind(s)];
   },
   _prodMeat(pId) {
     if (!pId) return 'Non spécifié';

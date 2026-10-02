@@ -535,7 +535,7 @@ const Ventes = {
     U.closeModal();
     if (!this.cart.length) return;
     Clients.ensure(this.customerName);
-    const sale = { id: U.uid(), ts: Date.now(), source: this.source, channel, payment, delivery, customerName: (this.customerName || '').trim(), ...(this._devisNo ? { devisNo: this._devisNo } : {}), items: [], total: 0, cancelled: false, undoOps: [] };
+    const sale = { id: U.uid(), ts: Date.now(), source: this.source, channel, payment, delivery, customerName: (this.customerName || '').trim(), ...(this._devisNo ? { devisNo: this._devisNo } : {}), ...(this._basketId ? { fromBasket: true, origin: channel === 'online' ? 'online' : 'direct' } : {}), items: [], total: 0, cancelled: false, undoOps: [] };
     // Réduction : appliquée sur le prix de chaque article (les stats et le CA restent justes)
     const pct = this.discOn ? Math.min(100, Math.max(0, U.num(this.discPct))) : 0;
     const lines = pct > 0 ? this.cart.map(c => c.kind === 'C' ? c : { ...c, price: U.num(c.price) * (1 - pct / 100) }) : this.cart;
@@ -954,9 +954,27 @@ const Ventes = {
      Une ligne par vente (repliée), filtres période / stock / origine / recherche, tri, 25 par page,
      suppression ciblée (une vente ou une sélection) et changement d'origine d'une vente. */
   _saleOrigin(s) { return s.historical ? 'import' : s.fromImport ? 'retour' : 'manual'; },
-  _saleKind(s) { return s.channel === 'online' ? 'online' : s.source === 'event' ? 'event' : 'direct'; },
+  /* Nature d'une vente : 'event' (marché / salon), 'direct' (commande d'un client, retrait ou livraison) ou 'online'.
+     ≠ stock utilisé (s.source) : une commande de client peut très bien être prise dans le stock événement.
+     Explicite si s.origin existe ; sinon déduit : vente tirée du stock événement MAIS avec un nom de client, sans nom d'événement,
+     sans import ni frais de stand / déplacement = commande de client (donc « directe »). */
+  _saleKind(s) {
+    if (s.origin) return s.origin;
+    if (s.channel === 'online') return 'online';
+    if (s.source === 'event') return (s.customerName && !s.eventName && !s.fromImport && !s.historical && !U.num(s.eventFee) && !U.num(s.travelCost) && !U.num(s.mealFee)) ? 'direct' : 'event';
+    return 'direct';
+  },
+  PAYMENTS: [['sumup', '💳 SumUp'], ['stripe', '🌐 En ligne (Stripe)'], ['virement', '🏦 Virement'], ['cash', '💵 Espèces']],
+  setPayment(id, v) {   // le client change d'avis après coup (virement → espèces…) : les frais de paiement se recalculent tout seuls
+    const s = Store.state.sales.find(x => x.id === id); if (!s || !this.PAYMENTS.some(p => p[0] === v) || s.payment === v) return;
+    const snap = Store.snapshot('sales', s), old = this.paymentLabel(s);
+    s.payment = v;
+    const entry = Store.commitSnapshot(snap, 'vente', `Paiement — ${U.frDateTime(s.ts)} : ${old} → ${this.paymentLabel(s)}`);
+    Store.save('sales'); this.render(); U.toast('Moyen de paiement mis à jour.', false, entry.id);
+  },
+  paySelect(s) { return `<select onchange="Ventes.setPayment('${s.id}',this.value)">${(this.PAYMENTS.some(p => p[0] === s.payment) ? [] : [['', '—']]).concat(this.PAYMENTS).map(p => `<option value="${p[0]}" ${p[0] === (s.payment || '') ? 'selected' : ''}>${p[1]}</option>`).join('')}</select>`; },
   /* Vrai événement (marché) = stock événement ET pas une vente en ligne. */
-  _isEventSale(s) { return s.source === 'event' && s.channel !== 'online'; },
+  _isEventSale(s) { return this._saleKind(s) === 'event'; },
   histFiltered() {
     const f = this.histF, now = new Date(), y = now.getFullYear();
     let lo = -Infinity, hi = Infinity;
@@ -1013,6 +1031,7 @@ const Ventes = {
     sales.forEach(s => {
       if (o === 'event') { s.source = 'event'; s.channel = 'direct'; }
       else { s.source = 'general'; s.channel = o; if (s.eventName) { s.eventName = ''; } }
+      s.origin = o;   // choix explicite : prime sur la déduction automatique
     });
     const lbl = { online: 'En ligne', direct: 'Directe', event: 'Événement' }[o];
     const entry = Store.log('vente', `Origine changée → ${lbl} (${sales.length} vente(s))`, { type: 'restoreBatch', data: snaps });
@@ -1086,7 +1105,7 @@ const Ventes = {
     const pBtn = (k, l) => `<button class="${f.period === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistF('period','${k}')">${l}</button>`;
     const sortBtn = (key, label) => `<button class="${f.sort === key ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setHistorySort('${key}')">${label} ${f.sort === key ? (f.dir === 'asc' ? '▲' : '▼') : ''}</button>`;
     const originBadge = s => s.historical ? '<span class="badge" title="Import historique : n\'a pas touché au stock">📚 historique</span>' : s.fromImport ? '<span class="badge" title="Import d\'un retour d\'événement SumUp">📥 retour</span>' : '';
-    const kindLbl = s => s.channel === 'online' ? 'En ligne' : s.source === 'event' ? 'Événement' : 'Général';
+    const kindLbl = s => ({ online: 'En ligne', event: 'Événement', direct: 'Directe' })[this._saleKind(s)];
     const field = (label, html) => `<span class="sh-field"><span class="sh-lbl">${label}</span>${html}</span>`;
     // Regroupement visuel (2026-09-30) : Antho a fait un retour d'événement avec ventes SumUp +
     // espèces → même événement, même journée de marché, mais 2 tickets séparés (frais de
@@ -1123,6 +1142,7 @@ const Ventes = {
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
           ${s.devisNo ? field('Devis n°', U.esc(s.devisNo)) : ''}
+          ${s.cancelled ? '' : field('Paiement', this.paySelect(s))}
           ${field('Remise', this.deliveryLabel(s))}
           ${s.balanceApplied ? field(s.balanceApplied > 0 ? 'Avoir déduit' : 'Solde réglé', U.eur(Math.abs(s.balanceApplied))) : ''}
           ${s.cancelled ? (s.discountPct ? field('Réduction', '−' + U.qty(s.discountPct) + ' %') : '') : field('Réduction %', `<input type="number" step="0.5" min="0" max="99" value="${U.num(s.discountPct) || ''}" placeholder="0" style="width:70px;" onchange="Ventes.setDiscount('${s.id}',this.value)">${s.discountAmount ? ` <span class="muted">(−${U.eur(s.discountAmount)})</span>` : ''}`)}
@@ -1839,7 +1859,8 @@ const Ventes = {
         <div class="sensitive">${this.saleSummaryHTML(s)}</div>
       </div>
       <div class="card">
-        <h2>👤 Client</h2>
+        <h2>👤 Client &amp; paiement</h2>
+        ${s.cancelled ? '' : `<div class="fg" style="max-width:360px;margin-bottom:10px;"><label>Moyen de paiement <span class="muted help">Le client change d'avis après coup (virement → espèces…) : change-le ici. Les frais de paiement (SumUp / Stripe) se recalculent tout seuls dans la compta.</span></label>${this.paySelect(s)}</div>`}
         <div class="fg" style="max-width:360px;"><label>Nom du client (optionnel)</label><input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}</div>
       </div>
       ${isEv ? `
