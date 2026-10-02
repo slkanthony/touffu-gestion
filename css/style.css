@@ -1224,3 +1224,37 @@ th.ctr, td.ctr { text-align: center; }
 .coeff-cell { position: relative; }
 .coeff-cell .coeff-reset { position: absolute; left: 100%; margin-left: 2px; }
 .coeff-wrap { align-items: center; }
+
+/* ---------- Téléphone : tableaux en fiches empilées + grilles qui ne débordent plus ---------- */
+.grid.c2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.grid.c3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.grid.c4 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); }
+.frow > * { min-width: min(100%, 130px); }
+.paniers-layout > *, .card, .fold-body { min-width: 0; }
+@media (max-width: 700px) {
+  .main { padding-left: 10px; padding-right: 10px; }
+  .card { padding: 14px 12px; }
+  .table-wrap { overflow-x: visible; }
+  .table-wrap table.stk-wide { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-wrap table.stk-wide :is(th, td):first-child { position: sticky; left: 0; z-index: 1; background: var(--card-bg); }
+  table.stk, table.stk > tbody, table.stk > tfoot, table.stk > tbody > tr, table.stk > tfoot > tr { display: block; width: 100%; }
+  table.stk > thead { display: none; }
+  table.stk > tbody > tr, table.stk > tfoot > tr { border: 1px solid var(--card-border); border-radius: 10px; margin: 0 0 10px; padding: 8px 10px; background: rgba(255,255,255,.025); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 12px; }
+  table.stk td { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px; border: 0; padding: 4px 0; text-align: left; white-space: normal; min-width: 0 !important; width: auto !important; background: transparent !important; }
+  table.stk td[data-l]:not([data-l=""])::before { content: attr(data-l); color: var(--gris); font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; }
+  table.stk td.col-name, table.stk td.var-cell, table.stk td[data-l=""], table.stk td[colspan], table.stk td:last-child, table.stk td:has(.sku-input), table.stk td:has(details) { grid-column: 1 / -1; }
+  table.stk td[data-l=""], table.stk td:last-child { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+  table.stk td input:not([type="checkbox"]), table.stk td select { max-width: 100%; width: 100%; }
+  table.stk td .btn-icon, table.stk td button { flex: 0 0 auto; }
+  details.fold > summary .sup-badges { align-self: flex-start; align-content: flex-start; flex: 0 0 auto; }
+  td.var-cell .vc { min-width: 0; }
+  td.var-cell .vc-name { flex: 1 1 auto; width: auto; }
+}
+
+/* Tuiles chiffrées de Paniers (budget, panier, reste…) */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 10px; }
+.kpi-row .kpi { padding: 10px 14px; }
+.kpi-val { display: block; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi-label { display: block; font-size: .74rem; color: var(--gris); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+@media (max-width: 700px) { .multiselect-panel { max-width: calc(100vw - 20px); } .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { table.stk td > .stk-v { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; } table.stk td:last-child > .stk-v { justify-content: flex-end; } }

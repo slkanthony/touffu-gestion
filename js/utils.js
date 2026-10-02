@@ -821,3 +821,39 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   if (k === 'y' || e.shiftKey) Params.redo(); else Params.undoLast();
 });
+
+/* ---------- Tableaux sur téléphone : « fiches empilées » ----------
+   Chaque cellule reçoit son titre de colonne (data-l) ; le CSS (≤ 700 px) transforme ensuite chaque ligne en petite fiche
+   (titre à gauche, valeur à droite) au lieu d'obliger à défiler à droite. Tableaux de plus de 12 colonnes : on garde le défilement
+   (1re colonne figée). Exclus : historique des ventes, emballages, comparaisons SumUp, tableaux déjà compacts. */
+(function () {
+  const SKIP = 'table.sales-hist, table.pack-tbl, table.pack-table, table.sumup-table, table.sale-sum, table.keep-table, .modal table';
+  function label(th) { return (th.textContent || '').replace(/[▲▼⇕↑↓]/g, '').replace(/\s+/g, ' ').trim(); }
+  function prep(t) {
+    if (t.matches(SKIP) || t.closest('table.sales-hist')) return;
+    if (!t.dataset.stk) {
+      const hr = t.tHead && t.tHead.rows.length === 1 ? t.tHead.rows[0] : null;
+      if (!hr) { t.dataset.stk = 'no'; return; }
+      const labs = []; let n = 0;
+      Array.from(hr.cells).forEach(th => { const s = Math.max(1, th.colSpan || 1); for (let i = 0; i < s; i++) labs.push(i ? '' : label(th)); n += s; });
+      if (t.querySelector('[rowspan]')) { t.dataset.stk = 'no'; return; }
+      t._labs = labs; t.dataset.stk = n > 12 ? 'wide' : 'yes';
+      t.classList.add(n > 12 ? 'stk-wide' : 'stk');
+    }
+    if (t.dataset.stk === 'no') return;
+    const labs = t._labs || [];
+    t.querySelectorAll(':scope > tbody > tr, :scope > tfoot > tr').forEach(tr => {
+      if (tr.dataset.sl) return; tr.dataset.sl = '1';
+      let c = 0;
+      Array.from(tr.cells).forEach(td => {
+        td.setAttribute('data-l', td.colSpan > 1 ? '' : (labs[c] || '')); c += Math.max(1, td.colSpan || 1);
+        if (t.dataset.stk === 'yes' && td.childNodes.length > 1 && !td.querySelector(':scope > table, :scope > details')) { const w = document.createElement('div'); w.className = 'stk-v'; while (td.firstChild) w.appendChild(td.firstChild); td.appendChild(w); }   // plusieurs éléments (− 1 +) : restent sur une ligne
+      });
+    });
+  }
+  let busy = false;
+  function run() { busy = false; document.querySelectorAll('.table-wrap table').forEach(prep); }
+  function sched() { if (!busy) { busy = true; requestAnimationFrame(run); } }
+  function start() { new MutationObserver(sched).observe(document.body, { childList: true, subtree: true }); sched(); }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
