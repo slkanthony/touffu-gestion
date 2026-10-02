@@ -8,7 +8,7 @@
    Montants = ce qui a été PAYÉ (TTC). Aucune écriture dans le stock ni dans les prix à cette étape : rien n'est modifié ailleurs.
    Réservé à l'admin (ni viewer, ni équipe). */
 const Achats = {
-  mode: 'list', _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
+  mode: 'list', _priceOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
   f: { period: 'year', from: '', to: '', supplier: '', cat: '', pay: '', q: '', refund: false, sort: 'date', sortDir: 'desc' },
   CATS: [
     { id: 'mastication', ico: '🥩', label: 'Mastication', detail: true, link: 'M' },
@@ -89,7 +89,7 @@ const Achats = {
       ap.newCost = it.costUnit; l.applied = ap;
       const nm = this.itemName(l.cat === 'conso' ? 'C' : 'T', l.ref) || l.label, pct = prevCost > 0 ? (it.costUnit - prevCost) / prevCost * 100 : 0;
       notes.push(`${nm} +${U.qty(add)} (${U.qty(prevQty)} → ${U.qty(it.qty)})`);
-      if (Math.abs(pct) >= 10) notes.push(`⚠ prix ${pct > 0 ? '+' : ''}${Math.round(pct)} % : ${nm} ${U.eur(prevCost, 3)} → ${U.eur(it.costUnit, 3)}`);
+      if (Math.abs(it.costUnit - prevCost) > 0.00005 && prevCost > 0) notes.push(`💶 prix ${pct > 0 ? '↑ +' : '↓ '}${Math.round(pct * 10) / 10} % : ${nm} ${U.eur(prevCost, 3)} → ${U.eur(it.costUnit, 3)} HT (vérifie les fiches prix concernées)`);
     });
   },
   _newPurchase() {
@@ -192,6 +192,7 @@ const Achats = {
           ${f.refund ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.setF('refund',false)">✕ Afficher aussi les remboursées</button>` : ''}
         </div>
       </div>
+      ${this._priceCard()}
       <div class="card">
         ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>${sh('date', 'Date')}</th><th style="text-align:left;">${sh('supplier', 'Fournisseur')}</th><th style="text-align:left;">N° facture</th><th style="text-align:left;">Contenu</th><th>Paiement</th><th>Payé par</th><th class="num">Livraison</th><th class="num">${sh('total', 'Total')}</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`
         : `<p class="muted">${this.list().length ? 'Aucune facture avec ces filtres.' : 'Aucune facture pour l\'instant. Clique sur « ＋ Nouvelle facture » pour saisir ton premier achat.'}</p>`}
@@ -199,11 +200,20 @@ const Achats = {
       </div>`);
   },
   toggle(id) { this._open[id] = !this._open[id]; this.render(); },
+  _chg(l) { const a = l.applied; return a && U.num(a.prevCost) > 0 && Math.abs(U.num(a.newCost) - U.num(a.prevCost)) > 0.00005 ? (U.num(a.newCost) - U.num(a.prevCost)) / U.num(a.prevCost) * 100 : 0; },
+  _priceCard() {   // variations de coût constatées à l'achat : de quoi savoir quelles fiches de prix revoir
+    const rows = [];
+    this.list().forEach(p => (p.lines || []).forEach(l => { const c = this._chg(l); if (c) rows.push({ p, l, c }); }));
+    if (!rows.length) return '';
+    rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
+    return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent : pense à vérifier les fiches prix concernées</span></summary>
+      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${U.eur(l.applied.prevCost, 3)} → ${U.eur(l.applied.newCost, 3)} HT</span><span class="${c > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c > 0 ? '↑ +' : '↓ '}${Math.round(c * 10) / 10} %</span></div>`).join('')}</div></details>`;
+  },
   _detailRow(p) {
     const lines = (p.lines || []).map(l => {
       const c = this.cat(l.cat);
       return `<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);">
-        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
+        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="Coût HT par unité : ${U.eur(l.applied.prevCost, 3)} → ${U.eur(l.applied.newCost, 3)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');
