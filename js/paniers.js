@@ -652,7 +652,10 @@ const Paniers = {
     const sub = lines.reduce((a, l) => a + l.total, 0);
     const ship = this.livraison > 0 ? this.livraison : 0;
     const red = this._disc() > 0 ? Math.round(sub * this._disc() * 100) / 100 : 0;
-    return { lines, sub, red, redPct: this.reduction, ship, total: sub - red + ship, x: this._shareExtras() };
+    const pre = sub - red + ship, bal = Clients.balanceOf(this._shClient || this.client);
+    const av = this._balOn !== false && bal > 0 ? Math.round(Math.min(bal, Math.max(0, pre)) * 100) / 100 : 0;   // avoir déduit
+    const det = this._balOn !== false && bal < 0 ? -bal : 0;   // dette à régler
+    return { lines, sub, red, redPct: this.reduction, ship, av, det, bal, total: pre - av + det, x: this._shareExtras() };
   },
   /* Blocs facultatifs sous le total (réglés dans Paramètres → Paniers & livraison) : n'apparaissent que s'ils sont remplis */
   _payList() {
@@ -664,7 +667,7 @@ const Paniers = {
   },
   _shOpt: { pay: true, iban: true, who: true },
   _shMsg: null,
-  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _shMode: '', _pendId: null, _pendUpd: 0,   // _shMode : '' | 'cc' (Click & Collect) | 'liv' (livraison)
+  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _shMode: '', _pendId: null, _pendUpd: 0, _balOn: true,   // _shMode : '' | 'cc' (Click & Collect) | 'liv' (livraison)
   _dogsOf(name) {   // chiens référencés de la cliente (nom + race) — jamais en mode visite
     const c = Clients.find(name);
     return (c && !Clients.ro() ? (c.dogs || []) : []).filter(d => String(d.name || '').trim());
@@ -697,6 +700,8 @@ const Paniers = {
         <tfoot>
           ${d.red > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Réduction (${U.qty(d.redPct)} %)</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.red)}</td></tr>` : ''}
           ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
+          ${d.av > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Avoir déduit</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.av)}</td></tr>` : ''}
+          ${d.det > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Solde à régler</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">+ ${U.eur(d.det)}</td></tr>` : ''}
           <tr style="border-top:2px solid var(--caramel);"><td colspan="4" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
       </table>
@@ -709,9 +714,16 @@ const Paniers = {
   _shareRefresh() {
     const box = document.getElementById('pan_share');
     if (box) box.innerHTML = this._shareInner(this._shareData());
+    const bb = document.getElementById('pan_bal'); if (bb) bb.innerHTML = this._balBox();
     const dg = document.getElementById('pan_dogs');
     if (dg) { const dogs = this._dogsOf(this._shClient); dg.textContent = dogs.length ? '🐕 ' + dogs.map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ') : ''; }
   },
+  _balBox() {   // solde / avoir de la cliente : déduit automatiquement, case pour le décocher
+    const b = Clients.balanceOf(this._shClient || this.client);
+    if (!b) return '';
+    return `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px;padding:8px 10px;border:1px solid var(--caramel);border-radius:8px;"><input type="checkbox" ${this._balOn !== false ? 'checked' : ''} onchange="Paniers._setBal(this.checked)"> 💶 ${b > 0 ? 'Déduire l\'avoir de ' + U.eur(b) + ' de cette commande' : 'Ajouter le solde dû de ' + U.eur(-b) + ' à cette commande'}</label>`;
+  },
+  _setBal(on) { this._balOn = !!on; this._shareRefresh(); this._draft(); },
   _modeBtns() {
     const b = (m, label) => `<button class="btn-ghost btn-sm${this._shMode === m ? ' active' : ''}" onclick="Paniers._setMode('${m}')">${label}</button>`;
     return b('cc', '🏬 Click & Collect') + b('liv', '📦 Livraison');
@@ -744,6 +756,7 @@ const Paniers = {
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Mode de remise (affiché sur le devis)</div>
         <div id="pan_mode" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${this._modeBtns()}</div>
+        <div id="pan_bal">${this._balBox()}</div>
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${chk('who', 'Nom de la cliente et des chiens')}${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
         <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message pour ce client (vide = rien d'affiché)" oninput="Paniers._shSetMsg(this.value)">${U.esc(String(S.payMessage || ''))}</textarea>
@@ -771,7 +784,7 @@ const Paniers = {
     if (!this.basket.length) return;
     const list = this._pending(), now = Date.now();
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
-    const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '',
+    const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
       items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
     if (rec) Object.assign(rec, data);
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
@@ -823,7 +836,7 @@ const Paniers = {
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
     this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
     this._pendId = rec.id; this._pendUpd = rec.updated || rec.ts || 0;
-    this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || '';
+    this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || ''; this._balOn = rec.balOn !== false;
     this.proposals = null;
   },
   /* Le panier en cours est une copie du panier en attente : si celui-ci a été mis à jour depuis un autre appareil (téléphone ↔ PC), on repart de la version à jour */
@@ -898,7 +911,7 @@ const Paniers = {
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
     const W = 860, pad = 32, rowH = 46, inner = W - 2 * pad;
     const cVar = pad + inner * 0.50, cQty = pad + inner * 0.645, rUnit = pad + inner * 0.82, rTot = W - pad - 12;   // colonnes : variante · quantité · prix unitaire · sous-total
-    const rows = d.lines.length + (d.ship > 0 ? 1 : 0) + (d.red > 0 ? 1 : 0);
+    const rows = d.lines.length + (d.ship > 0 ? 1 : 0) + (d.red > 0 ? 1 : 0) + (d.av > 0 ? 1 : 0) + (d.det > 0 ? 1 : 0);
     // blocs facultatifs sous le total : lignes déjà coupées à la largeur utile
     const tmp = document.createElement('canvas').getContext('2d');
     const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > W - 2 * pad - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
@@ -949,6 +962,10 @@ const Paniers = {
       x.fillText('Livraison', rUnit, y + rowH / 2); x.fillText(U.eur(d.ship), rTot, y + rowH / 2);
       y += rowH;
     }
+    [[d.av > 0, 'Avoir déduit', '− ' + U.eur(d.av)], [d.det > 0, 'Solde à régler', '+ ' + U.eur(d.det)]].forEach(([on, lab, val]) => {
+      if (!on) return;
+      x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right'; x.fillText(lab, rUnit, y + rowH / 2); x.fillText(val, rTot, y + rowH / 2); y += rowH;
+    });
     x.strokeStyle = car; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
     x.fillStyle = fg; x.font = font(800, 21); x.textAlign = 'right';
     x.fillText('Total TTC', rUnit, y + 36); x.fillText(U.eur(d.total), rTot, y + 36);
@@ -981,7 +998,7 @@ const Paniers = {
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
-      [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
+      [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], ['Total TTC : ' + eur(d.total)],
       d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
@@ -989,7 +1006,7 @@ const Paniers = {
 
   clearBasket() {
     this.basket = [];
-    this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = '';
+    this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true;
     this.proposals = null;
     this.render();
   },
@@ -1104,7 +1121,7 @@ const Paniers = {
   /* Brouillon : le panier en cours (et sa cliente) survit à un rechargement de la page, un changement de fenêtre ou une fermeture d'onglet. « Vider » l'efface. */
   _DK: 'touffu_paniers_draft',
   _draft() {
-    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
+    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
     try {
       if (!this._draftLoaded) {
         this._draftLoaded = true;

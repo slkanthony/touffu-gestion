@@ -21,6 +21,21 @@ const Clients = {
     const n = String(name || '').trim(); if (!n || !this.ro()) return n;
     const c = this.find(n); return c && c.firstName ? c.firstName : this.split(n).first;
   },
+  /* Solde / avoir : c.balance > 0 = je lui dois (avoir à déduire de sa prochaine commande) ; < 0 = il me doit. Journal : c.balanceLog. */
+  balanceOf(name) { if (this.ro()) return 0; const c = this.find(name); return c ? Math.round(U.num(c.balance) * 100) / 100 : 0; },
+  adjustBalance(name, delta, note) {
+    delta = Math.round(U.num(delta) * 100) / 100; if (!delta) return;
+    const c = this.ensure(name); if (!c) return;
+    c.balance = Math.round((U.num(c.balance) + delta) * 100) / 100;
+    c.balanceLog = [{ ts: Date.now(), amount: delta, note: note || '', after: c.balance }].concat(c.balanceLog || []).slice(0, 30);
+    Store.save('clients');
+  },
+  setBalance(cid, v) {
+    if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
+    const nb = Math.round(U.num(v) * 100) / 100, note = (document.getElementById('cl_bn_' + cid) || {}).value || '';
+    this.adjustBalance(c.name, nb - U.num(c.balance), note.trim() || 'Correction manuelle'); Stats.render();
+  },
+  balBadge(c) { const b = this.balanceOf(c.name); return !b ? '' : b > 0 ? ` <span class="badge info" title="Je lui dois cet avoir">💶 Avoir ${U.eur(b)}</span>` : ` <span class="badge warn" title="Il me doit cette somme">💶 Dette ${U.eur(-b)}</span>`; },
   _new(name) { const p = this.split(name); return { id: U.uid(), name: String(name).trim(), firstName: p.first, lastName: p.last, phone: '', email: '', note: '', dogs: [] }; },
   ensure(name) {
     const n = String(name || '').trim(); if (!n) return null;
@@ -185,6 +200,7 @@ const Clients = {
         <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
         ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
       </div>`}
+      ${this.ro() ? '' : `<div class="cl-id mt"><div class="fg"><label>💶 Solde / avoir (€) <span class="muted help">Positif = je lui dois (avoir : déduit automatiquement de sa prochaine commande). Négatif = il me doit (ajouté à sa prochaine commande). Tape le nouveau solde total.</span></label><input type="number" step="0.01" value="${U.num(c.balance) || ''}" placeholder="0" onchange="Clients.setBalance('${c.id}',this.value)"></div><div class="fg" style="grid-column:span 2;"><label>Motif (pour le journal)</label><input id="cl_bn_${c.id}" placeholder="ex : monnaie rendue en trop le 02/10"></div></div>${(c.balanceLog || []).length ? `<div class="muted" style="font-size:.8rem;margin-top:4px;">${c.balanceLog.slice(0, 5).map(l => new Date(l.ts).toLocaleDateString('fr-FR') + ' · ' + (l.amount > 0 ? '+' : '') + U.eur(l.amount) + (l.note ? ' — ' + U.esc(l.note) : '') + ' → solde ' + U.eur(l.after)).join('<br>')}</div>` : ''}`}
       <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><textarea class="note-area" rows="1" ${this.ro() ? 'disabled' : ''} placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)">${U.esc(c.pets || '')}</textarea></div></div>
       <h3 class="mt">🐕 Chiens (${c.dogs.length})</h3>
       ${c.dogs.map(d => this._dogCard(c, d)).join('') || '<p class="muted">Aucun chien renseigné.</p>'}
@@ -208,7 +224,7 @@ const Clients = {
     const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Clients.setSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const rows = rowsData.map(({ c, a }) => {
       const open = !!this._open[c.id];
-      return `<tr style="cursor:pointer;" onclick="Clients.toggle('${c.id}')"><td class="col-name" style="text-align:left;"><b>${open ? '▾' : '▸'} 👤 ${U.esc(this.show(c.name))}</b></td><td style="text-align:left;">${c.dogs.length ? c.dogs.map(d => '🐕 ' + U.esc(d.name || '?')).join(' · ') : '<span class="muted">—</span>'}</td><td class="num">${a.n}</td><td class="num sensitive">${U.eur(a.ca)}</td><td class="num sensitive ${a.net >= 0 ? 'pos' : 'neg'}">${a.n ? U.eur(a.net) : '—'}</td><td class="num">${a.last ? new Date(a.last).toLocaleDateString('fr-FR') : '—'}</td></tr>${open ? this._fiche(c, a.n ? a : null) : ''}`;
+      return `<tr style="cursor:pointer;" onclick="Clients.toggle('${c.id}')"><td class="col-name" style="text-align:left;"><b>${open ? '▾' : '▸'} 👤 ${U.esc(this.show(c.name))}</b>${this.balBadge(c)}</td><td style="text-align:left;">${c.dogs.length ? c.dogs.map(d => '🐕 ' + U.esc(d.name || '?')).join(' · ') : '<span class="muted">—</span>'}</td><td class="num">${a.n}</td><td class="num sensitive">${U.eur(a.ca)}</td><td class="num sensitive ${a.net >= 0 ? 'pos' : 'neg'}">${a.n ? U.eur(a.net) : '—'}</td><td class="num">${a.last ? new Date(a.last).toLocaleDateString('fr-FR') : '—'}</td></tr>${open ? this._fiche(c, a.n ? a : null) : ''}`;
     }).join('');
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">clients &amp; chiens</span></div>

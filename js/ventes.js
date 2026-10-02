@@ -29,6 +29,7 @@ const Ventes = {
   retourConsoId: '', retourConsoQty: 1, // saisie des consommables (sacs…) utilisés pendant l'événement
   kind: 'M',           // 'M' mastication (défaut) | 'A' accessoires — bascule le sélecteur de produit à sortir
   accWidth: 'all',     // filtre largeur de sangle en mode Accessoires
+  balOn: true,   // déduire l'avoir / ajouter la dette du client (fiche client)
   discOn: false, discPct: 5,   // réduction sur le ticket (clients partenaires…), 5 % par défaut, modifiable
   editTicketId: '', ticketConsoId: '', ticketConsoQty: 1,
   ticketCashQ: '', ticketCashOpen: false, ticketCashSelKey: '', ticketCashQty: 1, ticketCashPrice: '', // vente en liquide ajoutée après coup sur un ticket événement déjà validé
@@ -415,7 +416,7 @@ const Ventes = {
   loadFromBasket(rec, lines) {
     this.source = lines.some(l => l.src === 'event') ? 'event' : 'general'; this.kind = 'M';
     this.cart = lines.map(({ u, qty, price, src }) => ({ key: u.key, kind: 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
-    this.customerName = rec.name; this._basketId = rec.id;
+    this.customerName = rec.name; this._basketId = rec.id; this.balOn = rec.balOn !== false;
     const rp = U.num(rec.reduction); this.discOn = rp > 0; if (rp > 0) this.discPct = rp;   // code de réduction du panier → réduction du ticket
     this.retourOpen = false; this.todoOpen = false; this.editTicketId = '';
     if (/^#\/ventes\/?$/.test(location.hash)) this.render(); else location.hash = '#/ventes';
@@ -449,11 +450,17 @@ const Ventes = {
     } else apply();
   },
 
+  _balApplied(total) {   // > 0 : avoir déduit ; < 0 : dette réglée (ajoutée au ticket)
+    const b = Clients.balanceOf(this.customerName);
+    if (!this.balOn || !b) return 0;
+    return b > 0 ? Math.round(Math.min(b, Math.max(0, total)) * 100) / 100 : b;
+  },
   ticketCard() {
     const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0);
     const pct = Math.min(100, Math.max(0, U.num(this.discPct)));
     const disc = this.discOn ? Math.round(gross * pct) / 100 : 0;
     const total = gross - disc;
+    const bal = Clients.balanceOf(this.customerName), ba = this._balApplied(total);
     return `<div class="card" style="border-left:4px solid var(--caramel);">
       <h2>🛒 Ticket en cours (${this.cart.length}) — stock ${this.source === 'event' ? 'événement' : 'général'}</h2>
       ${this._basketId && this.cart.some(c => c.needLot) ? `<div class="badge warn" style="margin-bottom:8px;white-space:normal;">📋 Venant d'un panier en attente — choisis le lot de chaque ligne (vérifie le n° de lot / la DLUO du produit que tu as en main). La validation est bloquée tant qu'un lot manque.</div>` : ''}
@@ -465,10 +472,11 @@ const Ventes = {
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
           <td class="num"><b>${U.eur(c.price * c.qty)}</b></td>
           <td><button class="btn-icon" onclick="Ventes.cart.splice(${i},1);Ventes.render()">🗑️</button></td></tr>`).join('')}</tbody>
-        <tfoot>${this.discOn ? `<tr><th colspan="4">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="4">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr></tfoot></table></div>
+        <tfoot>${this.discOn ? `<tr><th colspan="4">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="4">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr>${ba ? `<tr><th colspan="4">${ba > 0 ? 'Avoir déduit' : 'Solde à régler'}</th><th class="num">${ba > 0 ? '−' : '+'} ${U.eur(Math.abs(ba))}</th><th></th></tr><tr><th colspan="4">À payer</th><th class="num">${U.eur(total - ba)}</th><th></th></tr>` : ''}</tfoot></table></div>
       <div class="fg mt" style="max-width:420px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${this.discOn ? 'checked' : ''} onchange="Ventes.discOn=this.checked;Ventes.render()"> 🏷️ Réduction sur la commande (client partenaire…)</label>
         ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span></div>` : ''}</div>
-      <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value"></div>
+      <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value" onchange="Ventes.render()"></div>
+      ${bal ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--caramel);border-radius:8px;"><input type="checkbox" ${this.balOn ? 'checked' : ''} onchange="Ventes.balOn=this.checked;Ventes.render()"> 💶 ${bal > 0 ? 'Déduire l\'avoir de ' + U.eur(bal) : 'Ajouter le solde dû de ' + U.eur(-bal)}</label>` : ''}
       <div class="frow mt">
         <button class="btn-ok" onclick="Ventes.validate()">✅ Valider la sortie de stock</button>
         <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes._basketId=null;Ventes.render()">Vider le ticket</button>
@@ -533,6 +541,8 @@ const Ventes = {
     const lines = pct > 0 ? this.cart.map(c => c.kind === 'C' ? c : { ...c, price: U.num(c.price) * (1 - pct / 100) }) : this.cart;
     const shortfalls = this._deductSale(sale, lines, this.source);
     if (pct > 0) { const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = pct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; }
+    const ba = this._balApplied(sale.total);
+    if (ba) { sale.balanceApplied = ba; Clients.adjustBalance(sale.customerName, -ba, (ba > 0 ? 'Avoir utilisé' : 'Solde réglé') + ' — vente du ' + U.frDate(new Date().toISOString().slice(0, 10))); }
     if (delivery === 'livraison') {
       const S = Store.state.settings;
       sale.shippingChargedToCustomer = sale.total < U.num(S.freeShippingThreshold ?? 69);
@@ -543,7 +553,7 @@ const Ventes = {
     Store.save('sales', 'stockM', 'catalogA', 'consumables');
     this.cart = [];
     this.customerName = '';
-    this.discOn = false;
+    this.discOn = false; this.balOn = true;
     if (this._basketId) {   // le panier en attente est maintenant une vraie vente : il quitte la liste
       Store.state.baskets = (Store.state.baskets || []).filter(x => x.id !== this._basketId);
       if (typeof Paniers !== 'undefined' && Paniers._pendId === this._basketId) Paniers._pendId = null;
@@ -646,6 +656,7 @@ const Ventes = {
     if (!await U.confirm('Annuler cette sortie et re-créditer le stock ?')) return;
     (s.undoOps || []).forEach(op => this.applyUndoOp(op));
     s.cancelled = true;
+    if (s.balanceApplied) Clients.adjustBalance(s.customerName, s.balanceApplied, 'Vente annulée — solde remis');
     Store.log('vente', `Sortie annulée — ${U.eur(s.total)} du ${U.frDateTime(s.ts)}`);
     Store.save('sales', 'stockM', 'catalogA', 'consumables');
     this.render();
@@ -1112,6 +1123,7 @@ const Ventes = {
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
           ${field('Remise', this.deliveryLabel(s))}
+          ${s.balanceApplied ? field(s.balanceApplied > 0 ? 'Avoir déduit' : 'Solde réglé', U.eur(Math.abs(s.balanceApplied))) : ''}
           ${s.cancelled ? (s.discountPct ? field('Réduction', '−' + U.qty(s.discountPct) + ' %') : '') : field('Réduction %', `<input type="number" step="0.5" min="0" max="99" value="${U.num(s.discountPct) || ''}" placeholder="0" style="width:70px;" onchange="Ventes.setDiscount('${s.id}',this.value)">${s.discountAmount ? ` <span class="muted">(−${U.eur(s.discountAmount)})</span>` : ''}`)}
           ${s.delivery === 'livraison' ? field('Port client', `<span class="badge ${s.shippingChargedToCustomer ? 'info' : 'warn'}" style="cursor:pointer;" title="Cliquer pour changer" onclick="Ventes.toggleShippingCharged('${s.id}')">${s.shippingChargedToCustomer ? `✅ Facturé (${U.eur(s.shippingFeeCollected)})` : '❌ Offert'}</span>`) : ''}
           ${s.delivery === 'livraison' ? field('Frais d\'envoi', `<input type="number" step="0.01" min="0" value="${U.num(s.shippingCost)}" style="width:80px;" onchange="Ventes.setShippingCost('${s.id}',this.value)">`) : ''}
