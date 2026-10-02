@@ -81,7 +81,7 @@ const Achats = {
   itemName(kind, id) {
     if (kind === 'M') { const p = (Store.state.stockM || []).find(x => x.id === id); return p ? p.name : ''; }
     if (kind === 'T') { const m = (Store.state.materials || []).find(x => x.id === id); return m ? (m.product ? m.product + ' ' : '') + (m.variant || m.name || '') : ''; }
-    const c = (Store.state.consumables || []).find(x => x.id === id); return c ? c.name : '';
+    const c = (Store.state.consumables || []).find(x => x.id === id); return c ? c.name + (Stock.consoDims(c) ? ' ' + Stock.consoDims(c) : '') : '';
   },
   _newLine(cat) {
     const c = this.cat(cat);
@@ -456,13 +456,16 @@ const Achats = {
     if (s) s.textContent = U.eur(this.subTotal(d)); if (t) t.textContent = U.eur(this.grandTotal(d));
     if (b) b.textContent = U.eur(this.base(d)); if (v) v.textContent = U.eur(this.vatSum(d));
   },
-  _linkOpts(kind, cur) {
+  _linkOpts(kind, cur) {   // trois colonnes comme le choix de consommable des Ventes : nom · dimensions / variante · stock (et coût)
     let items;
-    if (kind === 'M') items = (Store.state.stockM || []).map(p => [p.id, p.name]);
-    else if (kind === 'T') items = (Store.state.materials || []).map(m => [m.id, (m.product ? m.product + ' ' : '') + (m.variant || m.name || '')]);
-    else items = (Store.state.consumables || []).map(c => [c.id, c.name]);
-    items.sort((a, b) => U.sortFr(a[1], b[1]));
-    return `<option value="">— choisir (optionnel) —</option>` + items.map(([id, n]) => `<option value="${U.esc(id)}" ${id === cur ? 'selected' : ''}>${U.esc(n)}</option>`).join('');
+    if (kind === 'M') items = (Store.state.stockM || []).map(p => {
+      const n = (p.variants || []).filter(v => !Stock.isVirtual(p, v)).reduce((t, v) => t + (v.lots || []).reduce((q, l) => q + U.num(l.qtyGeneral) + U.num(l.qtyEvent), 0), 0);
+      return { id: p.id, a: p.name, b: p.meatType || '', c: 'stock ' + U.qty(n) };
+    });
+    else if (kind === 'T') items = (Store.state.materials || []).map(m => ({ id: m.id, a: m.product || m.name || '', b: m.product ? (m.variant || m.name || '') : (m.variant || ''), c: 'stock ' + U.qty(m.qty) + ' ' + this.unitFrom(m.unit) + (U.num(m.costUnit) ? ' · ' + U.eur(m.costUnit) + '/u' : '') }));
+    else items = (Store.state.consumables || []).map(c => ({ id: c.id, a: c.name, b: Stock.consoDims(c), c: 'stock ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : ''), vol: Stock._dimVolume(Stock.consoDims(c)) }));
+    items.sort((x, y) => U.sortFr(x.a, y.a) || (U.num(x.vol) - U.num(y.vol)) || U.sortFr(x.b, y.b));
+    return `<option value="">— choisir (optionnel) —</option>` + items.map(o => `<option value="${U.esc(o.id)}" data-a="${U.esc(o.a)}" data-b="${U.esc(o.b)}" data-c="${U.esc(o.c)}" ${o.id === cur ? 'selected' : ''}>${U.esc([o.a, o.b, o.c].filter(Boolean).join(' — '))}</option>`).join('');
   },
   _pvText(l) {
     const pv = this._stockPreview(l); if (!pv) return '';
