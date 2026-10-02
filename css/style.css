@@ -1267,3 +1267,4 @@ th.ctr, td.ctr { text-align: center; }
 .ach-sum .fg { max-width: 170px; margin: 0; }
 .ach-grand { font-size: 1.25rem; padding-bottom: 6px; }
 .ach-grand b { color: var(--caramel); margin-left: 6px; }
+.ach-chk { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 9px 4px; text-transform: none; letter-spacing: 0; font-size: .9rem; }

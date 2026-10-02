@@ -37,7 +37,60 @@ const Achats = {
   },
   _newLine(cat) {
     const c = this.cat(cat);
-    return { id: U.uid(), cat: c.id, ref: '', label: '', qty: 1, unit: c.id === 'mastication' ? 'kg' : '', price: 0, lot: '', dluo: '', years: '' };
+    return { id: U.uid(), cat: c.id, ref: '', label: '', qty: 1, unit: c.id === 'mastication' ? 'kg' : '', price: 0, lot: '', dluo: '', years: '', toStock: false };
+  },
+
+  /* ---------- mise à jour du stock (consommables + matières premières) ----------
+     Case « Ajouter au stock » par ligne liée : à l'enregistrement, la quantité est ajoutée à la fiche et son coût devient
+     le DERNIER prix payé (livraison et remise réparties au prorata du montant de chaque ligne). Modifier ou supprimer la facture
+     retire la quantité ajoutée (le prix, lui, reste celui du dernier achat). Jamais de création de fiche. Annulable (Journal). */
+  _recent(date) { return !date || date >= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10); },   // facture ancienne → case décochée par défaut
+  _item(l) { return l.cat === 'conso' ? (Store.state.consumables || []).find(x => x.id === l.ref) : l.cat === 'matiere' ? (Store.state.materials || []).find(x => x.id === l.ref) : null; },
+  _packOf(l, it) { return l.cat === 'conso' && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : 1; },   // prix saisi « par lot de N » : on ajoute N × quantité
+  _stockPreview(l) {
+    const it = this._item(l); if (!it) return null;
+    const add = U.num(l.qty) * this._packOf(l, it);
+    return { it, add, cur: U.num(it.qty), after: U.num(it.qty) + add };
+  },
+  _eff(rec) {   // total de chaque ligne + sa part de livraison − sa part de remise
+    const sub = this.subTotal(rec), extra = U.num(rec.shipping) - U.num(rec.discount);
+    return (rec.lines || []).map(l => this.lineTotal(l) + (sub ? extra * this.lineTotal(l) / sub : 0));
+  },
+  _snapOnce(domain, item, snaps) { if (!snaps.some(s => s.domain === domain && s.id === item.id)) snaps.push(Store.snapshot(domain, item)); },
+  _revertStock(rec, snaps) {
+    (rec.lines || []).forEach(l => {
+      const ap = l.applied; if (!ap) return;
+      const it = this._item(l); if (!it) return;
+      this._snapOnce(l.cat === 'conso' ? 'consumables' : 'materials', it, snaps);
+      if (ap.rollId && Array.isArray(it.rolls)) { it.rolls = it.rolls.filter(r => r.id !== ap.rollId); it.qty = it.rolls.reduce((a, r) => a + U.num(r.qty), 0); }
+      else it.qty = Math.max(0, U.num(it.qty) - U.num(ap.qty));
+    });
+  },
+  _applyStock(rec, snaps, notes) {
+    const eff = this._eff(rec), vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100;
+    rec.lines.forEach((l, i) => {
+      delete l.applied;
+      if (!l.toStock || !l.ref || (l.cat !== 'conso' && l.cat !== 'matiere') || !(U.num(l.qty) > 0)) return;
+      const it = this._item(l); if (!it) return;
+      this._snapOnce(l.cat === 'conso' ? 'consumables' : 'materials', it, snaps);
+      const pack = this._packOf(l, it), add = U.num(l.qty) * pack, prevQty = U.num(it.qty), prevCost = U.num(it.costUnit);
+      const perPack = eff[i] / U.num(l.qty), ap = { qty: add, prevCost };
+      if (l.cat === 'conso') {
+        it.costTotal = Math.round(perPack * 10000) / 10000; it.costQtyPer = pack > 1 ? pack : 1; it.costTax = 'TTC';
+        it.costUnit = Stock.consoUnitCost(it.costTotal, it.costQtyPer, 'TTC'); it.qty = prevQty + add;
+      } else {
+        it.costUnit = Math.round(perPack / vat * 10000) / 10000;
+        if (it.kind === 'sangle') {
+          if (!Array.isArray(it.rolls)) it.rolls = prevQty > 0 ? [{ id: U.uid(), label: 'Stock avant achat', qty: prevQty }] : [];
+          const r = { id: U.uid(), label: 'Achat ' + U.frDate(rec.date) + (rec.invoiceNo ? ' · ' + rec.invoiceNo : ''), qty: add };
+          it.rolls.push(r); ap.rollId = r.id; it.qty = it.rolls.reduce((a, x) => a + U.num(x.qty), 0);
+        } else it.qty = prevQty + add;
+      }
+      ap.newCost = it.costUnit; l.applied = ap;
+      const nm = this.itemName(l.cat === 'conso' ? 'C' : 'T', l.ref) || l.label, pct = prevCost > 0 ? (it.costUnit - prevCost) / prevCost * 100 : 0;
+      notes.push(`${nm} +${U.qty(add)} (${U.qty(prevQty)} → ${U.qty(it.qty)})`);
+      if (Math.abs(pct) >= 10) notes.push(`⚠ prix ${pct > 0 ? '+' : ''}${Math.round(pct)} % : ${nm} ${U.eur(prevCost, 3)} → ${U.eur(it.costUnit, 3)}`);
+    });
   },
   _newPurchase() {
     return { id: U.uid(), date: U.today(), supplierId: '', invoiceNo: '', payment: 'carte', paidBy: 'pro', reimbursed: '', shipping: 0, discount: 0, note: '', lines: [this._newLine(this._lastCat)] };
@@ -150,7 +203,7 @@ const Achats = {
     const lines = (p.lines || []).map(l => {
       const c = this.cat(l.cat);
       return `<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);">
-        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
+        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');
@@ -169,17 +222,19 @@ const Achats = {
     const p = this.list().find(x => x.id === id); if (!p) return;
     const d = JSON.parse(JSON.stringify(p));
     Object.assign(d, { id: U.uid(), date: U.today(), invoiceNo: '', reimbursed: '', note: '' }); delete d.created; delete d.updated; delete d.total;
-    d.lines.forEach(l => { l.id = U.uid(); l.lot = ''; l.dluo = ''; });
+    d.lines.forEach(l => { l.id = U.uid(); l.lot = ''; l.dluo = ''; delete l.applied; });
     this._d = d; this._editId = ''; this._dirty = true; this.mode = 'edit'; this._saveDraft(); this.render(); window.scrollTo({ top: 0 });
     U.toast('Facture dupliquée : change la date, le n° de facture et les prix si besoin.');
   },
   async remove(id) {
     const p = this.list().find(x => x.id === id); if (!p) return;
     if (!await U.confirm(`Supprimer la facture ${p.invoiceNo ? 'n° ' + p.invoiceNo + ' ' : ''}de ${this.supplierLabel(p)} du ${U.frDate(p.date)} (${U.eur(this.grandTotal(p))}) ?`, { okLabel: 'Supprimer' })) return;
-    const snap = Store.snapshot('purchases', p);
+    const snaps = [Store.snapshot('purchases', p)], touched = (p.lines || []).filter(l => l.applied).length;
+    this._revertStock(p, snaps);
     Store.state.purchases = this.list().filter(x => x.id !== id);
-    const entry = Store.commitSnapshot(snap, 'achat', `Facture supprimée — ${this.supplierLabel(p)} ${U.frDate(p.date)}`);
-    Store.save('purchases'); this.render(); U.toast('Facture supprimée.', false, entry.id);
+    const entry = Store.log('achat', `Facture supprimée — ${this.supplierLabel(p)} ${U.frDate(p.date)}`, { type: 'restoreBatch', data: snaps });
+    Store.save('purchases', 'consumables', 'materials'); this.render();
+    U.toast('Facture supprimée' + (touched ? ' · stock remis comme avant l\'achat.' : '.'), false, entry.id);
   },
   setReimbursed(id, on) {
     const p = this.list().find(x => x.id === id); if (!p) return;
@@ -213,6 +268,7 @@ const Achats = {
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
+    l.toStock = !!v && (c.link === 'C' || c.link === 'T') && this._recent(this._d.date);   // cochée par défaut, sauf facture ancienne
     if (v) {
       const name = this.itemName(c.link, v); if (!String(l.label || '').trim() && name) l.label = name;
       if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m && !l.unit) l.unit = this.unitFrom(m.unit); }
@@ -220,11 +276,13 @@ const Achats = {
     }
     this._touch(); this.render();
   },
+  setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
   setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); },
   setNum(i, k, v) { this._d.lines[i][k] = U.num(v); this._touch(); this._refreshTotals(); },
   _refreshTotals() {
     const d = this._d; if (!d) return;
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_lt_' + i); if (e) e.textContent = U.eur(this.lineTotal(l)); });
+    d.lines.forEach((l, i) => { const e = document.getElementById('ach_pv_' + i); if (e) e.textContent = this._pvText(l); });
     const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot');
     if (s) s.textContent = U.eur(this.subTotal(d)); if (t) t.textContent = U.eur(this.grandTotal(d));
   },
@@ -235,6 +293,15 @@ const Achats = {
     else items = (Store.state.consumables || []).map(c => [c.id, c.name]);
     items.sort((a, b) => U.sortFr(a[1], b[1]));
     return `<option value="">— choisir (optionnel) —</option>` + items.map(([id, n]) => `<option value="${U.esc(id)}" ${id === cur ? 'selected' : ''}>${U.esc(n)}</option>`).join('');
+  },
+  _pvText(l) {
+    const pv = this._stockPreview(l); if (!pv) return '';
+    const pack = this._packOf(l, pv.it);
+    return (l.applied ? '· déjà ajouté (+' + U.qty(l.applied.qty) + '), remis à jour à l\'enregistrement · ' : '') + 'stock actuel ' + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
+  },
+  _stockBox(l, i) {
+    if (!this._stockPreview(l)) return '';
+    return `<div class="fg" style="grid-column:span 2;"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Ajouter au stock <span class="muted" id="ach_pv_${i}">${this._pvText(l)}</span></label></div>`;
   },
   _lineHTML(l, i) {
     const c = this.cat(l.cat);
@@ -248,6 +315,7 @@ const Achats = {
       inner = `<div class="fg"><label>Catégorie</label>${catSel}</div>
         ${c.link ? `<div class="fg"><label>${c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock'}</label><select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select></div>` : ''}
         <div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
+        ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : ''}
         <div class="fg"><label>Quantité</label><input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)"></div>
         <div class="fg"><label>Unité</label><input list="ach_units" value="${U.esc(l.unit || '')}" placeholder="kg, pièce…" onchange="Achats.setText(${i},'unit',this.value)"></div>
         <div class="fg"><label>Prix unitaire (€)</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>
@@ -308,7 +376,7 @@ const Achats = {
       const lab = String(l.label || '').trim() || this.itemName(c.link, l.ref);
       if (!lab && !U.num(l.price) && !l.ref) continue;   // ligne vide : ignorée
       if (!lab) { U.toast(`Ligne ${i + 1} : indique une désignation.`, true); return; }
-      lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0 });
+      lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0, toStock: !!l.toStock && !!l.ref && (c.id === 'conso' || c.id === 'matiere') });
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
@@ -319,13 +387,17 @@ const Achats = {
     else if (others.some(p => p.date === rec.date && Math.abs(this.grandTotal(p) - rec.total) < 0.005)) msgs.push(`Une facture de ${this.supplierLabel(rec)} du ${U.frDate(rec.date)} au même montant (${U.eur(rec.total)}) existe déjà.`);
     if (!U.dupGate(msgs, () => Achats.save())) return;
     const old = this._editId ? this.list().find(p => p.id === this._editId) : null;
-    let entry;
-    if (old) { const snap = Store.snapshot('purchases', old); rec.created = old.created || Date.now(); rec.updated = Date.now(); Object.keys(old).forEach(k => delete old[k]); Object.assign(old, rec); entry = Store.commitSnapshot(snap, 'achat', `Facture modifiée — ${this.supplierLabel(rec)} ${U.frDate(rec.date)}`); }
-    else { rec.created = Date.now(); this.list().push(rec); entry = Store.log('achat', `Facture ajoutée — ${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreItem', data: { domain: 'purchases', id: rec.id, before: null } }); }
-    Store.save('purchases');
+    const snaps = [], notes = [];
+    if (old) { snaps.push(Store.snapshot('purchases', old)); this._revertStock(old, snaps); }   // on retire d'abord l'effet de l'ancienne version
+    else snaps.push({ domain: 'purchases', id: rec.id, before: null });
+    this._applyStock(rec, snaps, notes);
+    if (old) { rec.created = old.created || Date.now(); rec.updated = Date.now(); Object.keys(old).forEach(k => delete old[k]); Object.assign(old, rec); }
+    else { rec.created = Date.now(); this.list().push(rec); }
+    const entry = Store.log('achat', (old ? 'Facture modifiée — ' : 'Facture ajoutée — ') + `${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: snaps });
+    Store.save('purchases', 'consumables', 'materials');
     this._lastCat = lines[lines.length - 1].cat;
     this._d = null; this._editId = ''; this._dirty = false; this.mode = 'list'; this._clearDraft();
-    this.render(); U.toast(`Facture enregistrée : ${U.eur(rec.total)}.`, false, entry.id);
+    this.render(); U.toast(`Facture enregistrée : ${U.eur(rec.total)}.` + (notes.length ? ' Stock : ' + notes.join(' · ') : ''), false, entry.id);
   },
 
   /* ---------- export : registre des achats (une ligne par article) ---------- */

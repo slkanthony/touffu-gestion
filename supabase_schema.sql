@@ -44,8 +44,11 @@ alter table public.connexions enable row level security;
 -- des clients sur les ventes (données personnelles : jamais envoyées au navigateur d'un visiteur).
 drop policy if exists "app_state connectés" on public.app_state;
 drop policy if exists "app_state lecture" on public.app_state;
+-- (2026-10-02) l'équipe lit tout SAUF les achats (clé 'purchases') ; le viewer ne lit rien en direct.
 create policy "app_state lecture" on public.app_state
-  for select to authenticated using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer');
+  for select to authenticated using (
+    coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin'
+    or (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'team' and key <> 'purchases'));
 drop policy if exists "snapshots connectés" on public.snapshots;
 drop policy if exists "snapshots lecture" on public.snapshots;
 create policy "snapshots lecture" on public.snapshots
