@@ -480,27 +480,34 @@ const Achats = {
     if (!this._stockPreview(l)) return '';
     return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Ajouter <span class="muted" id="ach_pv_${i}">${this._pvText(l)}</span> <span class="muted help">Ajoute la quantité achetée au stock de cette fiche à l'enregistrement et met à jour son coût (dernier prix payé, livraison et remise réparties). Décoche pour une facture ancienne déjà comptée. Modifier ou supprimer la facture retire la quantité ajoutée.</span></label></div>`;
   },
+  /* Ligne de facture : DEUX rangées à colonnes fixes (même rangée quelle que soit la largeur de l'écran sur ordinateur) —
+     rangée 1 : catégorie · produit du stock · désignation ; rangée 2 : quantité · unité · prix · total · stock · lot · DLUO.
+     Tablette : rangée 2 sur 4 colonnes ; téléphone : 2 colonnes (voir .ach-r1 / .ach-r2 dans style.css). */
   _lineHTML(l, i) {
-    const c = this.cat(l.cat);
+    const c = this.cat(l.cat), ht = this._d && this.isHT(this._d) ? 'HT' : 'TTC';
+    const fg = (lab, inner, fr, wide, col) => ({ h: `<div class="fg${wide ? ' ach-wide' : ''}"${col ? ` style="grid-column:${col};"` : ''}><label>${lab}</label>${inner}</div>`, fr });
     const catSel = `<select onchange="Achats.setLineCat(${i},this.value)">${this.CATS.map(x => `<option value="${x.id}" ${x.id === l.cat ? 'selected' : ''}>${x.ico} ${x.label}</option>`).join('')}</select>`;
     const label = `<input value="${U.esc(l.label)}" placeholder="${c.detail ? 'désignation' : 'ex : visseuse, assurance, timbres…'}" onchange="Achats.setText(${i},'label',this.value)">`;
-    let inner;
+    const r1 = [fg('Catégorie', catSel, '1fr')], r2 = [];
     if (!c.detail) {
-      inner = `<div class="fg"><label>Catégorie</label>${catSel}</div><div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
-        <div class="fg"><label>Montant (€ ${this._d && this.isHT(this._d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>`;
+      r1.push(fg('Désignation', label, '3fr', true), fg('Montant (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr'));
     } else {
-      inner = `<div class="fg"><label>Catégorie</label>${catSel}</div>
-        ${c.link ? `<div class="fg"><label>${c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock'}</label><select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select></div>` : ''}
-        <div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
-        <div class="fg"><label>Quantité</label><input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)"></div>
-        <div class="fg"><label>Unité</label><select onchange="Achats.setText(${i},'unit',this.value)">${(this.UNITS.includes(l.unit) || !l.unit ? this.UNITS : this.UNITS.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select></div>
-        <div class="fg"><label>Prix unitaire (€ ${this._d && this.isHT(this._d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>
-        <div class="fg"><label>Total ligne</label><div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div></div>
-        ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : ''}
-        ${c.id === 'mastication' ? `<div class="fg"><label>N° de lot</label><input value="${U.esc(l.lot || '')}" placeholder="n° de lot du fournisseur" onchange="Achats.setText(${i},'lot',this.value)"></div><div class="fg"><label>DLUO</label><input type="date" value="${U.esc(l.dluo || '')}" onchange="Achats.setText(${i},'dluo',this.value)"></div>` : ''}
-        ${c.id === 'equipement' ? `<div class="fg"><label>Amortissement (ans, optionnel)</label><input type="number" step="any" min="0" value="${l.years || ''}" placeholder="ex : 5" onchange="Achats.setNum(${i},'years',this.value)"></div>` : ''}`;
+      if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
+      r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
+      r2.push(fg('Quantité', `<input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)">`, '.8fr', false, 1));
+      r2.push(fg('Unité', `<select onchange="Achats.setText(${i},'unit',this.value)">${(this.UNITS.includes(l.unit) || !l.unit ? this.UNITS : this.UNITS.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select>`, '.9fr', false, 2));
+      r2.push(fg('Prix unitaire (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
+      r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div>`, '.9fr', false, 4));
+      const box = (c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : '';
+      if (box) r2.push({ h: box.replace('<div class="fg">', '<div class="fg" style="grid-column:5;">'), fr: '1.2fr' });
+      if (c.id === 'mastication') {
+        r2.push(fg('N° de lot', `<input value="${U.esc(l.lot || '')}" placeholder="n° de lot du fournisseur" onchange="Achats.setText(${i},'lot',this.value)">`, '1.3fr', false, 6));
+        r2.push(fg('DLUO', `<input type="date" value="${U.esc(l.dluo || '')}" onchange="Achats.setText(${i},'dluo',this.value)">`, '1.2fr', false, 7));
+      }
+      if (c.id === 'equipement') r2.push(fg('Amortissement (ans, option)', `<input type="number" step="any" min="0" value="${l.years || ''}" placeholder="ex : 5" onchange="Achats.setNum(${i},'years',this.value)">`, '1.2fr', false, 6));
     }
-    return `<div class="ach-line"><div class="ach-grid">${inner}</div><div style="text-align:right;margin-top:4px;"><button class="btn-icon" title="Retirer cette ligne" onclick="Achats.delLine(${i})">🗑️</button></div></div>`;
+    const row = (cls, list) => list.length ? `<div class="${cls}" style="grid-template-columns:${cls === 'ach-r2' ? '.8fr .9fr 1fr .9fr 1.2fr 1.3fr 1.2fr' : list.map(x => x.fr).join(' ')};">${list.map(x => x.h).join('')}</div>` : '';
+    return `<div class="ach-line"><div class="ach-grid">${row('ach-r1', r1)}${row('ach-r2', r2)}</div><div style="text-align:right;margin-top:4px;"><button class="btn-icon" title="Retirer cette ligne" onclick="Achats.delLine(${i})">🗑️</button></div></div>`;
   },
   renderEditor() {
     const d = this._d, sups = (Store.state.settings.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name)), oth = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));

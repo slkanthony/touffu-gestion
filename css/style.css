@@ -1274,3 +1274,22 @@ th.ctr, td.ctr { text-align: center; }
 #main a:not([class]):visited, .modal a:not([class]):visited { color: var(--caramel); }
 :root[data-theme="dark"] #main a:not([class]), :root[data-theme="dark"] .modal a:not([class]), :root[data-theme="dark"] #main a:not([class]):visited { color: var(--caramel-2); }
 #main a:not([class]):hover, .modal a:not([class]):hover { text-decoration-thickness: 2px; filter: brightness(1.15); }
+
+/* Achats : ligne de facture en deux rangées à colonnes fixes (ordinateur) ; tablette et téléphone : retour à la ligne propre */
+.ach-grid { display: block; }
+.ach-r1, .ach-r2 { display: grid; gap: 8px 12px; align-items: end; }
+.ach-r1 { margin-bottom: 8px; }
+.ach-grid .fg { min-width: 0; margin: 0; }
+.ach-chk { white-space: nowrap; }
+/* selon la largeur de la LIGNE (pas de l'écran) : le menu latéral et les marges ne faussent plus le calcul */
+.ach-line { container-type: inline-size; }
+@container (max-width: 900px) {
+  .ach-r2 > .fg { grid-column: auto !important; }
+  .ach-r2 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .ach-r1 { grid-template-columns: 1fr 1.4fr !important; }
+  .ach-r1 > .ach-wide { grid-column: 1 / -1; }
+}
+@container (max-width: 560px) {
+  .ach-r1 { grid-template-columns: 1fr !important; }
+  .ach-r2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
