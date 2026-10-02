@@ -482,19 +482,32 @@ const B2B = {
     const iban = String(S.payIban || '').trim(), holder = String(S.payHolder || '').trim(), bic = String(S.payBic || '').trim();
     const ibanLines = (q.iban !== false && iban) ? [].concat(['RIB :'], holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
     const msg = String(q.msg != null ? q.msg : (S.payMessage || '')).trim();
-    return { ibanLines, msg };
+    return { ibanLines, msg, refHint: ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '' };
   },
+  /* N° de devis (voir devis.js) : un état par entreprise (nom saisi) et par type de tarif, repris pendant 30 jours ; la lettre avance seulement si le contenu change */
+  _dvKey() { return this._qt.type + '|' + String(this._qt.who || '').trim().toLowerCase(); },
+  _dvState() {
+    const m = Store.state.meta; m.devisB2B = m.devisB2B || {};
+    let st = m.devisB2B[this._dvKey()];
+    if (!st || (st.ts && Date.now() - st.ts > 30 * 86400000)) st = m.devisB2B[this._dvKey()] = { ...Devis.blank(), ts: 0 };
+    return st;
+  },
+  _dvHash() { const { rows } = this._qtRows(); return Devis.hash({ t: this._qt.type, r: rows.map(r => [r.key, r.qty, Math.round(r.price * 100)]) }); },
+  _dvShow() { return Devis.show(this._dvState(), this._dvHash()); },
+  _dvCommit() { const st = this._dvState(), no = Devis.commit(st, this._dvHash()); st.ts = Date.now(); Store.save('meta'); this._qtNoRefresh(); return no; },
+  _qtNoRefresh() { const e = document.getElementById('qt_no'); if (e) e.textContent = this._dvShow(); },
   _qtTotalLabel() { return this._qt.type === 'micro' ? 'Total' : 'Total HT'; },
   _qtRecoLabel() { return this._qt.type === 'micro' ? 'Total revente conseillé' : 'Total revente conseillé TTC'; },
   _qtTotalsTxt() { const { devis, total, totalReco } = this._qtRows(true); return devis ? this._qtTotalLabel() + ' : ' + U.eur(total) + '<br><span style="font-weight:600;font-size:.95rem;color:var(--caramel);">' + this._qtRecoLabel() + ' : ' + U.eur(totalReco) + '</span>' : ''; },
   _qtInner() {
     const { all, devis, total } = this._qtRows(true), c = this._qtCols(), x = this._qtExtras();
     const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
-    return `<div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
+    return `<p style="margin:0 10px 6px;font-weight:800;">Devis n° <span id="qt_no">${U.esc(this._dvShow())}</span> <span class="muted" style="font-weight:400;font-size:.8rem;">— définitif à la copie ; la lettre avance si tu modifies le devis</span></p><div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
       <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);"><th style="padding:7px 10px;width:34px;"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th>${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
       <tbody>${all.map((r, i) => `<tr id="qt_row_${i}" style="border-bottom:1px solid var(--card-border);${r.on ? '' : 'opacity:.4;'}"><td style="padding:6px 10px;"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="1" step="1" value="${r.qty}" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${r.on ? U.eur(r.sub) : ''}</td></tr>`).join('')}</tbody></table></div>
       <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${this._qtTotalsTxt()}</div>
       ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
+      ${x.refHint ? `<p style="margin:6px 10px 0;font-style:italic;">${U.esc(x.refHint)}</p>` : ''}
       ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
   },
   /* Quantité saisie : mise à jour sur place (sous-total + total), sans redessiner le tableau (le défilement reste). */
@@ -506,6 +519,7 @@ const B2B = {
     const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.on ? U.eur(r2.sub) : '';
     const inp = document.querySelectorAll('#qt_box input[type=number]')[i]; if (inp && String(inp.value) !== String(r2.qty)) inp.value = r2.qty;
     const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
+    this._qtNoRefresh();
   },
   /* Case d'une ligne : la ligne décochée sort du devis (total, images, texte) mais reste affichée, grisée. */
   _qtOn(i, on) {
@@ -517,6 +531,7 @@ const B2B = {
     const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.on ? U.eur(r2.sub) : '';
     const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
     const all = document.getElementById('qt_all'); if (all) all.checked = a2.every(x => x.on);
+    this._qtNoRefresh();
   },
   _qtAll(on) {
     this._qt.off = {};
@@ -529,7 +544,7 @@ const B2B = {
     if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
     const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
-    const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value"></div>
+    const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value;B2B._qtNoRefresh()"></div>
       <p class="muted" style="margin:0 0 4px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
       <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne. Décoche les variantes que tu ne veux pas proposer.</p>
       <div id="qt_box">${this._qtInner()}</div>
@@ -568,7 +583,7 @@ const B2B = {
     const tmp = document.createElement('canvas').getContext('2d');
     const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > innerW - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
     const blocks = [];
-    if (last && x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines });
+    if (last && x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines.concat(x.refHint ? wrap(x.refHint, font(500, 15)) : []) });
     if (last && x.msg) blocks.push({ f: font(500, 16), l: wrap(x.msg, font(500, 16)) });
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
     const totalH = last && devis ? 84 : 0;
@@ -580,8 +595,11 @@ const B2B = {
     const pg = pageCount > 1 ? `${pageNo}/${pageCount}` : '';
     if (pg) { g.fillStyle = car; g.font = font(700, 16); g.textAlign = 'right'; g.fillText(pg, W - pad, pad + 14); }
     g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'left';
-    let ttl = this._qtTitle(); while (g.measureText(ttl).width > innerW - (pg ? 70 : 0) && ttl.length > 8) ttl = ttl.slice(0, -2);
+    const dvNo = 'Devis n° ' + this._dvShow();
+    g.font = font(700, 18); const dvW = g.measureText(dvNo).width + 24; g.font = font(700, 26);
+    let ttl = this._qtTitle(); while (g.measureText(ttl).width > innerW - (pg ? 70 : 0) - dvW && ttl.length > 8) ttl = ttl.slice(0, -2);
     g.fillText(ttl, pad, pad + 14);
+    g.fillStyle = car; g.font = font(700, 18); g.textAlign = 'right'; g.fillText(dvNo, W - pad - (pg ? 64 : 0), pad + 14); g.fillStyle = fg; g.font = font(700, 26); g.textAlign = 'left';
     let y = pad + 56;
     // colonnes : liste de prix (4) ou devis (6, avec Qté et Sous-total)
     const L = devis ? { v: .36, p: .53, q: .61, s: .78, r: 1 } : { v: .52, p: .74, q: 0, s: 0, r: 1 };
@@ -618,6 +636,7 @@ const B2B = {
     try {
       const pages = this._qtPages(), n = pages.length;
       if (!n) { U.toast('Aucune ligne cochée.', true); return; }
+      this._dvCommit();   // le devis sort : numéro définitif (lettre suivante si modifié)
       this._qtImgs = [];
       for (let i = 0; i < n; i++) {
         const cv = await this._qtCanvas(pages[i], i + 1, n);
@@ -660,12 +679,13 @@ const B2B = {
   },
   quoteText() {
     if (!this._qtRows().rows.length) { U.toast('Aucune ligne cochée.', true); return; }
+    const dvNo = this._dvCommit();   // le devis sort : numéro définitif (lettre suivante si modifié)
     const { rows, keys, devis, total, totalReco } = this._qtRows(), x = this._qtExtras(), micro = this._qt.type === 'micro';
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
-    const text = [this._qtTitle(), ''].concat(
+    const text = [this._qtTitle(), 'Devis n° ' + dvNo, ''].concat(
       rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${devis ? r.qty + ' × ' : ''}${micro ? '' : 'HT '}${eur(r.price)}${devis ? ' = ' + eur(r.sub) : ''} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
       devis ? ['', this._qtTotalLabel() + ' : ' + eur(total), this._qtRecoLabel() + ' : ' + eur(totalReco)] : [],
-      x.ibanLines.length ? [''].concat(x.ibanLines) : [], x.msg ? ['', x.msg] : []).join('\n');
+      x.ibanLines.length ? [''].concat(x.ibanLines, x.refHint ? [x.refHint] : []) : [], x.msg ? ['', x.msg] : []).join('\n');
     this._recordExport(keys);
     const fb = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fb); else fb();

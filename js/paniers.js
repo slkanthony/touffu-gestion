@@ -655,7 +655,10 @@ const Paniers = {
     const pre = sub - red + ship, bal = Clients.balanceOf(this._shClient || this.client);
     const av = this._balOn !== false && bal > 0 ? Math.round(Math.min(bal, Math.max(0, pre)) * 100) / 100 : 0;   // avoir déduit
     const det = this._balOn !== false && bal < 0 ? -bal : 0;   // dette à régler
-    return { lines, sub, red, redPct: this.reduction, ship, av, det, bal, total: pre - av + det, x: this._shareExtras() };
+    // n° de devis : prévu tant que rien n'est sorti ; lettre suivante si le contenu a changé depuis la dernière sortie (voir devis.js)
+    const h = Devis.hash({ l: lines.map(l => [l.name, l.variant, l.qty, l.unit, l.dog]), r: red, s: ship, a: av, t: det, m: this._shMode || '' });
+    if (!this._dv) this._dv = Devis.blank();
+    return { lines, sub, red, redPct: this.reduction, ship, av, det, bal, total: pre - av + det, no: Devis.show(this._dv, h), h, x: this._shareExtras() };
   },
   /* Blocs facultatifs sous le total (réglés dans Paramètres → Paniers & livraison) : n'apparaissent que s'ils sont remplis */
   _payList() {
@@ -689,12 +692,20 @@ const Paniers = {
     const who = o.who !== false ? this._whoLine() : '';
     const valid = this._shValid ? 'Devis valable jusqu\'au ' + U.frDate(this._shValid) : '';
     const mode = this._shMode === 'cc' ? 'Mode de remise : Click & Collect (retrait)' : this._shMode === 'liv' ? 'Mode de remise : Livraison' : '';
-    return { pay, ibanLines, msg, who, valid, mode };
+    const refHint = ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '';
+    return { pay, ibanLines, msg, who, valid, mode, refHint };
+  },
+  /* Sortie du devis (copie image / texte, mise en attente) : le numéro devient définitif, la lettre avance si le contenu a changé */
+  _dvCommit() {
+    if (!this._dv) this._dv = Devis.blank();
+    const no = Devis.commit(this._dv, this._shareData().h);
+    this._draft(); this._shareRefresh();
+    return no;
   },
   _shareInner(d) {
     const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:center;font-weight:700;">${U.qty(l.qty)}</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(l.unit)}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
     const x = d.x;
-    return `${x.who ? `<p style="margin:0 10px 8px;font-weight:700;color:var(--caramel);">${U.esc(x.who)}</p>` : ''}<table style="width:100%;border-collapse:collapse;font-size:1rem;">
+    return `${d.no ? `<p style="margin:0 10px 6px;font-weight:800;">Devis n° ${U.esc(d.no)}</p>` : ''}${x.who ? `<p style="margin:0 10px 8px;font-weight:700;color:var(--caramel);">${U.esc(x.who)}</p>` : ''}<table style="width:100%;border-collapse:collapse;font-size:1rem;">
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:center;">Qté</th><th style="padding:7px 10px;text-align:right;">Prix unit.</th><th style="padding:7px 10px;text-align:right;">Sous-total</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
@@ -709,6 +720,7 @@ const Paniers = {
       ${x.valid ? `<p style="margin:10px 10px 0;font-style:italic;">${U.esc(x.valid)}</p>` : ''}
       ${x.pay ? `<p style="margin:12px 10px 0;">${U.esc(x.pay)}</p>` : ''}
       ${x.ibanLines.length ? `<p style="margin:8px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
+      ${x.refHint ? `<p style="margin:6px 10px 0;font-style:italic;">${U.esc(x.refHint)}</p>` : ''}
       ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
   },
   _shareRefresh() {
@@ -784,15 +796,16 @@ const Paniers = {
     if (!this.basket.length) return;
     const list = this._pending(), now = Date.now();
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
-    const data = { name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
+    const no = this._dvCommit();   // mise en attente = le devis « sort » : numéro attribué ; lettre suivante si le contenu a changé depuis la dernière version
+    const data = { dv: { ...this._dv }, name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
       items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
     if (rec) Object.assign(rec, data);
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._pendId = rec.id; this._pendUpd = rec.updated;
-    Store.log('panier', `Panier en attente — ${name}`);
+    Store.log('panier', `Panier en attente — ${name} (devis ${no})`);
     Store.save('baskets', 'journal');
     U.closeModal();
-    U.toast('Panier mis en attente.');
+    U.toast('Panier mis en attente — devis n° ' + no + '.');
     this.render();
   },
   _ageTxt(rec) {
@@ -810,7 +823,7 @@ const Paniers = {
       const dogs = this._dogsOf(r.name).map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ');
       const exp = r.validUntil && r.validUntil < today;
       return `<tr${this._pendId === r.id ? ' style="background:var(--th-bg);"' : ''}>
-        <td class="col-name"><b>${U.esc(Clients.show(r.name))}</b>${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
+        <td class="col-name"><b>${U.esc(Clients.show(r.name))}</b>${r.dv && r.dv.base ? ` <span class="badge info" title="N° de devis">${Devis.no(r.dv)}</span>` : ''}${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
         <td><span class="badge ${age.d >= 7 ? 'warn' : ''}">⏳ ${age.txt}</span>${r.validUntil ? `<div class="${exp ? 'warn-txt' : 'muted'}" style="font-size:.8rem;">${exp ? '⚠ expiré le ' : 'valable jusqu\'au '}${U.frDate(r.validUntil)}</div>` : ''}</td>
         <td class="num" style="white-space:nowrap;">${nb} art.<br><b>${U.eur(tot)}</b></td>
         <td style="white-space:nowrap;text-align:right;">
@@ -836,7 +849,7 @@ const Paniers = {
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
     this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
     this._pendId = rec.id; this._pendUpd = rec.updated || rec.ts || 0;
-    this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || ''; this._balOn = rec.balOn !== false;
+    this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || ''; this._balOn = rec.balOn !== false; this._dv = rec.dv ? { ...rec.dv } : Devis.blank();
     this.proposals = null;
   },
   /* Le panier en cours est une copie du panier en attente : si celui-ci a été mis à jour depuis un autre appareil (téléphone ↔ PC), on repart de la version à jour */
@@ -849,7 +862,7 @@ const Paniers = {
   dupPending(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
     const now = Date.now();
-    const copy = Object.assign(JSON.parse(JSON.stringify(rec)), { id: U.uid(), ts: now, updated: now, label: (rec.label ? rec.label + ' ' : '') + '(copie)' });
+    const copy = Object.assign(JSON.parse(JSON.stringify(rec)), { id: U.uid(), ts: now, updated: now, dv: null, label: (rec.label ? rec.label + ' ' : '') + '(copie)' });
     this._pending().push(copy);
     Store.save('baskets'); this.render(); U.toast('Panier dupliqué.');
   },
@@ -917,7 +930,7 @@ const Paniers = {
     const wrap = (txt, f) => { tmp.font = f; const out = []; String(txt).split('\n').forEach(par => { let cur = ''; par.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (tmp.measureText(t).width > W - 2 * pad - 24 && cur) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
     const blocks = [];
     if (d.x.pay) blocks.push({ f: font(500, 16), l: wrap(d.x.pay, font(500, 16)) });
-    if (d.x.ibanLines.length) blocks.push({ f: font(700, 16), l: d.x.ibanLines });
+    if (d.x.ibanLines.length) blocks.push({ f: font(700, 16), l: d.x.ibanLines.concat(d.x.refHint ? wrap(d.x.refHint, font(500, 15)) : []) });
     if (d.x.msg) blocks.push({ f: font(500, 16), l: wrap(d.x.msg, font(500, 16)) });
     if (d.x.valid) blocks.unshift({ f: font(500, 16), l: [d.x.valid] });
     if (d.x.mode) blocks.unshift({ f: font(700, 16), l: [d.x.mode] });
@@ -930,6 +943,7 @@ const Paniers = {
     x.fillStyle = bg; x.fillRect(0, 0, W, H);
     x.fillStyle = fg; x.textBaseline = 'middle';
     x.font = font(700, 26); x.textAlign = 'left'; x.fillText('Votre panier Touffu', pad, pad + 14);
+    if (d.no) { x.font = font(700, 19); x.fillStyle = car; x.textAlign = 'right'; x.fillText('Devis n° ' + d.no, W - pad, pad + 14); x.fillStyle = fg; x.textAlign = 'left'; }
     let y = pad + 50;
     if (d.x.who) { x.fillStyle = car; x.font = font(700, 17); x.textAlign = 'left'; let wt = d.x.who; while (x.measureText(wt).width > W - 2 * pad && wt.length > 6) wt = wt.slice(0, -2); x.fillText(wt + (wt.length < d.x.who.length ? '…' : ''), pad, y + 6); y += whoH; }
     x.fillStyle = th; x.fillRect(pad, y, W - 2 * pad, 38);
@@ -975,6 +989,7 @@ const Paniers = {
   },
   async shareImage(mode) {
     try {
+      this._dvCommit();   // le devis sort : numéro définitif (lettre suivante si modifié)
       const cv = await this._shareCanvas();
       const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
       if (!blob) throw new Error('image');
@@ -994,19 +1009,20 @@ const Paniers = {
     } catch (e) { U.toast('Impossible de créer l’image.', true); }
   },
   copyShare() {
+    this._dvCommit();   // le devis sort : numéro définitif (lettre suivante si modifié)
     const d = this._shareData();
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
-    const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
+    const text = ['Votre panier Touffu' + (d.no ? ' — Devis n° ' + d.no : '')].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
       [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], ['Total TTC : ' + eur(d.total)],
-      d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
+      d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines, d.x.refHint ? [d.x.refHint] : []) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
   },
 
   clearBasket() {
     this.basket = [];
-    this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true;
+    this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true; this._dv = Devis.blank();
     this.proposals = null;
     this.render();
   },
@@ -1121,7 +1137,7 @@ const Paniers = {
   /* Brouillon : le panier en cours (et sa cliente) survit à un rechargement de la page, un changement de fenêtre ou une fermeture d'onglet. « Vider » l'efface. */
   _DK: 'touffu_paniers_draft',
   _draft() {
-    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
+    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
     try {
       if (!this._draftLoaded) {
         this._draftLoaded = true;
