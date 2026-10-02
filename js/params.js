@@ -169,8 +169,8 @@ const Params = {
           <div class="grid c2">
             ${this.listCard('Fournisseurs', 'suppliers', S.suppliers.map(s => Store.supplierName(s.id)), true)}
             ${typeof Achats !== 'undefined' && !App.isViewer && !App.isTeam ? Achats.othersCard() : ''}
-            ${this.eventsCard()}
           </div>
+          <div style="margin-top:4px;text-align:left;">${this.eventsCard()}</div>
 
           <hr class="sep" style="border-style:dashed;margin:16px 0;">
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🥩 Mastication</div>

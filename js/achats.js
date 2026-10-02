@@ -63,7 +63,7 @@ const Achats = {
     const o = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));
     return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Autres fournisseurs <span class="muted help">Outillage, équipement, lumières, assurance… : tout ce qui n'est pas de la mastication, de la matière première ou un consommable. Cette liste est distincte de celle des fournisseurs de produits et sert uniquement à la page Achats.</span></h3>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">${o.map(s => `<span class="tag" style="display:inline-flex;gap:6px;align-items:center;">${U.esc(s.name)} <button class="btn-icon" style="padding:0;" onclick="Achats.delOther('${s.id}')">×</button></span>`).join('') || '<span class="muted">Vide</span>'}</div>
-      <div class="frow mt"><input id="add_sup_other" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Achats.addOther()"><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.addOther()">Ajouter</button></div></div>`;
+      <div class="frow mt"><input id="add_sup_other" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Achats.addOther()"><button class="btn-ghost btn-sm" onclick="Achats.addOther()">＋</button></div></div>`;
   },
   addOther() {
     const n = U.val('add_sup_other').trim(); if (!n) return;
