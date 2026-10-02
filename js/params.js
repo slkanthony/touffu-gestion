@@ -303,7 +303,7 @@ const Params = {
         </div>
       </details>
 
-      <details class="fold card params-fold" ${this._dupOpen ? 'open' : ''} ontoggle="Params._dupOpen=this.open">
+      <details class="fold card params-fold" ${this._dupOpen ? 'open' : ''} ontoggle="Params._toggleDup(this)">
         <summary><h2 style="display:inline;">🔍 Contrôle des doublons</h2> <span class="muted">liaisons & liens fournisseur</span></summary>
         <div class="fold-body">${this._dupOpen ? this._renderDupCheck() : ''}</div>
       </details>
@@ -1434,6 +1434,10 @@ const Params = {
     S.labelTypes = S.labelTypes.filter(x => x.id !== id);
     if (S.labelDefaultId === id) { S.labelDefaultId = S.labelTypes[0].id; S.labelCost = U.num(S.labelTypes[0].cost); }
     Store.save('settings', 'catalogM'); App.rerender();
+  },
+  _toggleDup(el) {   // contenu calculé à l'ouverture seulement (jamais de calcul inutile) : on le remplit au moment du dépliage
+    this._dupOpen = el.open;
+    if (el.open) { const body = el.querySelector(':scope > .fold-body'); if (body && !body.innerHTML.trim()) body.innerHTML = this._renderDupCheck(); }
   },
   _renderDupCheck() {
     const link = o => o.kind === 'C' ? `<a href="#/stock/conso">${U.esc(o.name)}</a> <span class="muted">(consommable)</span>`
