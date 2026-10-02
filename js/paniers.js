@@ -664,7 +664,7 @@ const Paniers = {
   },
   _shOpt: { pay: true, iban: true, who: true },
   _shMsg: null,
-  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _shMode: '', _pendId: null,   // _shMode : '' | 'cc' (Click & Collect) | 'liv' (livraison)
+  _shClient: '', _shLabel: '', _shNote: '', _shValid: '', _shMode: '', _pendId: null, _pendUpd: 0,   // _shMode : '' | 'cc' (Click & Collect) | 'liv' (livraison)
   _dogsOf(name) {   // chiens référencés de la cliente (nom + race) — jamais en mode visite
     const c = Clients.find(name);
     return (c && !Clients.ro() ? (c.dogs || []) : []).filter(d => String(d.name || '').trim());
@@ -689,15 +689,15 @@ const Paniers = {
     return { pay, ibanLines, msg, who, valid, mode };
   },
   _shareInner(d) {
-    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.qty > 1 ? ` <span style="color:var(--caramel);">× ${l.qty}</span>` : ''}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
+    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:center;font-weight:700;">${U.qty(l.qty)}</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(l.unit)}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
     const x = d.x;
     return `${x.who ? `<p style="margin:0 10px 8px;font-weight:700;color:var(--caramel);">${U.esc(x.who)}</p>` : ''}<table style="width:100%;border-collapse:collapse;font-size:1rem;">
-        <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:right;">Prix TTC</th></tr></thead>
+        <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:center;">Qté</th><th style="padding:7px 10px;text-align:right;">Prix unit.</th><th style="padding:7px 10px;text-align:right;">Sous-total</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
-          ${d.red > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="2" style="padding:7px 10px;text-align:right;">Réduction (${U.qty(d.redPct)} %)</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.red)}</td></tr>` : ''}
-          ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="2" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
-          <tr style="border-top:2px solid var(--caramel);"><td colspan="2" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
+          ${d.red > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Réduction (${U.qty(d.redPct)} %)</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.red)}</td></tr>` : ''}
+          ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
+          <tr style="border-top:2px solid var(--caramel);"><td colspan="4" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
       </table>
       ${x.mode ? `<p style="margin:10px 10px 0;font-weight:700;">${U.esc(x.mode)}</p>` : ''}
@@ -775,7 +775,7 @@ const Paniers = {
       items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
     if (rec) Object.assign(rec, data);
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
-    this._pendId = rec.id;
+    this._pendId = rec.id; this._pendUpd = rec.updated;
     Store.log('panier', `Panier en attente — ${name}`);
     Store.save('baskets', 'journal');
     U.closeModal();
@@ -815,12 +815,23 @@ const Paniers = {
   async resume(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
     if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
-    this.basket = JSON.parse(JSON.stringify(rec.items || []));
-    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
-    this._pendId = id; this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || '';
-    this.proposals = null;
+    this._loadRec(rec);
     this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
     U.toast('Panier rechargé — modifie-le puis « Partager » → « Mettre à jour ».');
+  },
+  _loadRec(rec) {
+    this.basket = JSON.parse(JSON.stringify(rec.items || []));
+    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
+    this._pendId = rec.id; this._pendUpd = rec.updated || rec.ts || 0;
+    this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || '';
+    this.proposals = null;
+  },
+  /* Le panier en cours est une copie du panier en attente : si celui-ci a été mis à jour depuis un autre appareil (téléphone ↔ PC), on repart de la version à jour */
+  _syncPend() {
+    if (!this._pendId) return;
+    const rec = this._pending().find(x => x.id === this._pendId);
+    if (!rec) { this._pendId = null; this._pendUpd = 0; return; }   // supprimé ailleurs : le panier en cours devient un panier libre
+    if ((rec.updated || rec.ts || 0) > (this._pendUpd || 0)) { this._loadRec(rec); U.toast('Panier mis à jour depuis un autre appareil.'); }
   },
   dupPending(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
@@ -885,7 +896,8 @@ const Paniers = {
     const col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
     const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), line = col('--card-border', '#3a5266'), th = col('--th-bg', '#1c2b38');
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
-    const W = 720, pad = 32, rowH = 46;
+    const W = 860, pad = 32, rowH = 46, inner = W - 2 * pad;
+    const cVar = pad + inner * 0.50, cQty = pad + inner * 0.645, rUnit = pad + inner * 0.82, rTot = W - pad - 12;   // colonnes : variante · quantité · prix unitaire · sous-total
     const rows = d.lines.length + (d.ship > 0 ? 1 : 0) + (d.red > 0 ? 1 : 0);
     // blocs facultatifs sous le total : lignes déjà coupées à la largeur utile
     const tmp = document.createElement('canvas').getContext('2d');
@@ -910,34 +922,36 @@ const Paniers = {
     x.fillStyle = th; x.fillRect(pad, y, W - 2 * pad, 38);
     x.fillStyle = car; x.font = font(700, 13);
     x.textAlign = 'left'; x.fillText('PRODUIT', pad + 12, y + 19);
-    x.textAlign = 'center'; x.fillText('VARIANTE', pad + (W - 2 * pad) * 0.62, y + 19);
-    x.textAlign = 'right'; x.fillText('PRIX TTC', W - pad - 12, y + 19);
+    x.textAlign = 'center'; x.fillText('VARIANTE', cVar, y + 19); x.fillText('QTÉ', cQty, y + 19);
+    x.textAlign = 'right'; x.fillText('PRIX UNIT.', rUnit, y + 19); x.fillText('SOUS-TOTAL', rTot, y + 19);
     y += 38;
     x.strokeStyle = car; x.lineWidth = 2; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
     d.lines.forEach((l, i) => {
       if (i % 2) { x.fillStyle = th; x.globalAlpha = .45; x.fillRect(pad, y, W - 2 * pad, rowH); x.globalAlpha = 1; }
       x.fillStyle = fg; x.font = font(700, 18); x.textAlign = 'left';
-      let nm = l.name + (l.qty > 1 ? ' × ' + l.qty : '');
-      while (x.measureText(nm).width > (W - 2 * pad) * 0.5 && nm.length > 4) nm = nm.slice(0, -2);
-      x.fillText(nm + (nm.length < (l.name + (l.qty > 1 ? ' × ' + l.qty : '')).length ? '…' : ''), pad + 12, y + rowH / 2 - (l.dog ? 8 : 0));
+      let nm = l.name;
+      while (x.measureText(nm).width > inner * 0.40 && nm.length > 4) nm = nm.slice(0, -2);
+      x.fillText(nm + (nm.length < l.name.length ? '…' : ''), pad + 12, y + rowH / 2 - (l.dog ? 8 : 0));
       if (l.dog) { x.fillStyle = car; x.font = font(600, 13); x.fillText('→ pour ' + l.dog, pad + 12, y + rowH / 2 + 12); x.fillStyle = fg; }
-      x.font = font(500, 17); x.textAlign = 'center'; x.fillText(l.variant || '', pad + (W - 2 * pad) * 0.62, y + rowH / 2);
-      x.font = font(700, 18); x.textAlign = 'right'; x.fillText(U.eur(l.total), W - pad - 12, y + rowH / 2);
+      x.font = font(500, 17); x.textAlign = 'center'; x.fillText(l.variant || '', cVar, y + rowH / 2);
+      x.font = font(700, 18); x.fillText(U.qty(l.qty), cQty, y + rowH / 2);
+      x.font = font(500, 17); x.textAlign = 'right'; x.fillText(U.eur(l.unit), rUnit, y + rowH / 2);
+      x.font = font(700, 18); x.fillText(U.eur(l.total), rTot, y + rowH / 2);
       y += rowH;
     });
     if (d.red > 0) {
       x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
-      x.fillText('Réduction (' + U.qty(d.redPct) + ' %)', pad + (W - 2 * pad) * 0.62 + 40, y + rowH / 2); x.fillText('− ' + U.eur(d.red), W - pad - 12, y + rowH / 2);
+      x.fillText('Réduction (' + U.qty(d.redPct) + ' %)', rUnit, y + rowH / 2); x.fillText('− ' + U.eur(d.red), rTot, y + rowH / 2);
       y += rowH;
     }
     if (d.ship > 0) {
       x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
-      x.fillText('Livraison', pad + (W - 2 * pad) * 0.62 + 40, y + rowH / 2); x.fillText(U.eur(d.ship), W - pad - 12, y + rowH / 2);
+      x.fillText('Livraison', rUnit, y + rowH / 2); x.fillText(U.eur(d.ship), rTot, y + rowH / 2);
       y += rowH;
     }
     x.strokeStyle = car; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
     x.fillStyle = fg; x.font = font(800, 21); x.textAlign = 'right';
-    x.fillText('Total TTC', pad + (W - 2 * pad) * 0.62 + 40, y + 36); x.fillText(U.eur(d.total), W - pad - 12, y + 36);
+    x.fillText('Total TTC', rUnit, y + 36); x.fillText(U.eur(d.total), rTot, y + 36);
     y += 72; x.textAlign = 'left';
     blocks.forEach(b => { x.font = b.f; x.fillStyle = fg; b.l.forEach(t => { x.fillText(t, pad + 12, y + 12); y += 24; }); y += 12; });
     return cv;
@@ -966,7 +980,7 @@ const Paniers = {
     const d = this._shareData();
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu'].concat(d.x.who ? [d.x.who] : [], [''],
-      d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + l.qty : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
+      d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
       [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], ['Total TTC : ' + eur(d.total)],
       d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
@@ -975,7 +989,7 @@ const Paniers = {
 
   clearBasket() {
     this.basket = [];
-    this._pendId = null; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = '';
+    this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = '';
     this.proposals = null;
     this.render();
   },
@@ -1090,7 +1104,7 @@ const Paniers = {
   /* Brouillon : le panier en cours (et sa cliente) survit à un rechargement de la page, un changement de fenêtre ou une fermeture d'onglet. « Vider » l'efface. */
   _DK: 'touffu_paniers_draft',
   _draft() {
-    const keys = ['basket', 'proposals', 'client', '_pendId', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
+    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
     try {
       if (!this._draftLoaded) {
         this._draftLoaded = true;
@@ -1227,6 +1241,7 @@ const Paniers = {
       'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
       'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct']);
     this._draft();
+    this._syncPend(); this._draft();
     const S = Store.state.settings;
     const meatTypes = (S.meatTypes || []).slice().sort(U.sortFr);
     const products = Store.state.stockM;
