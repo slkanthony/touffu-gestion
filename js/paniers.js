@@ -805,8 +805,10 @@ const Paniers = {
     Store.log('panier', `Panier en attente — ${name} (devis ${no})`);
     Store.save('baskets', 'journal');
     U.closeModal();
-    U.toast('Panier mis en attente — devis n° ' + no + '.');
-    this.render();
+    U.toast('Panier mis en attente — devis n° ' + no + ' (« Reprendre » pour le retrouver).');
+    // Le panier est maintenant dans la liste « en attente » : l'espace de travail repart à vide (plus de panier en cours, plus de blocage au « Reprendre »)
+    this.clearBasket(); this.client = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   },
   _ageTxt(rec) {
     const d = Math.floor((Date.now() - (rec.updated || rec.ts)) / 86400000);
