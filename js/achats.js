@@ -36,6 +36,28 @@ const Achats = {
   ttcFactor(p) { const b = this.base(p); return this.isHT(p) && b > 0 ? 1 + this.vatSum(p) / b : 1; },
   supplierLabel(p) { return p.supplierId ? Store.supplierName(p.supplierId) : '—'; },
   others() { const S = Store.state.settings; return S.suppliersOther || (S.suppliersOther = []); },   // fournisseurs hors produits (outillage, équipement, frais…)
+  lineTTC(p) { const f = this.ttcFactor(p); return this._eff(p).map(x => x * f); },   // montant payé (TTC) imputé à chaque ligne : livraison, remise et TVA comprises (somme = payé)
+
+  /* Investissements : une ligne « Investissement / machine » avec une durée d'amortissement alimente la liste d'amortissement des
+     Paramètres (settings.uvEquip, entrée marquée src = « facture|ligne »). Réconciliation idempotente : crée les entrées manquantes,
+     retire celles dont la facture ou la ligne n'existe plus (suppression, annulation, durée retirée). */
+  reconcileEquip() {
+    const S = Store.state.settings; if (!S) return;
+    if (!Array.isArray(S.uvEquip) && typeof Params !== 'undefined') Params._uvEquipMigrate();
+    if (!Array.isArray(S.uvEquip)) S.uvEquip = [];
+    const want = new Map();
+    this.list().forEach(p => { const ttc = this.lineTTC(p); (p.lines || []).forEach((l, i) => { if (l.cat === 'equipement' && U.num(l.years) > 0) want.set(p.id + '|' + l.id, { p, l, price: this.r2(ttc[i]) }); }); });
+    let changed = false;
+    const before = S.uvEquip.length;
+    S.uvEquip = S.uvEquip.filter(e => !e.src || want.has(e.src));
+    if (S.uvEquip.length !== before) changed = true;
+    want.forEach((w, key) => {
+      const e = S.uvEquip.find(x => x.src === key);
+      if (!e) { S.uvEquip.push({ id: U.uid(), name: w.l.label, price: w.price, years: U.num(w.l.years), buyYear: +String(w.p.date).slice(0, 4), buyDate: w.p.date, category: 'commun', src: key }); changed = true; }
+      else if (e.price !== w.price && !e.edited) { e.price = w.price; changed = true; }
+    });
+    if (changed) Store.save('settings');
+  },
   /* Référentiel Paramètres : fournisseurs « autres » (outillage, équipement, frais…), séparés des fournisseurs de produits */
   othersCard() {
     const o = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));
@@ -164,7 +186,7 @@ const Achats = {
   /* ---------- page principale ---------- */
   render() {
     if (App.isViewer || App.isTeam) { App.mount('<div class="empty"><span class="big">🔒</span>Page réservée à l\'administrateur.</div>'); return; }
-    U.syncFilters('achats', this.f);
+    U.syncFilters('achats', this.f); this.reconcileEquip();
     this._loadDraft();
     if (this.mode === 'edit' && this._d) this.renderEditor(); else this.renderList();
   },
@@ -361,7 +383,7 @@ const Achats = {
     this._revertStock(p, snaps);
     Store.state.purchases = this.list().filter(x => x.id !== id);
     const entry = Store.log('achat', `Facture supprimée — ${this.supplierLabel(p)} ${U.frDate(p.date)}`, { type: 'restoreBatch', data: snaps });
-    Store.save('purchases', 'consumables', 'materials'); this.render();
+    Store.save('purchases', 'consumables', 'materials'); this.reconcileEquip(); this.render();
     U.toast('Facture supprimée' + (touched ? ' · stock remis comme avant l\'achat.' : '.'), false, entry.id);
   },
   setReimbursed(id, on) {
@@ -553,15 +575,15 @@ const Achats = {
     if (old) { rec.created = old.created || Date.now(); rec.updated = Date.now(); Object.keys(old).forEach(k => delete old[k]); Object.assign(old, rec); }
     else { rec.created = Date.now(); this.list().push(rec); }
     const entry = Store.log('achat', (old ? 'Facture modifiée — ' : 'Facture ajoutée — ') + `${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: snaps });
-    Store.save('purchases', 'consumables', 'materials');
+    Store.save('purchases', 'consumables', 'materials'); this.reconcileEquip();
     this._lastCat = lines[lines.length - 1].cat;
     this._d = null; this._editId = ''; this._dirty = false; this.mode = 'list'; this._clearDraft();
     this.render(); U.toast(`Facture enregistrée : ${U.eur(rec.total)}.` + (notes.length ? ' Stock : ' + notes.join(' · ') : ''), false, entry.id);
   },
 
   /* ---------- export : registre des achats (une ligne par article) ---------- */
-  exportCsv() {
-    const rows = this._filtered(); if (!rows.length) { U.toast('Aucune facture à exporter avec ces filtres.', true); return; }
+  exportCsv(rowsOverride) {
+    const rows = rowsOverride || this._filtered(); if (!rows.length) { U.toast('Aucune facture à exporter avec ces filtres.', true); return; }
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', n = v => String(this.r2(v)).replace('.', ',');
     const head = ['Date', 'Fournisseur', 'N_facture', 'Paiement', 'Paye_par', 'Rembourse_le', 'Categorie', 'Designation', 'Quantite', 'Unite', 'Prix_unitaire', 'Total_ligne', 'Lot', 'DLUO', 'Livraison_facture', 'Remise_facture', 'Mode_prix', 'TVA_facture', 'Total_paye_TTC'];
     const out = [head.join(';')];

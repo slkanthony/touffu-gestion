@@ -7,6 +7,7 @@ const App = {
 
     { id: 'paniers', ico: '🧺', label: 'Paniers', group: 'Stock & ventes' },
     { id: 'achats', ico: '🧾', label: 'Achats', group: 'Stock & ventes', admin: true },
+    { id: 'compta', ico: '📒', label: 'Compta', group: 'Analyse & site', admin: true },
 
     { id: 'catalogue', ico: '🥩', label: 'Prix mastication', group: 'Catalogue & prix' },
     { id: 'accessoires', ico: '🐕', label: 'Accessoires', group: 'Catalogue & prix' },
@@ -18,7 +19,7 @@ const App = {
   ],
   renderers: {
     dashboard: () => App.renderDashboard(), ventes: () => Ventes.render(), stock: () => Stock.render(),
-    paniers: () => Paniers.render(), achats: () => Achats.render(),
+    paniers: () => Paniers.render(), achats: () => Achats.render(), compta: () => Compta.render(),
     catalogue: () => Catalogue.render(), accessoires: () => Accessoires.render(),
     calc: () => Calc.render(),
     b2b: () => B2B.render(), stats: () => Stats.render(), woo: () => Woo.render(), params: () => Params.render()
