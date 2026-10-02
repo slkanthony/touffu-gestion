@@ -12,7 +12,6 @@ const Params = {
   _refsOpen: false,
   _fabOpen: false,
   _skuOpen: false,
-  _mergeOpen: false,
   _importOpen: false,
   _varFilter: null,
   render() {
@@ -196,12 +195,6 @@ const Params = {
         </div>
       </details>
 
-      <details class="fold card params-fold" ${this._shipOpen ? 'open' : ''} ontoggle="Params._shipOpen=this.open">
-        <summary><h2 style="display:inline;">📦 Expédition</h2> <span class="muted">(grille Boxtal / Mondial Relay, poids des emballages)</span></summary>
-        <div class="fold-body">
-          ${this.shipCard()}
-        </div>
-      </details>
 
       <details class="fold card params-fold" ${this._calcOpen ? 'open' : ''} ontoggle="Params._calcOpen=this.open">
         <summary><h2 style="display:inline;">🧮 Calculateur</h2> <span class="muted">(mode de référence par catégorie de matière)</span></summary>
@@ -315,13 +308,7 @@ const Params = {
         <div class="fold-body">${this._dupOpen ? this._renderDupCheck() : ''}</div>
       </details>
 
-      <details class="fold card params-fold" ${this._mergeOpen ? 'open' : ''} ontoggle="Params._mergeOpen=this.open">
-        <summary><h2 style="display:inline;">🧹 Fusionner les doublons</h2></summary>
-        <div class="fold-body">
-        <p class="muted help mb0">Si un import répété a créé des doublons (même produit ou même matière apparaissant plusieurs fois), fusionne-les ici : les quantités et les lots sont additionnés, un seul exemplaire est conservé.</p>
-        <button class="btn-danger mt" onclick="Params.mergeDuplicatesPrompt()">🧹 Fusionner les doublons maintenant</button>
-        </div>
-      </details>
+
 
       <details class="fold card params-fold" ${this._importOpen ? 'open' : ''} ontoggle="Params._importOpen=this.open">
         <summary><h2 style="display:inline;">📥 Import & sauvegarde</h2></summary>
@@ -585,27 +572,6 @@ const Params = {
 
   /* 🧮 Calculateur : mode de référence par catégorie de matière (sangle/bouclerie/autre).
      'shared' = une référence partagée par largeur/type ; 'perItem' = une référence par article. */
-  /* ---------- Expédition (2026-10-02) : grille de tarifs par tranche de poids + poids des emballages (voir ship.js) ---------- */
-  shipCard() {
-    const S = Store.state.settings, t = Ship.tiers(), vat = U.num(S.vatRate ?? 20);
-    return `<p class="muted help" style="font-size:.85rem;">Grille de ton transporteur (Boxtal → Mondial Relay), prix <b>HT</b> par tranche : « jusqu'à X g ». Tu paies TTC et tu ne récupères pas la TVA : l'application affiche donc le prix TTC (HT + ${U.qty(vat)} %). Dans un panier ou une vente en livraison, elle estime le poids du colis, la tranche et le coût, et te dit quand il faut peser. Mets à jour la grille quand les tarifs changent.</p>
-      <div class="frow" style="max-width:520px;margin-bottom:10px;">
-        <div class="fg"><label>Poids du carton + calage (g)</label><input type="number" step="any" min="0" value="${U.num(S.shipBoxG) || ''}" placeholder="0" onchange="Params.setShipNum('shipBoxG',this.value)"></div>
-        <div class="fg"><label>Poids d'un sachet / article emballé (g)</label><input type="number" step="any" min="0" value="${U.num(S.shipBagG) || ''}" placeholder="0" onchange="Params.setShipNum('shipBagG',this.value)"></div>
-      </div>
-      <div class="label-types" style="max-width:520px;">
-        <div class="lt-head" style="display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:8px;"><span>Jusqu'à (g)</span><span>Prix HT (€)</span><span>Prix TTC</span><span></span></div>
-        ${t.map((x, i) => `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:8px;align-items:center;margin-bottom:6px;"><input type="number" step="any" min="1" value="${x.maxG}" onchange="Params.setShipTier(${i},'maxG',this.value)"><input type="number" step="0.01" min="0" value="${x.priceHT}" onchange="Params.setShipTier(${i},'priceHT',this.value)"><span class="muted">${U.eur(Ship.ttc(x.priceHT))}</span><button class="btn-icon" title="Retirer cette tranche" onclick="Params.delShipTier(${i})">🗑️</button></div>`).join('')}
-      </div>
-      <button class="btn-ghost btn-sm" onclick="Params.addShipTier()">＋ Ajouter une tranche</button>`;
-  },
-  setShipNum(k, v) { Store.state.settings[k] = Math.max(0, U.num(v)); Store.save('settings'); },
-  setShipTier(i, f, v) {
-    const t = Ship.tiers(); if (!t[i]) return; t[i][f] = Math.max(0, U.num(v));
-    Store.state.settings.shipTiers = t.filter(x => x.maxG > 0); Store.save('settings'); App.rerender();
-  },
-  delShipTier(i) { const t = Ship.tiers(); t.splice(i, 1); Store.state.settings.shipTiers = t; Store.save('settings'); App.rerender(); },
-  addShipTier() { const t = Ship.tiers(), last = t[t.length - 1]; t.push({ maxG: last ? last.maxG + 5000 : 1000, priceHT: last ? last.priceHT : 0 }); Store.state.settings.shipTiers = t; Store.save('settings'); App.rerender(); },
   calcModeCard() {
     const kinds = Store.materialKinds();
     const perItem = kinds.filter(k => Store.calcRefMode(k.value) === 'perItem');
@@ -2010,52 +1976,6 @@ const Params = {
     Store.log('stock', `Variantes uniformisées en majuscules (${changed})`);
     Store.save('stockM'); Store.save('catalogM');
     U.toast(changed ? `${changed} variante(s) mise(s) en majuscules et fusionnée(s) si besoin.` : 'Toutes les variantes étaient déjà uniformes.');
-    App.rerender();
-  },
-
-  /* ---------- fusion des doublons (produits/matières importés plusieurs fois) ---------- */
-  mergeDuplicates() {
-    const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-    const counts = { stockM: 0, materials: 0, consumables: 0 };
-
-    const stockGroups = {};
-    Store.state.stockM.forEach(p => { const k = norm(p.name) + '|' + norm(p.meatType); (stockGroups[k] = stockGroups[k] || []).push(p); });
-    Store.state.stockM = Object.values(stockGroups).map(group => {
-      const [keep, ...dupes] = group;
-      dupes.forEach(dup => {
-        dup.variants.forEach(dv => {
-          const label = Pricing.labelVariant(dv);
-          const kv = keep.variants.find(v => Pricing.labelVariant(v) === label);
-          if (kv) kv.lots.push(...dv.lots); else keep.variants.push(dv);
-        });
-        counts.stockM++;
-      });
-      this.mergeSameLabelVariants(keep);
-      return keep;
-    });
-
-    const mergeFlat = (arr) => {
-      const groups = {};
-      arr.forEach(it => { const k = norm(it.name); (groups[k] = groups[k] || []).push(it); });
-      let n = 0;
-      const out = Object.values(groups).map(group => {
-        const [keep, ...dupes] = group;
-        dupes.forEach(d => { keep.qty = U.num(keep.qty) + U.num(d.qty); n++; });
-        return keep;
-      });
-      return { out, n };
-    };
-    const rm = mergeFlat(Store.state.materials); Store.state.materials = rm.out; counts.materials = rm.n;
-    const rc = mergeFlat(Store.state.consumables); Store.state.consumables = rc.out; counts.consumables = rc.n;
-    return counts;
-  },
-  async mergeDuplicatesPrompt() {
-    if (!await U.confirm('Fusionner tous les doublons détectés (même nom) ? Les quantités et lots seront additionnés, cette action est irréversible.')) return;
-    const r = this.mergeDuplicates();
-    const total = r.stockM + r.materials + r.consumables;
-    Store.log('stock', `Doublons fusionnés : ${r.stockM} mastication, ${r.materials} matières, ${r.consumables} conso`);
-    Store.save('stockM', 'materials', 'consumables');
-    U.toast(total ? `${total} doublon(s) fusionné(s) (${r.stockM} mastication, ${r.materials} matières, ${r.consumables} conso).` : 'Aucun doublon détecté.');
     App.rerender();
   },
 

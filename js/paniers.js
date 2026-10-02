@@ -711,12 +711,10 @@ const Paniers = {
       ${x.ibanLines.length ? `<p style="margin:8px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
   },
-  _shipBox() { return Ship.html(Ship.estimate(this.basket.map(b => ({ pId: b.pId, vId: b.vId, qty: b.qty })))); },   // interne : jamais sur le devis du client
   _shareRefresh() {
     const box = document.getElementById('pan_share');
     if (box) box.innerHTML = this._shareInner(this._shareData());
     const bb = document.getElementById('pan_bal'); if (bb) bb.innerHTML = this._balBox();
-    const sb = document.getElementById('pan_ship'); if (sb) sb.innerHTML = this._shipBox();
     const dg = document.getElementById('pan_dogs');
     if (dg) { const dogs = this._dogsOf(this._shClient); dg.textContent = dogs.length ? '🐕 ' + dogs.map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ') : ''; }
   },
@@ -759,7 +757,6 @@ const Paniers = {
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Mode de remise (affiché sur le devis)</div>
         <div id="pan_mode" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${this._modeBtns()}</div>
         <div id="pan_bal">${this._balBox()}</div>
-        <div id="pan_ship" style="margin-bottom:12px;">${this._shipBox()}</div>
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${chk('who', 'Nom de la cliente et des chiens')}${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
         <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message pour ce client (vide = rien d'affiché)" oninput="Paniers._shSetMsg(this.value)">${U.esc(String(S.payMessage || ''))}</textarea>

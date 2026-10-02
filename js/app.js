@@ -305,7 +305,7 @@ const App = {
     B2B._prodOpen = {}; B2B._meatFilterOpen = false;
     Params._sachetsOpen = false; Params._abbrevOpen = false; Params._varPresetsOpen = false;
     Params._financeOpen = false; Params._refsOpen = false; Params._skuOpen = false;
-    Params._mergeOpen = false; Params._importOpen = false; Params._sachetTypeOpen = {};
+    Params._importOpen = false; Params._sachetTypeOpen = {};
     this._dashOverviewOpen = false; this._dashValMeatOpen = false;
     this._dashValCatOpen = false; this._dashCAOpen = false;
   },

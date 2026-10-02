@@ -1268,3 +1268,9 @@ th.ctr, td.ctr { text-align: center; }
 .ach-grand { font-size: 1.25rem; padding-bottom: 6px; }
 .ach-grand b { color: var(--caramel); margin-left: 6px; }
 .ach-chk { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 9px 4px; text-transform: none; letter-spacing: 0; font-size: .9rem; }
+
+/* Liens simples lisibles (plus de bleu / violet « navigateur » sur fond sombre) */
+#main a:not([class]), .modal a:not([class]) { color: var(--caramel); text-decoration: underline; text-underline-offset: 2px; }
+#main a:not([class]):visited, .modal a:not([class]):visited { color: var(--caramel); }
+:root[data-theme="dark"] #main a:not([class]), :root[data-theme="dark"] .modal a:not([class]), :root[data-theme="dark"] #main a:not([class]):visited { color: var(--caramel-2); }
+#main a:not([class]):hover, .modal a:not([class]):hover { text-decoration-thickness: 2px; filter: brightness(1.15); }
