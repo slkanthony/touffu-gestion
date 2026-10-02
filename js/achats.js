@@ -435,9 +435,9 @@ const Achats = {
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
-    l.toStock = !!v && (c.link === 'C' || c.link === 'T' || c.link === 'M') && this._recent(this._d.date);   // cochée par défaut, sauf facture ancienne
+    l.toStock = !!v && (c.link === 'C' || c.link === 'T') && this._recent(this._d.date);   // consommable / matière : cochée par défaut (sauf facture ancienne) ; mastication : décochée, c'est toi qui choisis de suivre le lot
     if (v) {
-      const name = this.itemName(c.link, v); if (!String(l.label || '').trim() && name) l.label = name;
+      const name = this.itemName(c.link, v); if (name && (!String(l.label || '').trim() || l.label === l._auto)) { l.label = name; l._auto = name; }   // la désignation suit le produit choisi tant que tu ne l'as pas retapée
       if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m && !l.unit) l.unit = this.unitFrom(m.unit); }
       if (c.link === 'C') { const k = Store.state.consumables.find(x => x.id === v); if (k && !l.unit) l.unit = this.unitFrom(k.unit); }
     }
@@ -470,14 +470,15 @@ const Achats = {
   _pvText(l) {
     const pv = this._stockPreview(l); if (!pv) return '';
     const pack = this._packOf(l, pv.it);
-    return (l.applied ? '· déjà ajouté (+' + U.qty(l.applied.qty) + '), remis à jour à l\'enregistrement · ' : '') + 'stock actuel ' + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
+    return (l.applied ? 'déjà ajouté · ' : '') + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
   },
-  _recvBox(l, i) {
-    return `<div class="fg" style="grid-column:span 2;"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Réception à ranger <span class="muted">${l.recv ? (l.recv.closed ? '· tri terminé' : '· ' + (l.recv.dist || []).length + ' lot(s) déjà rangé(s)') : 'le lot sera proposé dans Stock → « ＋ Ajouter un lot »'}</span></label></div>`;
+  _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — décochée par défaut
+    const st = l.recv ? (l.recv.closed ? 'tri terminé' : (l.recv.dist || []).length + ' lot(s) rangé(s)') : '';
+    return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Coche pour suivre ce lot : il sera proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></label></div>`;
   },
-  _stockBox(l, i) {
+  _stockBox(l, i) {   // consommable / matière : la quantité achetée est ajoutée au stock à l'enregistrement
     if (!this._stockPreview(l)) return '';
-    return `<div class="fg" style="grid-column:span 2;"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Ajouter au stock <span class="muted" id="ach_pv_${i}">${this._pvText(l)}</span></label></div>`;
+    return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Ajouter <span class="muted" id="ach_pv_${i}">${this._pvText(l)}</span> <span class="muted help">Ajoute la quantité achetée au stock de cette fiche à l'enregistrement et met à jour son coût (dernier prix payé, livraison et remise réparties). Décoche pour une facture ancienne déjà comptée. Modifier ou supprimer la facture retire la quantité ajoutée.</span></label></div>`;
   },
   _lineHTML(l, i) {
     const c = this.cat(l.cat);
@@ -491,13 +492,13 @@ const Achats = {
       inner = `<div class="fg"><label>Catégorie</label>${catSel}</div>
         ${c.link ? `<div class="fg"><label>${c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock'}</label><select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select></div>` : ''}
         <div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
-        ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : ''}
         <div class="fg"><label>Quantité</label><input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)"></div>
         <div class="fg"><label>Unité</label><select onchange="Achats.setText(${i},'unit',this.value)">${(this.UNITS.includes(l.unit) || !l.unit ? this.UNITS : this.UNITS.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select></div>
         <div class="fg"><label>Prix unitaire (€ ${this._d && this.isHT(this._d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>
+        <div class="fg"><label>Total ligne</label><div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div></div>
+        ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : ''}
         ${c.id === 'mastication' ? `<div class="fg"><label>N° de lot</label><input value="${U.esc(l.lot || '')}" placeholder="n° de lot du fournisseur" onchange="Achats.setText(${i},'lot',this.value)"></div><div class="fg"><label>DLUO</label><input type="date" value="${U.esc(l.dluo || '')}" onchange="Achats.setText(${i},'dluo',this.value)"></div>` : ''}
-        ${c.id === 'equipement' ? `<div class="fg"><label>Amortissement (ans, optionnel)</label><input type="number" step="any" min="0" value="${l.years || ''}" placeholder="ex : 5" onchange="Achats.setNum(${i},'years',this.value)"></div>` : ''}
-        <div class="fg"><label>Total ligne</label><div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div></div>`;
+        ${c.id === 'equipement' ? `<div class="fg"><label>Amortissement (ans, optionnel)</label><input type="number" step="any" min="0" value="${l.years || ''}" placeholder="ex : 5" onchange="Achats.setNum(${i},'years',this.value)"></div>` : ''}`;
     }
     return `<div class="ach-line"><div class="ach-grid">${inner}</div><div style="text-align:right;margin-top:4px;"><button class="btn-icon" title="Retirer cette ligne" onclick="Achats.delLine(${i})">🗑️</button></div></div>`;
   },
