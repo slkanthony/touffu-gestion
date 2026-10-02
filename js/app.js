@@ -7,13 +7,13 @@ const App = {
 
     { id: 'paniers', ico: '🧺', label: 'Paniers', group: 'Stock & ventes' },
     { id: 'achats', ico: '🧾', label: 'Achats', group: 'Stock & ventes', admin: true },
-    { id: 'compta', ico: '📒', label: 'Compta', group: 'Analyse & site', admin: true },
 
     { id: 'catalogue', ico: '🥩', label: 'Prix mastication', group: 'Catalogue & prix' },
     { id: 'accessoires', ico: '🐕', label: 'Accessoires', group: 'Catalogue & prix' },
     { id: 'calc', ico: '🧮', label: 'Calculateur', group: 'Catalogue & prix' },
     { id: 'b2b', ico: '🤝', label: 'Revente pro', group: 'Catalogue & prix' },
     { id: 'stats', ico: '📊', label: 'Statistiques', group: 'Analyse & site' },
+    { id: 'compta', ico: '📒', label: 'Compta', group: 'Analyse & site', admin: true },
     { id: 'woo', ico: '🌐', label: 'Synchro', group: 'Analyse & site' },
     { id: 'params', ico: '⚙️', label: 'Paramètres', group: '' }
   ],
