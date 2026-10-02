@@ -4,7 +4,7 @@
    Le lien avec les ventes se fait par le NOM (sale.customerName, casse/espaces ignorés) : renommer un client met à jour ses ventes.
    Affiché dans Statistiques → 👤 Clients (admin seulement : données personnelles). */
 const Clients = {
-  _open: {}, _dogOpen: {}, _q: '', _sort: { k: 'name', dir: 'asc' },
+  _open: {}, _dogOpen: {}, _balOpen: {}, _q: '', _sort: { k: 'name', dir: 'asc' },
   key(n) { return String(n || '').trim().toLowerCase(); },
   list() { return Store.state.clients || (Store.state.clients = []); },
   find(name) { const k = this.key(name); return k ? this.list().find(c => this.key(c.name) === k) : null; },
@@ -60,11 +60,12 @@ const Clients = {
     this._recalc(c);
     const b = c.balance, log = c.balanceLog.slice().sort((x, y) => (y.ts || 0) - (x.ts || 0));
     const sum = !b ? 'Solde : 0 €' : b > 0 ? `Avoir : <b>${U.eur(b)}</b> (je lui dois)` : `Dette : <b>${U.eur(-b)}</b> (il me doit)`;
-    return `<div class="mt"><h3 style="margin-bottom:6px;">💶 Solde / avoir <span class="muted help">Positif = je lui dois (avoir : déduit automatiquement de sa prochaine commande). Négatif = il me doit (ajouté à sa prochaine commande). Le solde est la somme des lignes ci-dessous : tu peux modifier ou supprimer une ligne.</span></h3>
-      <div style="margin-bottom:8px;">${sum}</div>
+    const col = b > 0 ? 'var(--ok)' : b < 0 ? 'var(--alerte)' : 'var(--card-border)';   // vert = avoir (je lui dois), rouge = dette (il me doit)
+    return `<details class="fold mt" ${this._balOpen[c.id] ? 'open' : ''} ontoggle="Clients._balOpen['${c.id}']=this.open" style="border:1px solid ${col};border-left:5px solid ${col};border-radius:10px;${b ? `background:color-mix(in srgb, ${col} 10%, transparent);` : ''}"><summary style="padding:10px 14px;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><b>💶 Solde / avoir</b><span class="muted help">Positif = je lui dois (avoir : déduit automatiquement de sa prochaine commande). Négatif = il me doit (ajouté à sa prochaine commande). Le solde est la somme des lignes ci-dessous : tu peux modifier ou supprimer une ligne.</span><span style="${b ? `color:${col};font-weight:700;` : ''}">${sum}</span></summary>
+      <div class="fold-body" style="padding:6px 14px 12px;">
       <div class="frow" style="align-items:flex-end;gap:8px;"><div class="fg" style="max-width:150px;"><label>Montant (€)</label><input id="cl_ba_${c.id}" type="number" step="0.01" placeholder="ex : 1,70 ou -3"></div><div class="fg"><label>Motif</label><input id="cl_bn_${c.id}" placeholder="ex : monnaie rendue en trop le 02/10"></div><button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Clients.addBalEntry('${c.id}')">＋ Ajouter</button></div>
       ${log.length ? `<table class="pack-tbl" style="margin-top:8px;"><tbody>${log.map(l => `<tr><td class="muted" style="white-space:nowrap;">${l.ts ? new Date(l.ts).toLocaleDateString('fr-FR') : '—'}</td><td style="width:110px;"><input type="number" step="0.01" value="${U.num(l.amount)}" onchange="Clients.editBalEntry('${c.id}','${l.id}','amount',this.value)"></td><td><input value="${U.esc(l.note || '')}" onchange="Clients.editBalEntry('${c.id}','${l.id}','note',this.value)"></td><td><button class="btn-icon" title="Supprimer cette ligne" onclick="Clients.delBalEntry('${c.id}','${l.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>` : ''}
-    </div>`;
+    </div></details>`;
   },
   balBadge(c) { const b = this.balanceOf(c.name); return !b ? '' : b > 0 ? ` <span class="badge info" title="Je lui dois cet avoir">💶 Avoir ${U.eur(b)}</span>` : ` <span class="badge warn" title="Il me doit cette somme">💶 Dette ${U.eur(-b)}</span>`; },
   _new(name) { const p = this.split(name); return { id: U.uid(), name: String(name).trim(), firstName: p.first, lastName: p.last, phone: '', email: '', note: '', dogs: [] }; },
