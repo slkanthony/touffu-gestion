@@ -726,7 +726,8 @@ const Paniers = {
   _shareRefresh() {
     const box = document.getElementById('pan_share');
     if (box) box.innerHTML = this._shareInner(this._shareData());
-    const bb = document.getElementById('pan_bal'); if (bb) bb.innerHTML = this._balBox();
+    document.querySelectorAll('.pan-bal').forEach(bb => { bb.innerHTML = this._balBox(); });
+    const dvn = document.getElementById('pan_dvno'); if (dvn) dvn.textContent = 'Devis n° ' + this._shareData().no;
     const dg = document.getElementById('pan_dogs');
     if (dg) { const dogs = this._dogsOf(this._shClient); dg.textContent = dogs.length ? '🐕 ' + dogs.map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ') : ''; }
   },
@@ -745,7 +746,7 @@ const Paniers = {
     const S = Store.state.settings;
     if (this._shMode === 'cc') this.livraison = 0;
     else if (this._shMode === 'liv' && !this.livraison) this.livraison = U.num(S.shippingCost ?? 6.8);
-    const bx = document.getElementById('pan_mode'); if (bx) bx.innerHTML = this._modeBtns();
+    document.querySelectorAll('.pan-mode').forEach(bx => { bx.innerHTML = this._modeBtns(); });   // fenêtre « Partager » ET barre du panier composé
     const li = document.getElementById('pan_livr'); if (li) li.value = this.livraison;
     this._updateKPI(); this._shareRefresh(); this._draft();
   },
@@ -767,8 +768,8 @@ const Paniers = {
       </div>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Mode de remise (affiché sur le devis)</div>
-        <div id="pan_mode" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${this._modeBtns()}</div>
-        <div id="pan_bal">${this._balBox()}</div>
+        <div class="pan-mode" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${this._modeBtns()}</div>
+        <div class="pan-bal">${this._balBox()}</div>
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${chk('who', 'Nom de la cliente et des chiens')}${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
         <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message pour ce client (vide = rien d'affiché)" oninput="Paniers._shSetMsg(this.value)">${U.esc(String(S.payMessage || ''))}</textarea>
@@ -807,8 +808,13 @@ const Paniers = {
     U.closeModal();
     U.toast('Panier mis en attente — devis n° ' + no + ' (« Reprendre » pour le retrouver).');
     // Le panier est maintenant dans la liste « en attente » : l'espace de travail repart à vide (plus de panier en cours, plus de blocage au « Reprendre »)
-    this.clearBasket(); this.client = '';
+    this.clearBasket();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+  quickPending() {   // « Mettre en attente » depuis la barre du panier (sans ouvrir « Partager ») : le nom vient du champ Cliente
+    this._shClient = String(this.client || this._shClient || '').trim();
+    if (!this._shClient) { U.toast('Indique d\'abord le nom de la cliente (champ « Cliente » à gauche).', true); return; }
+    this.savePending();
   },
   _ageTxt(rec) {
     const d = Math.floor((Date.now() - (rec.updated || rec.ts)) / 86400000);
@@ -1003,6 +1009,9 @@ const Paniers = {
           box.innerHTML = `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Panier Touffu">`;
           return;
         }
+        // pas de fenêtre « Partager » ouverte (bouton de la barre du panier) : on montre l'image dans une fenêtre
+        U.modal({ title: '🖼️ Image du devis', hideOk: true, wide: true, body: `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Panier Touffu">` });
+        return;
       }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = 'panier-touffu.png';
@@ -1022,7 +1031,13 @@ const Paniers = {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
   },
 
+  /* Remise à zéro de la CONFIGURATION (cliente, budget, livraison, réduction, chiens, priorité, filtres…) comme pour un tout nouveau panier */
+  resetConfig() {
+    Object.assign(this, JSON.parse(JSON.stringify(this._cfgDefaults || {})));
+    this.client = ''; this.excludeMeatsOpen = false; this.addQ = ''; this.addOpen = false;
+  },
   clearBasket() {
+    this.resetConfig();
     this.basket = [];
     this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true; this._dv = Devis.blank();
     this.proposals = null;
@@ -1418,8 +1433,15 @@ const Paniers = {
         ${this.proposals ? this._renderProposals() : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
           <h2 style="margin:0;">🧺 Panier composé${this.nbChiens > 1 ? ` <span class="muted">(${this.nbChiens} chiens)</span>` : ''}</h2>
-          ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.share()" title="Fenêtre propre à montrer au client : produit, variante et prix TTC">📤 Partager</button>` : ''}
+          ${this.basket.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+            <button class="btn-ghost btn-sm" onclick="Paniers.share()" title="Fenêtre propre à montrer au client : produit, variante et prix TTC">📤 Partager</button>
+            <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')" title="Copie l'image du devis (avec son n°)">🖼️ Copier l'image</button>
+            <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
+            <button class="btn-ghost btn-sm" onclick="Paniers.copyShare()">📋 Copier le texte</button>
+            <button class="btn-cta btn-sm" onclick="Paniers.quickPending()" title="Range le devis dans « Paniers en attente » et repart à vide">💾 Mettre en attente</button>
+          </div>` : ''}
         </div>
+        ${this.basket.length ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"><span class="muted" style="font-size:.78rem;text-transform:uppercase;">Mode de remise (sur le devis)</span><div class="pan-mode" style="display:flex;gap:8px;flex-wrap:wrap;">${this._modeBtns()}</div><div class="pan-bal">${this._balBox()}</div><span class="badge info" id="pan_dvno" title="N° de devis (définitif à la copie ou à la mise en attente)">Devis n° ${U.esc(this._shareData().no)}</span></div>` : ''}
 
         <div class="kpi-row" id="pan_kpi" style="margin-bottom:16px;">
           <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
@@ -1584,3 +1606,6 @@ const Paniers = {
     this.render();
   }
 };
+
+/* Valeurs d'origine de la configuration (avant toute valeur mémorisée) : sert à « repartir comme pour un nouveau panier » */
+Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
