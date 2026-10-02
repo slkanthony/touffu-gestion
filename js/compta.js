@@ -22,18 +22,33 @@ const Compta = {
     return { m: m + U.num(s.shippingFeeCollected), a };
   },
   _sum(from, to) {
-    const S = Store.state.settings; let m = 0, a = 0;
-    (Store.state.sales || []).forEach(s => { if (s.cancelled || s.ts < from || s.ts >= to) return; const x = this._split(s); m += x.m; a += x.a; });
+    const S = Store.state.settings; let m = 0, a = 0, cash = 0, card = 0;
+    (Store.state.sales || []).forEach(s => { if (s.cancelled || s.ts < from || s.ts >= to) return; const x = this._split(s); m += x.m; a += x.a; if (s.payment === 'cash') cash += x.m + x.a; else card += x.m + x.a; });
     const cot = m * U.num(S.socialTaxRate) / 100 + a * (U.num(S.socialTaxRateHandmade) || U.num(S.socialTaxRate)) / 100;
-    return { m, a, cot };
+    return { m, a, cot, cash, card };
   },
   _urssafPeriods() {
-    const f = Store.state.settings.urssafFreq === 'month' ? 'month' : 'quarter', now = new Date(), y = now.getFullYear(), mo = now.getMonth(), out = [];
-    const mk = (y0, m0, n) => { const from = new Date(y0, m0, 1), to = new Date(y0, m0 + n, 1); return { from, to, deadline: n === 1 ? new Date(y0, m0 + 2, 0) : new Date(y0, m0 + n + 1, 0) }; };
-    const cur = f === 'month' ? { y, m: mo, n: 1 } : { y, m: Math.floor(mo / 3) * 3, n: 3 };
-    const prev = f === 'month' ? { y: mo ? y : y - 1, m: mo ? mo - 1 : 11, n: 1 } : (cur.m ? { y, m: cur.m - 3, n: 3 } : { y: y - 1, m: 9, n: 3 });
-    [prev, cur].forEach((p, i) => { const r = mk(p.y, p.m, p.n), lab = f === 'month' ? this.monthLabel(p.y + '-' + String(p.m + 1).padStart(2, '0')) : 'T' + (p.m / 3 + 1) + ' ' + p.y + ' (' + this.monthLabel(p.y + '-' + String(p.m + 1).padStart(2, '0')) + ' à ' + this.monthLabel(p.y + '-' + String(p.m + 3).padStart(2, '0')) + ')'; out.push({ ...r, label: lab, current: i === 1, ...this._sum(r.from.getTime(), r.to.getTime()) }); });
+    const f = Store.state.settings.urssafFreq === 'month' ? 'month' : 'quarter', now = new Date(), y = now.getFullYear(), mo = now.getMonth(), n = f === 'month' ? 1 : 3;
+    const done = Store.state.meta.urssafDone || {}, out = [];
+    const first = [].concat((Store.state.sales || []).filter(x => !x.cancelled).map(x => x.ts), Achats.list().map(p => new Date(p.date).getTime())).filter(x => x > 0).sort((p, q) => p - q)[0] || Date.now();
+    let m0 = f === 'month' ? mo : Math.floor(mo / 3) * 3, y0 = y;
+    for (let i = 0; i < 16; i++) {
+      const from = new Date(y0, m0, 1), to = new Date(y0, m0 + n, 1);
+      if (i > 0 && to.getTime() <= first) break;   // période d'avant ta première activité
+      const key = (f === 'month' ? 'm' : 'q') + from.toISOString().slice(0, 7), deadline = new Date(y0, m0 + n + 1, 0);
+      const lastM = y0 + '-' + String(m0 + n).padStart(2, '0'), firstM = y0 + '-' + String(m0 + 1).padStart(2, '0');
+      const label = f === 'month' ? this.monthLabel(firstM) : 'T' + (m0 / 3 + 1) + ' ' + y0 + ' (' + this.monthLabel(firstM) + ' à ' + this.monthLabel(lastM) + ')';
+      out.push({ from, to, deadline, key, label, current: i === 0, doneOn: done[key] || '', late: !done[key] && deadline.getTime() < Date.now() && i > 0, ...this._sum(from.getTime(), to.getTime()) });
+      m0 -= n; if (m0 < 0) { m0 += 12; y0--; }
+    }
     return out;
+  },
+  /* Statut d'une déclaration (clic sur le badge) : à déclarer / en cours ⇄ déclaré (date du jour) */
+  setDeclared(key) {
+    const m = Store.state.meta; m.urssafDone = m.urssafDone || {};
+    if (m.urssafDone[key]) delete m.urssafDone[key]; else m.urssafDone[key] = U.today();
+    Store.save('meta'); this.render();
+    U.toast(m.urssafDone[key] ? 'Déclaration marquée comme faite.' : 'Déclaration remise « à déclarer ».');
   },
   setFreq(v) { Store.state.settings.urssafFreq = v; Store.save('settings'); this.render(); },
   setExtra(v) { Store.state.settings.comptaExtraServices = Math.max(0, U.num(v)); Store.save('settings'); this.render(); },
@@ -51,8 +66,8 @@ const Compta = {
       ${this._gauge('🐕 Fait main + services (accessoires + CA hors application)', cur.a + extra, T.services, T.servicesMaj, 'année ' + y)}
       <div class="frow" style="align-items:flex-end;gap:10px;max-width:640px;"><div class="fg"><label>CA hors application cette année (€)</label><input type="number" step="any" min="0" value="${extra || ''}" placeholder="0 (éducation canine, autres)" onchange="Compta.setExtra(this.value)"></div>
         <div class="fg"><label>Je déclare à l'URSSAF</label><select onchange="Compta.setFreq(this.value)"><option value="quarter" ${S.urssafFreq !== 'month' ? 'selected' : ''}>chaque trimestre</option><option value="month" ${S.urssafFreq === 'month' ? 'selected' : ''}>chaque mois</option></select></div></div>
-      <div class="table-wrap mt"><table class="pack-tbl"><thead><tr><th style="text-align:left;">Période</th><th class="num">Marchandises</th><th class="num">Fait main</th><th class="num">Cotisations estimées</th><th>À déclarer avant le</th></tr></thead><tbody>${per.map(p => `<tr><td style="text-align:left;"><b>${p.label}</b> ${p.current ? '<span class="badge info">en cours</span>' : '<span class="badge warn">à déclarer</span>'}</td><td class="num"><span class="sensitive">${U.eur(p.m)}</span></td><td class="num"><span class="sensitive">${U.eur(p.a)}</span></td><td class="num"><span class="sensitive">${U.eur(p.cot)}</span></td><td>${d(p)}</td></tr>`).join('')}</tbody></table></div>
-      <p class="muted" style="font-size:.8rem;">Dates indicatives (fin du mois ou du trimestre suivant) : vérifie-les sur ton espace autoentrepreneur.urssaf.fr. Le CA à déclarer est celui encaissé, hors éducation canine si tu la déclares à part.</p></div>`;
+      <div class="table-wrap mt"><table class="pack-tbl"><thead><tr><th style="text-align:left;">Période</th><th class="num">Marchandises</th><th class="num">Fait main</th><th class="num">Carte / virement</th><th class="num">Espèces</th><th class="num">Cotisations estimées</th><th>À déclarer avant le</th><th>Statut</th></tr></thead><tbody>${per.map(p => `<tr><td style="text-align:left;"><b>${p.label}</b></td><td class="num"><span class="sensitive">${U.eur(p.m)}</span></td><td class="num"><span class="sensitive">${U.eur(p.a)}</span></td><td class="num"><span class="sensitive">${U.eur(p.card)}</span></td><td class="num"><span class="sensitive">${U.eur(p.cash)}</span></td><td class="num"><span class="sensitive">${U.eur(p.cot)}</span></td><td>${d(p)}</td><td>${p.doneOn ? `<span class="badge info" style="cursor:pointer;" title="Déclarée le ${U.frDate(p.doneOn)} — clique pour annuler" onclick="Compta.setDeclared('${p.key}')">✔ déclarée</span>` : `<span class="badge ${p.late ? 'bad' : 'warn'}" style="cursor:pointer;${p.late ? 'background:var(--alerte);color:#fff;' : ''}" title="Clique pour marquer comme déclarée" onclick="Compta.setDeclared('${p.key}')">${p.late ? '⚠ en retard' : p.current ? 'en cours' : 'à déclarer'}</span>`}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="font-size:.8rem;">Clique sur le statut d'une période pour la marquer « déclarée » (ou l'annuler). Même sans CA, la déclaration à 0 € est à faire. Dates indicatives (fin du mois ou du trimestre suivant) : vérifie-les sur ton espace autoentrepreneur.urssaf.fr. Le CA à déclarer est celui encaissé, hors éducation canine si tu la déclares à part.</p></div>`;
   },
   _todoCard() {
     const noInv = Achats.list().filter(p => !String(p.invoiceNo || '').trim()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
