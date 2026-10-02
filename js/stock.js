@@ -1334,6 +1334,11 @@ const Stock = {
     location.hash = '/catalogue/new';
   },
 
+  _pickRecv(val) {   // choix d'une réception d'achat dans « ＋ Ajouter un lot » → pré-remplit n° de lot et DLUO
+    const r = (this._pend || []).find(x => x.pid + '|' + x.lid === val); if (!r) return;
+    const n = document.getElementById('nl_num'), d = document.getElementById('nl_dluo');
+    if (n) n.value = r.lot || ''; if (d) { d.value = r.dluo || ''; d.dispatchEvent(new Event('change')); }
+  },
   addLot(pId, vId) {
     { const _p = Store.state.stockM.find(x => x.id === pId); const _v = _p && _p.variants.find(x => x.id === vId); if (this.isVirtual(_p, _v)) { U.toast('Cette variante n\'a pas de stock propre : ajoute le lot sur ' + Pricing.labelVariant(this.parentOf(_p, _v)) + '.', true); return; } }
     const p=Store.state.stockM.find(x=>x.id===pId); if(!p) return;
@@ -1342,10 +1347,15 @@ const Stock = {
     // défasse aussi cet éventuel effet de bord silencieux, pas seulement l'ajout du lot.
     const snap=Store.snapshot('stockM',p);
     if(p.catalogId) this.syncPricesFromCatalog(p.catalogId);
+    // Réceptions d'achat en attente pour ce produit (page Achats) : n° de lot + DLUO pré-remplis
+    const pend = (typeof Achats !== 'undefined' && !App.isViewer && !App.isTeam) ? Achats.pendingFor(pId) : [];
+    this._pend = pend;
+    const one = pend.length === 1 ? pend[0] : null;
     U.modal({
       title:'＋ Lot — '+U.esc(p.name)+' › '+U.esc(Pricing.labelVariant(v)), okLabel:'Ajouter',
-      body:`<div class="fg"><label>N° de lot</label><input id="nl_num" placeholder="lot fournisseur"></div>
-      ${U.datePickerHTML('nl_dluo','DLUO')}
+      body:`${pend.length ? `<div class="fg"><label>📥 Provenance (achat à ranger)</label><select id="nl_src" onchange="Stock._pickRecv(this.value)"><option value="">— aucune —</option>${pend.map(r=>`<option value="${r.pid}|${r.lid}" ${one?'selected':''}>${U.esc(r.label)}</option>`).join('')}</select></div>` : ''}
+      <div class="fg"><label>N° de lot</label><input id="nl_num" placeholder="lot fournisseur" value="${one?U.esc(one.lot):''}"></div>
+      ${U.datePickerHTML('nl_dluo','DLUO').replace('<input id="nl_dluo" type="date"', `<input id="nl_dluo" type="date" value="${one?U.esc(one.dluo):''}"`)}
       <div class="frow">
         <div class="fg"><label>Qté stock général</label><input id="nl_qg" type="number" step="${v.mode==='vrac'?'0.001':'1'}" min="0" value="0"></div>
         <div class="fg"><label>Qté stock événement</label><input id="nl_qe" type="number" step="${v.mode==='vrac'?'0.001':'1'}" min="0" value="0"></div>
@@ -1355,7 +1365,13 @@ const Stock = {
         // de la fiche produit) — pas besoin de le ressaisir à chaque lot.
         const newLot={id:U.uid(),lotNumber:U.val('nl_num'),dluo:U.val('nl_dluo'),qtyGeneral:U.numVal('nl_qg'),qtyEvent:U.numVal('nl_qe'),costUnit:U.num(v.costUnit)};
         v.lots.push(newLot);
-        const entry=Store.commitSnapshot(snap,'stock',`Lot ajouté — ${p.name}/${Pricing.labelVariant(v)} (${U.val('nl_num')||'sans n°'})`);
+        const srcVal=U.val('nl_src'); let entry;
+        if(srcVal){   // lot issu d'une réception d'achat : on l'inscrit dans le tri de cette réception (annulable avec le lot)
+          const [spid,slid]=srcVal.split('|'), psnap=Achats.snapPurchase(spid);
+          newLot.src={pid:spid,lid:slid};
+          Achats.addDist(spid,slid,{lotId:newLot.id,vId:v.id,qty:U.num(newLot.qtyGeneral)+U.num(newLot.qtyEvent)});
+          entry=Store.log('stock',`Lot ajouté — ${p.name}/${Pricing.labelVariant(v)} (${U.val('nl_num')||'sans n°'}) · réception d'achat`,{type:'restoreBatch',data:[snap].concat(psnap?[psnap]:[])});
+        } else entry=Store.commitSnapshot(snap,'stock',`Lot ajouté — ${p.name}/${Pricing.labelVariant(v)} (${U.val('nl_num')||'sans n°'})`);
         Store.save('stockM'); U.closeModal(); App.rerender();
         U.toast('Lot ajouté.', false, entry.id);
         // Fenêtre facultative de conditionnement (sachet) — « Fermer » pour passer.

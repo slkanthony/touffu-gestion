@@ -192,6 +192,7 @@ const Achats = {
           ${f.refund ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.setF('refund',false)">✕ Afficher aussi les remboursées</button>` : ''}
         </div>
       </div>
+      ${this._recvCard()}
       ${this._priceCard()}
       <div class="card">
         ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>${sh('date', 'Date')}</th><th style="text-align:left;">${sh('supplier', 'Fournisseur')}</th><th style="text-align:left;">N° facture</th><th style="text-align:left;">Contenu</th><th>Paiement</th><th>Payé par</th><th class="num">Livraison</th><th class="num">${sh('total', 'Total')}</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`
@@ -200,20 +201,103 @@ const Achats = {
       </div>`);
   },
   toggle(id) { this._open[id] = !this._open[id]; this.render(); },
-  _chg(l) { const a = l.applied; return a && U.num(a.prevCost) > 0 && Math.abs(U.num(a.newCost) - U.num(a.prevCost)) > 0.00005 ? (U.num(a.newCost) - U.num(a.prevCost)) / U.num(a.prevCost) * 100 : 0; },
+  /* Variation de coût d'une ligne : consommable / matière = ancien → nouveau coût du stock ; mastication = prix de la fiche de calcul → dernier prix payé */
+  _chgInfo(l) {
+    let from = 0, to = 0, unit = '';
+    if (l.applied) { from = U.num(l.applied.prevCost); to = U.num(l.applied.newCost); }
+    else if (l.priceCmp) { from = U.num(l.priceCmp.fiche); to = U.num(l.priceCmp.paid); unit = l.priceCmp.unit || ''; }
+    if (!(from > 0) || Math.abs(to - from) < 0.00005) return null;
+    return { from, to, pct: (to - from) / from * 100, unit, fiche: !!l.priceCmp && !l.applied };
+  },
+  _chg(l) { const i = this._chgInfo(l); return i ? i.pct : 0; },
   _priceCard() {   // variations de coût constatées à l'achat : de quoi savoir quelles fiches de prix revoir
     const rows = [];
-    this.list().forEach(p => (p.lines || []).forEach(l => { const c = this._chg(l); if (c) rows.push({ p, l, c }); }));
+    this.list().forEach(p => (p.lines || []).forEach(l => { const c = this._chgInfo(l); if (c) rows.push({ p, l, c }); }));
     if (!rows.length) return '';
     rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
-    return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent : pense à vérifier les fiches prix concernées</span></summary>
-      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${U.eur(l.applied.prevCost, 3)} → ${U.eur(l.applied.newCost, 3)} HT</span><span class="${c > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c > 0 ? '↑ +' : '↓ '}${Math.round(c * 10) / 10} %</span></div>`).join('')}</div></details>`;
+    return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent (ou de ta fiche prix) : pense à vérifier les fiches concernées</span></summary>
+      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from, 3)} → ${U.eur(c.to, 3)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span></div>`).join('')}</div></details>`;
+  },
+
+  /* ---------- mastication : réceptions à ranger (lot → plusieurs tailles) ----------
+     Ligne mastication liée à un produit du stock + « Réception à ranger » : l.recv = { dist: [{lotId, vId, qty}], loss, pieces, closed, ... }.
+     Dans Stock → « ＋ Ajouter un lot », la réception est proposée (n° de lot + DLUO pré-remplis) ; chaque lot ajouté s'inscrit dans dist.
+     « Terminer le tri » fige le coût réel par pièce (total de la ligne + livraison ÷ pièces triées) sur les lots concernés. */
+  _applyRecv(rec, old, notes) {
+    const vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100, eff = this._eff(rec);
+    rec.lines.forEach((l, i) => {
+      if (l.cat !== 'mastication') return;
+      const oldL = old && (old.lines || []).find(x => x.id === l.id);
+      if (l.toStock && l.ref) { if (!l.recv) l.recv = (oldL && oldL.recv) || { dist: [], loss: 0, closed: false }; }
+      else if (l.recv && !(l.recv.dist || []).length) delete l.recv;   // décochée et rien de rangé : on oublie
+      // comparaison avec la fiche de calcul de prix (même unité seulement : kg ↔ « kilo », pièce ↔ pièce)
+      delete l.priceCmp;
+      const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
+      if (!cat || !(U.num(l.qty) > 0)) return;
+      const b = Pricing.baseUnitCost(cat), u = String(l.unit || '').toLowerCase(), perUnitHT = eff[i] / U.num(l.qty) / vat;
+      const kg = u === 'kg' && b.unit === 'kilo', pc = (u === 'pièce' || u === 'piece' || u === 'pc') && b.unit !== 'kilo';
+      if (!(kg || pc) || !(b.unitHT > 0)) return;
+      l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
+      const ci = this._chgInfo(l);
+      if (ci) notes.push(`💶 ${l.label} : fiche prix ${U.eur(ci.from, 3)} → payé ${U.eur(ci.to, 3)} HT/${l.priceCmp.unit} (${ci.pct > 0 ? '↑ +' : '↓ '}${Math.round(ci.pct * 10) / 10} %) — vérifie la fiche`);
+    });
+  },
+  /* Réceptions en attente de rangement pour un produit du stock (proposées dans « ＋ Ajouter un lot ») */
+  pendingFor(pId) {
+    const out = [];
+    this.list().forEach(p => (p.lines || []).forEach(l => { if (l.cat === 'mastication' && l.ref === pId && l.recv && !l.recv.closed) out.push({ pid: p.id, lid: l.id, date: p.date, lot: l.lot || '', dluo: l.dluo || '', label: `${U.frDate(p.date)} · ${this.supplierLabel(p)} · ${U.qty(l.qty)} ${l.unit || ''}${l.lot ? ' · lot ' + l.lot : ''}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}` }); }));
+    return out.sort((a, b) => b.date.localeCompare(a.date));
+  },
+  snapPurchase(pid) { const p = this.list().find(x => x.id === pid); return p ? Store.snapshot('purchases', p) : null; },
+  addDist(pid, lid, entry) {
+    const p = this.list().find(x => x.id === pid), l = p && p.lines.find(x => x.id === lid); if (!l || !l.recv) return;
+    (l.recv.dist = l.recv.dist || []).push(entry); Store.save('purchases');
+  },
+  _recvCard() {
+    const rows = [];
+    this.list().forEach(p => (p.lines || []).forEach(l => { if (l.cat === 'mastication' && l.recv && !l.recv.closed) rows.push({ p, l }); }));
+    if (!rows.length) return '';
+    rows.sort((a, b) => b.p.date.localeCompare(a.p.date));
+    const vlabel = (pId, vId) => { const sp = Store.state.stockM.find(x => x.id === pId), v = sp && sp.variants.find(x => x.id === vId); return v ? Pricing.labelVariant(v) : '?'; };
+    return `<div class="card" style="border-left:4px solid var(--caramel);"><h2>📥 Réceptions à ranger (${rows.length})</h2>
+      <p class="muted help" style="font-size:.85rem;">Pour chaque achat de mastication : dans Stock → le produit → « ＋ Ajouter un lot », choisis la réception (n° de lot et DLUO sont pré-remplis) et saisis les quantités d'une taille. Recommence pour chaque taille, puis clique « Terminer le tri » : le coût réel par pièce est calculé et appliqué aux lots.</p>
+      ${rows.map(({ p, l }) => {
+        const r = l.recv, dist = r.dist || [], sum = dist.reduce((a, d) => a + U.num(d.qty), 0);
+        const by = {}; dist.forEach(d => { const k = vlabel(l.ref, d.vId); by[k] = (by[k] || 0) + U.num(d.qty); });
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--row-border);display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) auto;gap:10px;align-items:center;">
+          <div><b>${U.esc(l.label)}</b><div class="muted" style="font-size:.82rem;">${U.frDate(p.date)} · ${U.esc(this.supplierLabel(p))} · ${U.qty(l.qty)} ${U.esc(l.unit || '')}${l.lot ? ' · lot ' + U.esc(l.lot) : ''}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</div></div>
+          <div>${dist.length ? Object.entries(by).map(([k, q]) => `<span class="badge info">${U.esc(k)} : ${U.qty(q)}</span>`).join(' ') + ` <span class="muted">= ${U.qty(sum)} pièce(s)</span>` : '<span class="muted">rien de rangé pour l\'instant</span>'}</div>
+          <div style="white-space:nowrap;text-align:right;"><a class="btn btn-ghost btn-sm" style="text-decoration:none;" href="#/stock/mastication/${l.ref}">Ouvrir le produit</a> <button class="btn-cta btn-sm" onclick="Achats.closeRecv('${p.id}','${l.id}')" ${dist.length ? '' : 'disabled'}>✔ Terminer le tri</button></div></div>`;
+      }).join('')}</div>`;
+  },
+  closeRecv(pid, lid) {
+    const p = this.list().find(x => x.id === pid), l = p && p.lines.find(x => x.id === lid); if (!l || !l.recv) return;
+    const r = l.recv, dist = r.dist || [], sum = dist.reduce((a, d) => a + U.num(d.qty), 0), eff = this._eff(p)[p.lines.indexOf(l)];
+    const kg = String(l.unit || '').toLowerCase() === 'kg';
+    U.modal({ title: 'Terminer le tri — ' + U.esc(l.label), okLabel: 'Terminer le tri', body: `
+      <p>${U.qty(l.qty)} ${U.esc(l.unit || '')} acheté(s) · ${U.qty(sum)} pièce(s) rangée(s) en stock.</p>
+      <div class="frow"><div class="fg"><label>Pièces triées au total</label><input id="rc_pieces" type="number" step="1" min="1" value="${sum}"></div>
+      <div class="fg"><label>Pertes / déchets (${kg ? 'kg' : 'pièces'}, option)</label><input id="rc_loss" type="number" step="any" min="0" value="${U.num(r.loss) || ''}" placeholder="0"></div></div>
+      <p class="muted">Le coût réel par pièce = total de la ligne (livraison comprise, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>`,
+      onOk: () => {
+        const pieces = U.numVal('rc_pieces'), loss = U.numVal('rc_loss');
+        if (!(pieces > 0)) { U.toast('Indique le nombre de pièces triées.', true); return false; }
+        const vat = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100, ht = Math.round(eff / pieces / vat * 10000) / 10000;
+        const snaps = [Store.snapshot('purchases', p)], sp = Store.state.stockM.find(x => x.id === l.ref);
+        if (sp) snaps.push(Store.snapshot('stockM', sp));
+        let n = 0;
+        dist.forEach(d => { (sp ? sp.variants : []).forEach(v => (v.lots || []).forEach(lot => { if (lot.id === d.lotId) { lot.costUnit = ht; n++; } })); });
+        Object.assign(r, { closed: true, closedAt: Date.now(), pieces, loss, costPerPiece: ht, avgG: kg ? Math.round((U.num(l.qty) - loss) * 1000 / pieces) : 0 });
+        const entry = Store.log('achat', `Tri terminé — ${l.label} (${U.qty(pieces)} pièces, ${U.eur(ht, 3)} HT / pièce)`, { type: 'restoreBatch', data: snaps });
+        Store.save('purchases', 'stockM'); U.closeModal(); this.render();
+        U.toast(`Tri terminé : ${U.eur(ht, 3)} HT / pièce${r.avgG ? ' · ' + r.avgG + ' g en moyenne' : ''} · ${n} lot(s) mis à jour.`, false, entry.id);
+      } });
   },
   _detailRow(p) {
     const lines = (p.lines || []).map(l => {
       const c = this.cat(l.cat);
       return `<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);">
-        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="Coût HT par unité : ${U.eur(l.applied.prevCost, 3)} → ${U.eur(l.applied.newCost, 3)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
+        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from, 3)} → ${U.eur(this._chgInfo(l).to, 3)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece, 3)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');
@@ -278,7 +362,7 @@ const Achats = {
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
-    l.toStock = !!v && (c.link === 'C' || c.link === 'T') && this._recent(this._d.date);   // cochée par défaut, sauf facture ancienne
+    l.toStock = !!v && (c.link === 'C' || c.link === 'T' || c.link === 'M') && this._recent(this._d.date);   // cochée par défaut, sauf facture ancienne
     if (v) {
       const name = this.itemName(c.link, v); if (!String(l.label || '').trim() && name) l.label = name;
       if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m && !l.unit) l.unit = this.unitFrom(m.unit); }
@@ -309,6 +393,9 @@ const Achats = {
     const pack = this._packOf(l, pv.it);
     return (l.applied ? '· déjà ajouté (+' + U.qty(l.applied.qty) + '), remis à jour à l\'enregistrement · ' : '') + 'stock actuel ' + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
   },
+  _recvBox(l, i) {
+    return `<div class="fg" style="grid-column:span 2;"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Réception à ranger <span class="muted">${l.recv ? (l.recv.closed ? '· tri terminé' : '· ' + (l.recv.dist || []).length + ' lot(s) déjà rangé(s)') : 'le lot sera proposé dans Stock → « ＋ Ajouter un lot »'}</span></label></div>`;
+  },
   _stockBox(l, i) {
     if (!this._stockPreview(l)) return '';
     return `<div class="fg" style="grid-column:span 2;"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 Ajouter au stock <span class="muted" id="ach_pv_${i}">${this._pvText(l)}</span></label></div>`;
@@ -325,7 +412,7 @@ const Achats = {
       inner = `<div class="fg"><label>Catégorie</label>${catSel}</div>
         ${c.link ? `<div class="fg"><label>${c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock'}</label><select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select></div>` : ''}
         <div class="fg" style="grid-column:span 2;"><label>Désignation</label>${label}</div>
-        ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : ''}
+        ${(c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : ''}
         <div class="fg"><label>Quantité</label><input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)"></div>
         <div class="fg"><label>Unité</label><input list="ach_units" value="${U.esc(l.unit || '')}" placeholder="kg, pièce…" onchange="Achats.setText(${i},'unit',this.value)"></div>
         <div class="fg"><label>Prix unitaire (€)</label><input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"></div>
@@ -386,7 +473,7 @@ const Achats = {
       const lab = String(l.label || '').trim() || this.itemName(c.link, l.ref);
       if (!lab && !U.num(l.price) && !l.ref) continue;   // ligne vide : ignorée
       if (!lab) { U.toast(`Ligne ${i + 1} : indique une désignation.`, true); return; }
-      lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0, toStock: !!l.toStock && !!l.ref && (c.id === 'conso' || c.id === 'matiere') });
+      lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0, toStock: !!l.toStock && !!l.ref && (c.id === 'conso' || c.id === 'matiere' || c.id === 'mastication'), ...(l.recv ? { recv: l.recv } : {}) });
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
@@ -401,6 +488,7 @@ const Achats = {
     if (old) { snaps.push(Store.snapshot('purchases', old)); this._revertStock(old, snaps); }   // on retire d'abord l'effet de l'ancienne version
     else snaps.push({ domain: 'purchases', id: rec.id, before: null });
     this._applyStock(rec, snaps, notes);
+    this._applyRecv(rec, old, notes);
     if (old) { rec.created = old.created || Date.now(); rec.updated = Date.now(); Object.keys(old).forEach(k => delete old[k]); Object.assign(old, rec); }
     else { rec.created = Date.now(); this.list().push(rec); }
     const entry = Store.log('achat', (old ? 'Facture modifiée — ' : 'Facture ajoutée — ') + `${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: snaps });
