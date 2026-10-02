@@ -120,7 +120,7 @@ const Accessoires = {
     if (focusId) { this.accQ = ''; this.accCatFilter = ''; this.accWidthFilter = ''; this.accBicolorFilter = ''; this._accOpen[focusId] = true; }
     let list = [...Store.state.catalogA];
     const q = this.accQ.toLowerCase();
-    if (q) list = list.filter(a => a.name.toLowerCase().includes(q));
+    if (q) list = list.filter(a => U.has(a.name, q));
     if (this.accCatFilter) list = list.filter(a => a.category === this.accCatFilter);
     if (this.accWidthFilter) list = list.filter(a => (a.mainWidth || (a.strapWidths || [])[0] || '') === this.accWidthFilter);
     if (this.accBicolorFilter === 'yes') list = list.filter(a => a.bicolor);
@@ -752,7 +752,7 @@ const Accessoires = {
 
     if (q) items = items.filter(it => {
       const label = it.type === 'family' ? it.data.label : it.data.name;
-      return label.toLowerCase().includes(q);
+      return U.has(label, q);
     });
 
     if (!items.length) return '<div class="ac-item muted">Aucun résultat</div>';

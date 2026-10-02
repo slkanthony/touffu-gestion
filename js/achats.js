@@ -177,7 +177,7 @@ const Achats = {
     if (f.cat) rows = rows.filter(p => (p.lines || []).some(l => l.cat === f.cat));
     if (f.pay) rows = rows.filter(p => p.payment === f.pay);
     if (f.refund) rows = rows.filter(p => p.paidBy === 'perso' && !p.reimbursed);
-    if (q) rows = rows.filter(p => [p.invoiceNo, p.note, this.supplierLabel(p), ...(p.lines || []).flatMap(l => [l.label, l.lot])].filter(Boolean).join(' ').toLowerCase().includes(q));
+    if (q) rows = rows.filter(p => U.has([p.invoiceNo, p.note, this.supplierLabel(p), ...(p.lines || []).flatMap(l => [l.label, l.lot])].filter(Boolean).join(' '), q));
     const dir = f.sortDir === 'asc' ? 1 : -1;
     rows.sort((x, y) => f.sort === 'supplier' ? dir * U.sortFr(this.supplierLabel(x), this.supplierLabel(y)) : f.sort === 'total' ? dir * (this.grandTotal(x) - this.grandTotal(y)) : dir * ((x.date || '').localeCompare(y.date || '') || (x.created || 0) - (y.created || 0)));
     return rows;

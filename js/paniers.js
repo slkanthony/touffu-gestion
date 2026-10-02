@@ -1098,7 +1098,7 @@ const Paniers = {
   manualCandidates() {
     const q = U.normSearch(this.addQ);
     return this.allCandidates().filter(c => {
-      if (q && !U.normSearch(c.name + ' ' + c.variant + ' ' + c.sku).includes(q)) return false;
+      if (q && !U.has(c.name + ' ' + c.variant + ' ' + c.sku, q)) return false;
       if (this.addVariants.length && !this.addVariants.includes(c.variant)) return false;
       if (!q && !this.addVariants.length) return false;
       return true;
@@ -1307,7 +1307,7 @@ const Paniers = {
     });
 
     const exclProdResults = this.excludeProdsQ
-      ? products.filter(p => p.name.toLowerCase().includes(this.excludeProdsQ.toLowerCase()) && !this.excludeProducts.includes(p.id)).slice(0, 10)
+      ? U.rank(products.filter(p => !this.excludeProducts.includes(p.id)), this.excludeProdsQ, p => p.name).slice(0, 10)
       : [];
 
     const addResults = this.addOpen ? this.manualCandidates() : [];

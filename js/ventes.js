@@ -98,7 +98,7 @@ const Ventes = {
       (this.variant === 'all' || u.label === this.variant) &&
       // qFreshOpen : le champ vient d'être rouvert (clic) sans que rien n'ait été retapé —
       // on montre tout, plutôt que de filtrer sur le texte de l'ancienne sélection (voir setQ).
-      (this.qFreshOpen || !this.q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(this.q.toLowerCase()));
+      (this.qFreshOpen || !this.q || U.has(u.name + ' ' + u.label + ' ' + u.sku, this.q));
   },
 
   /* Classement des étiquettes de variantes en 4 familles pour les filtres rapides */
@@ -141,7 +141,7 @@ const Ventes = {
     const sel = units.find(u => u.key === this.selKey) || null;
 
     // suggestions autocomplete catégorie (catFreshOpen : réouverture par clic, on montre tout — voir setCatQ)
-    const catSuggestions = this.catOpen ? types.filter(t => this.catFreshOpen || !this.catQ || t.toLowerCase().includes(this.catQ.toLowerCase())).slice(0, 20) : [];
+    const catSuggestions = this.catOpen ? types.filter(t => this.catFreshOpen || !this.catQ || U.has(t, this.catQ)).slice(0, 20) : [];
     // suggestions autocomplete produit (déjà filtré par cat/variante/q)
     const prodSuggestions = this.qOpen ? filtered.slice(0, 30) : [];
 
@@ -989,7 +989,7 @@ const Ventes = {
       if (f.origin !== 'all' && this._saleOrigin(s) !== f.origin) return false;
       if (q) {
         const hay = [Clients.show(s.customerName), s.devisNo, s.eventName, ...(s.items || []).flatMap(i => [i.name, i.label, i.sku, i.desc])].filter(Boolean).join(' ').toLowerCase();
-        if (!hay.includes(q)) return false;
+        if (!U.has(hay, q)) return false;
       }
       return true;
     });
@@ -1614,7 +1614,7 @@ const Ventes = {
     const d = this.retourData;
     const cashSel = this.units().find(u => u.key === this.cashSelKey);
     const q = (this.cashQ || '').toLowerCase();
-    const suggestions = this.cashOpen ? this.units().filter(u => this._cashFMatch(u) && (!q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q))).slice(0, 30) : [];
+    const suggestions = this.cashOpen ? U.rank(this.units().filter(u => this._cashFMatch(u)), q, u => u.name + ' ' + u.label + ' ' + u.sku).slice(0, 30) : [];
     const cashTotal = d.cashLines.reduce((a, l) => a + l.price * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--nuit);margin-top:12px;">
       <h3 style="margin-top:0;">💵 Ventes en liquide (non SumUp)</h3>
@@ -1814,7 +1814,7 @@ const Ventes = {
     const cash = this._ticketCashTarget(s);
     const cashSel = this.units().find(u => u.key === this.ticketCashSelKey);
     const q = (this.ticketCashQ || '').toLowerCase();
-    const suggestions = this.ticketCashOpen ? this.units().filter(u => this._cashFMatch(u) && (!q || (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q))).slice(0, 30) : [];
+    const suggestions = this.ticketCashOpen ? U.rank(this.units().filter(u => this._cashFMatch(u)), q, u => u.name + ' ' + u.label + ' ' + u.sku).slice(0, 30) : [];
     const items = cash ? cash.items : [];
     const total = items.reduce((a, it) => a + it.price * it.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--nuit);">
@@ -2231,7 +2231,7 @@ const Ventes = {
     } else if (!i.pId) {
       const sug = this._suggest(i.desc || i.name, 4, units);
       const q = st.q;
-      const res = q ? units.filter(u => (u.name + ' ' + u.label + ' ' + u.sku).toLowerCase().includes(q.toLowerCase())).slice(0, 20) : [];
+      const res = q ? U.rank(units, q, u => u.name + ' ' + u.label + ' ' + u.sku).slice(0, 20) : [];
       const uTxt = u => u.kind === 'A' ? 'accessoire' : 'évén. ' + U.qty(u.availE);
       body = `<div class="tt-body">
         <div class="tt-sug"><span class="muted">💡 Ça ressemble à :</span> ${sug.length ? sug.map(u => `<button class="btn-ghost btn-sm tt-chip" title="Associer à ce produit" onclick="Ventes.ttLink('${k}','${u.key}')"><b>${U.esc(u.name)}</b>${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''} <span class="muted">${uTxt(u)}</span></button>`).join('') : '<span class="muted">aucune ressemblance — cherche ci-dessous</span>'}</div>

@@ -251,7 +251,7 @@ const Clients = {
     const agg = this._agg(), q = this._q.toLowerCase(), so = this._sort, dir = so.dir === 'asc' ? 1 : -1;
     const noName = (Store.state.sales || []).filter(s => !s.cancelled && !this.key(s.customerName)).length;
     const rowsData = this.list().map(c => ({ c, a: agg[this.key(c.name)] || { n: 0, ca: 0, net: 0, last: 0, prods: {}, sales: [] } }))
-      .filter(x => !q || this.show(x.c.name).toLowerCase().includes(q) || x.c.dogs.some(d => (d.name || '').toLowerCase().includes(q)))
+      .filter(x => !q || U.has(this.show(x.c.name), q) || x.c.dogs.some(d => U.has(d.name || '', q)))
       .sort((x, y) => so.k === 'name' ? dir * U.sortFr(this.show(x.c.name), this.show(y.c.name)) : so.k === 'dogs' ? dir * (x.c.dogs.length - y.c.dogs.length) : dir * (x.a[so.k] - y.a[so.k]));
     const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Clients.setSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const rows = rowsData.map(({ c, a }) => {

@@ -34,7 +34,7 @@ const Catalogue = {
     const f = this.filters;
     U.syncFilters('catalogue', f);
     let list = Store.state.catalogM.filter(p =>
-      (!f.q || p.name.toLowerCase().includes(f.q.toLowerCase())) &&
+      (!f.q || U.has(p.name, f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
       (f.sup === 'all' || (f.sup === '_multi' ? (p.suppliers || []).length >= 2 : f.sup === '_single' ? (p.suppliers || []).length <= 1 : (p.suppliers || []).some(s => s.supplierId === f.sup)))
     );

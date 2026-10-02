@@ -42,7 +42,7 @@ const Woo = {
     return linked.filter(l => {
       if (meat !== 'all' && (l.meat || '') !== meat) return false;
       if (!this._siteFmtSel().includes(this._fmtOfName(l.name))) return false;
-      if (q && !((l.name || '').toLowerCase().includes(q) || (l.sku || '').toLowerCase().includes(q))) return false;
+      if (q && !U.has((l.name || '') + ' ' + (l.sku || ''), q)) return false;
       return true;
     });
   },
@@ -438,7 +438,7 @@ const Woo = {
     const fmtList = [...new Set(exportable.map(m => m.fmt))];
     this._sumupFmtList = fmtList;
     const fmtSel = this._sumupFmtSel();
-    const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.normSearch(m.name + ' ' + m.variant + ' ' + m.sku).includes(q)))
+    const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.has(m.name + ' ' + m.variant + ' ' + m.sku, q)))
       .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
     this._sumupExpMap = Object.fromEntries(visible.map(m => [m.sku.toUpperCase(), m]));
@@ -533,7 +533,7 @@ const Woo = {
     const rows = base
       .filter(m => this.sumupMeat === 'all' || meatK(m.meat) === this.sumupMeat)
       .filter(m => this.sumupFmt === 'all' || m.fmt === this.sumupFmt)
-      .filter(m => !q || U.normSearch(m.name + ' ' + m.variant + ' ' + (m.sku || '') + ' ' + (m.appName || '')).includes(q))
+      .filter(m => !q || U.has(m.name + ' ' + m.variant + ' ' + (m.sku || '') + ' ' + (m.appName || ''), q))
       .sort((a, b) => {
         const x = key(a), y = key(b);
         if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
@@ -604,7 +604,7 @@ const Woo = {
     const key = { name: m => m.name || '', sku: m => m.sku || '', dPrice: m => m.priceDiff, dStock: m => m.stockDiff }[this.cmpSort] || (m => m.name || '');
     const dir = this.cmpSortDir === 'desc' ? -1 : 1;
     const rows = all.filter(F[cur].f)
-      .filter(m => !q || U.normSearch((m.name || '') + ' ' + (m.sku || '')).includes(q))
+      .filter(m => !q || U.has((m.name || '') + ' ' + (m.sku || ''), q))
       .sort((a, b) => {
         const x = key(a), y = key(b);
         if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;

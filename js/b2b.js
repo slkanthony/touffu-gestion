@@ -81,7 +81,7 @@ const B2B = {
     const S = Store.state.settings;
     const f = this.filters;
     const products = Store.state.catalogM.filter(p =>
-      (!f.q || p.name.toLowerCase().includes(f.q.toLowerCase())) &&
+      (!f.q || U.has(p.name, f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
       (f.sup === 'all' || p.mainSupplierId === f.sup)
     );
@@ -113,7 +113,7 @@ const B2B = {
     const f = this.filters;
     const allWidths = [...new Set(Store.state.catalogA.flatMap(a => this.accWidths(a)))].filter(Boolean).sort(U.sortFr);
     const list = Store.state.catalogA.filter(a =>
-      (!f.q || (a.name || '').toLowerCase().includes(f.q.toLowerCase())) &&
+      (!f.q || U.has(a.name || '', f.q)) &&
       (f.cat === 'all' || (a.category || '') === f.cat) &&
       (f.width === 'all' || this.accWidths(a).includes(f.width))
     );

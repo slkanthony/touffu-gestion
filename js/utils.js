@@ -247,6 +247,42 @@ const U = {
   },
 
   sortFr: (a, b) => String(a).localeCompare(String(b), 'fr', { sensitivity: 'base' }),
+  /* ───────── Recherche par MOTS (2026-10-03) — règle UNIQUE de toute l'appli ─────────
+     U.has(texte, saisie) : vrai si CHAQUE mot saisi se retrouve dans le texte, dans n'importe quel ordre.
+     • accents / majuscules ignorés (« œ » = oe) ; « 100 g » = « 100g » ; « lot 2 » = « lot2 » ; tirets et apostrophes = séparateurs (SKU compris) ;
+     • petits mots ignorés dans la saisie (de, du, des, d', la, le, les, l', et, à, au, aux, en, un, une) : « cou canard » trouve « Cou de canard » ;
+     • pluriel ignoré : s / x final retiré des mots de plus de 3 lettres (« peau » ↔ « peaux », « patte » ↔ « pattes ») ;
+     • un mot saisi peut n'être que le DÉBUT d'un mot du texte (« can » → canard) ; à partir de 4 lettres il peut aussi être au milieu d'un mot ;
+     • AUCUNE tolérance aux fautes de frappe (choix d'Antho).
+     U.rank(liste, saisie, texteDe) : filtre avec U.has puis met en premier ce qui COMMENCE par le premier mot saisi.
+     Ne concerne que ce qui s'affiche quand on cherche : les liaisons stock ↔ catalogue restent des choix manuels. */
+  STOPWORDS: new Set(['de', 'du', 'des', 'd', 'la', 'le', 'les', 'l', 'et', 'a', 'au', 'aux', 'en', 'un', 'une']),
+  _stem(w) { return w.length > 3 && /[sx]$/.test(w) ? w.slice(0, -1) : w; },
+  _toks(s) {
+    const t = U.normSearch(s).replace(/(\d)\s+(g|kg|ml|cl|l|cm|mm|m|pc|pcs)\b/g, '$1$2').replace(/\blot\s+(\d)/g, 'lot$1');
+    return t.split(/[^a-z0-9]+/).filter(Boolean).map(w => U._stem(w));
+  },
+  _qc: { s: null, t: null, raw: '' },
+  _query(q) {
+    if (U._qc.s === q) return U._qc;
+    const all = U._toks(q), words = all.filter(w => !U.STOPWORDS.has(w));
+    U._qc = { s: q, t: words.length ? words : all, raw: U.normSearch(q).trim() };
+    return U._qc;
+  },
+  has(text, q) {
+    if (q == null) return true;
+    const Q = U._query(String(q)); if (!Q.t.length) return true;
+    const T = U._toks(String(text == null ? '' : text));
+    return Q.t.every(w => T.some(x => x.startsWith(w) || (w.length >= 4 && x.includes(w))));
+  },
+  rank(list, q, textOf) {
+    const f = textOf || (x => String(x));
+    const Q = U._query(String(q == null ? '' : q)); if (!Q.t.length) return list.slice();
+    const first = Q.t[0];
+    return list.map((x, i) => ({ x, i })).filter(o => U.has(f(o.x), q))
+      .map(o => { const T = U._toks(f(o.x)); return { ...o, s: T.length && T[0].startsWith(first) ? 0 : T.some(w => w.startsWith(first)) ? 1 : 2 }; })   // 0 = le texte COMMENCE par le mot saisi, 1 = un mot commence par, 2 = au milieu
+      .sort((a, b) => a.s - b.s || a.i - b.i).map(o => o.x);
+  },
   normSearch: s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/gi, 'oe').replace(/æ/gi, 'ae').toLowerCase(),
   val: (id) => document.getElementById(id)?.value ?? '',
   numVal: (id) => U.num(U.val(id)),
@@ -581,7 +617,7 @@ U.nsel = {
     if (q) {
       q.addEventListener('input', () => {
         const s = U.normSearch(q.value).trim();
-        p.querySelectorAll('.pp-row').forEach(x => { x.style.display = !s || U.normSearch(x.textContent).includes(s) ? '' : 'none'; x.classList.remove('hl'); });
+        p.querySelectorAll('.pp-row').forEach(x => { x.style.display = !s || U.has(x.textContent, s) ? '' : 'none'; x.classList.remove('hl'); });
         p.querySelectorAll('.pp-head').forEach(hd => {
           let n = hd.nextElementSibling, any = false;
           while (n && !n.classList.contains('pp-head')) { if (n.style.display !== 'none') any = true; n = n.nextElementSibling; }

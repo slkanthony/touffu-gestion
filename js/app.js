@@ -405,7 +405,7 @@ const App = {
     const dashScope = this._dashScope || ['Mastication'];
     overview = overview.filter(r => dashScope.includes(r.cat));
     const q = (this._dashQ || '').toLowerCase();
-    overview = overview.filter(r => !q || (r.name + ' ' + r.type).toLowerCase().includes(q));
+    overview = overview.filter(r => !q || U.has(r.name + ' ' + r.type, q));
 
     // Les 4 KPI du haut reflètent le périmètre + la recherche ci-dessus (comme l'ancienne appli :
     // cocher/chercher "Sanglier" ne montre que la valeur et le stock des produits Sanglier).

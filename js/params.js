@@ -1816,7 +1816,7 @@ const Params = {
     const searchEl = document.getElementById('sku_all_search');
     const q = (searchEl ? searchEl.value : '').trim().toLowerCase();
     const meat = this._skuMeat || 'all';
-    if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q) || r.variant.toLowerCase().includes(q));
+    if (q) rows = rows.filter(r => U.has(r.name + ' ' + r.sku + ' ' + r.variant, q));
     if (meat !== 'all') rows = rows.filter(r => r.meat === meat);
     const dir = this._skuSortDir;
     const key = this._skuSort;

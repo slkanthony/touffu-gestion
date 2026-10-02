@@ -172,7 +172,7 @@ const Stock = {
       });
       if (fixed) Store.save('stockM'); }
     const list = Store.state.stockM.filter(p => {
-      if (f.q && !p.name.toLowerCase().includes(f.q.toLowerCase())) return false;
+      if (f.q && !U.has(p.name, f.q)) return false;
       if (f.meat !== 'all' && (p.meatType || '').toLowerCase() !== f.meat.toLowerCase()) return false;
       if (f.variants.length && !p.variants.some(v => f.variants.includes(Pricing.labelVariant(v)))) return false;
       if (f.dluo === 'expired' && this._hideExpired()) return true;
@@ -1113,7 +1113,7 @@ const Stock = {
     const meat = (U.val('sp_meat') || '').toLowerCase();
     const byMeat = !query && meat;
     const matches = Store.state.catalogM
-      .filter(c => query ? c.name.toLowerCase().includes(query) : (!byMeat || (c.meatType || '').toLowerCase() === meat))
+      .filter(c => query ? U.has(c.name, query) : (!byMeat || (c.meatType || '').toLowerCase() === meat))
       .sort((a, b) => U.sortFr(a.name, b.name));
     // Repères de liaison : ✓ = déjà lié à CE produit ; 🔗 = déjà pris par un autre produit stock.
     const linkedBy = {};
@@ -1176,7 +1176,7 @@ const Stock = {
     const meat = meatRaw.toLowerCase();
     const byMeat = !query && meat;
     const matches = Store.state.catalogM
-      .filter(c => query ? c.name.toLowerCase().includes(query) : (!byMeat || (c.meatType || '').toLowerCase() === meat));
+      .filter(c => query ? U.has(c.name, query) : (!byMeat || (c.meatType || '').toLowerCase() === meat));
     // Repères : ✓ cette variante / ✓ ce produit (lien du produit ou d'une autre de ses variantes) / 🔗 lié ailleurs.
     const owners = {};
     const add = (cid, who) => { if (cid) (owners[cid] = owners[cid] || []).push(who); };
@@ -1810,7 +1810,7 @@ const Stock = {
     let rows = this.allLotRows().filter(r => {
       if (viewQty(r) <= 0) return false;
       if (hideExpired && r.days < 0) return false;
-      if (f.q && !r.p.name.toLowerCase().includes(f.q.toLowerCase())) return false;
+      if (f.q && !U.has(r.p.name, f.q)) return false;
       if (f.variants.length && !f.variants.includes(r.label)) return false;
       if (f.horizon === 'multi') return multiSet.has(r.p.id + '|' + r.v.id);
       if (f.horizon === 'expired') return r.days < 0;
@@ -2172,7 +2172,7 @@ const Stock = {
     const qn = U.normSearch(f.q || '');
     const isLow = c => U.num(c.low) > 0 && U.num(c.qty) <= U.num(c.low);
     const list = all.filter(c =>
-      (!qn || U.normSearch(c.name + ' ' + (c.dimensions || '') + ' ' + (c.ref || '')).includes(qn)) &&
+      (!qn || U.has(c.name + ' ' + (c.dimensions || '') + ' ' + (c.ref || ''), qn)) &&
       (!f.cat || f.cat === 'all' || (c.category || 'Autre') === f.cat) &&
       (f.link === 'nourl' ? !c.url : f.link === 'url' ? !!c.url : true) &&
       (f.state === 'low' ? isLow(c) : f.state === 'out' ? U.num(c.qty) <= 0 : f.state === 'replace' ? !!c.toReplace : true));
@@ -2397,7 +2397,7 @@ const Stock = {
 
     const q = (f.q || '').toLowerCase();
     const list = Store.state.materials.filter(m => {
-      if (q && !(m.name + ' ' + (m.product || '') + ' ' + (m.sku || '')).toLowerCase().includes(q)) return false;
+      if (q && !U.has(m.name + ' ' + (m.product || '') + ' ' + (m.sku || ''), q)) return false;
       if (f.type !== 'all' && m.kind !== f.type) return false;
       if (f.variants.length && !f.variants.includes(m.variant || m.name)) return false;
       if (f.link === 'nourl' && m.url) return false;
