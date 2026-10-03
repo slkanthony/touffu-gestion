@@ -236,17 +236,16 @@ const Compta = {
     return mv;
   },
   _bankSum(mv, from, to) { const r = { sales: 0, costs: 0, buy: 0, manual: 0, total: 0 }; mv.forEach(m => { if (m.d > from && m.d <= to) { r[m.k] += m.amt; r.total += m.amt; } }); return r; },
-  _bankCard() {
+  _bankBody() {
     const b = this._bank(), pts = b.points.slice().sort((x, y) => x.date.localeCompare(y.date) || 0), mv = this._bankMoves(), today = U.today();
     const e = v => `<span class="sensitive">${U.eur(v)}</span>`, sg = v => `<span class="sensitive ${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${(v > 0 ? '+' : '') + U.eur(v)}</span>`;
-    const head = `<h2>🏦 Pointage bancaire <span class="muted" style="font-size:.85rem;font-weight:400;">— l'appli et ta banque racontent-elles la même chose ?</span></h2>
-      <p class="muted help" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces, les achats payés en espèces et les frais d'événement cochés « payés en espèces » ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
+    const head = `<p class="muted help" data-help-anchor="~ summary h2" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces, les achats payés en espèces et les frais d'événement cochés « payés en espèces » ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
     if (!pts.length) {
-      return `<div class="card">${head}
+      return `${head}
         <p style="margin:10px 0 4px;"><b>Point de départ</b> : combien y a-t-il sur ton compte professionnel là, maintenant ?</p>
         <div class="frow" style="align-items:flex-end;flex-wrap:wrap;gap:8px;"><div class="fg" style="max-width:170px;"><label>Date</label><input type="date" id="bk_date" value="${today}"></div>
           <div class="fg" style="max-width:170px;"><label>Solde de ton compte (€)</label><input id="bk_amt" inputmode="decimal" placeholder="ex : 3 250,00" onkeydown="if(event.key==='Enter')Compta.addPoint()"></div>
-          <button class="btn-cta" style="flex:0 0 auto;" onclick="Compta.addPoint()">Enregistrer mon point de départ</button></div></div>`;
+          <button class="btn-cta" style="flex:0 0 auto;" onclick="Compta.addPoint()">Enregistrer mon point de départ</button></div>`;
     }
     const last = pts[pts.length - 1], since = this._bankSum(mv, last.date, today), expected = U.num(last.amount) + since.total;
     const rows = pts.map((p, i) => {
@@ -255,7 +254,7 @@ const Compta = {
       return `<tr><td style="white-space:nowrap;">${U.frDate(p.date)}${i === 0 ? ' <span class="badge info">départ</span>' : ''}</td><td class="num"><b>${e(U.num(p.amount))}</b></td><td class="num">${calc}</td><td class="num">${gap}</td><td style="text-align:left;">${U.esc(p.note || '')}</td><td><button class="btn-icon" title="Supprimer ce pointage" onclick="Compta.delPoint('${p.id}')">🗑️</button></td></tr>`;
     }).join('');
     const mvs = b.moves.slice().sort((x, y) => y.date.localeCompare(x.date)).map(m => `<tr><td style="white-space:nowrap;">${U.frDate(m.date)}</td><td style="text-align:left;">${U.esc(m.label || '')}</td><td class="num">${sg(U.num(m.amount))}</td><td><button class="btn-icon" title="Supprimer" onclick="Compta.delMove('${m.id}')">🗑️</button></td></tr>`).join('');
-    return `<div class="card">${head}
+    return `${head}
       <div class="grid c2" style="margin:12px 0;">
         <div class="kpi sensitive"><div class="v">${U.eur(expected)}</div><div class="l">Solde attendu en banque aujourd'hui</div></div>
         <div class="kpi sensitive"><div class="v">${U.eur(U.num(last.amount))}</div><div class="l">Dernier solde relevé (${U.frDate(last.date)})</div></div>
@@ -271,8 +270,20 @@ const Compta = {
       <div class="frow mt" style="align-items:flex-end;flex-wrap:wrap;gap:8px;"><div class="fg" style="max-width:160px;"><label>Date</label><input type="date" id="mv_date" value="${today}"></div>
         <div class="fg" style="max-width:170px;"><label>Montant (€, − si sorti)</label><input id="mv_amt" inputmode="decimal" placeholder="ex : 250 ou -420,50" onkeydown="if(event.key==='Enter')Compta.addMove()"></div>
         <div class="fg" style="max-width:300px;"><label>Libellé</label><input id="mv_label" placeholder="ex : dépôt d'espèces du marché" onkeydown="if(event.key==='Enter')Compta.addMove()"></div>
-        <button class="btn-ghost" style="flex:0 0 auto;" onclick="Compta.addMove()">＋ Ajouter</button></div>
-    </div>`;
+        <button class="btn-ghost" style="flex:0 0 auto;" onclick="Compta.addMove()">＋ Ajouter</button></div>`;
+  },
+  /* Carte repliable : le résumé (toujours visible) montre le solde attendu en banque + le dernier solde relevé ; ouverte d'office tant qu'aucun point de départ n'est saisi */
+  _bankOpen: undefined,
+  _bankCard() {
+    const pts = this._bank().points.slice().sort((x, y) => x.date.localeCompare(y.date)), today = U.today();
+    let right;
+    if (!pts.length) right = '<span class="muted">à renseigner — ouvre pour saisir ton solde</span>';
+    else {
+      const last = pts[pts.length - 1], exp = U.num(last.amount) + this._bankSum(this._bankMoves(), last.date, today).total;
+      right = `<span class="sensitive"><b style="font-size:1.1rem;">${U.eur(exp)}</b> <span class="muted" style="font-size:.8rem;">attendu · relevé ${U.eur(U.num(last.amount))} le ${U.frDate(last.date).slice(0, 5)}</span></span>`;
+    }
+    const open = this._bankOpen === undefined ? !pts.length : this._bankOpen;
+    return `<details class="fold card" ${open ? 'open' : ''} ontoggle="Compta._bankOpen=this.open"><summary style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><h2 style="display:inline;margin:0;">🏦 Pointage bancaire</h2><span class="muted" style="font-size:.85rem;">— l'appli et ta banque racontent-elles la même chose ?</span><span style="margin-left:auto;">${right}</span></summary><div class="fold-body">${this._bankBody()}</div></details>`;
   },
   addPoint() {
     const date = U.val('bk_date'), raw = String(U.val('bk_amt') || '').trim();
