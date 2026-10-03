@@ -178,7 +178,7 @@ const Compta = {
       <div class="grid c4" style="margin-bottom:16px;">
         <div class="kpi good sensitive"><div class="v">${U.eur(T.inc)}</div><div class="l">Entrées (encaissé)</div></div>
         <div class="kpi bad sensitive"><div class="v">${U.eur(T.out)}</div><div class="l">Sorties (payé)</div></div>
-        <div class="kpi ${T.solde < 0 ? 'bad' : 'good'} sensitive"><div class="v">${U.eur(T.solde)}</div><div class="l">Solde de trésorerie</div></div>
+        <div class="kpi ${T.solde < 0 ? 'bad' : 'good'} sensitive"><div class="v">${U.eur(T.solde)}</div><div class="l">Solde de trésorerie calculé ${U.info('Calculé par l\'appli : entrées − sorties de la période. Ce n\'est pas ton solde bancaire (pas de solde de départ, cotisations estimées, versements SumUp décalés…). Pour comparer avec ta banque, utilise le « Pointage bancaire » plus bas.')}</div></div>
         <div class="kpi ${T.net < 0 ? 'bad' : ''} sensitive"><div class="v">${U.eur(T.net)}</div><div class="l">Résultat (bénéfice net)</div></div>
       </div>
 
@@ -192,6 +192,8 @@ const Compta = {
         ${toRefund > 0 ? `<p class="warn-txt" style="margin-top:10px;">💳 ${U.eur(toRefund)} payés avec ta carte perso restent à te rembourser : ils ne sont comptés dans la trésorerie qu'à la date de remboursement.</p>` : ''}
       </div>
 
+      ${this._bankCard()}
+
       <div class="card"><h2>📈 Résultat <span class="muted" style="font-size:.85rem;font-weight:400;">— ce que tu as réellement gagné</span></h2>
         <div class="table-wrap"><table><thead><tr><th>Mois</th><th class="num">Ventes (CA)</th><th class="num">Coût marchandises vendues</th><th class="num">Marge brute</th><th class="num">Frais de vente (net du port)</th><th class="num">Cotisations</th><th class="num">Dépenses du mois</th><th class="num">Amort. &amp; entretien</th>${S.vatActive ? '<th class="num">TVA reversée</th>' : ''}<th class="num">Bénéfice net</th></tr></thead><tbody>${reRows}
           <tr style="border-top:2px solid var(--caramel);font-weight:700;"><td>Total</td><td class="num">${e(T.ca)}</td><td class="num">${e(T.cogs)}</td><td class="num">${e(T.marge)}</td><td class="num">${e(T.sellCosts)}</td><td class="num">${e(T.cotis)}</td><td class="num">${e(T.expensed)}</td><td class="num">${e(T.fixed)}</td>${S.vatActive ? `<td class="num">${e(T.tva)}</td>` : ''}<td class="num">${sg(T.net)}</td></tr></tbody></table></div>
@@ -204,6 +206,104 @@ const Compta = {
         </div>
       </div>
       ${this._todoCard()}`);
+  },
+
+  /* ---------- Pointage bancaire (2026-10-03) ----------
+     Antho saisit le solde RÉEL de son compte à une date (point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce
+     que le compte devrait contenir : dernier solde saisi + mouvements connus datés APRÈS ce point, et affiche l'écart. Un petit écart
+     est normal (versements SumUp/Stripe décalés, cotisations réelles ≠ estimées…) ; un gros écart = oubli à chercher.
+     Mouvements comptés : ventes non réglées en espèces (net des frais de paiement), envois et stands/déplacements, achats non payés
+     en espèces (carte perso : à la date du remboursement). PAS comptés : cotisations URSSAF estimées, espèces → à saisir ci-dessous
+     (« mouvements hors appli » : dépôt d'espèces, paiement URSSAF réel, virement perso, frais bancaires…).
+     Données dans Store.state.bank = { points:[{id,date,amount,note}], moves:[{id,date,amount,label}] } (admin seulement). */
+  _money(raw) { return parseFloat(String(raw == null ? '' : raw).replace(/[\s\u00a0€]/g, '').replace(',', '.')); },   // « 3 250,50 € » → 3250.5 (NaN si illisible)
+  _bank() { const b = Store.state.bank = Store.state.bank || {}; b.points = b.points || []; b.moves = b.moves || []; return b; },
+  _dkey(ts) { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
+  _bankMoves() {
+    const mv = [];
+    (Store.state.sales || []).forEach(s => {
+      if (s.cancelled) return;
+      const sp = Pricing.saleProfit(s), d = this._dkey(s.ts);
+      if (s.payment !== 'cash') mv.push({ d, k: 'sales', amt: sp.ca + sp.shipFee - sp.fee });
+      const out = sp.shipping + sp.eventFee; if (out) mv.push({ d, k: 'costs', amt: -out });
+    });
+    Achats.list().forEach(p => {
+      if (p.payment === 'especes') return;
+      const d = p.paidBy === 'perso' ? (p.reimbursed ? String(p.reimbursed).slice(0, 10) : '') : String(p.date).slice(0, 10);
+      if (d) mv.push({ d, k: 'buy', amt: -Achats.grandTotal(p) });
+    });
+    this._bank().moves.forEach(m => { if (m.date) mv.push({ d: m.date, k: 'manual', amt: U.num(m.amount) }); });
+    return mv;
+  },
+  _bankSum(mv, from, to) { const r = { sales: 0, costs: 0, buy: 0, manual: 0, total: 0 }; mv.forEach(m => { if (m.d > from && m.d <= to) { r[m.k] += m.amt; r.total += m.amt; } }); return r; },
+  _bankCard() {
+    const b = this._bank(), pts = b.points.slice().sort((x, y) => x.date.localeCompare(y.date) || 0), mv = this._bankMoves(), today = U.today();
+    const e = v => `<span class="sensitive">${U.eur(v)}</span>`, sg = v => `<span class="sensitive ${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${(v > 0 ? '+' : '') + U.eur(v)}</span>`;
+    const head = `<h2>🏦 Pointage bancaire <span class="muted" style="font-size:.85rem;font-weight:400;">— l'appli et ta banque racontent-elles la même chose ?</span></h2>
+      <p class="muted help" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces et les achats payés en espèces ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
+    if (!pts.length) {
+      return `<div class="card">${head}
+        <p style="margin:10px 0 4px;"><b>Point de départ</b> : combien y a-t-il sur ton compte professionnel là, maintenant ?</p>
+        <div class="frow" style="align-items:flex-end;flex-wrap:wrap;gap:8px;"><div class="fg" style="max-width:170px;"><label>Date</label><input type="date" id="bk_date" value="${today}"></div>
+          <div class="fg" style="max-width:170px;"><label>Solde de ton compte (€)</label><input id="bk_amt" inputmode="decimal" placeholder="ex : 3 250,00" onkeydown="if(event.key==='Enter')Compta.addPoint()"></div>
+          <button class="btn-cta" style="flex:0 0 auto;" onclick="Compta.addPoint()">Enregistrer mon point de départ</button></div></div>`;
+    }
+    const last = pts[pts.length - 1], since = this._bankSum(mv, last.date, today), expected = U.num(last.amount) + since.total;
+    const rows = pts.map((p, i) => {
+      let calc = '—', gap = '—';
+      if (i > 0) { const prev = pts[i - 1], c = U.num(prev.amount) + this._bankSum(mv, prev.date, p.date).total, g = U.num(p.amount) - c; calc = e(c); gap = Math.abs(g) < 1 ? '<span class="pos">✅ OK</span>' : `<span class="warn-txt">${sg(g)}</span>`; }
+      return `<tr><td style="white-space:nowrap;">${U.frDate(p.date)}${i === 0 ? ' <span class="badge info">départ</span>' : ''}</td><td class="num"><b>${e(U.num(p.amount))}</b></td><td class="num">${calc}</td><td class="num">${gap}</td><td style="text-align:left;">${U.esc(p.note || '')}</td><td><button class="btn-icon" title="Supprimer ce pointage" onclick="Compta.delPoint('${p.id}')">🗑️</button></td></tr>`;
+    }).join('');
+    const mvs = b.moves.slice().sort((x, y) => y.date.localeCompare(x.date)).map(m => `<tr><td style="white-space:nowrap;">${U.frDate(m.date)}</td><td style="text-align:left;">${U.esc(m.label || '')}</td><td class="num">${sg(U.num(m.amount))}</td><td><button class="btn-icon" title="Supprimer" onclick="Compta.delMove('${m.id}')">🗑️</button></td></tr>`).join('');
+    return `<div class="card">${head}
+      <div class="grid c2" style="margin:12px 0;">
+        <div class="kpi sensitive"><div class="v">${U.eur(expected)}</div><div class="l">Solde attendu en banque aujourd'hui</div></div>
+        <div class="kpi sensitive"><div class="v">${U.eur(U.num(last.amount))}</div><div class="l">Dernier solde relevé (${U.frDate(last.date)})</div></div>
+      </div>
+      <p class="muted" style="font-size:.85rem;margin:0 0 10px;">Depuis le ${U.frDate(last.date)} : ventes encaissées ${sg(since.sales)} · achats payés ${sg(since.buy)} · envois et stands ${sg(since.costs)} · mouvements hors appli ${sg(since.manual)}.</p>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Solde de ta banque</th><th class="num">Calculé par l'appli</th><th class="num">Écart</th><th>Note</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="frow mt" style="align-items:flex-end;flex-wrap:wrap;gap:8px;"><div class="fg" style="max-width:160px;"><label>Date</label><input type="date" id="bk_date" value="${today}"></div>
+        <div class="fg" style="max-width:170px;"><label>Solde de ta banque (€)</label><input id="bk_amt" inputmode="decimal" placeholder="ex : 3 250,00" onkeydown="if(event.key==='Enter')Compta.addPoint()"></div>
+        <div class="fg" style="max-width:260px;"><label>Note (option)</label><input id="bk_note" placeholder="ex : fin septembre"></div>
+        <button class="btn-cta" style="flex:0 0 auto;" onclick="Compta.addPoint()">＋ Nouveau pointage</button></div>
+      <h3 style="margin:18px 0 6px;">Mouvements hors appli <span class="muted" style="font-size:.8rem;font-weight:400;">— ce qui passe par ta banque sans être dans l'appli</span></h3>
+      ${mvs ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Libellé</th><th class="num">Montant</th><th></th></tr></thead><tbody>${mvs}</tbody></table></div>` : '<p class="muted" style="font-size:.85rem;margin:0 0 6px;">Aucun pour l\'instant. Exemples : dépôt d\'espèces (+), prélèvement URSSAF (−), virement vers ton compte perso (−), frais bancaires (−).</p>'}
+      <div class="frow mt" style="align-items:flex-end;flex-wrap:wrap;gap:8px;"><div class="fg" style="max-width:160px;"><label>Date</label><input type="date" id="mv_date" value="${today}"></div>
+        <div class="fg" style="max-width:170px;"><label>Montant (€, − si sorti)</label><input id="mv_amt" inputmode="decimal" placeholder="ex : 250 ou -420,50" onkeydown="if(event.key==='Enter')Compta.addMove()"></div>
+        <div class="fg" style="max-width:300px;"><label>Libellé</label><input id="mv_label" placeholder="ex : dépôt d'espèces du marché" onkeydown="if(event.key==='Enter')Compta.addMove()"></div>
+        <button class="btn-ghost" style="flex:0 0 auto;" onclick="Compta.addMove()">＋ Ajouter</button></div>
+    </div>`;
+  },
+  addPoint() {
+    const date = U.val('bk_date'), raw = String(U.val('bk_amt') || '').trim();
+    if (!date) { U.toast('Choisis la date du solde.', true); return; }
+    const amt = this._money(raw);
+    if (isNaN(amt)) { U.toast('Indique le solde de ton compte (en €).', true); return; }
+    const b = this._bank();
+    if (b.points.some(p => p.date === date && Math.abs(U.num(p.amount) - amt) < 0.005)) { U.toast('Ce pointage existe déjà.', true); return; }
+    b.points.push({ id: U.uid(), date, amount: Math.round(amt * 100) / 100, note: String(U.val('bk_note') || '').trim() });
+    Store.log('compta', 'Pointage bancaire — ' + U.frDate(date));
+    Store.save('bank', 'journal'); this.render();
+    U.toast(b.points.length === 1 ? 'Point de départ enregistré : l\'appli suit maintenant ton solde.' : 'Pointage enregistré.');
+  },
+  async delPoint(id) {
+    const b = this._bank(), p = b.points.find(x => x.id === id); if (!p) return;
+    if (!await U.confirm('Supprimer le pointage du ' + U.frDate(p.date) + ' ?', { okLabel: 'Supprimer' })) return;
+    b.points = b.points.filter(x => x.id !== id); Store.save('bank'); this.render();
+  },
+  addMove() {
+    const date = U.val('mv_date'), raw = String(U.val('mv_amt') || '').trim(), label = String(U.val('mv_label') || '').trim();
+    if (!date) { U.toast('Choisis la date du mouvement.', true); return; }
+    const amt = this._money(raw);
+    if (isNaN(amt) || amt === 0) { U.toast('Indique le montant (négatif si c\'est une sortie).', true); return; }
+    this._bank().moves.push({ id: U.uid(), date, amount: Math.round(amt * 100) / 100, label });
+    Store.log('compta', 'Mouvement hors appli — ' + (label || U.frDate(date)));
+    Store.save('bank', 'journal'); this.render();
+  },
+  async delMove(id) {
+    const b = this._bank(), m = b.moves.find(x => x.id === id); if (!m) return;
+    if (!await U.confirm('Supprimer ce mouvement (' + (m.label || U.frDate(m.date)) + ') ?', { okLabel: 'Supprimer' })) return;
+    b.moves = b.moves.filter(x => x.id !== id); Store.save('bank'); this.render();
   },
 
   /* ---------- exports ---------- */

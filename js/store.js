@@ -5,7 +5,7 @@
                  journal + instantanés quotidiens, temps réel)
    ============================================================ */
 const Store = {
-  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'purchases', 'journal', 'meta'],
+  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'purchases', 'bank', 'journal', 'meta'],
   state: null,
   sb: null,            // client supabase
   session: null,
@@ -68,6 +68,7 @@ const Store = {
       sales: [],       // ventes — voir ventes.js
       baskets: [],     // paniers / devis en attente (admin seulement) : {id,ts,name,label,note,validUntil,items,budget,livraison}
       purchases: [],   // achats (admin seulement) : factures saisies — voir achats.js
+      bank: { points: [], moves: [] },   // pointage bancaire (admin seulement) : soldes relevés + mouvements hors appli — voir compta.js
       journal: [],     // {id,ts,action,label,undo}
       meta: { lastSnapshotDay: '' }
     };
@@ -133,7 +134,9 @@ const Store = {
     if (this._saveSeq !== seq || this._dirty.size || this._flushing || this._modalOpen()) { if (this._modalOpen()) this._pendingReload = true; return; }
     const obj = {};
     (data || []).forEach(r => obj[r.key] = r.data);
-    if (isViewer) { delete obj.baskets; delete obj.purchases; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
+    const role = this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role;
+    if (role === 'team') delete obj.bank;   // soldes bancaires : admin seulement (la base ne bloque la lecture qu'après le SQL de supabase_schema.sql)
+    if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
     // première utilisation : pousser les valeurs par défaut
     if (!data || !data.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
