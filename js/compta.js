@@ -178,8 +178,8 @@ const Compta = {
       <div class="grid c4" style="margin-bottom:16px;">
         <div class="kpi good sensitive"><div class="v">${U.eur(T.inc)}</div><div class="l">Entrées (encaissé)</div></div>
         <div class="kpi bad sensitive"><div class="v">${U.eur(T.out)}</div><div class="l">Sorties (payé)</div></div>
-        <div class="kpi ${T.solde < 0 ? 'bad' : 'good'} sensitive"><div class="v">${U.eur(T.solde)}</div><div class="l">Solde de trésorerie calculé ${U.info('Calculé par l\'appli : entrées − sorties de la période. Ce n\'est pas ton solde bancaire (pas de solde de départ, cotisations estimées, versements SumUp décalés…). Pour comparer avec ta banque, utilise le « Pointage bancaire » plus bas.')}</div></div>
         <div class="kpi ${T.net < 0 ? 'bad' : ''} sensitive"><div class="v">${U.eur(T.net)}</div><div class="l">Résultat (bénéfice net)</div></div>
+        <div class="kpi ${T.solde < 0 ? 'bad' : 'good'} sensitive"><div class="v">${U.eur(T.solde)}</div><div class="l">Solde de trésorerie calculé ${U.info('Calculé par l\'appli : entrées − sorties de la période. Ce n\'est pas ton solde bancaire (pas de solde de départ, cotisations estimées, versements SumUp décalés…). Pour comparer avec ta banque, utilise le « Pointage bancaire » plus bas.')}</div></div>
         ${this._bankTile()}
       </div>
       ${this._bankPanel()}
