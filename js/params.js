@@ -709,42 +709,48 @@ const Params = {
 
   /* Référentiel Fournisseurs (2026-10-03) : UNE liste, chaque fournisseur a un ou plusieurs types (mastication, matières,
      consommables, autre). Les types servent à filtrer : fiches prix = « mastication », etc. */
+  /* Une LIGNE par fournisseur : [nom modifiable] [menu déroulant à cases : ce qu'il me vend] [🗑]. Le menu reste ouvert quand on coche (pas de re-rendu). */
+  _supTypesLabel(types) { const l = Store.SUPPLIER_TYPES.filter(t => types.includes(t.v)).map(t => t.l); return l.length ? l.join(' · ') : 'Choisir…'; },
+  _supMs(key, types, call) {
+    return `<details class="multiselect" id="sup_ms_${key}" style="flex:0 0 250px;max-width:100%;"><summary style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${U.esc(this._supTypesLabel(types))}">${U.esc(this._supTypesLabel(types))}</summary><div class="multiselect-panel">${Store.SUPPLIER_TYPES.map(t => `<label class="ms-opt"><input type="checkbox" ${types.includes(t.v) ? 'checked' : ''} onchange="${call(t.v)}"> ${t.l}</label>`).join('')}</div></details>`;
+  },
+  _supMsSync(key, types) {
+    const d = document.getElementById('sup_ms_' + key); if (!d) return;
+    const sm = d.querySelector('summary'); sm.textContent = this._supTypesLabel(types); sm.title = sm.textContent;
+    d.querySelectorAll('input[type=checkbox]').forEach((c, i) => { c.checked = types.includes(Store.SUPPLIER_TYPES[i].v); });
+  },
+  _newSupTypes: ['mastication'],
   suppliersCard() {
     const S = Store.state.settings, edit = !App.isViewer && !App.isTeam;
     let list = (S.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
     if (!edit) list = list.filter(s => Store.supplierTypes(s).some(t => t !== 'autre'));   // un visiteur ne voit pas les fournisseurs « autres »
-    const isOpen = id => !!(this._supOpen || {})[id];
-    const badges = s => Store.SUPPLIER_TYPES.filter(t => Store.supplierTypes(s).includes(t.v)).map(t => `<span class="tag">${t.l}</span>`).join(' ');
-    const boxes = s => Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:.85rem;white-space:nowrap;cursor:pointer;"><input type="checkbox" style="width:auto;" ${Store.supplierTypes(s).includes(t.v) ? 'checked' : ''} onchange="Params.toggleSupType('${s.id}','${t.v}')"> ${t.l}</label>`).join('');
+    const row = s => edit
+      ? `<div class="ref-line"><input value="${U.esc(s.name)}" style="flex:1 1 130px;min-width:120px;font-weight:600;" onchange="Params.renameSupplier('${s.id}',this.value)">${this._supMs(s.id, Store.supplierTypes(s), t => `Params.toggleSupType('${s.id}','${t}')`)}<button class="btn-icon" title="Retirer ce fournisseur" onclick="Params.delSupplier('${s.id}')">🗑️</button></div>`
+      : `<div class="ref-line"><b style="flex:1 1 170px;">${U.esc(Store.supplierName(s.id))}</b><span class="muted">${U.esc(this._supTypesLabel(Store.supplierTypes(s)))}</span></div>`;
     return `<div class="ref-card"><h3>🏭 Fournisseurs <span class="muted" style="font-weight:400;font-size:.8rem;">(ce qu'ils te vendent)</span></h3>
-      <p class="muted help" style="font-size:.82rem;">Une seule liste. Coche ce que chaque fournisseur te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</p>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        ${list.map(s => `<details class="fold ref-row" ${isOpen(s.id) ? 'open' : ''} ontoggle="(Params._supOpen=Params._supOpen||{})['${s.id}']=this.open">
-          <summary style="cursor:pointer;padding:6px 0;"><b>${U.esc(Store.supplierName(s.id))}</b> ${badges(s)}</summary>
-          ${edit ? `<div class="fold-body" style="padding:6px 0 10px;">
-            <div class="grid c2">
-              <div class="fg"><label>Nom</label><input value="${U.esc(s.name)}" onchange="Params.renameSupplier('${s.id}',this.value)"></div>
-              <div class="fg"><label>Il me vend…</label><div style="display:flex;flex-wrap:wrap;gap:8px 16px;padding-top:6px;">${boxes(s)}</div></div>
-            </div>
-            <button class="btn-ghost btn-sm mt" onclick="Params.delSupplier('${s.id}')">🗑️ Retirer ce fournisseur</button>
-          </div>` : ''}</details>`).join('') || '<span class="muted">Aucun fournisseur.</span>'}
-      </div>
-      ${edit ? `<div class="ref-add"><input id="add_sup_name" placeholder="Ajouter un fournisseur…" onkeydown="if(event.key==='Enter')Params.addSupplier()"><button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋ Ajouter</button></div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;"><span class="muted" style="font-size:.82rem;">Il me vend :</span>${Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:.85rem;white-space:nowrap;cursor:pointer;"><input type="checkbox" class="add_sup_t" style="width:auto;" value="${t.v}" ${t.v === 'mastication' ? 'checked' : ''}> ${t.l}</label>`).join('')}</div>` : ''}</div>`;
+      <p class="muted help" style="font-size:.82rem;">Une seule liste. Pour chaque fournisseur, coche ce qu'il te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</p>
+      <div>${list.map(row).join('') || '<span class="muted">Aucun fournisseur.</span>'}</div>
+      ${edit ? `<div class="ref-add" style="flex-wrap:wrap;"><input id="add_sup_name" placeholder="Ajouter un fournisseur…" onkeydown="if(event.key==='Enter')Params.addSupplier()">${this._supMs('new', this._newSupTypes, t => `Params.toggleNewSupType('${t}')`)}<button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋ Ajouter</button></div>` : ''}</div>`;
+  },
+  toggleNewSupType(t) {
+    const cur = this._newSupTypes.slice(), i = cur.indexOf(t);
+    if (i >= 0) cur.splice(i, 1); else cur.push(t);
+    this._newSupTypes = cur; this._supMsSync('new', cur);
   },
   addSupplier() {
     const n = U.val('add_sup_name').trim(); if (!n) return;
-    const types = [...document.querySelectorAll('.add_sup_t')].filter(c => c.checked).map(c => c.value);
-    if (!types.length) { U.toast('Coche au moins un type de fournisseur.', true); return; }
+    const types = this._newSupTypes.slice();
+    if (!types.length) { U.toast('Choisis ce que ce fournisseur te vend (menu à côté du nom).', true); return; }
     const S = Store.state.settings;
     if (S.suppliers.some(s => s.name.toLowerCase() === n.toLowerCase())) { U.toast('Ce fournisseur existe déjà.', true); return; }
-    S.suppliers.push({ id: U.uid(), name: n, types }); Store.save('settings'); App.rerender();
+    S.suppliers.push({ id: U.uid(), name: n, types }); this._newSupTypes = ['mastication'];
+    Store.save('settings'); App.rerender();
   },
   toggleSupType(id, t) {
     const s = Store.state.settings.suppliers.find(x => x.id === id); if (!s) return;
     const cur = Store.supplierTypes(s).slice(), i = cur.indexOf(t);
-    if (i >= 0) { if (cur.length === 1) { U.toast('Un fournisseur doit avoir au moins un type.', true); return; } cur.splice(i, 1); } else cur.push(t);
-    s.types = cur; Store.save('settings'); App.rerender();
+    if (i >= 0) { if (cur.length === 1) { U.toast('Un fournisseur doit avoir au moins un type.', true); this._supMsSync(id, cur); return; } cur.splice(i, 1); } else cur.push(t);
+    s.types = cur; Store.save('settings'); this._supMsSync(id, cur);
   },
   renameSupplier(id, val) {
     const n = String(val || '').trim(), S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;
