@@ -14,14 +14,14 @@ const Devis = {
   assign() { const k = this.ymd(), m = Store.state.meta; m.devisSeq = m.devisSeq || {}; m.devisSeq[k] = (m.devisSeq[k] || 0) + 1; Store.save('meta'); return k + '-' + m.devisSeq[k]; },
   letter(n) { let s = '', i = Math.max(1, Math.floor(n) || 1); while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; },
   hash(o) { const s = JSON.stringify(o); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); },
-  blank() { return { base: '', rev: 0, hash: '' }; },
+  blank(pre) { return { base: '', rev: 0, hash: '', pre: pre || '' }; },   // pre : préfixe du numéro (« P » = devis pro, 2026-10-03)
   /* numéro à AFFICHER : prévu tant que rien n'est sorti ; lettre suivante si le contenu a changé depuis la dernière sortie */
-  show(st, h) { if (!st || !st.base) return this.peek() + this.letter(1); return st.base + this.letter(h !== st.hash ? st.rev + 1 : st.rev); },
+  show(st, h) { const p = (st && st.pre) || ''; if (!st || !st.base) return p + this.peek() + this.letter(1); return p + st.base + this.letter(h !== st.hash ? st.rev + 1 : st.rev); },
   /* à la SORTIE du devis (copie, mise en attente) : attribue / fait avancer la lettre, renvoie le numéro final */
   commit(st, h) {
     if (!st.base) { st.base = this.assign(); st.rev = 1; st.hash = h; }
     else if (h !== st.hash) { st.rev++; st.hash = h; }
-    return st.base + this.letter(st.rev);
+    return (st.pre || '') + st.base + this.letter(st.rev);
   },
-  no(st) { return st && st.base ? st.base + this.letter(st.rev) : ''; }
+  no(st) { return st && st.base ? (st.pre || '') + st.base + this.letter(st.rev) : ''; }
 };

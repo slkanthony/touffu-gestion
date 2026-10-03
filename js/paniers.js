@@ -821,7 +821,7 @@ const Paniers = {
     return { d, txt: d <= 0 ? 'aujourd\'hui' : d === 1 ? 'depuis 1 jour' : `depuis ${d} jours` };
   },
   _pendingCard() {
-    const list = this._pending().slice().sort((a, b) => (b.updated || b.ts) - (a.updated || a.ts));
+    const list = this._pending().filter(r => r.kind !== 'pro').sort((a, b) => (b.updated || b.ts) - (a.updated || a.ts));   // les devis pro (kind:'pro') sont gérés par la page Revente pro
     if (!list.length) return '';
     const today = new Date().toISOString().slice(0, 10);
     const rows = list.map(r => {

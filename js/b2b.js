@@ -64,6 +64,7 @@ const B2B = {
             <button class="btn-ghost" onclick="B2B.exportQuote()">🧾 Exporter le tarif pro (CSV)</button>
             <button class="btn-ghost" onclick="B2B.openQuote('micro')" title="Pour une micro-entreprise (ne collecte pas la TVA) : prix TTC avec la remise + prix de vente conseillé — à copier en image ou en texte">🧑‍💼 Spécial micro-entreprises</button>
             <button class="btn-ghost" onclick="B2B.openQuote('ent')" title="Pour une entreprise qui collecte la TVA : prix HT avec la remise + prix de vente conseillé TTC — à copier en image ou en texte">🏢 Spécial entreprises</button>
+            <button class="btn-ghost btn-sm" onclick="B2B.openOffFormats()" title="Choisis les formats (50G, 100G, 250G…) que tu ne proposes pas aux pros : ils sont décochés d'office dans les devis et exclus des exports CSV">🚫 Formats proposés${this._offList().length ? ' (' + this._offList().length + ' exclu' + (this._offList().length > 1 ? 's' : '') + ')' : ''}</button>
             <button class="btn-ghost btn-sm" onclick="B2B.expandAll()">📂 Tout développer</button>
             <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
           </div>
@@ -74,6 +75,7 @@ const B2B = {
     App.mount(`
       <div class="view-title"><h1>Revente pro (B2B)</h1><span class="sub">remise & fiches par produit</span></div>
       ${controls}
+      ${this._proPendingCard()}
       ${tab === 'acc' ? this.renderAcc() : this.renderMast()}`);
   },
 
@@ -211,7 +213,7 @@ const B2B = {
       const socialB2B = priceHTB2B * U.num(S.socialTaxRate) / 100;
       const profitB2B = marginB2B - socialB2B;
       const critical = coeffB2B < U.num(S.b2bCoeffThreshold);
-      return { label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
+      return { vid: v.id, label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
     });
     const activeSup = preview || p.mainSupplierId;
     return { p, rows, discPct, supplierName: activeSup ? Store.supplierName(activeSup) : '—', critical: rows.some(r => r.critical), preview };
@@ -412,22 +414,24 @@ const B2B = {
   exportQuote() {
     if ((this.tab || 'mast') === 'acc') return this.exportQuoteAcc();
     const lines = [['Produit', 'Variante', 'Fournisseur', 'Decote_pct', 'Cout_revient', 'Coeff_public', 'Public_TTC', 'Prix_B2B_HT', 'Coeff_B2B', 'Marge_B2B', 'Cotisations_B2B', 'Benefice_B2B', 'Prix_B2B_TTC']];
+    let nAll = 0, nKept = 0;
     (this._items || []).forEach(it => {
-      it.rows.forEach(r => lines.push([it.p.name, r.label, it.supplierName, it.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]));
+      nAll += it.rows.length; this._keepRows(it.rows).forEach(r => { nKept++; lines.push([it.p.name, r.label, it.supplierName, it.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]); });
     });
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-pro-mastication-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
-    this._recordExport((this._items || []).flatMap(it => it.rows.map(r => [this._expKeyM(it.p.id, r.label), r.priceHTB2B])));
-    U.toast('Tarif pro mastication exporté (CSV, ouvrable dans Excel).');
+    this._recordExport((this._items || []).flatMap(it => this._keepRows(it.rows).map(r => [this._expKeyM(it.p.id, r.label), r.priceHTB2B])));
+    U.toast('Tarif pro mastication exporté (CSV, ouvrable dans Excel)' + this._offNote(nAll, nKept) + '.');
   },
 
   exportQuoteAcc() {
     const lines = [['Produit', 'Categorie', 'Decote_pct', 'Cout_revient', 'Coeff_public', 'Public_TTC', 'Prix_B2B_HT', 'Coeff_B2B', 'Marge_B2B', 'Cotisations_B2B_faitmain', 'Benefice_B2B', this.noVat ? 'Prix_B2B_HT' : 'Prix_B2B_TTC']];
-    (this._accItems || []).forEach(r => lines.push([r.a.name, r.a.category || '', r.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]));
+    const accKept = (this._accItems || []).filter(r => !this._isOffVar(this._accVariant(r.a)));
+    accKept.forEach(r => lines.push([r.a.name, r.a.category || '', r.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]));
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-pro-accessoires-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
-    this._recordExport((this._accItems || []).map(r => ['a:' + r.a.id, r.priceHTB2B]));
-    U.toast('Tarif pro accessoires exporté (CSV, ouvrable dans Excel).');
+    this._recordExport(accKept.map(r => ['a:' + r.a.id, r.priceHTB2B]));
+    U.toast('Tarif pro accessoires exporté (CSV, ouvrable dans Excel)' + this._offNote((this._accItems || []).length, accKept.length) + '.');
   },
 
   /* ═══════════ Sélection & export « Spécial commercial » ═══════════
@@ -461,9 +465,9 @@ const B2B = {
     chosen.forEach(x => {
       if (acc) {
         const r = x.it, mainW = r.a.mainWidth || this.accWidths(r.a)[0] || '';
-        list.push({ key: 'a:' + r.a.id, name: r.a.name, variant: mainW || 'Standard', price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
+        list.push({ key: 'a:' + r.a.id, aId: r.a.id, name: r.a.name, variant: mainW || 'Standard', price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
       } else x.it.rows.forEach(r => {
-        list.push({ key: this._expKeyM(x.it.p.id, r.label), name: x.it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
+        list.push({ key: this._expKeyM(x.it.p.id, r.label), pId: x.it.p.id, vid: r.vid, name: x.it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
       });
     });
     const q = (this._qt && this._qt.qty) || {};
@@ -489,7 +493,8 @@ const B2B = {
   _dvState() {
     const m = Store.state.meta; m.devisB2B = m.devisB2B || {};
     let st = m.devisB2B[this._dvKey()];
-    if (!st || (st.ts && Date.now() - st.ts > 30 * 86400000)) st = m.devisB2B[this._dvKey()] = { ...Devis.blank(), ts: 0 };
+    if (!st || (st.ts && Date.now() - st.ts > 30 * 86400000)) st = m.devisB2B[this._dvKey()] = { ...Devis.blank('P'), ts: 0 };
+    if (!st.base && !st.pre) st.pre = 'P';   // devis pro : numéro préfixé « P » (P261003-1A) ; un devis déjà sorti garde son numéro
     return st;
   },
   _dvHash() { const { rows } = this._qtRows(); return Devis.hash({ t: this._qt.type, r: rows.map(r => [r.key, r.qty, Math.round(r.price * 100)]) }); },
@@ -502,7 +507,7 @@ const B2B = {
   _qtInner() {
     const { all, devis, total } = this._qtRows(true), c = this._qtCols(), x = this._qtExtras();
     const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
-    return `<p style="margin:0 10px 6px;font-weight:800;">Devis n° <span id="qt_no">${U.esc(this._dvShow())}</span> <span class="muted" style="font-weight:400;font-size:.8rem;">— définitif à la copie ; la lettre avance si tu modifies le devis</span></p><div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
+    return `${this._qtVarChips()}<p style="margin:0 10px 6px;font-weight:800;">Devis n° <span id="qt_no">${U.esc(this._dvShow())}</span> <span class="muted" style="font-weight:400;font-size:.8rem;">— définitif à la copie ; la lettre avance si tu modifies le devis</span></p><div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
       <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);"><th style="padding:7px 10px;width:34px;"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th>${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
       <tbody>${all.map((r, i) => `<tr id="qt_row_${i}" style="border-bottom:1px solid var(--card-border);${r.on ? '' : 'opacity:.4;'}"><td style="padding:6px 10px;"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="1" step="1" value="${r.qty}" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${r.on ? U.eur(r.sub) : ''}</td></tr>`).join('')}</tbody></table></div>
       <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${this._qtTotalsTxt()}</div>
@@ -540,16 +545,19 @@ const B2B = {
   },
   _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
   openQuote(type) {
-    const { all: rows } = (this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {}, off: {} }, this._qtRows(true));
+    this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {}, off: {} };
+    const rows = this._qtRows(true).all;
+    rows.forEach(r => { if (this._isOffVar(r.variant)) this._qt.off[r.key] = true; });   // formats non proposés aux pros (mémorisés)
     if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
     const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
     const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value;B2B._qtNoRefresh()"></div>
       <p class="muted" style="margin:0 0 4px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
-      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne. Décoche les variantes que tu ne veux pas proposer.</p>
+      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne. Décoche les variantes que tu ne veux pas proposer (ou un format entier avec les pastilles).</p>
       <div id="qt_box">${this._qtInner()}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>
+        <button class="btn-ghost btn-sm" onclick="B2B.quotePending()" title="Garde ce devis (numéro attribué) pour le retrouver plus bas, le modifier ou le passer en vente quand le client accepte">💾 Mettre en attente</button>
         <label class="muted" style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" style="width:64px;" onchange="B2B._qt.per=this.value"></label>
       </div>
       <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--card-border);">
@@ -691,6 +699,152 @@ const B2B = {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fb); else fb();
   },
 
+  /* ═══════════ Formats (variantes) non proposés aux pros — mémorisés (2026-10-03) ═══════════
+     settings.b2bOffVariants = libellés de variante (en minuscules) décochés d'office dans les devis ET exclus des exports CSV.
+     Se règle d'un clic dans la fenêtre d'un devis (pastilles « Formats à proposer ») ou via le bouton « Formats proposés ». */
+  _vk(label) { return String(label == null ? '' : label).trim().toLowerCase(); },
+  _offList() { const S = Store.state.settings; return Array.isArray(S.b2bOffVariants) ? S.b2bOffVariants : []; },
+  _isOffVar(label) { return this._offList().includes(this._vk(label)); },
+  _setOffVar(label, off) {
+    const S = Store.state.settings, k = this._vk(label), cur = this._offList().filter(x => x !== k);
+    if (off) cur.push(k);
+    S.b2bOffVariants = cur; Store.save('settings');
+  },
+  _accVariant(a) { return a.mainWidth || this.accWidths(a)[0] || 'Standard'; },
+  _keepRows(rows) { return rows.filter(r => !this._isOffVar(r.label)); },
+  _offNote(total, kept) { const n = total - kept; return n > 0 ? ` · ${n} ligne(s) de formats non proposés exclue(s)` : ''; },
+  _fmtChip(label, state, onclick, count) {
+    const mark = state === 'on' ? '✓ ' : state === 'off' ? '✕ ' : '◐ ';
+    return `<button type="button" class="${state === 'on' ? 'btn-cta' : 'btn-ghost'} btn-sm" style="padding:3px 10px;${state === 'off' ? 'text-decoration:line-through;opacity:.75;' : ''}" onclick="${onclick}">${mark}${U.esc(label)}${count != null ? ` <span style="opacity:.75;font-weight:400;">(${count})</span>` : ''}</button>`;
+  },
+  _tabFormats() {
+    const acc = (this.tab || 'mast') === 'acc', seen = new Map();
+    this._curItems().forEach(x => (acc ? [this._accVariant(x.it.a)] : x.it.rows.map(r => r.label)).forEach(l => { const k = this._vk(l); if (!seen.has(k)) seen.set(k, l); }));
+    return [...seen.values()].sort((a, b) => Ventes._labelCmp(a, b));
+  },
+  openOffFormats() {
+    U.modal({ title: '🚫 Formats proposés aux pros', body: '<div id="off_box">' + this._offBox() + '</div>', hideOk: true, cancelLabel: 'Fermer' });
+  },
+  _offBox() {
+    const list = this._tabFormats(); this._offFmts = list;
+    return `<p class="muted" style="margin:0 0 10px;font-size:.85rem;">Clique un format pour le retirer / le remettre. Les formats barrés sont <b>décochés d'office</b> dans les devis et <b>exclus des exports CSV</b> (tarif pro, spécial commercial). Tu peux toujours en recocher un à la main dans un devis.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${list.map((l, i) => this._fmtChip(l, this._isOffVar(l) ? 'off' : 'on', `B2B._offToggle(${i})`)).join('') || '<span class="muted">Aucun format.</span>'}</div>`;
+  },
+  _offToggle(i) {
+    const l = (this._offFmts || [])[i]; if (l == null) return;
+    this._setOffVar(l, !this._isOffVar(l));
+    const b = document.getElementById('off_box'); if (b) b.innerHTML = this._offBox();
+  },
+  _qtVarChips() {
+    const groups = new Map();
+    this._qtRows(true).all.forEach(r => { const k = this._vk(r.variant); if (!groups.has(k)) groups.set(k, { label: r.variant, n: 0, on: 0 }); const g = groups.get(k); g.n++; if (r.on) g.on++; });
+    const list = [...groups.values()].sort((a, b) => Ventes._labelCmp(a.label, b.label));
+    this._qtVarList = list.map(g => g.label);
+    if (list.length < 2) return '';
+    return `<div style="margin:0 10px 10px;"><div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:5px;">Formats à proposer <span class="muted" style="text-transform:none;letter-spacing:0;">— un clic décoche tous ceux du tableau ; ton choix est mémorisé (aussi pour les exports CSV)</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${list.map((g, i) => this._fmtChip(g.label, g.on === g.n ? 'on' : g.on === 0 ? 'off' : 'mix', `B2B._qtVar(${i})`, g.n)).join('')}</div></div>`;
+  },
+  _qtVar(i) {
+    const label = (this._qtVarList || [])[i]; if (label == null) return;
+    const k = this._vk(label), rows = this._qtRows(true).all.filter(r => this._vk(r.variant) === k), turnOff = rows.every(r => r.on);
+    this._qt.off = this._qt.off || {};
+    rows.forEach(r => { if (turnOff) this._qt.off[r.key] = true; else delete this._qt.off[r.key]; });
+    this._setOffVar(label, turnOff);
+    this._qtRefresh();
+  },
+
+  /* ═══════════ Devis pro en attente → vente (2026-10-03) ═══════════
+     Un devis pro mis en attente est un enregistrement du domaine `baskets` avec kind:'pro' (invisible dans les paniers de la page Paniers).
+     Il garde les lignes AVEC leurs prix remisés (figés) : la vente reprend exactement ces prix, donc la marge est calculée sur le prix pro vendu. */
+  _proPending() { return (Store.state.baskets || []).filter(r => r.kind === 'pro'); },
+  _proPendingCard() {
+    const list = this._proPending().slice().sort((a, b) => (b.updated || b.ts || 0) - (a.updated || a.ts || 0));
+    if (!list.length) return '';
+    const rows = list.map(r => {
+      const nb = (r.lines || []).reduce((a, l) => a + U.num(l.qty), 0), d = Math.floor((Date.now() - (r.updated || r.ts || Date.now())) / 86400000);
+      return `<tr><td class="col-name"><b>${U.esc(r.name)}</b> ${r.dv && r.dv.base ? `<span class="badge info" title="N° de devis">${U.esc(Devis.no(r.dv))}</span>` : ''} <span class="badge">${r.type === 'micro' ? '🧑‍💼 micro-entreprise' : '🏢 entreprise'}</span></td>
+        <td><span class="badge ${d >= 7 ? 'warn' : ''}">⏳ ${d <= 0 ? 'aujourd\'hui' : d === 1 ? 'depuis 1 jour' : 'depuis ' + d + ' jours'}</span></td>
+        <td class="num" style="white-space:nowrap;">${nb} art.<br><b>${U.eur(r.total)}</b></td>
+        <td style="white-space:nowrap;text-align:right;"><button class="btn-ghost btn-sm" onclick="B2B.resumePro('${r.id}')" title="Rouvrir ce devis pour le modifier">✏️ Reprendre</button> <button class="btn-cta btn-sm" onclick="B2B.sendProToSale('${r.id}')" title="Le client est d'accord : charge les produits, aux prix du devis, dans le ticket de la page Ventes">🛒 Envoyer en vente</button> <button class="btn-icon" onclick="B2B.delPro('${r.id}')" title="Supprimer">🗑️</button></td></tr>`;
+    }).join('');
+    return `<div class="card" style="margin-top:16px;border-left:4px solid var(--caramel);"><h2>⏳ Devis pro en attente (${list.length})</h2><div class="table-wrap"><table><thead><tr><th class="col-name">Entreprise</th><th>En attente</th><th class="num">Devis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  },
+  quotePending() {
+    const who = String(this._qt.who || '').trim();
+    if (!who) { U.toast('Indique le nom de l\'entreprise pour mettre le devis en attente.', true); const e = document.getElementById('qt_who'); if (e) e.focus(); return; }
+    const { rows, total } = this._qtRows();
+    if (!rows.length) { U.toast('Aucune ligne cochée.', true); return; }
+    const no = this._dvCommit();   // mise en attente = le devis « sort » : numéro attribué (lettre suivante si modifié)
+    const list = Store.state.baskets = Store.state.baskets || [], now = Date.now();
+    const data = { kind: 'pro', type: this._qt.type, tab: this.tab || 'mast', name: who, sel: this._curItems().filter(x => this._sel[x.id]).map(x => x.id),
+      qty: { ...(this._qt.qty || {}) }, off: { ...(this._qt.off || {}) }, iban: this._qt.iban !== false, msg: this._qt.msg == null ? null : this._qt.msg, per: this._qt.per, dv: { ...this._dvState() }, updated: now,
+      lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco })),
+      total: Math.round(total * 100) / 100 };
+    let rec = this._qt.pendId ? list.find(x => x.id === this._qt.pendId) : null;
+    if (rec) Object.assign(rec, data); else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
+    this._qt.pendId = rec.id;
+    Store.log('devis pro', `Devis pro en attente — ${who} (${no})`);
+    Store.save('baskets', 'journal', 'meta');
+    U.closeModal(); this.render();
+    U.toast(`Devis pro n° ${no} mis en attente (« Reprendre » ou « Envoyer en vente » plus bas).`);
+  },
+  resumePro(id) {
+    const rec = this._proPending().find(x => x.id === id); if (!rec) return;
+    this.tab = rec.tab || 'mast';
+    this._sel = {}; (rec.sel || []).forEach(i => { this._sel[i] = true; });
+    if (rec.dv && rec.dv.base) { const m = Store.state.meta; m.devisB2B = m.devisB2B || {}; m.devisB2B[rec.type + '|' + String(rec.name).trim().toLowerCase()] = { ...rec.dv, ts: Date.now() }; }
+    this.render();
+    this.openQuote(rec.type);
+    if (!document.getElementById('qt_box')) return;
+    Object.assign(this._qt, { who: rec.name, qty: { ...(rec.qty || {}) }, off: { ...(rec.off || {}) }, iban: rec.iban !== false, msg: rec.msg == null ? null : rec.msg, per: rec.per || 20, pendId: rec.id });
+    const w = document.getElementById('qt_who'); if (w) w.value = rec.name;
+    const ta = document.querySelector('#modalBg textarea.note-area'); if (ta && rec.msg != null) ta.value = rec.msg;
+    const ib = document.querySelector('#modalBg input[type=checkbox][onchange*="_qt.iban"]'); if (ib) ib.checked = rec.iban !== false;
+    this._qtRefresh();
+  },
+  async delPro(id) {
+    const rec = this._proPending().find(x => x.id === id); if (!rec) return;
+    if (!await U.confirm('Supprimer le devis pro en attente de ' + rec.name + ' ?', { okLabel: 'Supprimer' })) return;
+    Store.state.baskets = (Store.state.baskets || []).filter(x => x.id !== id);
+    Store.save('baskets'); this.render();
+  },
+  /* variante de stock reliée à une ligne de fiche prix (même fiche + même ligne de variante) */
+  _stockUnitFor(units, catId, catVid) {
+    for (const p of Store.state.stockM) for (const v of (p.variants || [])) {
+      if ((v.catalogId || p.catalogId) === catId && v.catalogVariantId === catVid) { const u = units.find(x => x.key === 'M|' + p.id + '|' + v.id); if (u) return u; }
+    }
+    return null;
+  },
+  async sendProToSale(id) {
+    const rec = this._proPending().find(x => x.id === id); if (!rec) return;
+    const units = Ventes.units(), lines = [], warns = [], general = [];
+    (rec.lines || []).forEach(l => {
+      const nm = `<b>${U.esc(l.name)}</b> ${U.esc(l.variant || '')}`, qty = U.num(l.qty), price = U.num(l.price);
+      const u = l.aId ? units.find(x => x.key === 'A|' + l.aId) : (l.pId && l.vid ? this._stockUnitFor(units, l.pId, l.vid) : null);
+      if (!u) { warns.push(`${nm} : aucun produit du stock n'est relié à cette fiche prix — ligne ignorée (relie-la dans Stock ou ajoute-la à la main).`); return; }
+      if (u.kind === 'A') {   // accessoire : fait à la commande, jamais bloquant
+        lines.push({ u, qty, price, src: 'general' });
+        if (qty > U.num(u.availG)) warns.push(`${nm} : stock fini insuffisant (${U.qty(u.availG)} dispo) — fait à la commande, tu pourras l'ajouter quand même.`);
+        return;
+      }
+      const e = Math.min(qty, Math.max(0, U.num(u.availE))), g = qty - e;
+      if (e > 0) lines.push({ u, qty: e, price, src: 'event' });
+      if (g > 0) {
+        lines.push({ u, qty: g, price, src: 'general' });
+        general.push(`${nm} : ${e > 0 ? `${U.qty(e)} en événement + ` : ''}<b>${U.qty(g)} en stock général</b>`);
+        if (g > U.num(u.availG)) warns.push(`${nm} : stock général insuffisant (${U.qty(g)} à prendre, ${U.qty(u.availG)} dispo).`);
+      }
+    });
+    if (!lines.length) { U.toast('Aucun produit à envoyer.', true); return; }
+    const allGen = lines.every(l => l.src === 'general');
+    const html = `<p>Les produits sont chargés <b>au prix du devis</b> (remise pro incluse), pour <b>${U.esc(rec.name)}</b>. ${allGen ? 'Aucun n\'est en stock événement : tout sera déduit du stock <b>général</b>.' : 'Ils seront déduits du stock <b>Événement</b>.'} Rien n'est déduit tant que tu n'as pas validé le ticket (et tu y choisis le lot de chaque ligne).</p>
+      ${general.length && !allGen ? `<p style="margin-top:10px;"><b>🏬 Pas assez en événement — le manquant vient du stock général :</b></p><ul style="padding-left:18px;">${general.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}
+      ${warns.length ? `<p style="margin-top:10px;"><b>⚠️ À vérifier :</b></p><ul style="padding-left:18px;">${warns.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}`;
+    if (!await U.ask({ title: '🛒 Envoyer le devis pro en vente', okLabel: 'Envoyer en vente', cancelLabel: 'Annuler', html })) return;
+    if (Ventes.cart.length && !await U.confirm('Le ticket en cours de la page Ventes contient déjà des articles. Le remplacer par le devis de ' + rec.name + ' ?', { okLabel: 'Remplacer' })) return;
+    Ventes.loadFromBasket(rec, lines);
+  },
+
   exportCommercial() {
     const acc = (this.tab || 'mast') === 'acc';
     const items = this._curItems();
@@ -699,6 +853,11 @@ const B2B = {
     if (!chosen.length) { chosen = items; note = ' (aucun coché → tous exportés)'; }
     if (!chosen.length) { U.toast('Aucun produit à exporter.', true); return; }
     const lines = [['Nom du produit', 'Variante', 'Prix hors taxes', 'Prix conseillé']];
+    const nAll = acc ? chosen.length : chosen.reduce((a, x) => a + x.it.rows.length, 0);
+    if (acc) chosen = chosen.filter(x => !this._isOffVar(this._accVariant(x.it.a)));
+    else chosen = chosen.map(x => ({ ...x, it: { ...x.it, rows: this._keepRows(x.it.rows) } })).filter(x => x.it.rows.length);
+    const nKept = acc ? chosen.length : chosen.reduce((a, x) => a + x.it.rows.length, 0);
+    if (!chosen.length) { U.toast('Tous les formats sélectionnés sont exclus (bouton « Formats proposés »).', true); return; }
     if (acc) {
       chosen.forEach(x => {
         const r = x.it, widths = this.accWidths(r.a), mainW = r.a.mainWidth || widths[0] || '';
@@ -710,6 +869,6 @@ const B2B = {
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-commercial-${acc ? 'accessoires' : 'mastication'}-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');
     this._recordExport(acc ? chosen.map(x => ['a:' + x.it.a.id, x.it.priceHTB2B]) : chosen.flatMap(x => x.it.rows.map(r => [this._expKeyM(x.it.p.id, r.label), r.priceHTB2B])));
-    U.toast(`Export commercial généré${note} : ${chosen.length} produit(s).`);
+    U.toast(`Export commercial généré${note} : ${chosen.length} produit(s)${this._offNote(nAll, nKept)}.`);
   }
 };
