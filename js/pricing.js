@@ -316,8 +316,10 @@ const Pricing = {
     return this.categoryAbbrevMap(S.consCategories || [], S.consoAbbrev || {});
   },
 
-  autoSkuGeneric(productName, category, variantLabel, abbrevMap) {
-    let slug = this.slugify(productName);
+  /* Le texte entre parenthèses (ex. le nom chez le fournisseur : « Beige Ocre (Selle havane) ») n'entre PAS dans le SKU (2026-10-04).
+     `legacy` = ancienne règle (parenthèses comprises) : sert seulement à repérer les anciens SKU auto à mettre à jour. */
+  autoSkuGeneric(productName, category, variantLabel, abbrevMap, legacy) {
+    let slug = this.slugify(legacy ? productName : String(productName == null ? '' : productName).replace(/\([^)]*\)/g, ' '));
     const catSlug = this.slugify(category);
     const entries = Object.entries(abbrevMap).sort((a, b) => b[0].length - a[0].length);
     const parts = slug.split('-');
@@ -337,8 +339,11 @@ const Pricing = {
     return (vLabel ? slug + '-' + vLabel : slug).replace(/-{2,}/g, '-');
   },
 
-  autoSkuMat(productName, kind, variantLabel) {
-    return this.autoSkuGeneric(productName, kind, variantLabel, this.matAbbrevMap());
+  autoSkuMat(productName, kind, variantLabel, legacy) {
+    return this.autoSkuGeneric(productName, kind, variantLabel, this.matAbbrevMap(), legacy);
+  },
+  autoSkuConso(name, category, dims) {
+    return this.autoSkuGeneric(name, category, dims, this.consoAbbrevMap());
   },
 
   autoSku(productName, meatType, variantLabel) {

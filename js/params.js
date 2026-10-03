@@ -278,7 +278,6 @@ const Params = {
             <div style="display:flex;flex-wrap:wrap;gap:6px;">
               ${(() => { const kinds = Object.keys(Stock.matKindLabel); const map = Pricing.matAbbrevMap(); return kinds.sort(U.sortFr).map(k => { const slug = Pricing.slugify(k); const abbr = (S.matAbbrev || {})[k] || map[slug] || slug.substring(0,3); return `<span class="tag" style="display:inline-flex;gap:4px;align-items:center;">${U.esc(Stock.matKindLabel[k] || k)} → <input style="width:50px;padding:2px 4px;text-transform:uppercase;" value="${U.esc(abbr)}" onchange="Params.setMatAbbrev('${U.esc(k).replace(/&#39;/g,"\\'")}',this.value)"></span>`; }).join(''); })()}
             </div>
-            <button class="btn-ghost btn-sm mt" onclick="Params.regenMatSkus()">🔄 Régénérer les SKU matières</button>
           </div>
         </details>
         <details class="fold" style="margin-top:8px;" ${this._consoAbbrevOpen ? 'open' : ''} ontoggle="Params._consoAbbrevOpen=this.open">
@@ -289,9 +288,10 @@ const Params = {
             </div>
           </div>
         </details>
+        <div id="sku_cat_btns" class="frow mt" style="gap:8px;flex-wrap:wrap;">${this._skuCatBtns()}</div>
         <div class="toolbar mt" style="margin-bottom:8px;">
           <div class="fg" style="min-width:180px;"><input id="sku_all_search" placeholder="Rechercher un produit ou SKU…" oninput="Params.renderSkuAll()" onchange="U.refocus('sku_all_search')"></div>
-          <div class="fg" style="min-width:120px;">${U.customSelect({ value: this._skuMeat, options: [{v:'all',l:'Toutes les viandes'}].concat(S.meatTypes.slice().sort(U.sortFr).map(mt => ({v:mt,l:mt}))), onPick: 'Params._setSkuMeat' })}</div>
+          <div class="fg" id="sku_group_box" style="min-width:160px;">${this._skuGroupSelect()}</div>
         </div>
         <div id="sku_all_list">${this._renderSkuAll()}</div>
         <hr class="sep">
@@ -713,17 +713,24 @@ const Params = {
     const S = Store.state.settings, edit = !App.isViewer && !App.isTeam;
     let list = (S.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
     if (!edit) list = list.filter(s => Store.supplierTypes(s).some(t => t !== 'autre'));   // un visiteur ne voit pas les fournisseurs « autres »
-    const chip = (s, t) => { const on = Store.supplierTypes(s).includes(t.v); return `<button type="button" class="${on ? 'btn-cta' : 'btn-ghost'} btn-sm" ${edit ? `onclick="Params.toggleSupType('${s.id}','${t.v}')"` : 'disabled'} style="padding:2px 9px;font-size:.78rem;">${t.l}</button>`; };
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Fournisseurs <span class="muted help">Une seule liste. Coche ce que chaque fournisseur te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</span></h3>
+    const isOpen = id => !!(this._supOpen || {})[id];
+    const badges = s => Store.SUPPLIER_TYPES.filter(t => Store.supplierTypes(s).includes(t.v)).map(t => `<span class="badge info" style="font-size:.7rem;">${t.l}</span>`).join(' ');
+    const boxes = s => Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:.85rem;white-space:nowrap;cursor:pointer;"><input type="checkbox" style="width:auto;" ${Store.supplierTypes(s).includes(t.v) ? 'checked' : ''} onchange="Params.toggleSupType('${s.id}','${t.v}')"> ${t.l}</label>`).join('');
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);text-align:left;"><h3 style="margin:0 0 8px;">🏭 Fournisseurs <span class="muted" style="font-weight:400;font-size:.8rem;">(ce qu'ils te vendent)</span></h3>
+      <p class="muted help" style="font-size:.82rem;">Une seule liste. Coche ce que chaque fournisseur te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</p>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        ${list.map(s => `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--row-border);">
-          ${edit ? `<input value="${U.esc(s.name)}" style="flex:1 1 160px;min-width:140px;max-width:260px;font-weight:600;" onchange="Params.renameSupplier('${s.id}',this.value)">` : `<b style="flex:1 1 160px;">${U.esc(Store.supplierName(s.id))}</b>`}
-          <span style="display:flex;flex-wrap:wrap;gap:5px;">${Store.SUPPLIER_TYPES.map(t => chip(s, t)).join('')}</span>
-          ${edit ? `<button class="btn-icon" title="Retirer ce fournisseur" onclick="Params.delSupplier('${s.id}')">🗑️</button>` : ''}</div>`).join('') || '<span class="muted">Vide</span>'}
+        ${list.map(s => `<details class="fold sachet-group" style="margin:0;" ${isOpen(s.id) ? 'open' : ''} ontoggle="(Params._supOpen=Params._supOpen||{})['${s.id}']=this.open">
+          <summary style="cursor:pointer;padding:6px 0;"><b>${U.esc(Store.supplierName(s.id))}</b> ${badges(s)}</summary>
+          ${edit ? `<div class="fold-body" style="padding:6px 0 10px;">
+            <div class="grid c2">
+              <div class="fg"><label>Nom</label><input value="${U.esc(s.name)}" onchange="Params.renameSupplier('${s.id}',this.value)"></div>
+              <div class="fg"><label>Il me vend…</label><div style="display:flex;flex-wrap:wrap;gap:8px 16px;padding-top:6px;">${boxes(s)}</div></div>
+            </div>
+            <button class="btn-ghost btn-sm mt" onclick="Params.delSupplier('${s.id}')">🗑️ Retirer ce fournisseur</button>
+          </div>` : ''}</details>`).join('') || '<span class="muted">Aucun fournisseur.</span>'}
       </div>
-      ${edit ? `<div class="frow mt" style="align-items:center;flex-wrap:wrap;"><input id="add_sup_name" placeholder="Nouveau fournisseur…" style="max-width:240px;" onkeydown="if(event.key==='Enter')Params.addSupplier()">
-        ${Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:4px;align-items:center;font-size:.82rem;text-transform:none;letter-spacing:0;white-space:nowrap;"><input type="checkbox" class="add_sup_t" style="width:auto;" value="${t.v}" ${t.v === 'mastication' ? 'checked' : ''}> ${t.l}</label>`).join('')}
-        <button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋ Ajouter</button></div>` : ''}</div>`;
+      ${edit ? `<div class="frow mt" style="align-items:center;"><input id="add_sup_name" placeholder="Ajouter un fournisseur…" onkeydown="if(event.key==='Enter')Params.addSupplier()"><button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋</button></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;"><span class="muted" style="font-size:.82rem;">Il me vend :</span>${Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:.85rem;white-space:nowrap;cursor:pointer;"><input type="checkbox" class="add_sup_t" style="width:auto;" value="${t.v}" ${t.v === 'mastication' ? 'checked' : ''}> ${t.l}</label>`).join('')}</div>` : ''}</div>`;
   },
   addSupplier() {
     const n = U.val('add_sup_name').trim(); if (!n) return;
@@ -1609,20 +1616,6 @@ const Params = {
     Store.save('settings'); App.rerender();
   },
 
-  async regenMatSkus() {
-    const mats = Store.state.materials;
-    const changed = [];
-    mats.forEach(m => {
-      const newSku = Pricing.autoSkuMat(m.name, m.kind, m.variant);
-      if (m.sku !== newSku) { changed.push({ m, old: m.sku, new: newSku }); }
-    });
-    if (!changed.length) { U.toast('Tous les SKU matières sont déjà à jour.'); return; }
-    if (!await U.confirm(`Régénérer ${changed.length} SKU matières ?`)) return;
-    changed.forEach(c => { c.m.sku = c.new; });
-    Store.log('paramètres', `${changed.length} SKU matières régénérés`);
-    Store.save('materials'); App.rerender();
-    U.toast(`${changed.length} SKU matières régénérés.`);
-  },
   setConsoAbbrev(cat, val) {
     const S = Store.state.settings;
     if (!S.consoAbbrev) S.consoAbbrev = {};
@@ -1795,7 +1788,25 @@ const Params = {
   },
 
   _skuSort: 'name', _skuSortDir: 1, _skuView: 'all', _skuMeat: 'all',
+  _skuCat: 'mast',   // catégorie de stock affichée : 'mast' (mastication) | 'mat' (matières premières) | 'conso' (consommables)
   _setSkuMeat(val) { this._skuMeat = val; this.renderSkuAll(); },
+  _skuCatBtns() {
+    const n = { mast: Store.state.stockM.reduce((a, p) => a + (p.variants || []).length, 0), mat: (Store.state.materials || []).length, conso: (Store.state.consumables || []).length };
+    return [['mast', '🥩 Mastication'], ['mat', '🧵 Matières premières'], ['conso', '📦 Consommables']].map(([k, l]) => `<button type="button" class="${this._skuCat === k ? 'btn-cta' : 'btn-ghost'}" style="flex:1 1 160px;" onclick="Params.setSkuCat('${k}')">${l} <span style="opacity:.75;font-weight:400;">(${n[k]})</span></button>`).join('');
+  },
+  _skuGroupSelect() {
+    const S = Store.state.settings, mast = this._skuCat === 'mast';
+    const groups = mast ? S.meatTypes.slice() : [...new Set(this._allSkuData().map(r => r.meat).filter(Boolean))];
+    return U.customSelect({ value: this._skuMeat, options: [{ v: 'all', l: mast ? 'Toutes les viandes' : 'Toutes les catégories' }].concat(groups.sort(U.sortFr).map(g => ({ v: g, l: g }))), onPick: 'Params._setSkuMeat' });
+  },
+  setSkuCat(c) {
+    this._skuCat = c; this._skuMeat = 'all'; this._skuView = 'all';
+    const b = document.getElementById('sku_cat_btns'); if (b) b.innerHTML = this._skuCatBtns();
+    const g = document.getElementById('sku_group_box'); if (g) g.innerHTML = this._skuGroupSelect();
+    this.renderSkuAll();
+  },
+  /* ancien SKU auto (parenthèses comprises) devenu obsolète : proposé à la mise à jour, jamais un SKU tapé à la main */
+  _legacyParen(r) { return !!(r.sku && r.legacy && r.sku.trim().toUpperCase() === r.legacy.toUpperCase() && r.legacy.toUpperCase() !== String(r.base || '').toUpperCase()); },
 
   setSkuSort(key) {
     if (this._skuSort === key) this._skuSortDir *= -1;
@@ -1809,8 +1820,13 @@ const Params = {
   },
 
   _allSkuData() {
-    const rows = [];
-    Store.state.stockM.forEach(p => {
+    const rows = [], cat = this._skuCat || 'mast';
+    if (cat === 'mat') {
+      const kl = Stock.matKindLabel;
+      (Store.state.materials || []).forEach(m => rows.push({ pId: m.id, vId: '', name: m.product || m.name, meat: kl[m.kind] || m.kind || '', variant: m.variant || '', sku: m.sku || '', suggested: Pricing.autoSkuMat(m.product || m.name, m.kind, m.variant), legacy: Pricing.autoSkuMat(m.product || m.name, m.kind, m.variant, true) }));
+    } else if (cat === 'conso') {
+      (Store.state.consumables || []).forEach(c => { const dims = (Stock.consoDims(c) || '').toString(); rows.push({ pId: c.id, vId: '', name: c.name, meat: c.category || '', variant: dims, sku: c.sku || '', suggested: Pricing.autoSkuConso(c.name, c.category || '', dims) }); });
+    } else Store.state.stockM.forEach(p => {
       (p.variants || []).forEach(v => {
         const vLabel = Pricing.skuVariantLabel(v);
         let suggested = Pricing.autoSku(p.name, p.meatType, vLabel);
@@ -1849,6 +1865,7 @@ const Params = {
     rows.forEach((r, i) => {
       const base = r.suggested;
       if (!base) return;
+      r.base = base;
       let candidate = base, n = 1;
       while (conflicts(candidate, i)) { n++; candidate = base + '-' + n; }
       assigned.add(candidate.toUpperCase());
@@ -1892,7 +1909,7 @@ const Params = {
     // Le « -1PC » redondant (ancien format auto d'une pièce) est le SEUL cas où un SKU non vide/non
     // doublon est quand même proposé à la normalisation — car c'est un SKU auto obsolète, pas un choix.
     const redundant1pc = r => r.sku && ['-1PC', '-UNITE', '-PIECE', '-1PIECE', '-PCS'].some(x => r.sku.trim().toUpperCase() === (r.suggested + x).toUpperCase());
-    const needsSku = r => !r.sku || dupes[skuKey(r)] > 1 || redundant1pc(r);
+    const needsSku = r => !r.sku || dupes[skuKey(r)] > 1 || redundant1pc(r) || this._legacyParen(r);
     const allDiff = rows.filter(needsSku);
     const view = this._skuView;
     let display = rows;
@@ -1909,10 +1926,10 @@ const Params = {
         ${tabBtn('all', 'Tous', rows.length, '')} · ${tabBtn('diff', 'À mettre à jour', allDiff.length, '')}${dupeSkus.length ? ` · ${tabBtn('dupes', '⚠ Doublons', allDupeRows.length, 'var(--warn)')}` : ''}
       </div>
       ${!display.length ? `<p class="muted mt">${view === 'diff' ? 'Tous les SKU sont déjà à jour ✓' : 'Aucun doublon.'}</p>` : `<div class="table-wrap mt" style="max-height:500px;overflow:auto;">
-      <table><thead><tr>${sortHead('name','Produit')}${sortHead('meat','Viande')}${sortHead('variant','Variante')}${sortHead('sku','SKU','text-align:center;')}<th>Suggestion</th></tr></thead>
+      <table><thead><tr>${sortHead('name', this._skuCat === 'conso' ? 'Consommable' : 'Produit')}${sortHead('meat', this._skuCat === 'mast' ? 'Viande' : 'Catégorie')}${sortHead('variant', this._skuCat === 'conso' ? 'Dimensions' : 'Variante')}${sortHead('sku','SKU','text-align:center;')}<th>Suggestion</th></tr></thead>
       <tbody>${display.map(r => {
         const isDupe = dupes[skuKey(r)] > 1;
-        const propose = (!r.sku || redundant1pc(r)) && !isDupe; // afficher la suggestion (vide ou -1PC redondant)
+        const propose = (!r.sku || redundant1pc(r) || this._legacyParen(r)) && !isDupe; // afficher la suggestion (vide ou -1PC redondant)
         return `<tr>
           <td>${U.esc(r.name)}</td>
           <td>${U.esc(r.meat) || '<span class="muted">—</span>'}</td>
@@ -1933,6 +1950,14 @@ const Params = {
   },
 
   setSkuDirect(pId, vId, val) {
+    if (this._skuCat !== 'mast') {   // matières premières / consommables : le SKU est porté par la fiche elle-même
+      const dom = this._skuCat === 'mat' ? 'materials' : 'consumables', it = (Store.state[dom] || []).find(x => x.id === pId); if (!it) return;
+      const snap = Store.snapshot(dom, it);
+      it.sku = String(val || '').trim().toUpperCase();
+      const entry = Store.commitSnapshot(snap, 'editSku', `SKU ${it.name} → ${it.sku || '(vide)'}`);
+      Store.save(dom); U.toast(it.sku ? `SKU modifié : ${it.sku}` : 'SKU retiré.', false, entry?.id);
+      this.renderSkuAll(); return;
+    }
     const p = Store.state.stockM.find(x => x.id === pId);
     if (!p) return;
     const v = p.variants?.find(x => x.id === vId);
@@ -1959,11 +1984,18 @@ const Params = {
     const dupes = {};
     rows.forEach(r => { const k = skuKey(r); if (k) dupes[k] = (dupes[k] || 0) + 1; });
     const redundant1pc = r => r.sku && ['-1PC', '-UNITE', '-PIECE', '-1PIECE', '-PCS'].some(x => r.sku.trim().toUpperCase() === (r.suggested + x).toUpperCase());
-    const diffRows = rows.filter(r => !r.sku || dupes[skuKey(r)] > 1 || redundant1pc(r));
+    const diffRows = rows.filter(r => !r.sku || dupes[skuKey(r)] > 1 || redundant1pc(r) || this._legacyParen(r));
     if (!diffRows.length) { U.toast('Aucun SKU manquant, en doublon ou à normaliser — rien à corriger.'); return; }
     const meat = this._skuMeat || 'all';
     const meatLabel = meat !== 'all' ? ` pour ${meat}` : '';
     if (!await U.confirm(`Attribuer/corriger ${diffRows.length} SKU${meatLabel} (manquants ou en doublon) ? Tes SKU déjà personnalisés (uniques) ne sont pas touchés.`)) return;
+    if (this._skuCat !== 'mast') {   // matières premières / consommables
+      const dom = this._skuCat === 'mat' ? 'materials' : 'consumables', arr = Store.state[dom] || [], snapsO = [];
+      diffRows.forEach(r => { const it = arr.find(x => x.id === r.pId); if (!it) return; snapsO.push(Store.snapshot(dom, it)); it.sku = r.suggested; });
+      const entryO = Store.log('paramètres', `SKU attribués/corrigés (${this._skuCat === 'mat' ? 'matières premières' : 'consommables'}${meatLabel}) : ${snapsO.length}`, { type: 'restoreBatch', data: snapsO });
+      Store.save(dom); U.toast(`${snapsO.length} SKU attribués/corrigés${meatLabel}.`, false, entryO?.id);
+      this.renderSkuAll(); return;
+    }
     const snaps = [];
     const touched = new Set();
     diffRows.forEach(r => {
