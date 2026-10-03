@@ -54,7 +54,7 @@ const Catalogue = {
       <div class="toolbar">
         <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
-        <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(S.suppliers.map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
+        <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
@@ -577,8 +577,8 @@ const Catalogue = {
     this._d.suppliers = this._d.suppliers || [];
     const used = this._d.suppliers.map(s => s.supplierId);
     const S = Store.state.settings;
-    const free = S.suppliers.find(x => !used.includes(x.id));
-    const supplierId = free ? free.id : (S.suppliers[0]?.id || '');
+    const pool = Store.suppliersOf('mastication'), free = pool.find(x => !used.includes(x.id));
+    const supplierId = free ? free.id : (pool[0]?.id || '');
     this._d.suppliers.push({ id: U.uid(), supplierId, price: '', taxType: 'HT', vatRate: '', unit: 'kilo', weight: 1, quantity: 1, piecesPerKilo: '', url: '', notes: '' });
     if (!this._d.mainSupplierId) this._d.mainSupplierId = supplierId;
     this.drawSuppliers();

@@ -35,7 +35,9 @@ const Achats = {
   /* TVA répartie au prorata (le fournisseur ne dit pas sur quel produit) : coût TTC = HT × (1 + TVA totale / base HT) */
   ttcFactor(p) { const b = this.base(p); return this.isHT(p) && b > 0 ? 1 + this.vatSum(p) / b : 1; },
   supplierLabel(p) { return p.supplierId ? Store.supplierName(p.supplierId) : '—'; },
-  others() { const S = Store.state.settings; return S.suppliersOther || (S.suppliersOther = []); },   // fournisseurs hors produits (outillage, équipement, frais…)
+  suppliers() { return (Store.state.settings.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name)); },   // une seule liste ; chaque fournisseur a des types (Store.SUPPLIER_TYPES)
+  /* Types de fournisseur déduits des catégories de la facture (mastication → « mastication », outillage/équipement/frais → « autre »…) */
+  _supTypesFromLines(d) { const m = { mastication: 'mastication', matiere: 'matiere', conso: 'conso' }; return [...new Set(((d && d.lines) || []).map(l => m[l.cat] || 'autre'))]; },
   lineTTC(p) { const f = this.ttcFactor(p); return this._eff(p).map(x => x * f); },   // montant payé (TTC) imputé à chaque ligne : livraison, remise et TVA comprises (somme = payé)
 
   /* Investissements : une ligne « Investissement / machine » avec une durée d'amortissement alimente la liste d'amortissement des
@@ -57,23 +59,6 @@ const Achats = {
       else if (e.price !== w.price && !e.edited) { e.price = w.price; changed = true; }
     });
     if (changed) Store.save('settings');
-  },
-  /* Référentiel Paramètres : fournisseurs « autres » (outillage, équipement, frais…), séparés des fournisseurs de produits */
-  othersCard() {
-    const o = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Autres fournisseurs <span class="muted help">Outillage, équipement, lumières, assurance… : tout ce qui n'est pas de la mastication, de la matière première ou un consommable. Cette liste est distincte de celle des fournisseurs de produits et sert uniquement à la page Achats.</span></h3>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">${o.map(s => `<span class="tag" style="display:inline-flex;gap:6px;align-items:center;">${U.esc(s.name)} <button class="btn-icon" style="padding:0;" onclick="Achats.delOther('${s.id}')">×</button></span>`).join('') || '<span class="muted">Vide</span>'}</div>
-      <div class="frow mt"><input id="add_sup_other" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Achats.addOther()"><button class="btn-ghost btn-sm" onclick="Achats.addOther()">＋</button></div></div>`;
-  },
-  addOther() {
-    const n = U.val('add_sup_other').trim(); if (!n) return;
-    if (this.others().some(s => s.name.toLowerCase() === n.toLowerCase())) { U.toast('Ce fournisseur existe déjà.', true); return; }
-    this.others().push({ id: U.uid(), name: n }); Store.save('settings'); App.rerender();
-  },
-  async delOther(id) {
-    const used = this.list().filter(p => p.supplierId === id).length;
-    if (!await U.confirm(used ? `Ce fournisseur est utilisé par ${used} facture(s) : elles afficheront « — ». Le retirer quand même ?` : 'Retirer ce fournisseur ?', { okLabel: 'Retirer' })) return;
-    Store.state.settings.suppliersOther = this.others().filter(s => s.id !== id); Store.save('settings'); App.rerender();
   },
   payLabel(v) { const x = this.PAYS.find(p => p[0] === v); return x ? x[1] : '—'; },
   UNITS: ['pièce', 'kg', 'g', 'm'],
@@ -230,7 +215,7 @@ const Achats = {
         <div class="grid c4" style="align-items:end;">
           <div class="fg"><label>Période</label><select onchange="Achats.setF('period',this.value)">${periods.map(p => opt(p[0], p[1], f.period)).join('')}</select></div>
           ${f.period === 'custom' ? `<div class="fg"><label>Du</label><input type="date" value="${U.esc(f.from)}" onchange="Achats.setF('from',this.value)"></div><div class="fg"><label>Au</label><input type="date" value="${U.esc(f.to)}" onchange="Achats.setF('to',this.value)"></div>` : ''}
-          <div class="fg"><label>Fournisseur</label><select onchange="Achats.setF('supplier',this.value)">${opt('', 'Tous', f.supplier)}<optgroup label="Produits">${sups.map(s => opt(s.id, s.name, f.supplier)).join('')}</optgroup>${this.others().length ? `<optgroup label="Autres">${this.others().slice().sort((a, b) => U.sortFr(a.name, b.name)).map(s => opt(s.id, s.name, f.supplier)).join('')}</optgroup>` : ''}</select></div>
+          <div class="fg"><label>Fournisseur</label><select onchange="Achats.setF('supplier',this.value)">${opt('', 'Tous', f.supplier)}${sups.map(s => opt(s.id, s.name, f.supplier)).join('')}</select></div>
           <div class="fg"><label>Catégorie</label><select onchange="Achats.setF('cat',this.value)">${opt('', 'Toutes', f.cat)}${this.CATS.map(c => opt(c.id, c.ico + ' ' + c.label, f.cat)).join('')}</select></div>
           <div class="fg"><label>Paiement</label><select onchange="Achats.setF('pay',this.value)">${opt('', 'Tous', f.pay)}${this.PAYS.map(p => opt(p[0], p[1], f.pay)).join('')}</select></div>
           <div class="fg"><label>Recherche</label><input id="ach_q" value="${U.esc(f.q)}" placeholder="n° facture, produit, lot…" oninput="Achats.setQ(this.value)"></div>
@@ -414,14 +399,17 @@ const Achats = {
   addVat() { const d = this._d; d.vat = d.vat || []; d.vat.forEach(v => v.auto = false); d.vat.push({ rate: d.vat.length ? 10 : U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: false }); this._touch(); this.render(); },
   delVat(i) { this._d.vat.splice(i, 1); this._touch(); this.render(); },
   _pickSup(sel) {
-    const kind = sel.value === '__newP' ? 'P' : sel.value === '__newO' ? 'O' : '';
-    if (!kind) { this._d.supplierId = sel.value; this._touch(); return; }
+    if (sel.value !== '__new') { this._d.supplierId = sel.value; this._touch(); return; }
     sel.value = this._d.supplierId || '';
-    U.modal({ title: kind === 'P' ? 'Nouveau fournisseur de produits' : 'Nouveau fournisseur (autre)', body: `<div class="fg"><label>Nom du fournisseur</label><input id="ach_newsup" placeholder="${kind === 'P' ? 'ex : un nouvel éleveur' : 'ex : Amazon, magasin de bricolage…'}" onkeydown="if(event.key==='Enter')document.getElementById('modalOk').click()"></div><p class="muted" style="font-size:.82rem;">${kind === 'P' ? 'Il rejoint la liste de tes fournisseurs de mastication / matières / consommables (aussi utilisée dans les fiches prix).' : 'Il rejoint la liste des fournisseurs « autres » (outillage, équipement, frais généraux), séparée de celle des produits.'}</p>`, okLabel: 'Ajouter',
+    const pre = this._supTypesFromLines(this._d);   // types proposés d'après les catégories des lignes (modifiables)
+    const chk = Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;margin-right:12px;text-transform:none;letter-spacing:0;font-size:.9rem;white-space:nowrap;"><input type="checkbox" class="ach_newsup_t" style="width:auto;" value="${t.v}" ${pre.includes(t.v) ? 'checked' : ''}> ${t.l}</label>`).join('');
+    U.modal({ title: 'Nouveau fournisseur', body: `<div class="fg"><label>Nom du fournisseur</label><input id="ach_newsup" placeholder="ex : un nouvel éleveur, Amazon, magasin de bricolage…" onkeydown="if(event.key==='Enter')document.getElementById('modalOk').click()"></div><div class="fg mt"><label>Il te vend…</label><div style="display:flex;flex-wrap:wrap;gap:6px 0;">${chk}</div></div><p class="muted" style="font-size:.82rem;">Les types servent à filtrer : les fiches prix ne proposent que les fournisseurs « Mastication ». Modifiable ensuite dans Paramètres → Référentiels.</p>`, okLabel: 'Ajouter',
       onOk: () => {
         const n = U.val('ach_newsup').trim(); if (!n) { U.toast('Donne un nom au fournisseur.', true); return false; }
-        const S = Store.state.settings, list = kind === 'P' ? S.suppliers : this.others(); let s = list.find(x => x.name.toLowerCase() === n.toLowerCase());
-        if (!s) { s = { id: U.uid(), name: n }; list.push(s); Store.save('settings'); }
+        const types = [...document.querySelectorAll('.ach_newsup_t')].filter(c => c.checked).map(c => c.value);
+        if (!types.length) { U.toast('Coche au moins un type.', true); return false; }
+        const S = Store.state.settings; let s = S.suppliers.find(x => x.name.toLowerCase() === n.toLowerCase());
+        if (!s) { s = { id: U.uid(), name: n, types }; S.suppliers.push(s); Store.save('settings'); }
         this._d.supplierId = s.id; this._touch(); this.render();
       } });
     setTimeout(() => { const i = document.getElementById('ach_newsup'); if (i) i.focus(); }, 50);
@@ -510,8 +498,8 @@ const Achats = {
     return `<div class="ach-line"><div class="ach-grid">${row('ach-r1', r1)}${row('ach-r2', r2)}</div><div style="text-align:right;margin-top:4px;"><button class="btn-icon" title="Retirer cette ligne" onclick="Achats.delLine(${i})">🗑️</button></div></div>`;
   },
   renderEditor() {
-    const d = this._d, sups = (Store.state.settings.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name)), oth = this.others().slice().sort((a, b) => U.sortFr(a.name, b.name));
-    const supOpts = `<option value="">— choisir —</option><optgroup label="Fournisseurs de produits (mastication, matières, consommables)">${sups.map(s => `<option value="${s.id}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}</optgroup>${oth.length ? `<optgroup label="Autres fournisseurs (outillage, équipement, frais…)">${oth.map(s => `<option value="${s.id}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}</optgroup>` : ''}<optgroup label="Ajouter"><option value="__newP">＋ Nouveau fournisseur de produits…</option><option value="__newO">＋ Nouveau fournisseur « autre »…</option></optgroup>`;
+    const d = this._d, sups = this.suppliers();
+    const supOpts = `<option value="">— choisir —</option>${sups.map(s => `<option value="${s.id}" data-a="${U.esc(s.name)}" data-c="${U.esc(Store.supplierTypesLabel(s))}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}<option value="__new">＋ Nouveau fournisseur…</option>`;
     const mode = [['ttc', 'TTC'], ['ht', 'HT (TVA détaillée en bas)']].map(p => `<button type="button" class="${(d.taxMode || 'ttc') === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('taxMode','${p[0]}')">${p[1]}</button>`).join('');
     const pay = this.PAYS.map(p => `<button type="button" class="${d.payment === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('payment','${p[0]}')">${p[1]}</button>`).join('');
     const who = [['pro', '🏢 Compte pro'], ['perso', '💳 Carte perso (à me rembourser)']].map(p => `<button type="button" class="${d.paidBy === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('paidBy','${p[0]}')">${p[1]}</button>`).join('');

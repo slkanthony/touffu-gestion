@@ -319,7 +319,7 @@ const App = {
   mount(html) { const m = document.getElementById('main'); m.innerHTML = html; return m; },
 
   supplierOptions(sel) {
-    return Store.state.settings.suppliers
+    return Store.suppliersOf('mastication', sel)   // fiches prix : fournisseurs de mastication (+ celui déjà choisi)
       .slice().sort((a, b) => U.sortFr(a.name, b.name))
       .map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${U.esc(Store.supplierName(s.id))}</option>`).join('');
   },

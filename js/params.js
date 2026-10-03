@@ -166,9 +166,8 @@ const Params = {
         <summary><h2 style="display:inline;">📋 Référentiels</h2> <span class="muted">(fournisseurs, viandes, catégories)</span></summary>
         <div class="fold-body">
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Général (commun à tout)</div>
-          <div class="grid c2">
-            ${this.listCard('Fournisseurs', 'suppliers', S.suppliers.map(s => Store.supplierName(s.id)), true)}
-            ${typeof Achats !== 'undefined' && !App.isViewer && !App.isTeam ? Achats.othersCard() : ''}
+          <div>
+            ${this.suppliersCard()}
           </div>
           <div style="margin-top:4px;text-align:left;">${this.eventsCard()}</div>
 
@@ -706,6 +705,53 @@ const Params = {
       S[key] = S[key].filter(x => x !== val);
     }
     Store.save('settings'); App.rerender();
+  },
+
+  /* Référentiel Fournisseurs (2026-10-03) : UNE liste, chaque fournisseur a un ou plusieurs types (mastication, matières,
+     consommables, autre). Les types servent à filtrer : fiches prix = « mastication », etc. */
+  suppliersCard() {
+    const S = Store.state.settings, edit = !App.isViewer && !App.isTeam;
+    let list = (S.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
+    if (!edit) list = list.filter(s => Store.supplierTypes(s).some(t => t !== 'autre'));   // un visiteur ne voit pas les fournisseurs « autres »
+    const chip = (s, t) => { const on = Store.supplierTypes(s).includes(t.v); return `<button type="button" class="${on ? 'btn-cta' : 'btn-ghost'} btn-sm" ${edit ? `onclick="Params.toggleSupType('${s.id}','${t.v}')"` : 'disabled'} style="padding:2px 9px;font-size:.78rem;">${t.l}</button>`; };
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Fournisseurs <span class="muted help">Une seule liste. Coche ce que chaque fournisseur te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</span></h3>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${list.map(s => `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--row-border);">
+          ${edit ? `<input value="${U.esc(s.name)}" style="flex:1 1 160px;min-width:140px;max-width:260px;font-weight:600;" onchange="Params.renameSupplier('${s.id}',this.value)">` : `<b style="flex:1 1 160px;">${U.esc(Store.supplierName(s.id))}</b>`}
+          <span style="display:flex;flex-wrap:wrap;gap:5px;">${Store.SUPPLIER_TYPES.map(t => chip(s, t)).join('')}</span>
+          ${edit ? `<button class="btn-icon" title="Retirer ce fournisseur" onclick="Params.delSupplier('${s.id}')">🗑️</button>` : ''}</div>`).join('') || '<span class="muted">Vide</span>'}
+      </div>
+      ${edit ? `<div class="frow mt" style="align-items:center;flex-wrap:wrap;"><input id="add_sup_name" placeholder="Nouveau fournisseur…" style="max-width:240px;" onkeydown="if(event.key==='Enter')Params.addSupplier()">
+        ${Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:4px;align-items:center;font-size:.82rem;text-transform:none;letter-spacing:0;white-space:nowrap;"><input type="checkbox" class="add_sup_t" style="width:auto;" value="${t.v}" ${t.v === 'mastication' ? 'checked' : ''}> ${t.l}</label>`).join('')}
+        <button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋ Ajouter</button></div>` : ''}</div>`;
+  },
+  addSupplier() {
+    const n = U.val('add_sup_name').trim(); if (!n) return;
+    const types = [...document.querySelectorAll('.add_sup_t')].filter(c => c.checked).map(c => c.value);
+    if (!types.length) { U.toast('Coche au moins un type de fournisseur.', true); return; }
+    const S = Store.state.settings;
+    if (S.suppliers.some(s => s.name.toLowerCase() === n.toLowerCase())) { U.toast('Ce fournisseur existe déjà.', true); return; }
+    S.suppliers.push({ id: U.uid(), name: n, types }); Store.save('settings'); App.rerender();
+  },
+  toggleSupType(id, t) {
+    const s = Store.state.settings.suppliers.find(x => x.id === id); if (!s) return;
+    const cur = Store.supplierTypes(s).slice(), i = cur.indexOf(t);
+    if (i >= 0) { if (cur.length === 1) { U.toast('Un fournisseur doit avoir au moins un type.', true); return; } cur.splice(i, 1); } else cur.push(t);
+    s.types = cur; Store.save('settings'); App.rerender();
+  },
+  renameSupplier(id, val) {
+    const n = String(val || '').trim(), S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;
+    if (!n) { U.toast('Le nom ne peut pas être vide.', true); App.rerender(); return; }
+    if (S.suppliers.some(x => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) { U.toast('Ce nom existe déjà.', true); App.rerender(); return; }
+    s.name = n; Store.save('settings'); App.rerender();
+  },
+  async delSupplier(id) {
+    const S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;
+    const cat = (Store.state.catalogM || []).filter(p => p.mainSupplierId === id || (p.suppliers || []).some(x => x.supplierId === id)).length;
+    const ach = (Store.state.purchases || []).filter(p => p.supplierId === id).length;
+    const use = [cat ? cat + ' fiche(s) prix' : '', ach ? ach + ' facture(s)' : ''].filter(Boolean).join(' et ');
+    if (!await U.confirm(use ? `« ${s.name} » est utilisé par ${use} (le nom y apparaîtra « — »). Le supprimer quand même ?` : `Supprimer le fournisseur « ${s.name} » ?`, { okLabel: 'Supprimer', danger: true })) return;
+    S.suppliers = S.suppliers.filter(x => x.id !== id); Store.save('settings'); App.rerender();
   },
 
   _dimParts(dims) {
@@ -2072,7 +2118,7 @@ const Params = {
     const supId = (name) => {
       if (!name) return '';
       let s = S.suppliers.find(x => x.name.toLowerCase() === String(name).toLowerCase());
-      if (!s) { s = { id: U.uid(), name }; S.suppliers.push(s); addedSup++; }
+      if (!s) { s = { id: U.uid(), name, types: ['mastication', 'matiere', 'conso'] }; S.suppliers.push(s); addedSup++; }
       return s.id;
     };
     // produits

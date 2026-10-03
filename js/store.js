@@ -152,7 +152,19 @@ const Store = {
     this.migrateFabSegments(s);
     this.migrateLabelTypes(s);
     this.migratePackSkus(s);
+    this.migrateSuppliers(s);
     return s;
+  },
+  /* (2026-10-03) Une seule liste de fournisseurs avec des types. Les anciens fournisseurs « de produits » reçoivent
+     mastication + matières + consommables ; ceux de l'ancienne liste « autres » (suppliersOther) sont repris avec leur id
+     (les factures restent valides) et le type « autre ». Idempotent. */
+  migrateSuppliers(s) {
+    const S = s.settings; if (!S) return;
+    if (!Array.isArray(S.suppliers)) S.suppliers = [];
+    S.suppliers.forEach(x => { if (!Array.isArray(x.types) || !x.types.length) x.types = ['mastication', 'matiere', 'conso']; });
+    const oth = Array.isArray(S.suppliersOther) ? S.suppliersOther : [];
+    oth.forEach(o => { if (o && o.id && !S.suppliers.some(x => x.id === o.id)) S.suppliers.push({ id: o.id, name: o.name, types: ['autre'] }); });
+    if (oth.length) S.suppliersOther = [];
   },
   /* Types d'étiquette (2026-09-27) : liste éditable {id,name,cost} dans Réglages → Consommables.
      Une fiche prix pointe un type (p.labelTypeId → coût suivi en direct) ou '' = « Autre montant » (p.labelCost libre, vrac).
@@ -515,6 +527,13 @@ const Store = {
 
   /* ---------- accès pratiques ---------- */
   supplier(id) { return this.state.settings.suppliers.find(s => s.id === id); },
+  /* Types de fournisseur (2026-10-03) : une seule liste `settings.suppliers`, chaque fournisseur a un ou plusieurs types
+     (`types`). Mastication / matières / consommables alimentent les fiches prix et le stock ; « autre » = outillage, matériel, frais. */
+  SUPPLIER_TYPES: [{ v: 'mastication', l: 'Mastication' }, { v: 'matiere', l: 'Matières premières' }, { v: 'conso', l: 'Consommables' }, { v: 'autre', l: 'Autre' }],
+  supplierTypes(s) { return s && Array.isArray(s.types) && s.types.length ? s.types : ['mastication', 'matiere', 'conso']; },
+  supplierTypesLabel(s) { const t = this.supplierTypes(s); return this.SUPPLIER_TYPES.filter(x => t.includes(x.v)).map(x => x.l).join(' · '); },
+  /* Fournisseurs d'un type (le fournisseur déjà choisi `keepId` est toujours conservé, même s'il n'a plus ce type) */
+  suppliersOf(type, keepId) { return (this.state.settings.suppliers || []).filter(s => this.supplierTypes(s).includes(type) || s.id === keepId); },
   /* Nom affiché d'un fournisseur. Pour un compte viewer, anonymisé en « Fournisseur N »
      (N = rang dans le référentiel Paramètres → Fournisseurs, stable sur toutes les pages). */
   supplierName(id) {

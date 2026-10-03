@@ -99,7 +99,7 @@ const B2B = {
       <div class="toolbar">
         <div class="fg"><label>Recherche</label><input id="b2b_q" value="${U.esc(f.q)}" oninput="B2B.filters.q=this.value;B2B.render();U.refocus('b2b_q')"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: products.length, setter: 'B2B._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'B2B._meatFilterOpen' })}</div>
-        <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{ v: 'all', l: 'Tous' }].concat(S.suppliers.map(s => ({ v: s.id, l: Store.supplierName(s.id) })).sort((a, b) => U.sortFr(a.l, b.l))), onPick: 'B2B._setSupFilter' })}</div>
+        <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{ v: 'all', l: 'Tous' }].concat(Store.suppliersOf('mastication').map(s => ({ v: s.id, l: Store.supplierName(s.id) })).sort((a, b) => U.sortFr(a.l, b.l))), onPick: 'B2B._setSupFilter' })}</div>
       </div>
 
       <div class="view-title" style="margin-top:6px;"><h2 style="margin:0;">🥩 Mastication</h2><span class="sub">${items.length} produit${items.length > 1 ? 's' : ''}</span></div>
