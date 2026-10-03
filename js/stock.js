@@ -2449,9 +2449,7 @@ const Stock = {
 
   materialGroupCard(key, items) {
     items = [...items].sort((a, b) => U.num(a.order) - U.num(b.order) || U.sortFr(a.variant || a.name, b.variant || b.name));
-    const totalQty = items.reduce((a, m) => a + U.num(m.qty), 0);
     const hasAlert = items.some(m => U.num(m.low) > 0 && U.num(m.qty) <= U.num(m.low));
-    const unit = items[0].unit === 'm' ? 'm' : 'PCS';
     const keyEsc = U.esc(key).replace(/&#39;/g, "\\'");
     const groupOpen = this._matGroupOpen[key] || false;
     return `<details class="fold prod-fold" ${groupOpen ? 'open' : ''} ontoggle="Stock.setMatGroupOpen('${keyEsc}',this.open)">
@@ -2461,7 +2459,7 @@ const Stock = {
           <span class="badge info">${this.matKindLabel[items[0].kind] || items[0].kind}</span>
           ${hasAlert ? '<span class="badge warn">Stock bas</span>' : ''}
         </span>
-        <span class="meta">${items.length} référence(s) · ${U.qty(totalQty)} ${unit} au total</span>
+        <span class="meta">${items.length} référence(s)</span>
         <span class="prod-actions act-grid"><span class="act-row">
           <button class="btn-ghost btn-sm" title="Renommer ce groupe" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
@@ -2527,7 +2525,7 @@ const Stock = {
     return `<tr>
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}</td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div></td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(m.costUnit, 3)} HT / ${unit}</div>` : ''}</td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
