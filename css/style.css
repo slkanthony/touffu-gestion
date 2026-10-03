@@ -1293,3 +1293,16 @@ th.ctr, td.ctr { text-align: center; }
   .ach-r1 { grid-template-columns: 1fr !important; }
   .ach-r2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
+
+/* ═══ Référentiels (2026-10-04) : un seul langage visuel pour tous les blocs (titres, listes, ligne d'ajout) ═══ */
+.ref-card { padding: 12px 0; border-bottom: 1px solid var(--row-border); text-align: left; }
+.ref-card > h3 { margin: 0 0 8px; font-size: 1rem; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.ref-card > .help, .ref-card > p.muted { margin: 0 0 8px; }
+.ref-card > div[style*="flex-direction:column"] { gap: 6px; }
+details.fold.ref-row { background: transparent; box-shadow: none; border: 1px dashed var(--caramel); border-radius: 8px; margin: 0; overflow: visible; }
+details.fold.ref-row > summary { padding: 6px 12px; font-size: .9rem; gap: 8px; color: var(--texte); }
+details.fold.ref-row > summary b { font-weight: 700; }
+details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed var(--row-border); }
+.ref-add { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.ref-add > input { flex: 1 1 auto; min-width: 0; }
+.ref-add > button { flex: 0 0 auto; white-space: nowrap; }

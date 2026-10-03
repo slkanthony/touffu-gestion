@@ -166,10 +166,10 @@ const Params = {
         <summary><h2 style="display:inline;">📋 Référentiels</h2> <span class="muted">(fournisseurs, viandes, catégories)</span></summary>
         <div class="fold-body">
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Général (commun à tout)</div>
-          <div>
+          <div class="grid c2">
             ${this.suppliersCard()}
+            ${this.eventsCard()}
           </div>
-          <div style="margin-top:4px;text-align:left;">${this.eventsCard()}</div>
 
           <hr class="sep" style="border-style:dashed;margin:16px 0;">
           <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🥩 Mastication</div>
@@ -430,12 +430,12 @@ const Params = {
   },
 
   listCard(title, key, values, isSupplier) {
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">${U.esc(title)}</h3>
+    return `<div class="ref-card"><h3>${({ meatTypes: '🥩 ', accCategories: '🐕 ', widths: '📏 ', consCategories: '📦 ' })[key] || ''}${U.esc(title)}</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
         ${values.slice().sort(U.sortFr).map(v => `<span class="tag" style="display:inline-flex;gap:6px;align-items:center;">
           ${U.esc(v)} <button class="btn-icon" style="padding:0;" onclick="Params.delItem('${key}','${U.esc(v).replace(/&#39;/g, "\\'")}',${!!isSupplier})">×</button></span>`).join('') || '<span class="muted">Vide</span>'}
       </div>
-      <div class="frow mt"><input id="add_${key}" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Params.addItem('${key}',${!!isSupplier})"><button class="btn-ghost btn-sm" onclick="Params.addItem('${key}',${!!isSupplier})">＋</button></div>
+      <div class="ref-add"><input id="add_${key}" placeholder="Ajouter…" onkeydown="if(event.key==='Enter')Params.addItem('${key}',${!!isSupplier})"><button class="btn-ghost btn-sm" onclick="Params.addItem('${key}',${!!isSupplier})">＋ Ajouter</button></div>
     </div>`;
   },
 
@@ -445,10 +445,10 @@ const Params = {
     const list = Store.eventList();
     const used = n => Store.state.sales.filter(s => s.eventName === n).length;
     const enc = n => encodeURIComponent(n).replace(/'/g, '%27');
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">🎪 Événements <span class="muted" style="font-weight:400;font-size:.8rem;">(marchés, salons…)</span></h3>
+    return `<div class="ref-card"><h3>🎪 Événements <span class="muted" style="font-weight:400;font-size:.8rem;">(marchés, salons…)</span></h3>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${list.map(n => { const e = Store.eventInfo(n); const open = !!(this._evFicheOpen || {})[n]; const tc = Store.eventTravelCost(n);
-          return `<details class="fold sachet-group" style="margin:0;" ${open ? 'open' : ''} ontoggle="(Params._evFicheOpen=Params._evFicheOpen||{})[decodeURIComponent('${enc(n)}')]=this.open">
+          return `<details class="fold ref-row" ${open ? 'open' : ''} ontoggle="(Params._evFicheOpen=Params._evFicheOpen||{})[decodeURIComponent('${enc(n)}')]=this.open">
           <summary style="cursor:pointer;padding:6px 0;"><b>${U.esc(n)}</b> <span class="muted" style="font-size:.78rem;">${used(n)} vente(s)${U.num(e.stand) ? ' · stand ' + U.eur(e.stand) : ''}${tc ? ' · trajet ' + U.eur(tc) : ''}${e.place ? ' · ' + U.esc(e.place) : ''}</span></summary>
           <div class="fold-body" style="padding:6px 0 10px;">
             <div class="grid c3">
@@ -464,7 +464,7 @@ const Params = {
             <button class="btn-ghost btn-sm" onclick="Params.delEvent('${enc(n)}')">🗑️ Retirer cet événement</button>
           </div></details>`; }).join('') || '<span class="muted">Aucun événement.</span>'}
       </div>
-      <div class="frow mt"><input id="add_event" placeholder="ex : Marché de Noël Lyon" onkeydown="if(event.key==='Enter')Params.addEvent()"><button class="btn-ghost btn-sm" onclick="Params.addEvent()">＋</button></div>
+      <div class="ref-add"><input id="add_event" placeholder="ex : Marché de Noël Lyon" onkeydown="if(event.key==='Enter')Params.addEvent()"><button class="btn-ghost btn-sm" onclick="Params.addEvent()">＋ Ajouter</button></div>
     </div>`;
   },
   setEventInfo(enc, key, val) {
@@ -508,12 +508,12 @@ const Params = {
      dans Stock et le filtre « Type » des Paniers personnalisés. */
   productTypesCard() {
     const types = Store.productTypes();
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Types de produit <span class="muted" style="font-weight:400;">(occupation, éducation, complément…)</span></h3>
+    return `<div class="ref-card"><h3>🏷️ Types de produit <span class="muted" style="font-weight:400;">(occupation, éducation, complément…)</span></h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
         ${types.map(t => `<span class="tag" style="display:inline-flex;gap:6px;align-items:center;">
           ${U.esc(t.label)} <button class="btn-icon" style="padding:0;" onclick="Params.delProductType('${U.esc(t.value)}')">×</button></span>`).join('') || '<span class="muted">Vide</span>'}
       </div>
-      <div class="frow mt"><input id="add_prodtype" placeholder="Ajouter un type…" onkeydown="if(event.key==='Enter')Params.addProductType()"><button class="btn-ghost btn-sm" onclick="Params.addProductType()">＋</button></div>
+      <div class="ref-add"><input id="add_prodtype" placeholder="Ajouter un type…" onkeydown="if(event.key==='Enter')Params.addProductType()"><button class="btn-ghost btn-sm" onclick="Params.addProductType()">＋ Ajouter</button></div>
     </div>`;
   },
   addProductType() {
@@ -540,12 +540,12 @@ const Params = {
      'sangle' garde son comportement rouleaux ; les autres catégories suivent leur unité (m/pièce). */
   materialKindsCard() {
     const kinds = Store.materialKinds();
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);"><h3 style="margin:0 0 8px;">Catégories de matières <span class="muted" style="font-weight:400;">(sangle, bouclerie, mousqueton…)</span></h3>
+    return `<div class="ref-card"><h3>🧵 Catégories de matières <span class="muted" style="font-weight:400;">(sangle, bouclerie, mousqueton…)</span></h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
         ${kinds.map(k => `<span class="tag" style="display:inline-flex;gap:6px;align-items:center;">
           ${U.esc(k.label)} <button class="btn-icon" style="padding:0;" onclick="Params.delMaterialKind('${U.esc(k.value).replace(/&#39;/g, "\\'")}')">×</button></span>`).join('') || '<span class="muted">Vide</span>'}
       </div>
-      <div class="frow mt"><input id="add_matkind" placeholder="Ajouter une catégorie…" onkeydown="if(event.key==='Enter')Params.addMaterialKind()"><button class="btn-ghost btn-sm" onclick="Params.addMaterialKind()">＋</button></div>
+      <div class="ref-add"><input id="add_matkind" placeholder="Ajouter une catégorie…" onkeydown="if(event.key==='Enter')Params.addMaterialKind()"><button class="btn-ghost btn-sm" onclick="Params.addMaterialKind()">＋ Ajouter</button></div>
     </div>`;
   },
   addMaterialKind() {
@@ -714,12 +714,12 @@ const Params = {
     let list = (S.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
     if (!edit) list = list.filter(s => Store.supplierTypes(s).some(t => t !== 'autre'));   // un visiteur ne voit pas les fournisseurs « autres »
     const isOpen = id => !!(this._supOpen || {})[id];
-    const badges = s => Store.SUPPLIER_TYPES.filter(t => Store.supplierTypes(s).includes(t.v)).map(t => `<span class="badge info" style="font-size:.7rem;">${t.l}</span>`).join(' ');
+    const badges = s => Store.SUPPLIER_TYPES.filter(t => Store.supplierTypes(s).includes(t.v)).map(t => `<span class="tag">${t.l}</span>`).join(' ');
     const boxes = s => Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:.85rem;white-space:nowrap;cursor:pointer;"><input type="checkbox" style="width:auto;" ${Store.supplierTypes(s).includes(t.v) ? 'checked' : ''} onchange="Params.toggleSupType('${s.id}','${t.v}')"> ${t.l}</label>`).join('');
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--row-border);text-align:left;"><h3 style="margin:0 0 8px;">🏭 Fournisseurs <span class="muted" style="font-weight:400;font-size:.8rem;">(ce qu'ils te vendent)</span></h3>
+    return `<div class="ref-card"><h3>🏭 Fournisseurs <span class="muted" style="font-weight:400;font-size:.8rem;">(ce qu'ils te vendent)</span></h3>
       <p class="muted help" style="font-size:.82rem;">Une seule liste. Coche ce que chaque fournisseur te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</p>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        ${list.map(s => `<details class="fold sachet-group" style="margin:0;" ${isOpen(s.id) ? 'open' : ''} ontoggle="(Params._supOpen=Params._supOpen||{})['${s.id}']=this.open">
+        ${list.map(s => `<details class="fold ref-row" ${isOpen(s.id) ? 'open' : ''} ontoggle="(Params._supOpen=Params._supOpen||{})['${s.id}']=this.open">
           <summary style="cursor:pointer;padding:6px 0;"><b>${U.esc(Store.supplierName(s.id))}</b> ${badges(s)}</summary>
           ${edit ? `<div class="fold-body" style="padding:6px 0 10px;">
             <div class="grid c2">
@@ -729,7 +729,7 @@ const Params = {
             <button class="btn-ghost btn-sm mt" onclick="Params.delSupplier('${s.id}')">🗑️ Retirer ce fournisseur</button>
           </div>` : ''}</details>`).join('') || '<span class="muted">Aucun fournisseur.</span>'}
       </div>
-      ${edit ? `<div class="frow mt" style="align-items:center;"><input id="add_sup_name" placeholder="Ajouter un fournisseur…" onkeydown="if(event.key==='Enter')Params.addSupplier()"><button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋</button></div>
+      ${edit ? `<div class="ref-add"><input id="add_sup_name" placeholder="Ajouter un fournisseur…" onkeydown="if(event.key==='Enter')Params.addSupplier()"><button class="btn-ghost btn-sm" onclick="Params.addSupplier()">＋ Ajouter</button></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;"><span class="muted" style="font-size:.82rem;">Il me vend :</span>${Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:.85rem;white-space:nowrap;cursor:pointer;"><input type="checkbox" class="add_sup_t" style="width:auto;" value="${t.v}" ${t.v === 'mastication' ? 'checked' : ''}> ${t.l}</label>`).join('')}</div>` : ''}</div>`;
   },
   addSupplier() {

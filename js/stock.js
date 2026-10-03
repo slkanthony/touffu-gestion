@@ -2400,7 +2400,7 @@ const Stock = {
       if (q && !U.has(m.name + ' ' + (m.product || '') + ' ' + (m.sku || ''), q)) return false;
       if (f.type !== 'all' && m.kind !== f.type) return false;
       if (f.variants.length && !f.variants.includes(m.variant || m.name)) return false;
-      if (f.variants.length && U.num(m.qty) <= 0) return false;   // filtre sur une taille : on ne montre que ce qui est en stock (une recherche par nom/couleur montre tout, y compris le vide)
+      if (f.variants.length && f.variants.length < allVariants.length && U.num(m.qty) <= 0) return false;   // filtre sur une taille : on ne montre que ce qui est en stock (une recherche par nom/couleur montre tout, y compris le vide)
       if (f.link === 'nourl' && m.url) return false;
       return true;
     });
