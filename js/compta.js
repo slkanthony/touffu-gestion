@@ -180,7 +180,9 @@ const Compta = {
         <div class="kpi bad sensitive"><div class="v">${U.eur(T.out)}</div><div class="l">Sorties (payé)</div></div>
         <div class="kpi ${T.solde < 0 ? 'bad' : 'good'} sensitive"><div class="v">${U.eur(T.solde)}</div><div class="l">Solde de trésorerie calculé ${U.info('Calculé par l\'appli : entrées − sorties de la période. Ce n\'est pas ton solde bancaire (pas de solde de départ, cotisations estimées, versements SumUp décalés…). Pour comparer avec ta banque, utilise le « Pointage bancaire » plus bas.')}</div></div>
         <div class="kpi ${T.net < 0 ? 'bad' : ''} sensitive"><div class="v">${U.eur(T.net)}</div><div class="l">Résultat (bénéfice net)</div></div>
+        ${this._bankTile()}
       </div>
+      ${this._bankPanel()}
 
       <div class="card"><h2>💰 Trésorerie <span class="muted" style="font-size:.85rem;font-weight:400;">— l'argent réellement entré et sorti</span></h2>
         <div class="table-wrap"><table><thead><tr><th>Mois</th><th class="num">Entrées</th><th class="num">Achats payés</th><th class="num">Frais de paiement</th><th class="num">Envois</th><th class="num">Stands / dépl.</th><th class="num">Cotisations</th><th class="num">Total sorties</th><th class="num">Solde du mois</th><th class="num">Solde cumulé</th></tr></thead><tbody>${trRows}
@@ -191,8 +193,6 @@ const Compta = {
         </div>
         ${toRefund > 0 ? `<p class="warn-txt" style="margin-top:10px;">💳 ${U.eur(toRefund)} payés avec ta carte perso restent à te rembourser : ils ne sont comptés dans la trésorerie qu'à la date de remboursement.</p>` : ''}
       </div>
-
-      ${this._bankCard()}
 
       <div class="card"><h2>📈 Résultat <span class="muted" style="font-size:.85rem;font-weight:400;">— ce que tu as réellement gagné</span></h2>
         <div class="table-wrap"><table><thead><tr><th>Mois</th><th class="num">Ventes (CA)</th><th class="num">Coût marchandises vendues</th><th class="num">Marge brute</th><th class="num">Frais de vente (net du port)</th><th class="num">Cotisations</th><th class="num">Dépenses du mois</th><th class="num">Amort. &amp; entretien</th>${S.vatActive ? '<th class="num">TVA reversée</th>' : ''}<th class="num">Bénéfice net</th></tr></thead><tbody>${reRows}
@@ -239,7 +239,7 @@ const Compta = {
   _bankBody() {
     const b = this._bank(), pts = b.points.slice().sort((x, y) => x.date.localeCompare(y.date) || 0), mv = this._bankMoves(), today = U.today();
     const e = v => `<span class="sensitive">${U.eur(v)}</span>`, sg = v => `<span class="sensitive ${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${(v > 0 ? '+' : '') + U.eur(v)}</span>`;
-    const head = `<p class="muted help" data-help-anchor="~ summary h2" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces, les achats payés en espèces et les frais d'événement cochés « payés en espèces » ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
+    const head = `<p class="muted help" data-help-anchor="~ h2" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces, les achats payés en espèces et les frais d'événement cochés « payés en espèces » ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
     if (!pts.length) {
       return `${head}
         <p style="margin:10px 0 4px;"><b>Point de départ</b> : combien y a-t-il sur ton compte professionnel là, maintenant ?</p>
@@ -272,18 +272,21 @@ const Compta = {
         <div class="fg" style="max-width:300px;"><label>Libellé</label><input id="mv_label" placeholder="ex : dépôt d'espèces du marché" onkeydown="if(event.key==='Enter')Compta.addMove()"></div>
         <button class="btn-ghost" style="flex:0 0 auto;" onclick="Compta.addMove()">＋ Ajouter</button></div>`;
   },
-  /* Carte repliable : le résumé (toujours visible) montre le solde attendu en banque + le dernier solde relevé ; ouverte d'office tant qu'aucun point de départ n'est saisi */
+  /* Tuile « Solde attendu en banque » (5e case de la rangée Entrées / Sorties / Solde / Résultat) : cliquable → déplie / replie le panneau de pointage
+     juste sous la rangée. Ouvert d'office tant qu'aucun point de départ n'est saisi. */
   _bankOpen: undefined,
-  _bankCard() {
-    const pts = this._bank().points.slice().sort((x, y) => x.date.localeCompare(y.date)), today = U.today();
-    let right;
-    if (!pts.length) right = '<span class="muted">à renseigner — ouvre pour saisir ton solde</span>';
-    else {
-      const last = pts[pts.length - 1], exp = U.num(last.amount) + this._bankSum(this._bankMoves(), last.date, today).total;
-      right = `<span class="sensitive"><b style="font-size:1.1rem;">${U.eur(exp)}</b> <span class="muted" style="font-size:.8rem;">attendu · relevé ${U.eur(U.num(last.amount))} le ${U.frDate(last.date).slice(0, 5)}</span></span>`;
-    }
-    const open = this._bankOpen === undefined ? !pts.length : this._bankOpen;
-    return `<details class="fold card" ${open ? 'open' : ''} ontoggle="Compta._bankOpen=this.open"><summary style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><h2 style="display:inline;margin:0;">🏦 Pointage bancaire</h2><span class="muted" style="font-size:.85rem;">— l'appli et ta banque racontent-elles la même chose ?</span><span style="margin-left:auto;">${right}</span></summary><div class="fold-body">${this._bankBody()}</div></details>`;
+  _bankIsOpen() { return this._bankOpen === undefined ? !this._bank().points.length : this._bankOpen; },
+  toggleBank() { this._bankOpen = !this._bankIsOpen(); this.render(); },
+  _bankTile() {
+    const pts = this._bank().points.slice().sort((x, y) => x.date.localeCompare(y.date)), open = this._bankIsOpen();
+    let v, sub = '';
+    if (!pts.length) v = '<span class="muted" style="font-size:1rem;">à saisir</span>';
+    else { const last = pts[pts.length - 1]; v = U.eur(U.num(last.amount) + this._bankSum(this._bankMoves(), last.date, U.today()).total); sub = ` <span style="opacity:.7;font-weight:400;text-transform:none;">· relevé du ${U.frDate(last.date).slice(0, 5)}</span>`; }
+    return `<div class="kpi sensitive" style="cursor:pointer;" role="button" tabindex="0" onclick="Compta.toggleBank()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Compta.toggleBank();}" title="${open ? 'Replier' : 'Ouvrir'} le pointage bancaire"><div class="v">${v}</div><div class="l">Solde attendu en banque${sub} <span style="color:var(--caramel);">${open ? '▴' : '▾'}</span></div></div>`;
+  },
+  _bankPanel() {
+    if (!this._bankIsOpen()) return '';
+    return `<div class="card" style="border-left:4px solid var(--caramel);"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><h2 style="margin:0;">🏦 Pointage bancaire <span class="muted" style="font-size:.85rem;font-weight:400;">— l'appli et ta banque racontent-elles la même chose ?</span></h2><button class="btn-ghost btn-sm" style="margin-left:auto;" onclick="Compta.toggleBank()">▴ Replier</button></div>${this._bankBody()}</div>`;
   },
   addPoint() {
     const date = U.val('bk_date'), raw = String(U.val('bk_amt') || '').trim();
