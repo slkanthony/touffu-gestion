@@ -798,6 +798,18 @@ const Ventes = {
     Store.save('sales');
     if (this.editTicketId) this.render();
   },
+  /* « Frais payés en espèces » (2026-10-03) : stand + repas + déplacement de cet événement payés en liquide → ils ne sortent pas de la banque (pointage bancaire de la Compta). */
+  setEventFeeCash(id, on) {
+    const s = Store.state.sales.find(x => x.id === id); if (!s) return;
+    const snap = Store.snapshot('sales', s);
+    s.eventFeeCash = !!on;
+    const entry = Store.commitSnapshot(snap, 'vente', `Frais d'événement ${on ? 'payés en espèces' : 'payés par la banque'} — ${U.frDateTime(s.ts)}`);
+    U.toast(on ? 'Frais payés en espèces : ils ne comptent plus dans la banque.' : 'Frais payés par la banque.', false, entry.id);
+    Store.save('sales');
+    if (this.editTicketId) this.render();
+  },
+  setDayFeeCash(key, on) { if (this.retourData) { (this.retourData.feeCash = this.retourData.feeCash || {})[key] = !!on; } },
+  setCashFeeCash(on) { if (this.retourData) this.retourData.cashFeeCash = !!on; },
   /* Frais de repas de midi (2026-09-30, Antho paie à manger pour lui + sa compagne qui l'aide sur
      les événements) — saisi au retour d'événement, modifiable après coup ici. Même patron que
      setEventFee (frais de stand). */
@@ -1152,6 +1164,7 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Frais stand', `<input type="number" step="0.01" min="0" value="${U.num(s.eventFee)}" style="width:80px;" onchange="Ventes.setEventFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Repas', `<input type="number" step="0.01" min="0" value="${U.num(s.mealFee)}" style="width:80px;" onchange="Ventes.setMealFee('${s.id}',this.value)">`) : ''}
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
+          ${this._isRealEvent(s) ? field('Frais en espèces', `<input type="checkbox" ${s.eventFeeCash ? 'checked' : ''} title="Coché : stand, repas et déplacement payés en liquide (ne sortent pas de la banque)" onchange="Ventes.setEventFeeCash('${s.id}',this.checked)">`) : ''}
         </div></td></tr>`;
       const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
@@ -1634,6 +1647,7 @@ const Ventes = {
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted help" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
       <div class="fg"><label>🍽️ Repas (€) <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashMealFee) || ''}" onchange="Ventes.setCashMealFee(this.value)"></div>
       <div class="fg"><label>🚗 Déplacement <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label>${this.travelWidget((d.travelDet || {}).__cash, 'cash', d.cashTravel)}</div>
+      <div class="fg"><label style="text-transform:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" style="width:auto;" ${d.cashFeeCash ? 'checked' : ''} onchange="Ventes.setCashFeeCash(this.checked)"> 💵 Frais payés en espèces <span class="muted help" style="text-transform:none;">— stand, repas et déplacement payés en liquide : ils ne sortent pas de la banque</span></label></div>
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="1" min="1" value="${this.cashQty || 1}" onchange="Ventes.cashQty=Math.max(1,Math.round(U.num(this.value)))"></div>
         <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : Math.round(cashSel.price * 100) / 100}" onchange="Ventes.cashPrice=Math.round(U.num(this.value)*100)/100"></div>
@@ -1874,6 +1888,7 @@ const Ventes = {
           <div class="fg"><label>🍽️ Repas (€) <span class="muted help">repas de midi (toi + ta compagne) — imputé au bénéfice de cet événement</span></label><input type="number" step="0.01" min="0" placeholder="0" value="${U.num(s.mealFee) || ''}" onchange="Ventes.setMealFee('${s.id}',this.value)"></div>
         </div>
         <div class="fg" style="margin-top:2px;"><label>🚗 Déplacement</label>${this.travelWidget(s.travelDet, 's:' + s.id, s.travelCost)}</div>
+        <div class="fg" style="margin-top:6px;"><label style="text-transform:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" style="width:auto;" ${s.eventFeeCash ? 'checked' : ''} onchange="Ventes.setEventFeeCash('${s.id}',this.checked)"> 💵 Frais payés en espèces <span class="muted help" style="text-transform:none;">stand, repas et déplacement payés en liquide : ils ne sortent pas de la banque (pointage bancaire de la Compta)</span></label></div>
       </div>` : ''}
       ${s.delivery === 'livraison' ? `<div class="card">
         <h2>📦 Expédition</h2>
@@ -1931,6 +1946,7 @@ const Ventes = {
         <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.mealFees || {})[g.key]) || ''}" onchange="Ventes.setDayMealFee('${g.key}',this.value)">
         <label style="margin:0;text-transform:none;font-size:.85rem;">🚗 Déplacement</label>
         ${this.travelWidget((this.retourData.travelDet || {})[g.key], 'd:' + g.key, (this.retourData.travel || {})[g.key])}
+        <label style="margin:0;text-transform:none;font-size:.85rem;display:inline-flex;align-items:center;gap:5px;cursor:pointer;" title="Coche si tu as payé le stand, le repas et le déplacement en liquide : ils ne sortent pas de ta banque"><input type="checkbox" style="width:auto;" ${((this.retourData.feeCash || {})[g.key]) ? 'checked' : ''} onchange="Ventes.setDayFeeCash('${g.key}',this.checked)"> 💵 frais payés en espèces</label>
       </div>`}
     </div>`;
   },
@@ -1957,12 +1973,12 @@ const Ventes = {
       if (!deduct) {
         const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), ...(d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), ...(d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
         this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
         this._markImported(sale.items);
         Store.state.sales.unshift(sale);
@@ -1986,7 +2002,7 @@ const Ventes = {
         const mealFee = (b.keys || []).reduce((a, k) => a + U.num((d.mealFees || {})[k]), 0);
         const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
         const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
-        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, mealFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, mealFee, eventName, travelCost, ...((b.keys || []).some(k => (d.feeCash || {})[k]) ? { eventFeeCash: true } : {}), travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items, total, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique ${b.label} — ${U.eur(total)} (${items.length} produit(s), stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += items.reduce((a, i) => a + i.qty, 0); refs.forEach(r => seen.add(r));
@@ -2003,7 +2019,7 @@ const Ventes = {
       const mealFee = (b.keys || []).reduce((a, k) => a + U.num((d.mealFees || {})[k]), 0);
       const eventName = (b.keys || []).map(k => (d.eventNames || {})[k]).find(Boolean) || '';
       const travelCost = (b.keys || []).reduce((a, k) => a + U.num((d.travel || {})[k]), 0);
-      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, mealFee, eventName, travelCost, travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
+      const sale = { id: U.uid(), ts: b.ts || Date.now(), source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', eventFee, mealFee, eventName, travelCost, ...((b.keys || []).some(k => (d.feeCash || {})[k]) ? { eventFeeCash: true } : {}), travelDet: ((b.keys || []).length === 1 && (d.travelDet || {})[b.keys[0]]) || undefined, items: [], total: 0, cancelled: false, undoOps: [], sumupRefs: refs, fromImport: true };
       if (safe.length) this._deductSale(sale, safe.map(g => ({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', price: g.unit, qty: g.qty, pack: g.pack, packs: g.packs })), 'event');
       this._markImported(sale.items);
       ambiguous.forEach(g => { sale.items.push({ kind: g.kind, pId: g.pId, vId: g.vId, name: g.name, label: g.label, sku: g.sku, lotLabel: '', qty: g.qty, price: g.unit, deducted: false, todo: 'open', reason: 'multiLot', ...(U.num(g.pack) >= 2 ? { pack: g.pack, packs: g.packs } : {}) }); sale.total += g.unit * g.qty; });

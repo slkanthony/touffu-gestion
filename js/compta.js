@@ -212,7 +212,7 @@ const Compta = {
      Antho saisit le solde RÉEL de son compte à une date (point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce
      que le compte devrait contenir : dernier solde saisi + mouvements connus datés APRÈS ce point, et affiche l'écart. Un petit écart
      est normal (versements SumUp/Stripe décalés, cotisations réelles ≠ estimées…) ; un gros écart = oubli à chercher.
-     Mouvements comptés : ventes non réglées en espèces (net des frais de paiement), envois et stands/déplacements, achats non payés
+     Mouvements comptés : ventes non réglées en espèces (net des frais de paiement), envois et stands/repas/déplacements (sauf ceux cochés « payés en espèces »), achats non payés
      en espèces (carte perso : à la date du remboursement). PAS comptés : cotisations URSSAF estimées, espèces → à saisir ci-dessous
      (« mouvements hors appli » : dépôt d'espèces, paiement URSSAF réel, virement perso, frais bancaires…).
      Données dans Store.state.bank = { points:[{id,date,amount,note}], moves:[{id,date,amount,label}] } (admin seulement). */
@@ -225,7 +225,7 @@ const Compta = {
       if (s.cancelled) return;
       const sp = Pricing.saleProfit(s), d = this._dkey(s.ts);
       if (s.payment !== 'cash') mv.push({ d, k: 'sales', amt: sp.ca + sp.shipFee - sp.fee });
-      const out = sp.shipping + sp.eventFee; if (out) mv.push({ d, k: 'costs', amt: -out });
+      const out = sp.shipping + (s.eventFeeCash ? 0 : sp.eventFee); if (out) mv.push({ d, k: 'costs', amt: -out });   // frais d'événement payés en espèces : pas de sortie de banque
     });
     Achats.list().forEach(p => {
       if (p.payment === 'especes') return;
@@ -240,7 +240,7 @@ const Compta = {
     const b = this._bank(), pts = b.points.slice().sort((x, y) => x.date.localeCompare(y.date) || 0), mv = this._bankMoves(), today = U.today();
     const e = v => `<span class="sensitive">${U.eur(v)}</span>`, sg = v => `<span class="sensitive ${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${(v > 0 ? '+' : '') + U.eur(v)}</span>`;
     const head = `<h2>🏦 Pointage bancaire <span class="muted" style="font-size:.85rem;font-weight:400;">— l'appli et ta banque racontent-elles la même chose ?</span></h2>
-      <p class="muted help" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces et les achats payés en espèces ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
+      <p class="muted help" style="font-size:.82rem;">Tu saisis le solde réel de ton compte à une date (ton point de départ), puis de temps en temps (fin de mois…). L'appli calcule ce que ton compte devrait contenir : dernier solde saisi + ventes encaissées − achats payés − envois et stands, depuis cette date. Un petit écart est normal : les versements SumUp / Stripe arrivent quelques jours après la vente, tes cotisations URSSAF réelles ne sont pas celles estimées. Un gros écart sans explication = un oubli à chercher (achat non saisi, vente oubliée…). Les ventes en espèces, les achats payés en espèces et les frais d'événement cochés « payés en espèces » ne comptent pas (l'argent n'est pas en banque) : saisis un « mouvement hors appli » quand tu déposes des espèces, quand l'URSSAF te prélève, quand tu te fais un virement perso, pour des frais bancaires… N'enregistre jamais de numéro de compte ici : seulement des montants.</p>`;
     if (!pts.length) {
       return `<div class="card">${head}
         <p style="margin:10px 0 4px;"><b>Point de départ</b> : combien y a-t-il sur ton compte professionnel là, maintenant ?</p>
