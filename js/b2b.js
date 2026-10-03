@@ -64,7 +64,6 @@ const B2B = {
             <button class="btn-ghost" onclick="B2B.exportQuote()">🧾 Exporter le tarif pro (CSV)</button>
             <button class="btn-ghost" onclick="B2B.openQuote('micro')" title="Pour une micro-entreprise (ne collecte pas la TVA) : prix TTC avec la remise + prix de vente conseillé — à copier en image ou en texte">🧑‍💼 Spécial micro-entreprises</button>
             <button class="btn-ghost" onclick="B2B.openQuote('ent')" title="Pour une entreprise qui collecte la TVA : prix HT avec la remise + prix de vente conseillé TTC — à copier en image ou en texte">🏢 Spécial entreprises</button>
-            <button class="btn-ghost btn-sm" onclick="B2B.openOffFormats()" title="Choisis les formats (50G, 100G, 250G…) que tu ne proposes pas aux pros : ils sont décochés d'office dans les devis et exclus des exports CSV">🚫 Formats proposés${this._offList().length ? ' (' + this._offList().length + ' exclu' + (this._offList().length > 1 ? 's' : '') + ')' : ''}</button>
             <button class="btn-ghost btn-sm" onclick="B2B.expandAll()">📂 Tout développer</button>
             <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
           </div>
@@ -701,7 +700,7 @@ const B2B = {
 
   /* ═══════════ Formats (variantes) non proposés aux pros — mémorisés (2026-10-03) ═══════════
      settings.b2bOffVariants = libellés de variante (en minuscules) décochés d'office dans les devis ET exclus des exports CSV.
-     Se règle d'un clic dans la fenêtre d'un devis (pastilles « Formats à proposer ») ou via le bouton « Formats proposés ». */
+     Se règle d'un clic dans la fenêtre d'un devis (pastilles « Formats à proposer »), seulement là ; les exports CSV appliquent la même liste. */
   _vk(label) { return String(label == null ? '' : label).trim().toLowerCase(); },
   _offList() { const S = Store.state.settings; return Array.isArray(S.b2bOffVariants) ? S.b2bOffVariants : []; },
   _isOffVar(label) { return this._offList().includes(this._vk(label)); },
@@ -716,24 +715,6 @@ const B2B = {
   _fmtChip(label, state, onclick, count) {
     const mark = state === 'on' ? '✓ ' : state === 'off' ? '✕ ' : '◐ ';
     return `<button type="button" class="${state === 'on' ? 'btn-cta' : 'btn-ghost'} btn-sm" style="padding:3px 10px;${state === 'off' ? 'text-decoration:line-through;opacity:.75;' : ''}" onclick="${onclick}">${mark}${U.esc(label)}${count != null ? ` <span style="opacity:.75;font-weight:400;">(${count})</span>` : ''}</button>`;
-  },
-  _tabFormats() {
-    const acc = (this.tab || 'mast') === 'acc', seen = new Map();
-    this._curItems().forEach(x => (acc ? [this._accVariant(x.it.a)] : x.it.rows.map(r => r.label)).forEach(l => { const k = this._vk(l); if (!seen.has(k)) seen.set(k, l); }));
-    return [...seen.values()].sort((a, b) => Ventes._labelCmp(a, b));
-  },
-  openOffFormats() {
-    U.modal({ title: '🚫 Formats proposés aux pros', body: '<div id="off_box">' + this._offBox() + '</div>', hideOk: true, cancelLabel: 'Fermer' });
-  },
-  _offBox() {
-    const list = this._tabFormats(); this._offFmts = list;
-    return `<p class="muted" style="margin:0 0 10px;font-size:.85rem;">Clique un format pour le retirer / le remettre. Les formats barrés sont <b>décochés d'office</b> dans les devis et <b>exclus des exports CSV</b> (tarif pro, spécial commercial). Tu peux toujours en recocher un à la main dans un devis.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">${list.map((l, i) => this._fmtChip(l, this._isOffVar(l) ? 'off' : 'on', `B2B._offToggle(${i})`)).join('') || '<span class="muted">Aucun format.</span>'}</div>`;
-  },
-  _offToggle(i) {
-    const l = (this._offFmts || [])[i]; if (l == null) return;
-    this._setOffVar(l, !this._isOffVar(l));
-    const b = document.getElementById('off_box'); if (b) b.innerHTML = this._offBox();
   },
   _qtVarChips() {
     const groups = new Map();
