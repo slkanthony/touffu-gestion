@@ -2520,7 +2520,7 @@ const Stock = {
   },
 
   materialRow(m, i, items) {
-    const isSangle = m.kind === 'sangle';
+    const isSangle = Store.isSangleKind(m.kind);
     if (isSangle) this.reconcileRolls(m);
     const unit = m.unit === 'm' ? 'm' : 'PCS';
     const hasRolls = isSangle && m.rolls && m.rolls.length > 0;
@@ -2678,7 +2678,7 @@ const Stock = {
       </div>
       <div class="frow">
         <div class="fg"><label>Type</label><select id="m_kind">
-          ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${k.value === 'sangle' ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
+          ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
         <div class="fg"><label>Unité</label><select id="m_unit">
           <option value="m" ${m.unit === 'm' ? 'selected' : ''}>mètre</option>
           <option value="piece" ${m.unit === 'piece' ? 'selected' : ''}>pièce</option></select></div>
@@ -2735,24 +2735,39 @@ const Stock = {
     U.toast('Matière supprimée.', false, entry.id);
   },
 
+  /* Modifier un groupe de matières (même produit / couleur) : nom + CATÉGORIE appliquée d'un coup à toutes ses variantes (ex. passer « Hexa Bleu »
+     en « Sangle HEXA »). Les références du Calculateur (poids au mètre) de l'ancienne catégorie sont recopiées vers la nouvelle si elle n'en a pas. */
   editMatGroup(key) {
     const items = Store.state.materials.filter(m => (m.product || m.name) === key);
     if (!items.length) return;
+    const kinds = Store.materialKinds(), cur = [...new Set(items.map(m => m.kind || 'autre'))], one = cur.length === 1 ? cur[0] : '';
     U.modal({
-      title: '✏️ Renommer le groupe', okLabel: 'Renommer',
-      body: `<div class="fg"><label>Nom du groupe</label><input id="mg_name" value="${U.esc(key)}" autofocus></div>`,
+      title: '✏️ Modifier le groupe', okLabel: 'Enregistrer',
+      body: `<div class="fg"><label>Nom du groupe</label><input id="mg_name" value="${U.esc(key)}" autofocus></div>
+        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUTES les variantes du groupe. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>`,
       onOk: () => {
-        const newName = U.val('mg_name').trim();
+        const newName = U.val('mg_name').trim(), newKind = U.val('mg_kind');
         if (!newName) { U.toast('Le nom ne peut pas être vide.', true); return false; }
-        if (newName === key) return;
+        const rename = newName !== key, recat = !!newKind && items.some(m => (m.kind || 'autre') !== newKind);
+        if (!rename && !recat) { U.closeModal(); return; }
         const snaps = items.map(m => Store.snapshot('materials', m));
+        let copied = 0;
+        if (recat) {
+          const S = Store.state.settings, sw = S.strapWeights || (S.strapWeights = {});
+          items.forEach(m => {
+            const w = Calc.matWidth(m); if (!w) return;
+            const oldKey = (m.kind || 'autre') + '|' + Calc.strapType(m) + ' ' + w, newKey = newKind + '|' + Calc.strapType({ ...m, kind: newKind }) + ' ' + w;
+            if (sw[oldKey] && !sw[newKey]) { sw[newKey] = { ...sw[oldKey] }; copied++; }
+          });
+        }
         items.forEach(m => {
-          m.product = newName;
-          m.name = (newName + ' ' + (m.variant || '')).trim();
+          if (rename) { m.product = newName; m.name = (newName + ' ' + (m.variant || '')).trim(); }
+          if (recat) m.kind = newKind;
         });
-        Store.log('stock', `Groupe matière renommé : ${key} → ${newName}`);
-        Store.save('materials'); U.closeModal(); App.rerender();
-        U.toast('Groupe renommé.');
+        const lab = (Store.materialKinds().find(k => k.value === newKind) || {}).label || newKind;
+        const entry = Store.log('stock', `Groupe matière modifié : ${key}${rename ? ' → ' + newName : ''}${recat ? ' · catégorie « ' + lab + ' »' : ''}`, { type: 'restoreBatch', data: snaps });
+        Store.save('materials', 'settings'); U.closeModal(); App.rerender();
+        U.toast((recat ? `${items.length} variante(s) passée(s) en « ${lab} »` + (copied ? ` · ${copied} référence(s) du Calculateur recopiée(s)` : '') : 'Groupe renommé') + '.', false, entry.id);
       }
     });
   },

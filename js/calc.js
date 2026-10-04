@@ -57,7 +57,11 @@ const Calc = {
      "Classique". Pour une catégorie en mode "partagé", la référence est keyée
      par (type, largeur). Les catégories hors sangle n'ont pas de "hexa" → type
      "Classique" par défaut, donc regroupées par largeur seule. */
-  strapType(m) { return /hexa/i.test(String(m.product || '') + ' ' + String(m.name || '')) ? 'Hexa' : 'Classique'; },
+  strapType(m) {
+    // catégories « Sangle HEXA » / « Sangle réfléchissante » : le type EST la catégorie (pas de double « HEXA Hexa ») ; catégorie « Sangle » : on garde la détection par le nom
+    if (Store.isSangleKind(m.kind) && m.kind !== 'sangle') return 'Classique';
+    return /hexa/i.test(String(m.product || '') + ' ' + String(m.name || '')) ? 'Hexa' : 'Classique';
+  },
   /* Unité d'une catégorie (pour le mode partagé qui n'a pas d'article précis) :
      déduite des matières réelles de cette catégorie, sinon repli (bouclerie → pièces,
      reste → mètres). Gère les catégories libres ajoutées par Antho. */
@@ -84,6 +88,7 @@ const Calc = {
     // familles/largeurs seed depuis le référentiel, pour chaque catégorie en mode partagé
     Object.keys(Stock.matKindLabel).forEach(k => {
       if (Store.calcRefMode(k) !== 'shared') return;
+      if (Store.isSangleKind(k) && k !== 'sangle') return;   // sangles HEXA / réfléchissantes : seulement les largeurs réellement présentes (pas toute la liste « sans réf. »)
       (S.widths || []).forEach(w => {
         const n = this.normWidth(w); if (!n) return;
         shared.set(k + '|Classique ' + n, { kind: k, type: 'Classique', width: n, unit: this.kindUnit(k) });

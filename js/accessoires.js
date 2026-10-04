@@ -46,10 +46,11 @@ const Accessoires = {
     const groups = {};
     for (const m of mats) {
       let key, label;
-      if (m.kind === 'sangle') {
+      if (Store.isSangleKind(m.kind)) {
+        // une famille par (catégorie de sangle, largeur) : « Sangle 16mm », « Sangle HEXA 16mm »… (clé « sangle:16mm » inchangée pour la catégorie de base)
         const width = m.variant || m.name;
-        key = 'sangle:' + width;
-        label = 'Sangle ' + width;
+        key = m.kind + ':' + width;
+        label = (Stock.matKindLabel[m.kind] || 'Sangle') + ' ' + width;
       } else {
         const prod = m.product || m.name;
         key = (m.kind || 'autre') + ':' + prod;
@@ -736,8 +737,8 @@ const Accessoires = {
 
     if (ws.length) {
       filtered.forEach(f => {
-        if (f.kind === 'sangle') {
-          if (ws.some(w => f.key === 'sangle:' + w)) items.push({ type: 'family', data: f });
+        if (Store.isSangleKind(f.kind)) {
+          if (ws.some(w => f.key === f.kind + ':' + w)) items.push({ type: 'family', data: f });
         } else if (f.unit === 'piece') {
           // boucleries + toute catégorie à la pièce (mousqueton, anneau…) : sélection par article, filtrée par largeur
           const compatible = f.materials.filter(m => !m.variant || ws.includes(m.variant));

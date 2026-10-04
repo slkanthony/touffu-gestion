@@ -140,7 +140,7 @@ const Achats = {
       } else {
         it.costUnit = Math.round(perPack * 10000) / 10000;
         it.costTotal = it.costUnit; it.costQtyPer = 1; it.costTax = 'HT';   // coût réel HT (port compris) : les champs « prix / quantité » suivent
-        if (it.kind === 'sangle') {
+        if (Store.isSangleKind(it.kind)) {
           if (!Array.isArray(it.rolls)) it.rolls = prevQty > 0 ? [{ id: U.uid(), label: 'Stock avant achat', qty: prevQty }] : [];
           const r = { id: U.uid(), label: 'Achat ' + U.frDate(rec.date) + (rec.invoiceNo ? ' · ' + rec.invoiceNo : ''), qty: add };
           it.rolls.push(r); ap.rollId = r.id; it.qty = it.rolls.reduce((a, x) => a + U.num(x.qty), 0);

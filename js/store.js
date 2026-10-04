@@ -52,6 +52,8 @@ const Store = {
         blisterRolls: {}, // {widthMm: {consumableId}} — lie chaque largeur de blister à un consommable en stock
         materialKinds: [ // catégories de matières éditables (référentiel) — 'sangle' garde le comportement rouleaux ; les autres suivent leur unité
           { value: 'sangle', label: 'Sangle' },
+          { value: 'sangle-hexa', label: 'Sangle HEXA' },
+          { value: 'sangle-reflechissante', label: 'Sangle réfléchissante' },
           { value: 'bouclerie', label: 'Bouclerie' },
           { value: 'autre', label: 'Autre' }
         ],
@@ -158,6 +160,7 @@ const Store = {
     this.migratePackSkus(s);
     this.migrateSuppliers(s);
     this.migrateMatTax(s);
+    this.migrateSangleKinds(s);
     return s;
   },
   /* (2026-10-03) Une seule liste de fournisseurs avec des types. Les anciens fournisseurs « de produits » reçoivent
@@ -166,6 +169,21 @@ const Store = {
   /* (2026-10-04) Prix d'achat des matières saisis HT ou TTC. Les sangles déjà saisies à la main sont des prix TTC
      du fournisseur (TVA 21 %) → passées en « TTC 21 % ». Une matière dont le coût vient d'une facture d'Achats
      (coût incohérent avec « prix / quantité ») est déjà un coût réel HT : gardée en HT. Idempotent (costTax posé une fois). */
+  /* (2026-10-04) Trois catégories de sangles : « Sangle », « Sangle HEXA », « Sangle réfléchissante » (moyennes séparées dans Accessoires, références
+     séparées dans le Calculateur). Ajoutées UNE fois aux catégories existantes (flag : si Antho en supprime une, elle ne revient pas) avec une abréviation
+     SKU fixe (sinon « sangle » deviendrait « SANGLE- » à cause du préfixe commun). Toute catégorie dont la valeur commence par « sangle » a le comportement
+     sangle (rouleaux) : `Store.isSangleKind`. */
+  migrateSangleKinds(s) {
+    const S = s.settings; if (!S || S.sangleKindsMigrated) return;
+    if (Array.isArray(S.materialKinds) && S.materialKinds.length) {
+      const add = [{ value: 'sangle-hexa', label: 'Sangle HEXA' }, { value: 'sangle-reflechissante', label: 'Sangle réfléchissante' }];
+      let at = S.materialKinds.findIndex(k => k.value === 'sangle'); at = at >= 0 ? at + 1 : S.materialKinds.length;
+      add.forEach(k => { if (!S.materialKinds.some(x => x.value === k.value)) { S.materialKinds.splice(at, 0, k); at++; } });
+    }
+    S.matAbbrev = Object.assign({ 'sangle': 'SAN', 'sangle-hexa': 'HEX', 'sangle-reflechissante': 'REF' }, S.matAbbrev || {});
+    S.sangleKindsMigrated = true;
+  },
+  isSangleKind(kind) { return String(kind || '').toLowerCase().startsWith('sangle'); },
   migrateMatTax(s) {
     (s.materials || []).forEach(m => {
       if (m.costTax) return;
@@ -597,12 +615,12 @@ const Store = {
   /* 🧮 Calculateur : mode de référence d'une catégorie de matière.
      'shared' = référence partagée par largeur/type (sangles) ; 'perItem' = par article (boucleries).
      Défaut : sangle partagée, tout le reste par article. */
-  calcRefMode(kind) { const m = this.state.settings.calcRefMode || {}; return m[kind] || (kind === 'sangle' ? 'shared' : 'perItem'); },
+  calcRefMode(kind) { const m = this.state.settings.calcRefMode || {}; return m[kind] || (this.isSangleKind(kind) ? 'shared' : 'perItem'); },
   /* Catégories de matières (sangle/bouclerie/autre + ajouts d'Antho : mousqueton, anneaux…)
      — référentiel {value,label} éditable en Paramètres. Fallback sur les 3 par défaut. */
   materialKinds() {
     const k = this.state.settings.materialKinds;
-    return (Array.isArray(k) && k.length) ? k : [{ value: 'sangle', label: 'Sangle' }, { value: 'bouclerie', label: 'Bouclerie' }, { value: 'autre', label: 'Autre' }];
+    return (Array.isArray(k) && k.length) ? k : [{ value: 'sangle', label: 'Sangle' }, { value: 'sangle-hexa', label: 'Sangle HEXA' }, { value: 'sangle-reflechissante', label: 'Sangle réfléchissante' }, { value: 'bouclerie', label: 'Bouclerie' }, { value: 'autre', label: 'Autre' }];
   },
   /* Types de produit (occupation/mastication, éducation/friandises, + ajouts d'Antho
      type complément alimentaire…) — référentiel {value,label} éditable en Paramètres.
