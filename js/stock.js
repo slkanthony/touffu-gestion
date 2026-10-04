@@ -2497,7 +2497,7 @@ const Stock = {
         </span></span>
       </summary>
       <div class="fold-body"><div class="table-wrap"><table class="mat-table">
-        <thead><tr><th class="col-name">Variante</th><th>SKU</th><th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
+        <thead><tr><th class="col-name">Variante</th><th>SKU</th>${Store.hideSupplierInfo() ? '' : '<th>Réf. fournisseur</th>'}<th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
         <tbody>${items.map((m, i) => this.materialRow(m, i, items)).join('')}</tbody>
       </table></div>
       <button class="btn-cta btn-sm mt" onclick="Stock.addMatVariant('${keyEsc}')">＋ Ajouter une variante</button>
@@ -2538,7 +2538,7 @@ const Stock = {
       if (ae && be) return U.num(a.qty) - U.num(b.qty);
       return 0;
     });
-    const rollsBox = (isSangle && rollsOpen) ? `<tr class="lots-row"><td colspan="6" style="padding:0;">
+    const rollsBox = (isSangle && rollsOpen) ? `<tr class="lots-row"><td colspan="${Store.hideSupplierInfo() ? 6 : 7}" style="padding:0;">
       <div class="lots-box">
         <div class="lots-box-title">Rouleaux pour ${label}</div>
         <div class="table-wrap"><table class="lots-table">
@@ -2557,6 +2557,7 @@ const Stock = {
     return `<tr>
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}</td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
+      ${Store.hideSupplierInfo() ? '' : `<td><input class="mat-ref" value="${U.esc(m.ref || '')}" placeholder="réf." title="Référence chez le fournisseur" onchange="Stock.setMatText('${m.id}','ref',this.value)"></td>`}
       <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v, 3)} ${shown.lab} / ${unit}</div>` : ''}</td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
@@ -2629,6 +2630,16 @@ const Stock = {
     Store.save('materials'); App.rerender();
   },
 
+  /* Champ texte d'une matière (ex. référence fournisseur), enregistré en quittant la case — annulable via le Journal. */
+  setMatText(id, field, val) {
+    const m = Store.state.materials.find(x => x.id === id); if (!m) return;
+    const v = String(val || '').trim(); if (v === String(m[field] || '')) return;
+    const snap = Store.snapshot('materials', m);
+    m[field] = v;
+    const entry = Store.commitSnapshot(snap, 'stock', 'Référence fournisseur modifiée — ' + (m.product ? m.product + ' ' : '') + (m.variant || m.name));
+    U.toast('Référence enregistrée.', false, entry.id);
+    Store.save('materials');
+  },
   setMatField(id, field, val) {
     const m = Store.state.materials.find(x => x.id === id); if (!m) return;
     const snap = Store.snapshot('materials', m);
