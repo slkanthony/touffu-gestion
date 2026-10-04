@@ -881,8 +881,14 @@ const Paniers = {
     if (this._pendId === id) this._pendId = null;
     Store.save('baskets'); this.render();
   },
-  async sendToSale(id) {
-    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+  sendToSale(id) { const rec = this._pending().find(x => x.id === id); if (rec) this._sendRecToSale(rec); },
+  /* Panier composé → Ventes DIRECTEMENT, sans passer par « en attente » (vente immédiate / cliente déjà d'accord). Le panier reste ici
+     tant qu'on ne le vide pas ; s'il venait d'un panier en attente, celui-ci est retiré à la validation de la vente (comme avant). */
+  sendCurrentToSale() {
+    if (!this.basket.length) return;
+    this._sendRecToSale({ id: this._pendId || null, name: String(this.client || this._shClient || '').trim(), items: JSON.parse(JSON.stringify(this.basket)), reduction: this.reduction, livraison: this.livraison, balOn: this._balOn !== false, dv: this._pendId ? this._dv : null });
+  },
+  async _sendRecToSale(rec) {
     const units = Ventes.units(), merged = new Map(), warns = [], general = [];
     (rec.items || []).forEach(b => {
       const key = 'M|' + b.pId + '|' + b.vId;
@@ -1438,6 +1444,7 @@ const Paniers = {
             <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')" title="Copie l'image du devis (avec son n°)">🖼️ Copier l'image</button>
             <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
             <button class="btn-ghost btn-sm" onclick="Paniers.copyShare()">📋 Copier le texte</button>
+            <button class="btn-cta btn-sm" onclick="Paniers.sendCurrentToSale()" title="Charge ce panier dans le ticket de la page Ventes (rien n'est déduit tant que tu n'as pas validé la vente)">🛒 Envoyer en vente</button>
             <button class="btn-cta btn-sm" onclick="Paniers.quickPending()" title="Range le devis dans « Paniers en attente » et repart à vide">💾 Mettre en attente</button>
           </div>` : ''}
         </div>
