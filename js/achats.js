@@ -638,7 +638,8 @@ const Achats = {
         <div class="fg"><label>Paiement</label><select id="oh_pay">${this.PAYS.map(p => `<option value="${p[0]}">${p[1]}</option>`).join('')}</select></div>
         <div class="fg"><label>N° facture (option)</label><input id="oh_no"></div></div>
       <div class="frow">${row('mastication', '🥩', 'Mastication (€)')}${row('matiere', '🧵', 'Matières premières (€)')}${row('conso', '📦', 'Consommables (€)')}${row('frais', '🧾', 'Autres dépenses (€)')}</div>
-      <div class="frow"><div class="fg" style="max-width:260px;"><label>Frais de port / livraison (€)</label><input id="oh_ship" type="number" step="any" min="0" placeholder="0"></div></div>
+      <div class="frow"><div class="fg" style="max-width:260px;"><label>Frais de port / livraison (€)</label><input id="oh_ship" type="number" step="any" min="0" placeholder="0"></div>
+        <div class="fg" style="max-width:300px;"><label>Montant de TVA (€) <span class="muted help">option, en mode HT : si la facture indique la TVA en euros (ex. TVA sur les marchandises seulement, pas sur le port), saisis-la ici ; sinon elle est calculée avec le taux</span></label><input id="oh_vatamt" type="number" step="any" min="0" placeholder="auto"></div></div>
       <p class="muted" style="font-size:.82rem;" id="oh_hint">Les montants et le port sont saisis en TTC.</p>`,
       onOk: () => this._saveHist() });
   },
@@ -662,14 +663,17 @@ const Achats = {
     if (!supId) { U.toast('Choisis ou crée le fournisseur.', true); return false; }
     const ht = U.val('oh_mode') === 'ht', vt = U.val('oh_vat').trim();
     const rec = { id: U.uid(), date, supplierId: supId, taxMode: ht ? 'ht' : 'ttc', vat: [], vatRate: !ht && vt !== '' ? U.num(vt) : '', invoiceNo: U.val('oh_no').trim(), payment: U.val('oh_pay') || 'carte', paidBy: 'pro', reimbursed: '', shipping: this.r2(U.numVal('oh_ship')), discount: 0, note: 'Saisie statistique (ancienne facture)', hist: true, lines };
-    if (ht) { const rate = vt !== '' ? U.num(vt) : U.num(S.vatRate ?? 20); rec.vat = [{ rate, amount: this.r2(this.base(rec) * rate / 100), auto: true }]; }
+    if (ht) {
+      const rate = vt !== '' ? U.num(vt) : U.num(S.vatRate ?? 20), va = U.val('oh_vatamt').trim();
+      rec.vat = va !== '' ? [{ rate, amount: this.r2(U.num(va)), auto: false }] : [{ rate, amount: this.r2(this.base(rec) * rate / 100), auto: true }];
+    }
     rec.total = this.grandTotal(rec); rec.created = Date.now();
     this.list().push(rec); this._rememberVat(rec);
     if (ht && vt !== '') { const s = S.suppliers.find(x => x.id === supId); if (s && U.num(s.vatRate) !== U.num(vt)) { s.vatRate = U.num(vt); Store.save('settings'); } }
     const entry = Store.log('achat', `Ancienne facture (statistiques) — ${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: [{ domain: 'purchases', id: rec.id, before: null }] });
     Store.save('purchases'); this.render();
     cats.forEach(c => { const e = document.getElementById('oh_a_' + c[0]); if (e) e.value = ''; });
-    ['oh_ship', 'oh_no', 'oh_newsup'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
+    ['oh_ship', 'oh_no', 'oh_newsup', 'oh_vatamt'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
     const sel = document.getElementById('oh_sup'); if (nn && sel && !sel.querySelector(`option[value="${supId}"]`)) sel.insertAdjacentHTML('beforeend', `<option value="${supId}">${U.esc(nn)}</option>`);
     if (sel) sel.value = supId;
     U.toast(`Facture enregistrée : ${U.eur(rec.total)}. Saisis la suivante ou clique « Fermer ».`, false, entry.id);
