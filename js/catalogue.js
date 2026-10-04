@@ -5,6 +5,8 @@
    #/catalogue/new, #/catalogue/edit/<id>) — voir App.routeFor/_onHashChange.
    ============================================================ */
 const Catalogue = {
+  /* Petite ligne « dont port » sous le coût de revient quand un taux de port à l'achat (Paramètres) est appliqué : le coût affiché l'inclut déjà. */
+  _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Port à l'achat estimé (Paramètres → Réglages financiers → Port à l'achat), déjà compris dans le coût de revient">dont port ${U.eur(c.portCost, 3)}</div>` : ''; },
   filters: { q: '', meat: 'all', sup: 'all', sort: 'meat', sortDir: 'asc' },
   mode: 'list',      // 'list' | 'new' | 'edit'
   editId: null,
@@ -157,7 +159,7 @@ const Catalogue = {
       if (on) { idx++; if (c.critical) critCount++; }
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
-        <td class="num sensitive">${U.eur(c.cost, 3)}</td>
+        <td class="num sensitive">${U.eur(c.cost, 3)}${Catalogue._portNote(c)}</td>
         <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, perSize ? undefined : (U.num(p.coefficient) || 2))}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
@@ -802,7 +804,7 @@ const Catalogue = {
         ${kilo ? `<td class="num sensitive"><input type="number" step="1" value="${v.weight || ''}" class="v-price" placeholder="g" title="Poids de cette taille en grammes (coût = prix au kilo × poids)" onchange="Catalogue._d.variants[${i}].weight=this.value;Catalogue.drawVars()"></td>` : ''}
         <td>${this.packPicker(i, v.sachetId, v.mode)}</td>
         <td><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('size');Catalogue.drawVars()" class="sz-sku"></td>
-        <td class="num sensitive">${U.eur(c.cost, 3)}</td>
+        <td class="num sensitive">${U.eur(c.cost, 3)}${Catalogue._portNote(c)}</td>
         <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</td>
         <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
         <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
@@ -849,7 +851,7 @@ const Catalogue = {
       </td>
       <td>${this.packPicker(i, v.sachetId, v.mode)}
         <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
-      <td class="num sensitive">${U.eur(c.cost, 3)}</td>
+      <td class="num sensitive">${U.eur(c.cost, 3)}${Catalogue._portNote(c)}</td>
       <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
       <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
       <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
