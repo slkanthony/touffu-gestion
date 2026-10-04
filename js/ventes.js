@@ -1174,7 +1174,7 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
           ${this._isRealEvent(s) ? field('Frais en espèces', `<input type="checkbox" ${s.eventFeeCash ? 'checked' : ''} title="Coché : stand, repas et déplacement payés en liquide (ne sortent pas de la banque)" onchange="Ventes.setEventFeeCash('${s.id}',this.checked)">`) : ''}
         </div></td></tr>`;
-      const items = s.items.map(i => `<tr class="hist-item${s.cancelled ? ' dim' : ''}">
+      const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
