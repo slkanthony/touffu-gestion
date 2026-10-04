@@ -2347,6 +2347,38 @@ const Stock = {
     const q = U.num(qper) > 0 ? U.num(qper) : 1;
     return U.num(total) / q / (tax === 'TTC' ? vat : 1);
   },
+  /* Matières premières : prix d'achat saisi HT ou TTC (m.costTax) avec une TVA d'achat propre à la matière (m.costVat,
+     vide = TVA globale). Le coût par unité (m.costUnit) est toujours ramené en HT, hors frais de port
+     (le port se saisit sur la facture d'Achats, qui remet alors le coût réel à jour). */
+  matVat(m) { return U.num(m.costVat !== undefined && m.costVat !== null && m.costVat !== '' ? m.costVat : (Store.state.settings.vatRate ?? 20)); },
+  matUnitCostOf(total, qper, tax, vat) {
+    const q = U.num(qper) > 0 ? U.num(qper) : 1;
+    return U.num(total) / q / (tax === 'TTC' ? 1 + U.num(vat) / 100 : 1);
+  },
+  matUnitCost(m) { return this.matUnitCostOf(m.costTotal != null ? m.costTotal : m.costUnit, m.costQtyPer, m.costTax, this.matVat(m)); },
+  toggleMatTax(id) {
+    const m = Store.state.materials.find(x => x.id === id); if (!m) return;
+    const snap = Store.snapshot('materials', m);
+    if (m.costTotal == null) m.costTotal = U.num(m.costUnit);
+    m.costTax = m.costTax === 'TTC' ? 'HT' : 'TTC';
+    m.costUnit = this.matUnitCost(m);
+    const entry = Store.commitSnapshot(snap, 'stock', 'Prix passé en ' + m.costTax + ' — ' + (m.product ? m.product + ' ' : '') + (m.variant || m.name));
+    U.toast('Prix d\'achat en ' + m.costTax + (m.costTax === 'TTC' ? ' (TVA ' + U.qty(this.matVat(m)) + ' %)' : '') + '.', false, entry.id);
+    Store.save('materials'); App.rerender();
+  },
+  _toggleMatTaxIn() {
+    const b = document.getElementById('m_tax'); if (!b) return;
+    b.dataset.tax = b.dataset.tax === 'TTC' ? 'HT' : 'TTC'; b.textContent = b.dataset.tax;
+    this._calcMatUnit();
+  },
+  _calcMatUnit() {
+    const tax = (document.getElementById('m_tax') || { dataset: {} }).dataset.tax || 'HT';
+    const vatTxt = U.val('m_vat').trim();
+    const vat = vatTxt === '' ? U.num(Store.state.settings.vatRate ?? 20) : U.num(vatTxt);
+    const unit = document.getElementById('m_unit') ? U.val('m_unit') : 'm';
+    const el = document.getElementById('m_costResult');
+    if (el) el.textContent = U.eur(this.matUnitCostOf(U.numVal('m_costTotal'), U.numVal('m_costQty'), tax, vat), 3) + ' HT / ' + (unit === 'm' ? 'm' : 'pièce');
+  },
   _toggleConsoTax() {
     const b = document.getElementById('c_tax'); if (!b) return;
     b.dataset.tax = b.dataset.tax === 'TTC' ? 'HT' : 'TTC';
@@ -2499,6 +2531,7 @@ const Stock = {
     const label = U.esc(m.variant || m.name);
     const costTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit);
     const costQtyPer = U.num(m.costQtyPer) || 1;
+    const costTax = m.costTax === 'TTC' ? 'TTC' : 'HT';
 
     const sortedRolls = (m.rolls || []).slice().sort((a, b) => {
       const ae = a.entame ? 1 : 0, be = b.entame ? 1 : 0;
@@ -2525,7 +2558,7 @@ const Stock = {
     return `<tr>
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}</td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(m.costUnit, 3)} HT / ${unit}</div>` : ''}</td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div><div class="muted" style="font-size:.78rem;margin-top:3px;display:flex;align-items:center;gap:6px;"><button type="button" class="tax-tag tax-inline" data-tax="${costTax}" title="Clique pour basculer HT ⇄ TTC${costTax === 'TTC' ? ' (TVA ' + U.qty(this.matVat(m)) + ' %, modifiable dans « Modifier »)' : ''}" onclick="Stock.toggleMatTax('${m.id}')">${costTax}${costTax === 'TTC' ? ' ' + U.qty(this.matVat(m)) + ' %' : ''}</button>${costQtyPer !== 1 || costTax === 'TTC' ? `<span>= ${U.eur(m.costUnit, 3)} HT / ${unit}</span>` : ''}</div></td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
@@ -2591,9 +2624,7 @@ const Stock = {
     const m = Store.state.materials.find(x => x.id === id); if (!m) return;
     const snap = Store.snapshot('materials', m);
     m[field] = U.num(val);
-    const total = U.num(m.costTotal != null ? m.costTotal : m.costUnit);
-    const qper = U.num(m.costQtyPer) || 1;
-    m.costUnit = qper > 0 ? total / qper : 0;
+    m.costUnit = this.matUnitCost(m);
     const entry = Store.commitSnapshot(snap, 'stock', 'Coût modifié — ' + (m.product ? m.product + ' ' : '') + (m.variant || m.name));
     U.toast('Coût mis à jour.', false, entry.id);
     Store.save('materials'); App.rerender();
@@ -2626,7 +2657,8 @@ const Stock = {
   editMat(id, presetProduct) {
     const ref = presetProduct ? Store.state.materials.find(x => (x.product || x.name) === presetProduct) : null;
     const m = id ? Store.state.materials.find(x => x.id === id)
-      : { id: U.uid(), product: presetProduct || '', variant: '', name: '', kind: ref?.kind || 'sangle', unit: ref?.unit || 'm', sku: '', costUnit: '', qty: 0, low: 0 };
+      : { id: U.uid(), product: presetProduct || '', variant: '', name: '', kind: ref?.kind || 'sangle', unit: ref?.unit || 'm', sku: '', costUnit: '', qty: 0, low: 0, costTax: ref ? ref.costTax : 'TTC', costVat: ref ? ref.costVat : 21 };
+    const mTax = m.costTax === 'TTC' ? 'TTC' : 'HT', mTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit), mQper = U.num(m.costQtyPer) || 1;
     U.modal({
       title: id ? 'Modifier la matière' : (presetProduct ? '＋ Variante — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
       body: `
@@ -2643,8 +2675,13 @@ const Stock = {
       </div>
       <div class="frow">
         <div class="fg"><label>SKU</label><input id="m_sku" value="${U.esc(m.sku || '')}"></div>
-        <div class="fg"><label>Coût par unité (€ HT, port incl.)</label><input id="m_cost" type="number" step="0.001" value="${m.costUnit}"></div>
+        <div class="fg"><label>TVA d'achat (%)</label><input id="m_vat" type="number" step="0.1" value="${m.costVat ?? ''}" placeholder="${Store.state.settings.vatRate} (global)" oninput="Stock._calcMatUnit()"></div>
       </div>
+      <div class="frow">
+        <div class="fg"><label>Prix d'achat (€, hors port)</label><div class="tax-in"><input id="m_costTotal" type="number" step="0.01" value="${mTotal}" oninput="Stock._calcMatUnit()"><button type="button" id="m_tax" class="tax-tag" data-tax="${mTax}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleMatTaxIn()">${mTax}</button></div></div>
+        <div class="fg"><label>Pour (quantité achetée)</label><input id="m_costQty" type="number" step="0.01" min="0.01" value="${mQper}" oninput="Stock._calcMatUnit()"></div>
+      </div>
+      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${U.eur(m.costUnit, 3)} HT / ${m.unit === 'm' ? 'm' : 'pièce'}</span></div>
       <div class="frow">
         <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>
@@ -2661,7 +2698,11 @@ const Stock = {
         m.name = product ? (product + ' ' + variant).trim() : variant;
         m.kind = U.val('m_kind'); m.unit = U.val('m_unit');
         m.sku = U.val('m_sku') || Pricing.autoSkuMat(product || m.name, m.kind, m.variant);
-        m.costUnit = U.numVal('m_cost'); m.qty = U.numVal('m_qty'); m.low = U.numVal('m_low');
+        m.costTotal = U.numVal('m_costTotal'); m.costQtyPer = Math.max(0.01, U.numVal('m_costQty'));
+        m.costTax = (document.getElementById('m_tax') || { dataset: {} }).dataset.tax === 'TTC' ? 'TTC' : 'HT';
+        const vt = U.val('m_vat').trim(); if (vt === '') delete m.costVat; else m.costVat = U.num(vt);
+        m.costUnit = this.matUnitCost(m);
+        m.qty = U.numVal('m_qty'); m.low = U.numVal('m_low');
         m.url = U.val('m_url').trim();
         m.ref = U.val('m_ref').trim();
         if (!id) Store.state.materials.push(m);

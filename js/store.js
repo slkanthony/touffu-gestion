@@ -156,11 +156,30 @@ const Store = {
     this.migrateLabelTypes(s);
     this.migratePackSkus(s);
     this.migrateSuppliers(s);
+    this.migrateMatTax(s);
     return s;
   },
   /* (2026-10-03) Une seule liste de fournisseurs avec des types. Les anciens fournisseurs « de produits » reçoivent
      mastication + matières + consommables ; ceux de l'ancienne liste « autres » (suppliersOther) sont repris avec leur id
      (les factures restent valides) et le type « autre ». Idempotent. */
+  /* (2026-10-04) Prix d'achat des matières saisis HT ou TTC. Les sangles déjà saisies à la main sont des prix TTC
+     du fournisseur (TVA 21 %) → passées en « TTC 21 % ». Une matière dont le coût vient d'une facture d'Achats
+     (coût incohérent avec « prix / quantité ») est déjà un coût réel HT : gardée en HT. Idempotent (costTax posé une fois). */
+  migrateMatTax(s) {
+    (s.materials || []).forEach(m => {
+      if (m.costTax) return;
+      const q = Number(m.costQtyPer) > 0 ? Number(m.costQtyPer) : 1, cu = Number(m.costUnit) || 0;
+      const typed = m.costTotal == null || Math.abs(Number(m.costTotal) / q - cu) < 0.0005;
+      if (m.kind === 'sangle' && typed) {
+        if (m.costTotal == null) m.costTotal = cu;
+        m.costQtyPer = q; m.costTax = 'TTC'; m.costVat = 21;
+        m.costUnit = Number(m.costTotal) / q / 1.21;
+      } else {
+        if (m.costTotal == null || !typed) { m.costTotal = cu; m.costQtyPer = 1; }
+        m.costTax = 'HT';
+      }
+    });
+  },
   migrateSuppliers(s) {
     const S = s.settings; if (!S) return;
     if (!Array.isArray(S.suppliers)) S.suppliers = [];
