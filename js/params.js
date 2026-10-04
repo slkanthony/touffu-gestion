@@ -18,7 +18,7 @@ const Params = {
     const S = Store.state.settings;
     const vp = S.variantPresets || { gram: [], piece: [], size: [] };
     // Ordre déplaçable des blocs de Réglages financiers (↑↓). Stocké dans S.finOrder ; les blocs absents/nouveaux sont ajoutés à la fin.
-    const finDef = ['general', 'amort', 'masti', 'acc', 'conso', 'paniers', 'events'];
+    const finDef = ['general', 'amort', 'masti', 'acc', 'conso', 'port', 'paniers', 'events'];
     let finOrder = Array.isArray(S.finOrder) ? S.finOrder.filter(k => finDef.includes(k)) : [];
     finDef.forEach(k => { if (!finOrder.includes(k)) finOrder.push(k); });
     const finPos = k => finOrder.indexOf(k);
@@ -128,6 +128,9 @@ const Params = {
         <div class="fin-block" style="order:${finPos('conso')}">${finTools('conso')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Consommables ${U.info("Chaque fiche prix choisit son type d'étiquette (ex. « Élastique + étiquette » pour les cornes et bois naturels). Changer un coût ici recalcule toutes les fiches qui l'utilisent. Le vrac se règle fiche par fiche avec « Autre montant ».<br><br>● Défaut = type proposé pour les nouvelles fiches.")}</div>
         ${this.labelTypesHTML()}
+        </div>
+        <div class="fin-block" style="order:${finPos('port')}">${finTools('port')}
+        ${this.portCard()}
         </div>
         <div class="fin-block" style="order:${finPos('paniers')}">${finTools('paniers')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛒 Paniers & livraison</div>
@@ -634,10 +637,47 @@ const Params = {
     Store.save('settings'); App.rerender();
   },
 
+  /* ───── Port à l'achat (2026-10-04) : un taux par catégorie, ajouté au coût de revient pour fixer les PRIX (jamais au stock ni à la compta : le vrai port
+     est une charge à part). L'appli SUGGÈRE la moyenne de tes factures (port HT ÷ marchandises HT) ; c'est Antho qui applique, quand il revoit ses prix. ───── */
+  _portPeriod: 'all',
+  _PORT_CATS: [['mastication', '🥩 Mastication'], ['matiere', '🧵 Matières premières'], ['conso', '📦 Consommables']],
+  setPortPeriod(v) { this._portPeriod = v; App.rerender(); },
+  portCard() {
+    const S = Store.state.settings, rates = S.portRates || {}, per = this._portPeriod || 'all';
+    const years = [...new Set(Achats.list().map(p => String(p.date).slice(0, 4)).filter(Boolean))].sort().reverse();
+    const iso = d => d.toISOString().slice(0, 10);
+    const [a, b] = per === 'all' ? ['0000', '9999'] : per === '12m' ? [iso(new Date(Date.now() - 365 * 86400000)), '9999'] : [per + '-01-01', per + '-12-31'];
+    const st = Achats.portStats(a, b), r1 = n => Math.round(n * 10) / 10;
+    const opts = [['all', 'Depuis le début'], ['12m', '12 derniers mois'], ...years.map(y => [y, 'Année ' + y])];
+    const rows = this._PORT_CATS.map(([k, l]) => {
+      const o = st[k], cur = U.num(rates[k]), sug = r1(o.pct);
+      return `<tr><td style="text-align:left;white-space:nowrap;">${l}</td><td class="num sensitive">${U.eur(o.port)}</td><td class="num sensitive">${U.eur(o.goods)}</td>
+        <td class="num">${o.goods > 0 ? `<b>${U.qty(sug)} %</b> <span class="muted" style="font-size:.75rem;">(${o.n} facture${o.n > 1 ? 's' : ''}, de ${U.qty(r1(o.min))} à ${U.qty(r1(o.max))} %)</span>` : '<span class="muted">pas de facture</span>'}</td>
+        <td class="num" style="white-space:nowrap;"><input type="number" step="0.1" min="0" value="${cur || ''}" placeholder="0" style="width:72px;text-align:center;" onchange="Params.setPortRate('${k}',this.value)"> %</td>
+        <td>${o.goods > 0 && Math.abs(sug - cur) > 0.04 ? `<button class="btn-ghost btn-sm" onclick="Params.setPortRate('${k}',${sug})">Appliquer ${U.qty(sug)} %</button>` : ''}</td></tr>`;
+    }).join('');
+    return `<div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚚 Port à l'achat ${U.info("Le port payé à tes fournisseurs est compté comme une CHARGE dans la Compta (à la date de chaque facture) : il n'est jamais réparti dans le coût de tes produits ni de ton stock.<br><br>Pour que tes PRIX le couvrent quand même, tu fixes ici un taux par catégorie. Il s'ajoute au coût de revient dans le calcul des prix (fiches mastication, accessoires, emballages) et rien d'autre.<br><br>La colonne « calculé » est la moyenne de tes factures saisies dans Achats : port HT payé ÷ marchandises HT achetées. L'appli ne change jamais un taux toute seule : tu l'appliques quand tu revois tes prix. À 0 %, rien ne change.")}</div>
+      <div class="frow" style="align-items:center;gap:10px;margin-bottom:8px;"><div class="fg" style="max-width:240px;margin:0;"><label>Calculer sur</label><select onchange="Params.setPortPeriod(this.value)">${opts.map(o => `<option value="${o[0]}" ${String(per) === String(o[0]) ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div></div>
+      <div class="table-wrap"><table><thead><tr><th style="text-align:left;">Catégorie</th><th class="num">Port payé (HT)</th><th class="num">Marchandises (HT)</th><th class="num">Taux calculé</th><th class="num">Taux appliqué</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted help" style="font-size:.82rem;margin-top:6px;">Changer un taux recalcule les prix des fiches concernées. Les anciennes factures se rentrent avec « 📚 Ancienne facture (statistiques) » dans Achats.</p>`;
+  },
+  async setPortRate(cat, val) {
+    const S = Store.state.settings, lab = (this._PORT_CATS.find(x => x[0] === cat) || [cat, cat])[1];
+    S.portRates = Object.assign({ mastication: 0, matiere: 0, conso: 0 }, S.portRates || {});
+    const nv = Math.max(0, U.num(val)), old = U.num(S.portRates[cat]);
+    if (nv === old) { App.rerender(); return; }
+    if (!await U.confirm(`Passer le port à l'achat « ${lab.replace(/^\S+\s/, '')} » de ${U.qty(old)} % à ${U.qty(nv)} % ?\n\nLes prix calculés des fiches concernées sont recalculés (prix de vente TTC du stock lié compris).`, { okLabel: 'Appliquer', title: '🚚 Changer le taux de port ?' })) { App.rerender(); return; }
+    S.portRates[cat] = nv;
+    Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
+    Store.log('paramètres', `Port à l'achat « ${lab.replace(/^\S+\s/, '')} » : ${U.qty(old)} % → ${U.qty(nv)} %`);
+    Store.save('settings', 'stockM'); App.rerender();
+    U.toast('Taux de port enregistré : ' + U.qty(nv) + ' %. Prix recalculés.');
+  },
+
   /* Réordonnancement des blocs de Réglages financiers (↑↓). L'ordre est stocké dans S.finOrder ; l'affichage suit via CSS flex `order`. */
   moveFin(key, dir) {
     const S = Store.state.settings;
-    const def = ['general', 'amort', 'masti', 'acc', 'conso', 'paniers', 'events'];
+    const def = ['general', 'amort', 'masti', 'acc', 'conso', 'port', 'paniers', 'events'];
     let order = (Array.isArray(S.finOrder) ? S.finOrder.filter(k => def.includes(k)) : []);
     def.forEach(k => { if (!order.includes(k)) order.push(k); });
     const i = order.indexOf(key), j = i + dir;

@@ -340,9 +340,9 @@ const App = {
         const qe = sv ? sv.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0) : 0;
         const q = qg + qe;
         const price = (sv && U.num(sv.priceTTC) > 0) ? U.num(sv.priceTTC) : c.priceTTC;
-        gen += qg; evt += qe; buy += q * c.cost; sell += q * price;
+        gen += qg; evt += qe; buy += q * c.costBase; sell += q * price;
         if (v.mode === 'gram') kg += q * U.num(v.value) / 1000; else if (v.mode === 'vrac') kg += q; else pieces += q * (v.mode === 'piece' ? (U.num(v.value) || 1) : 1);
-        vars.push({ label: Pricing.labelVariant(v), sku: v.sku || '', price, cost: c.cost, qGen: qg, qEvt: qe, low: U.num(sv?.low) });
+        vars.push({ label: Pricing.labelVariant(v), sku: v.sku || '', price, cost: c.costBase, qGen: qg, qEvt: qe, low: U.num(sv?.low) });
       });
       rows.push({ kind: 'M', id: p.id, stockId: sp?.id || null, name: p.name, meat: p.meatType || 'Autre', supplier: Store.supplierName(p.mainSupplierId), gen, evt, buy, sell, kg, pieces, vars, linked: !!sp });
     });
@@ -367,7 +367,7 @@ const App = {
   accessoryRows() {
     return Store.state.catalogA.map(a => {
       const c = Pricing.accCalc(a); const qg = U.num(a.stockGeneral), qe = U.num(a.stockEvent), q = qg + qe;
-      return { id: a.id, name: a.name, category: a.category || 'Autre', gen: qg, evt: qe, total: q, cost: c.cost, price: c.priceTTC, buy: q * c.cost, sell: q * c.priceTTC, low: U.num(a.low) };
+      return { id: a.id, name: a.name, category: a.category || 'Autre', gen: qg, evt: qe, total: q, cost: c.costBase, price: c.priceTTC, buy: q * c.costBase, sell: q * c.priceTTC, low: U.num(a.low) };
     });
   },
 

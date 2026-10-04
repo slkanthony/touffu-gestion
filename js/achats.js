@@ -89,7 +89,32 @@ const Achats = {
     const sub = this.subTotal(rec), extra = U.num(rec.shipping) - U.num(rec.discount);
     return (rec.lines || []).map(l => this.lineTotal(l) + (sub ? extra * this.lineTotal(l) / sub : 0));
   },
-  _effHT(rec) { const g = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100; return this._eff(rec).map(x => this.isHT(rec) ? x : x / g); },   // coût réel HT de chaque ligne (livraison et remise comprises)
+  /* TVA d'une facture saisie en TTC : taux propre à la facture (rec.vatRate, retenu par fournisseur) ; vide = taux global des Paramètres. */
+  vatRateOf(rec) { return U.num(rec && rec.vatRate !== undefined && rec.vatRate !== null && rec.vatRate !== '' ? rec.vatRate : (Store.state.settings.vatRate ?? 20)); },
+  /* Coût réel HT de chaque ligne : remise comprise, livraison EXCLUE. Décision d'Antho (2026-10-04) : le port d'une facture n'est PAS réparti
+     dans le coût des lots / du stock ; c'est une charge (Compta) + un taux « port à l'achat » par catégorie ajouté au calcul de prix (Paramètres). */
+  _effHT(rec) {
+    const g = 1 + this.vatRateOf(rec) / 100, sub = this.subTotal(rec), disc = U.num(rec.discount);
+    return (rec.lines || []).map(l => { const t = this.lineTotal(l) - (sub ? disc * this.lineTotal(l) / sub : 0); return this.isHT(rec) ? t : t / g; });
+  },
+  /* Livraison HT imputée à chaque ligne (au prorata du montant) : sert aux statistiques de port par catégorie et à la charge « port sur achats ». */
+  portHTByLine(rec) {
+    const g = 1 + this.vatRateOf(rec) / 100, sub = this.subTotal(rec), ship = U.num(rec.shipping) / (this.isHT(rec) ? 1 : g);
+    return (rec.lines || []).map(l => sub ? ship * this.lineTotal(l) / sub : 0);
+  },
+  /* Port moyen par catégorie sur une période [from, to] (dates AAAA-MM-JJ) : port HT payé ÷ marchandises HT achetées. Ne regarde que
+     mastication / matière / consommable (les outils et frais généraux n'entrent pas dans l'assiette). */
+  portStats(from, to) {
+    const out = {}; ['mastication', 'matiere', 'conso'].forEach(c => out[c] = { port: 0, goods: 0, n: 0, pcts: [] });
+    this.list().forEach(p => {
+      if (p.date < from || p.date > to) return;
+      const eff = this._effHT(p), port = this.portHTByLine(p), per = {};
+      (p.lines || []).forEach((l, i) => { const o = out[l.cat]; if (!o) return; o.goods += eff[i]; o.port += port[i]; (per[l.cat] = per[l.cat] || { g: 0, p: 0 }); per[l.cat].g += eff[i]; per[l.cat].p += port[i]; });
+      Object.keys(per).forEach(c => { out[c].n++; if (per[c].g > 0) out[c].pcts.push(per[c].p / per[c].g * 100); });
+    });
+    Object.values(out).forEach(o => { o.pct = o.goods > 0 ? o.port / o.goods * 100 : 0; o.min = o.pcts.length ? Math.min(...o.pcts) : 0; o.max = o.pcts.length ? Math.max(...o.pcts) : 0; });
+    return out;
+  },
   _snapOnce(domain, item, snaps) { if (!snaps.some(s => s.domain === domain && s.id === item.id)) snaps.push(Store.snapshot(domain, item)); },
   _revertStock(rec, snaps) {
     (rec.lines || []).forEach(l => {
@@ -192,7 +217,7 @@ const Achats = {
         <td style="white-space:nowrap;"><b>${open ? '▾' : '▸'} ${U.frDate(p.date)}</b></td>
         <td style="text-align:left;">${U.esc(this.supplierLabel(p))}</td>
         <td style="text-align:left;">${U.esc(p.invoiceNo || '—')}</td>
-        <td style="text-align:left;">${cats} <span class="muted">${(p.lines || []).length} ligne(s)</span></td>
+        <td style="text-align:left;">${cats} <span class="muted">${(p.lines || []).length} ligne(s)</span>${p.hist ? ' <span class="badge" title="Saisie statistique : n\'a pas touché au stock ni aux prix">📚</span>' : ''}</td>
         <td>${this.payLabel(p.payment)}</td>
         <td>${refund}</td>
         <td class="num sensitive">${U.num(p.shipping) ? U.eur(p.shipping) : '—'}</td>
@@ -223,6 +248,7 @@ const Achats = {
         </div>
         <div class="frow mt" style="align-items:center;gap:10px;">
           <button class="btn-cta" style="flex:0 0 auto;" onclick="Achats.create()">＋ Nouvelle facture</button>
+          <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.openHist()" title="Rentrer une vieille facture juste pour les statistiques (compta, port moyen) : rien n'est ajouté au stock ni aux prix">📚 Ancienne facture (statistiques)</button>
           <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.exportCsv()" title="Un fichier avec les factures affichées (une ligne par article) : registre des achats">⬇ Exporter (CSV)</button>
           ${f.refund ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.setF('refund',false)">✕ Afficher aussi les remboursées</button>` : ''}
         </div>
@@ -319,7 +345,7 @@ const Achats = {
       <p>${U.qty(l.qty)} ${U.esc(l.unit || '')} acheté(s) · ${U.qty(sum)} pièce(s) rangée(s) en stock.</p>
       <div class="frow"><div class="fg"><label>Pièces triées au total</label><input id="rc_pieces" type="number" step="1" min="1" value="${sum}"></div>
       <div class="fg"><label>Pertes / déchets (${kg ? 'kg' : 'pièces'}, option)</label><input id="rc_loss" type="number" step="any" min="0" value="${U.num(r.loss) || ''}" placeholder="0"></div></div>
-      <p class="muted">Le coût réel par pièce = total HT de la ligne (livraison comprise, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>`,
+      <p class="muted">Le coût réel par pièce = total HT de la ligne (hors livraison, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception. La livraison est comptée à part, comme une charge, dans la Compta.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>`,
       onOk: () => {
         const pieces = U.numVal('rc_pieces'), loss = U.numVal('rc_loss');
         if (!(pieces > 0)) { U.toast('Indique le nombre de pièces triées.', true); return false; }
@@ -399,8 +425,14 @@ const Achats = {
   },
   addVat() { const d = this._d; d.vat = d.vat || []; d.vat.forEach(v => v.auto = false); d.vat.push({ rate: d.vat.length ? 10 : U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: false }); this._touch(); this.render(); },
   delVat(i) { this._d.vat.splice(i, 1); this._touch(); this.render(); },
+  setVatRate(v) { this._d.vatRate = String(v).trim() === '' ? '' : U.num(v); this._touch(); },
   _pickSup(sel) {
-    if (sel.value !== '__new') { this._d.supplierId = sel.value; this._touch(); return; }
+    if (sel.value !== '__new') {
+      this._d.supplierId = sel.value; this._touch();
+      const s = (Store.state.settings.suppliers || []).find(x => x.id === sel.value);   // reprend le dernier taux de TVA utilisé avec ce fournisseur
+      if (s && s.vatRate !== undefined && s.vatRate !== '' && (this._d.vatRate === undefined || this._d.vatRate === '')) { this._d.vatRate = U.num(s.vatRate); this._touch(); this.render(); }
+      return;
+    }
     sel.value = this._d.supplierId || '';
     const pre = this._supTypesFromLines(this._d);   // types proposés d'après les catégories des lignes (modifiables)
     const chk = Store.SUPPLIER_TYPES.map(t => `<label style="display:inline-flex;gap:5px;align-items:center;margin-right:12px;text-transform:none;letter-spacing:0;font-size:.9rem;white-space:nowrap;"><input type="checkbox" class="ach_newsup_t" style="width:auto;" value="${t.v}" ${pre.includes(t.v) ? 'checked' : ''}> ${t.l}</label>`).join('');
@@ -514,7 +546,8 @@ const Achats = {
           <div class="fg"><label>Note (option)</label><input value="${U.esc(d.note)}" placeholder="ex : commande de rentrée" onchange="Achats.setHead('note',this.value)"></div>
         </div>
         <div class="frow mt" style="gap:18px;align-items:center;">
-          <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Prix saisis sur la facture <span class="muted help">TTC : tu tapes ce que tu as payé (taux de TVA global des Paramètres pour le coût HT). HT : le fournisseur donne les prix hors taxe et la TVA par taux en bas de page (10 %, 20 %…) : tu la saisis en bas, elle est répartie au prorata sur les lignes.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${mode}</div></div>
+          <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Prix saisis sur la facture <span class="muted help">TTC : tu tapes ce que tu as payé (le taux de TVA de la facture sert à calculer le coût HT ; vide = taux global des Paramètres). HT : le fournisseur donne les prix hors taxe et la TVA par taux en bas de page (10 %, 20 %…) : tu la saisis en bas, elle est répartie au prorata sur les lignes.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${mode}</div></div>
+          ${(d.taxMode || 'ttc') === 'ttc' ? `<div class="fg" style="max-width:150px;"><label>TVA de la facture (%)</label><input type="number" step="0.1" min="0" value="${d.vatRate ?? ''}" placeholder="${Store.state.settings.vatRate ?? 20} (global)" title="Taux utilisé pour ramener cette facture en HT. Il est retenu pour ce fournisseur." onchange="Achats.setVatRate(this.value)"></div>` : ''}
           <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Moyen de paiement</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${pay}</div></div>
           <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Payé avec</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${who}</div></div>
           ${d.paidBy === 'perso' ? `<div class="fg" style="max-width:200px;"><label>Remboursé le (option)</label><input type="date" value="${U.esc(d.reimbursed || '')}" onchange="Achats.setHead('reimbursed',this.value)"></div>` : ''}
@@ -559,7 +592,7 @@ const Achats = {
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     this._autoVat();
-    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
+    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
     rec.total = this.grandTotal(rec);
     // doublons : même n° de facture chez le même fournisseur, ou même fournisseur + date + montant (alerte non bloquante)
     const msgs = [], others = this.list().filter(p => p.id !== rec.id && p.supplierId === rec.supplierId);
@@ -575,10 +608,72 @@ const Achats = {
     if (old) { rec.created = old.created || Date.now(); rec.updated = Date.now(); Object.keys(old).forEach(k => delete old[k]); Object.assign(old, rec); }
     else { rec.created = Date.now(); this.list().push(rec); }
     const entry = Store.log('achat', (old ? 'Facture modifiée — ' : 'Facture ajoutée — ') + `${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: snaps });
+    this._rememberVat(rec);
     Store.save('purchases', 'consumables', 'materials'); this.reconcileEquip();
     this._lastCat = lines[lines.length - 1].cat;
     this._d = null; this._editId = ''; this._dirty = false; this.mode = 'list'; this._clearDraft();
     this.render(); U.toast(`Facture enregistrée : ${U.eur(rec.total)}.` + (notes.length ? ' Stock : ' + notes.join(' · ') : ''), false, entry.id);
+  },
+
+  /* Le taux de TVA saisi sur une facture TTC devient celui proposé pour ce fournisseur la fois suivante. */
+  _rememberVat(rec) {
+    if (rec.vatRate === '' || rec.vatRate === undefined) return;
+    const s = (Store.state.settings.suppliers || []).find(x => x.id === rec.supplierId);
+    if (s && (s.vatRate === undefined || U.num(s.vatRate) !== U.num(rec.vatRate))) { s.vatRate = U.num(rec.vatRate); Store.save('settings'); }
+  },
+
+  /* ---------- Ancienne facture « statistique » (2026-10-04) ----------
+     Comme l'import historique d'un retour d'événement : on rentre les vieilles factures (2025…) juste pour la compta et le calcul du port moyen,
+     SANS toucher au stock ni aux prix. Un montant par catégorie + le port, au lieu de détailler chaque produit. Marquée « 📚 » dans la liste. */
+  openHist() {
+    const sups = this.suppliers(), S = Store.state.settings;
+    const row = (id, ico, lab) => `<div class="fg"><label>${ico} ${lab}</label><input id="oh_a_${id}" type="number" step="any" min="0" placeholder="0"></div>`;
+    U.modal({ title: '📚 Ancienne facture (statistiques)', okLabel: 'Enregistrer', wide: true, body: `
+      <p class="muted help" style="font-size:.85rem;">Pour tes anciennes factures : rien n'est ajouté à ton stock ni à tes prix. Elles comptent dans la Compta (à leur date) et dans le calcul du port moyen. Après « Enregistrer », la fenêtre reste ouverte pour la facture suivante.</p>
+      <div class="frow"><div class="fg"><label>Date de la facture</label><input id="oh_date" type="date"></div>
+        <div class="fg"><label>Fournisseur</label><select id="oh_sup" onchange="Achats._histSup(this.value)"><option value="">— choisir —</option>${sups.map(s => `<option value="${s.id}">${U.esc(s.name)}</option>`).join('')}</select></div>
+        <div class="fg"><label>…ou nouveau fournisseur</label><input id="oh_newsup" placeholder="nom"></div></div>
+      <div class="frow"><div class="fg"><label>Montants saisis</label><select id="oh_mode" onchange="Achats._histMode()"><option value="ttc">TTC (ce que tu as payé)</option><option value="ht">HT</option></select></div>
+        <div class="fg"><label>TVA (%)</label><input id="oh_vat" type="number" step="0.1" min="0" placeholder="${S.vatRate ?? 20} (global)"></div>
+        <div class="fg"><label>Paiement</label><select id="oh_pay">${this.PAYS.map(p => `<option value="${p[0]}">${p[1]}</option>`).join('')}</select></div>
+        <div class="fg"><label>N° facture (option)</label><input id="oh_no"></div></div>
+      <div class="frow">${row('mastication', '🥩', 'Mastication (€)')}${row('matiere', '🧵', 'Matières premières (€)')}${row('conso', '📦', 'Consommables (€)')}${row('frais', '🧾', 'Autres dépenses (€)')}</div>
+      <div class="frow"><div class="fg" style="max-width:260px;"><label>Frais de port / livraison (€)</label><input id="oh_ship" type="number" step="any" min="0" placeholder="0"></div></div>
+      <p class="muted" style="font-size:.82rem;" id="oh_hint">Les montants et le port sont saisis en TTC.</p>`,
+      onOk: () => this._saveHist() });
+  },
+  _histSup(id) {
+    const s = (Store.state.settings.suppliers || []).find(x => x.id === id), v = document.getElementById('oh_vat');
+    if (s && s.vatRate !== undefined && s.vatRate !== '' && v && v.value === '') v.value = s.vatRate;
+  },
+  _histMode() { const h = document.getElementById('oh_hint'); if (h) h.textContent = 'Les montants et le port sont saisis en ' + (U.val('oh_mode') === 'ht' ? 'HT (la TVA sera ajoutée au total).' : 'TTC.'); },
+  _saveHist() {
+    const date = U.val('oh_date'); if (!date) { U.toast('Indique la date de la facture.', true); return false; }
+    const S = Store.state.settings, cats = [['mastication', 'Mastication'], ['matiere', 'Matières premières'], ['conso', 'Consommables'], ['frais', 'Autres dépenses']];
+    const amt = {}; cats.forEach(c => amt[c[0]] = this.r2(U.numVal('oh_a_' + c[0])));
+    const lines = cats.filter(c => amt[c[0]] > 0).map(c => ({ id: U.uid(), cat: c[0], ref: '', label: 'Récap — ' + c[1], qty: 1, unit: this.cat(c[0]).detail ? 'pièce' : '', price: amt[c[0]], lot: '', dluo: '', years: 0, toStock: false }));
+    if (!lines.length) { U.toast('Indique au moins un montant.', true); return false; }
+    let supId = U.val('oh_sup'); const nn = U.val('oh_newsup').trim();
+    if (nn) {
+      let s = S.suppliers.find(x => x.name.toLowerCase() === nn.toLowerCase());
+      if (!s) { s = { id: U.uid(), name: nn, types: this._supTypesFromLines({ lines }) }; S.suppliers.push(s); Store.save('settings'); }
+      supId = s.id;
+    }
+    if (!supId) { U.toast('Choisis ou crée le fournisseur.', true); return false; }
+    const ht = U.val('oh_mode') === 'ht', vt = U.val('oh_vat').trim();
+    const rec = { id: U.uid(), date, supplierId: supId, taxMode: ht ? 'ht' : 'ttc', vat: [], vatRate: !ht && vt !== '' ? U.num(vt) : '', invoiceNo: U.val('oh_no').trim(), payment: U.val('oh_pay') || 'carte', paidBy: 'pro', reimbursed: '', shipping: this.r2(U.numVal('oh_ship')), discount: 0, note: 'Saisie statistique (ancienne facture)', hist: true, lines };
+    if (ht) { const rate = vt !== '' ? U.num(vt) : U.num(S.vatRate ?? 20); rec.vat = [{ rate, amount: this.r2(this.base(rec) * rate / 100), auto: true }]; }
+    rec.total = this.grandTotal(rec); rec.created = Date.now();
+    this.list().push(rec); this._rememberVat(rec);
+    if (ht && vt !== '') { const s = S.suppliers.find(x => x.id === supId); if (s && U.num(s.vatRate) !== U.num(vt)) { s.vatRate = U.num(vt); Store.save('settings'); } }
+    const entry = Store.log('achat', `Ancienne facture (statistiques) — ${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: [{ domain: 'purchases', id: rec.id, before: null }] });
+    Store.save('purchases'); this.render();
+    cats.forEach(c => { const e = document.getElementById('oh_a_' + c[0]); if (e) e.value = ''; });
+    ['oh_ship', 'oh_no', 'oh_newsup'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
+    const sel = document.getElementById('oh_sup'); if (nn && sel && !sel.querySelector(`option[value="${supId}"]`)) sel.insertAdjacentHTML('beforeend', `<option value="${supId}">${U.esc(nn)}</option>`);
+    if (sel) sel.value = supId;
+    U.toast(`Facture enregistrée : ${U.eur(rec.total)}. Saisis la suivante ou clique « Fermer ».`, false, entry.id);
+    return false;
   },
 
   /* ---------- export : registre des achats (une ligne par article) ---------- */

@@ -87,6 +87,11 @@ const Pricing = {
      sur les événements, coût variable selon ce qu'ils trouvent à manger). */
   eventCost(s) { return U.num(s && s.eventFee) + U.num(s && s.travelCost) + U.num(s && s.mealFee); },
 
+  /* Taux « port à l'achat » (Paramètres → Réglages financiers → 🚚) par catégorie : mastication · matiere · conso (en %, 0 par défaut).
+     Il s'ajoute au coût de revient POUR LE CALCUL DES PRIX seulement : `cost` = coût de revient avec port estimé ; `costBase` = sans port
+     (c'est lui qui alimente le stock et le coût des marchandises vendues : le vrai port est une charge à part dans la Compta). */
+  portRate(cat) { const r = (Store.state.settings.portRates || {})[cat]; return Math.max(0, U.num(r)) / 100; },
+
   variantCalc(p, v, idxActive, base, nActive, _noRec) {
     const S = Store.state.settings;
     const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
@@ -94,7 +99,9 @@ const Pricing = {
     const sac = Store.sachet(v.sachetId);
     const sacCost = sac ? U.num(sac.cost) : 0;
     const labelCost = Store.labelCostOf(p);
-    const cost = prodCost + sacCost + labelCost;
+    const costBase = prodCost + sacCost + labelCost;
+    const portCost = prodCost * this.portRate('mastication') + (sacCost + labelCost) * this.portRate('conso');
+    const cost = costBase + portCost;
 
     const bulkPct = U.num(p.bulkDiscount !== undefined && p.bulkDiscount !== '' ? p.bulkDiscount : S.bulkDiscount);
     const n = nActive || 1;
@@ -128,7 +135,7 @@ const Pricing = {
     // Réglage propre à la ligne (coeff ou prix tapé) : signalé (↺) seulement s'il donne un prix DIFFÉRENT du calcul automatique
     let own = priceFixed || U.num(v.coeff) > 0;
     if (own && !_noRec) { const auto = this.variantCalc(p, { ...v, coeff: '', priceTTCManual: undefined }, idxActive, base, nActive, true); if (Math.abs(auto.priceTTC - priceTTC) < 0.005) own = false; }
-    return { prodCost, sacCost, labelCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
+    return { prodCost, sacCost, labelCost, costBase, portCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
   },
 
   labelVariant(v) {
@@ -267,8 +274,9 @@ const Pricing = {
     }, 0);
     const laborCost = (U.num(a.laborMinutes) / 60) * U.num(S.laborRate);
     const uvCost = U.num(a.uvMl) * this.uvCostPerMl();   // perso UV : ml d'encre × coût/ml
-    const cost = matCost + laborCost + U.num(a.extraCost) + uvCost;
-    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, cost };
+    const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost;
+    const portCost = matCost * this.portRate('matiere');
+    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, portCost, costBase, cost: costBase + portCost };
   },
   /* ---------- SKU automatique ---------- */
   slugify(text) {
@@ -429,7 +437,7 @@ const Pricing = {
   saleItemCost(i) {
     if (i.cost !== undefined && i.cost !== null && i.cost !== '') return U.num(i.cost);
     const qty = U.num(i.qty);
-    if (i.kind === 'A') { const a = Store.state.catalogA.find(x => x.id === i.pId); return a ? U.num(this.accCalc(a).cost) * qty : 0; }
+    if (i.kind === 'A') { const a = Store.state.catalogA.find(x => x.id === i.pId); return a ? U.num(this.accCalc(a).costBase) * qty : 0; }
     if (i.kind === 'C') { const co = Store.state.consumables.find(x => x.id === i.pId); return co ? U.num(co.costUnit) * qty : 0; }
     const p = Store.state.stockM.find(x => x.id === i.pId);
     const v = p && (p.variants || []).find(x => x.id === i.vId);

@@ -16,6 +16,7 @@ const Store = {
   defaults() {
     return {
       settings: {
+        portRates: { mastication: 0, matiere: 0, conso: 0 },   // port à l'achat (%) ajouté au coût de revient pour fixer les prix
         vatRate: 20, vatActive: false, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5,
         urssafFreq: 'quarter', comptaExtraServices: 0,   // Compta : déclaration URSSAF mensuelle / trimestrielle ; CA hors application (éducation canine…) de l'année en cours
         laborRate: 20, labelCost: 0.10, bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,

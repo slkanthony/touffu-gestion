@@ -601,7 +601,7 @@ const Ventes = {
       } else if (c.kind === 'A') {
         const a = Store.state.catalogA.find(x => x.id === c.pId);
         if (a) {
-          lineCost = U.num(Pricing.accCalc(a).cost) * c.qty;
+          lineCost = U.num(Pricing.accCalc(a).costBase) * c.qty;
           const field = srcL === 'event' ? 'stockEvent' : 'stockGeneral';
           const take = Math.min(U.num(a[field]), c.qty);
           if (take > 0) { a[field] = U.num(a[field]) - take; sale.undoOps.push({ kind: 'A', pId: a.id, field, qty: take }); }
@@ -2412,7 +2412,7 @@ const Ventes = {
       snap('catalogA', a);
       const take = Math.min(U.num(a.stockEvent), i.qty);
       if (take > 0) { a.stockEvent = U.num(a.stockEvent) - take; s.undoOps.push({ kind: 'A', pId: a.id, field: 'stockEvent', qty: take }); }
-      i.cost = U.num(Pricing.accCalc(a).cost) * i.qty;
+      i.cost = U.num(Pricing.accCalc(a).costBase) * i.qty;
       msg = `${take} déduit(s)`;
     } else {
       const p = Store.state.stockM.find(x => x.id === i.pId); const v = Stock.stockVar(p, i.vId);

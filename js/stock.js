@@ -752,7 +752,7 @@ const Stock = {
     const idx = enabledVars.findIndex(x => x.id === cv.id);
     const calc = Pricing.variantCalc(cat, cv, idx < 0 ? 0 : idx, base, enabledVars.length);
     v.priceTTC = calc.priceTTC;
-    v.costUnit = calc.cost;
+    v.costUnit = calc.costBase;   // coût RÉEL (sans le port estimé des Paramètres)
     let catChanged = false;
     if (v.sku) { if (cv.sku !== v.sku) { cv.sku = v.sku; catChanged = true; } }
     else if (cv.sku) v.sku = cv.sku;
@@ -1276,7 +1276,7 @@ const Stock = {
         // Stock n'en a pas, on reprend celui du Catalogue comme avant.
         if (sv.sku) { if (cv.sku !== sv.sku) { cv.sku = sv.sku; catChanged = true; } }
         else if (cv.sku) sv.sku = cv.sku;
-        sv.priceTTC=calc.priceTTC; sv.costUnit=calc.cost;
+        sv.priceTTC=calc.priceTTC; sv.costUnit=calc.costBase;
       });
     });
     // Variantes liées à cette fiche AU NIVEAU VARIANTE (produit stock non lié à la fiche) : prix/coût mis à jour
@@ -1478,7 +1478,8 @@ const Stock = {
         profitB2B: proHT - cost - proHT * soc
       };
     };
-    return { before: mk(c.cost), after: mk(c.cost - c.sacCost + newSacCost), thr, disc, priceTTC: c.priceTTC };
+    const rc = 1 + Pricing.portRate('conso');   // le sachet porte aussi le port estimé « consommables »
+    return { before: mk(c.cost), after: mk(c.cost + (newSacCost - c.sacCost) * rc), thr, disc, priceTTC: c.priceTTC };
   },
   packLot(pId, vId, lId) {
     const f = this.findLot(pId, vId, lId); if (!f) return;
@@ -1583,7 +1584,7 @@ const Stock = {
     lot.pack = o.type === 'blister'
       ? { type: 'blister', key: o.key, refId: o.ref.id, consoId: o.conso ? o.conso.id : '', name: o.label, dims: o.dims.widthStr + '×' + o.dims.lengthStr, widthMm: o.dims.widthMm, lengthMm: o.dims.lengthMm, qty, unitCost: o.cost, date: U.today() }
       : { type: 'sachet', key: o.key, consoId: o.conso.id, name: o.conso.name, dims: o.conso.dimensions || '', qty, unitCost: o.cost, date: U.today() };
-    if (info) { const fresh = this._packCatInfo(p, v); if (fresh) lot.costUnit = fresh.calc.cost; }
+    if (info) { const fresh = this._packCatInfo(p, v); if (fresh) lot.costUnit = fresh.calc.costBase; }
     v.lastPackKey = o.key;
     if (o.type === 'sachet') v.lastSachetConsoId = o.conso.id;
     // Historique durable sur la VARIANTE (les lots vides sont supprimés après vente).
@@ -2558,7 +2559,7 @@ const Stock = {
     return `<tr>
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}</td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div><div class="muted" style="font-size:.78rem;margin-top:3px;display:flex;align-items:center;gap:6px;"><button type="button" class="tax-tag tax-inline" data-tax="${costTax}" title="Clique pour basculer HT ⇄ TTC${costTax === 'TTC' ? ' (TVA ' + U.qty(this.matVat(m)) + ' %, modifiable dans « Modifier »)' : ''}" onclick="Stock.toggleMatTax('${m.id}')">${costTax}${costTax === 'TTC' ? ' ' + U.qty(this.matVat(m)) + ' %' : ''}</button>${costQtyPer !== 1 || costTax === 'TTC' ? `<span>= ${U.eur(m.costUnit, 3)} HT / ${unit}</span>` : ''}</div></td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div><div class="muted" style="font-size:.78rem;margin-top:3px;display:flex;align-items:center;gap:6px;"><button type="button" class="tax-tag tax-inline" data-tax="${costTax}" title="Clique pour basculer HT ⇄ TTC${costTax === 'TTC' ? ' (TVA ' + U.qty(this.matVat(m)) + ' %, modifiable dans « Modifier »)' : ''}" onclick="Stock.toggleMatTax('${m.id}')">${costTax}</button>${costQtyPer !== 1 || costTax === 'TTC' ? `<span>= ${U.eur(m.costUnit, 3)} HT / ${unit}</span>` : ''}</div></td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
