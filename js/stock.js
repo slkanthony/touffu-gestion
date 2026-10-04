@@ -2213,7 +2213,7 @@ const Stock = {
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
           <td style="text-align:center;">${U.num(c.low)||'—'}</td>
-          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${(cQper !== 1 || c.costTax === 'TTC') ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">${c.costTax === 'TTC' ? '<span class="badge warn" style="font-size:.68rem;">saisi TTC</span> ' : ''}= ${U.eur(c.costUnit, 3)} HT / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''}</td>
+          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20), ent = c.costTax === 'TTC' ? 'TTC' : 'HT'; return (cQper !== 1 || Math.abs(sh.v - cTotal) > 0.0005) ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">${ent !== sh.lab ? `<span class="badge warn" style="font-size:.68rem;">saisi ${ent}</span> ` : ''}= ${U.eur(sh.v, 3)} ${sh.lab} / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''; })()}</td>
           <td class="right"><div class="act-grid"><span class="act-row">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
             <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button></span><span class="act-row">
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
@@ -2262,7 +2262,7 @@ const Stock = {
       <div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Prix d'achat (€)</label><div class="tax-in"><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"><button type="button" id="c_tax" class="tax-tag" data-tax="${c.costTax==='TTC'?'TTC':'HT'}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleConsoTax()">${c.costTax==='TTC'?'TTC':'HT'}</button></div></div>
         <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
-        <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${U.eur(c.costUnit,3)} HT /u</span></div>
+        <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20); return U.eur(sh.v, 3) + ' ' + sh.lab; })()} /u</span></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
@@ -2351,6 +2351,12 @@ const Stock = {
   /* Matières premières : prix d'achat saisi HT ou TTC (m.costTax) avec une TVA d'achat propre à la matière (m.costVat,
      vide = TVA globale). Le coût par unité (m.costUnit) est toujours ramené en HT, hors frais de port
      (le port se saisit sur la facture d'Achats, qui remet alors le coût réel à jour). */
+  /* AFFICHAGE d'un coût unitaire dans le Stock : tant qu'Antho n'est pas assujetti à la TVA il achète TTC (TVA non récupérée) → on lui montre le TTC.
+     Les CALCULS restent en HT (costUnit) : l'appli rajoute ensuite la TVA sur le prix de vente. Assujetti → HT. */
+  costShown(ht, vat) {
+    const S = Store.state.settings;
+    return S.vatActive ? { v: U.num(ht), lab: 'HT' } : { v: U.num(ht) * (1 + U.num(vat) / 100), lab: 'TTC' };
+  },
   matVat(m) { return U.num(m.costVat !== undefined && m.costVat !== null && m.costVat !== '' ? m.costVat : (Store.state.settings.vatRate ?? 20)); },
   matUnitCostOf(total, qper, tax, vat) {
     const q = U.num(qper) > 0 ? U.num(qper) : 1;
@@ -2368,7 +2374,8 @@ const Stock = {
     const vat = vatTxt === '' ? U.num(Store.state.settings.vatRate ?? 20) : U.num(vatTxt);
     const unit = document.getElementById('m_unit') ? U.val('m_unit') : 'm';
     const el = document.getElementById('m_costResult');
-    if (el) el.textContent = U.eur(this.matUnitCostOf(U.numVal('m_costTotal'), U.numVal('m_costQty'), tax, vat), 3) + ' HT / ' + (unit === 'm' ? 'm' : 'pièce');
+    const sh = this.costShown(this.matUnitCostOf(U.numVal('m_costTotal'), U.numVal('m_costQty'), tax, vat), vat);
+    if (el) el.textContent = U.eur(sh.v, 3) + ' ' + sh.lab + ' / ' + (unit === 'm' ? 'm' : 'pièce');
   },
   _toggleConsoTax() {
     const b = document.getElementById('c_tax'); if (!b) return;
@@ -2380,7 +2387,8 @@ const Stock = {
     const tax = (document.getElementById('c_tax') || { dataset: {} }).dataset.tax || 'HT';
     const unit = this.consoUnitCost(U.numVal('c_costTotal'), U.numVal('c_costQty'), tax);
     const el = document.getElementById('c_costResult');
-    if (el) el.textContent = U.eur(unit, 3) + ' HT /u';
+    const sh = this.costShown(unit, Store.state.settings.vatRate ?? 20);
+    if (el) el.textContent = U.eur(sh.v, 3) + ' ' + sh.lab + ' /u';
   },
   async delConso(id){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
@@ -2522,7 +2530,7 @@ const Stock = {
     const label = U.esc(m.variant || m.name);
     const costTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit);
     const costQtyPer = U.num(m.costQtyPer) || 1;
-    const costTax = m.costTax === 'TTC' ? 'TTC' : 'HT';
+    const shown = this.costShown(m.costUnit, this.matVat(m));
 
     const sortedRolls = (m.rolls || []).slice().sort((a, b) => {
       const ae = a.entame ? 1 : 0, be = b.entame ? 1 : 0;
@@ -2549,7 +2557,7 @@ const Stock = {
     return `<tr>
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}</td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || costTax === 'TTC' ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(m.costUnit, 3)} HT / ${unit}</div>` : ''}</td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v, 3)} ${shown.lab} / ${unit}</div>` : ''}</td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
@@ -2672,7 +2680,7 @@ const Stock = {
         <div class="fg"><label>Prix d'achat (€, hors port)</label><div class="tax-in"><input id="m_costTotal" type="number" step="0.01" value="${mTotal}" oninput="Stock._calcMatUnit()"><button type="button" id="m_tax" class="tax-tag" data-tax="${mTax}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleMatTaxIn()">${mTax}</button></div></div>
         <div class="fg"><label>Pour (quantité achetée)</label><input id="m_costQty" type="number" step="0.01" min="0.01" value="${mQper}" oninput="Stock._calcMatUnit()"></div>
       </div>
-      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${U.eur(m.costUnit, 3)} HT / ${m.unit === 'm' ? 'm' : 'pièce'}</span></div>
+      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v, 3) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : 'pièce'}</span></div>
       <div class="frow">
         <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>
