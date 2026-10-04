@@ -893,3 +893,21 @@ document.addEventListener('keydown', (e) => {
   function start() { new MutationObserver(sched).observe(document.body, { childList: true, subtree: true }); sched(); }
   if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 })();
+
+/* Champs numériques (2026-10-04, demande d'Antho) :
+   1. la molette de la souris ne MODIFIE plus jamais une valeur (un coup de molette sur un champ actif la faisait monter/descendre) : on retire le focus, la page défile normalement ;
+   2. une valeur validée est arrondie aux décimales du pas du champ (pas 0,01 → 2 décimales ; 0,001 → 3, pour les coûts unitaires fins) : plus de 44,6100000001. Pas entier ou « any » : seulement le bruit au-delà de 4 décimales. */
+(function () {
+  document.addEventListener('wheel', e => {
+    const t = e.target;
+    if (t && t.tagName === 'INPUT' && t.type === 'number' && document.activeElement === t) t.blur();
+  }, { capture: true, passive: true });
+  document.addEventListener('change', e => {
+    const t = e.target;
+    if (!t || t.tagName !== 'INPUT' || t.type !== 'number' || t.value === '') return;
+    const st = String(t.step || ''), n = parseFloat(t.value); if (!isFinite(n)) return;
+    const sd = st && st !== 'any' ? (st.split('.')[1] || '').length : 0, d = sd > 0 ? sd : 4;   // pas entier / « any » : on ne retire que le bruit au-delà de 4 décimales (jamais de décimale utile)
+    const r = Math.round(n * Math.pow(10, d)) / Math.pow(10, d);
+    if (r !== n) t.value = String(r);
+  }, true);
+})();
