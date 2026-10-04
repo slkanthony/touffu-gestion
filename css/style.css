@@ -1310,4 +1310,3 @@ details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed
 .ref-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 0; border-bottom: 1px dashed var(--row-border); }
 .ref-line:last-child { border-bottom: 0; }
 
-.tax-tag.tax-inline { position: static; transform: none; white-space: nowrap; flex: 0 0 auto; }

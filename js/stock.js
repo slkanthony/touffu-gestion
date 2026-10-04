@@ -2357,16 +2357,6 @@ const Stock = {
     return U.num(total) / q / (tax === 'TTC' ? 1 + U.num(vat) / 100 : 1);
   },
   matUnitCost(m) { return this.matUnitCostOf(m.costTotal != null ? m.costTotal : m.costUnit, m.costQtyPer, m.costTax, this.matVat(m)); },
-  toggleMatTax(id) {
-    const m = Store.state.materials.find(x => x.id === id); if (!m) return;
-    const snap = Store.snapshot('materials', m);
-    if (m.costTotal == null) m.costTotal = U.num(m.costUnit);
-    m.costTax = m.costTax === 'TTC' ? 'HT' : 'TTC';
-    m.costUnit = this.matUnitCost(m);
-    const entry = Store.commitSnapshot(snap, 'stock', 'Prix passé en ' + m.costTax + ' — ' + (m.product ? m.product + ' ' : '') + (m.variant || m.name));
-    U.toast('Prix d\'achat en ' + m.costTax + (m.costTax === 'TTC' ? ' (TVA ' + U.qty(this.matVat(m)) + ' %)' : '') + '.', false, entry.id);
-    Store.save('materials'); App.rerender();
-  },
   _toggleMatTaxIn() {
     const b = document.getElementById('m_tax'); if (!b) return;
     b.dataset.tax = b.dataset.tax === 'TTC' ? 'HT' : 'TTC'; b.textContent = b.dataset.tax;
@@ -2559,7 +2549,7 @@ const Stock = {
     return `<tr>
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}</td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div><div class="muted" style="font-size:.78rem;margin-top:3px;display:flex;align-items:center;gap:6px;"><button type="button" class="tax-tag tax-inline" data-tax="${costTax}" title="Clique pour basculer HT ⇄ TTC${costTax === 'TTC' ? ' (TVA ' + U.qty(this.matVat(m)) + ' %, modifiable dans « Modifier »)' : ''}" onclick="Stock.toggleMatTax('${m.id}')">${costTax}</button>${costQtyPer !== 1 || costTax === 'TTC' ? `<span>= ${U.eur(m.costUnit, 3)} HT / ${unit}</span>` : ''}</div></td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || costTax === 'TTC' ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(m.costUnit, 3)} HT / ${unit}</div>` : ''}</td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
