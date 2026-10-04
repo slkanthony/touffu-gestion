@@ -1312,3 +1312,9 @@ details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed
 
 
 .mat-table input.mat-ref { width: 130px; max-width: 100%; text-align: left; }
+
+/* Historique des sorties — colonnes nuancées CONTINUES (2026-10-05) : le zébrage des lignes (lignes paires) recouvrait les colonnes impaires et gommait la nuance
+   une ligne sur deux. Sur les lignes d'articles on garde seulement les colonnes (paires = plus claires), identiques sur toutes les lignes. */
+:root table.sales-hist tbody tr.hist-item td { background: transparent; }
+:root table.sales-hist tbody tr.hist-item td:nth-child(even) { background: rgba(255,255,255,.04); }
+:root[data-theme="light"] table.sales-hist tbody tr.hist-item td:nth-child(even) { background: rgba(19,51,64,.045); }
