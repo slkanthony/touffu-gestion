@@ -423,6 +423,14 @@ const Ventes = {
     if (/^#\/ventes\/?$/.test(location.hash)) this.render(); else location.hash = '#/ventes';
     U.toast(rec.kind === 'pro' ? 'Devis pro chargé dans le ticket (prix pro) — choisis le lot de chaque ligne, puis valide.' : 'Panier chargé dans le ticket — choisis le lot de chaque ligne, puis valide.');
   },
+  /* Libellé de lot (« n° · jj/mm/aaaa », plusieurs lots séparés par « / ») → deux colonnes du ticket : Lot et DLUO. */
+  _lotParts(label) {
+    const parts = String(label || '').split(' / ').map(x => x.trim()).filter(Boolean);
+    if (!parts.length) return { lots: '', dluos: '' };
+    const split = x => { const k = x.lastIndexOf(' · '); return k >= 0 ? [x.slice(0, k), x.slice(k + 3)] : [x, '']; };
+    const tag = t => t ? `<span class="tag">${U.esc(t)}</span>` : '';
+    return { lots: parts.map(x => tag(split(x)[0])).join('<br>'), dluos: parts.map(x => tag(split(x)[1])).filter(Boolean).join('<br>') };
+  },
   _shortestLot(c) {
     const u = this.units().find(x => x.key === c.key);
     const lots = u ? u.lots.filter(l => this.lotQtyS(l, c.src) > 0).sort((a, b) => (a.dluo || '9999').localeCompare(b.dluo || '9999')) : [];
@@ -465,15 +473,15 @@ const Ventes = {
     return `<div class="card" style="border-left:4px solid var(--caramel);">
       <h2>🛒 Ticket en cours (${this.cart.length}) — stock ${this.source === 'event' ? 'événement' : 'général'}</h2>
       ${this.cart.some(c => c.needLot) ? `<div class="badge warn" style="margin-bottom:8px;white-space:normal;">📋 Venant d'un panier — choisis le lot de chaque ligne (vérifie le n° de lot / la DLUO du produit que tu as en main). La validation est bloquée tant qu'un lot manque.</div>` : ''}
-      <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th>DLUO</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
           <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${c.src && c.src !== this.source ? ` <span class="badge warn" title="Cette ligne sera déduite d'un autre stock que le reste du ticket">stock ${c.src === 'event' ? 'événement' : 'général'}</span>` : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
-          <td>${c.needLot ? this._lotPicker(c, i) : (c.lotLabel ? `<span class="tag">${U.esc(c.lotLabel)}</span>` : '—')}</td>
+          ${(() => { const lp = this._lotParts(c.lotLabel); return `<td>${c.needLot ? this._lotPicker(c, i) : (lp.lots ? lp.lots : '—')}</td><td>${lp.dluos || '—'}</td>`; })()}
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
           <td class="num"><b>${U.eur(c.price * c.qty)}</b></td>
           <td><button class="btn-icon" onclick="Ventes.cart.splice(${i},1);Ventes.render()">🗑️</button></td></tr>`).join('')}</tbody>
-        <tfoot>${this.discOn ? `<tr><th colspan="4">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="4">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="4">Total</th><th class="num">${U.eur(total)}</th><th></th></tr>${ba ? `<tr><th colspan="4">${ba > 0 ? 'Avoir déduit' : 'Solde à régler'}</th><th class="num">${ba > 0 ? '−' : '+'} ${U.eur(Math.abs(ba))}</th><th></th></tr><tr><th colspan="4">À payer</th><th class="num">${U.eur(total - ba)}</th><th></th></tr>` : ''}</tfoot></table></div>
+        <tfoot>${this.discOn ? `<tr><th colspan="5">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="5">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="5">Total</th><th class="num">${U.eur(total)}</th><th></th></tr>${ba ? `<tr><th colspan="5">${ba > 0 ? 'Avoir déduit' : 'Solde à régler'}</th><th class="num">${ba > 0 ? '−' : '+'} ${U.eur(Math.abs(ba))}</th><th></th></tr><tr><th colspan="5">À payer</th><th class="num">${U.eur(total - ba)}</th><th></th></tr>` : ''}</tfoot></table></div>
       <div class="fg mt" style="max-width:420px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${this.discOn ? 'checked' : ''} onchange="Ventes.discOn=this.checked;Ventes.render()"> 🏷️ Réduction sur la commande (client partenaire…)</label>
         ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span></div>` : ''}</div>
       <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value" onchange="Ventes.render()"></div>
