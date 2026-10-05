@@ -2521,7 +2521,7 @@ const Stock = {
         </span>
         <span class="meta">${items.length} référence(s)</span>
         <span class="prod-actions act-grid"><span class="act-row">
-          <button class="btn-ghost btn-sm" title="Renommer ce groupe" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
+          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, catégorie et variantes" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
         </span></span>
       </summary>
@@ -2693,17 +2693,16 @@ const Stock = {
 
   addMatVariant(product) { this.editMat(null, product); },
 
-  /* Champ « Produit » de la fenêtre matière (obligatoire). Variante existante ou ajout sur un groupe : VERROUILLÉ (renommer le produit = « Modifier » sur la ligne
-     du produit, pour toutes ses variantes ; ça évite qu'une variante change de groupe par erreur). Nouvelle matière / ancienne fiche sans produit : liste des
-     produits existants + « Autre… » ; choisir un produit existant reprend son type et son unité. Aucun produit encore créé → champ texte. */
+  /* Champ « Produit » de la fenêtre matière (obligatoire, toujours modifiable) : liste des produits existants (celui en cours présélectionné) + « Autre… » pour en créer
+     un (donc aussi pour créer un produit voisin : « Mousqueton 16mm » depuis « Mousqueton 20mm »). Choisir un produit existant sur une NOUVELLE matière reprend son type et
+     son unité. Aucun produit encore créé → champ texte. Renommer un produit entier = « Modifier » sur sa ligne (toutes ses variantes). */
   _matProductField(m, presetProduct) {
-    const fixed = presetProduct || m.product;
-    if (fixed) return `<div class="fg"><label>Produit ${U.info("Le produit regroupe ses variantes (ex : « Mousqueton 20mm » → Argent, Noir, Or). Pour le renommer : bouton « Modifier » sur la ligne du produit, ça change toutes ses variantes à la fois.")}</label><input id="m_product" value="${U.esc(fixed)}" readonly></div>`;
+    const cur = m.product || presetProduct || '';
     const prods = [...new Set(Store.state.materials.map(x => x.product || x.name).filter(Boolean))].sort(U.sortFr);
-    if (!prods.length) return `<div class="fg"><label>Produit</label><input id="m_product" value="" placeholder="ex: Mousqueton 20mm"></div>`;
-    return `<div class="fg"><label>Produit ${U.info("Obligatoire. Le produit regroupe ses variantes (ex : « Mousqueton 20mm » → Argent, Noir, Or). Choisis un produit existant ou « Autre » pour en créer un.")}</label>
-      <select id="m_product_sel" onchange="Stock._matProdPick(this.value)"><option value="">— choisir —</option>${prods.map(p => `<option value="${U.esc(p)}">${U.esc(p)}</option>`).join('')}<option value="__new">＋ Autre (nouveau produit)…</option></select>
-      <input id="m_product" value="" placeholder="ex: Mousqueton 20mm" style="display:none;margin-top:6px;"></div>`;
+    if (!prods.length) return `<div class="fg"><label>Produit</label><input id="m_product" value="" placeholder="ex: Mousqueton"></div>`;
+    return `<div class="fg"><label>Produit ${U.info("Obligatoire. Le produit regroupe ses variantes. Choisis un produit existant, ou « Autre » pour en créer un (ex : « Mousqueton 16mm »). Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label>
+      <select id="m_product_sel" onchange="Stock._matProdPick(this.value)">${cur ? '' : '<option value="">— choisir —</option>'}${prods.map(p => `<option value="${U.esc(p)}" ${p === cur ? 'selected' : ''}>${U.esc(p)}</option>`).join('')}<option value="__new">＋ Autre (nouveau produit)…</option></select>
+      <input id="m_product" value="${U.esc(cur)}" placeholder="ex: Mousqueton 16mm" style="display:none;margin-top:6px;"></div>`;
   },
   _matProdPick(val) {
     const inp = document.getElementById('m_product'), isNew = val === '__new', m = this._matEditing; if (!inp || !m) return;
@@ -2811,15 +2810,21 @@ const Stock = {
     const items = Store.state.materials.filter(m => (m.product || m.name) === key);
     if (!items.length) return;
     const kinds = Store.materialKinds(), cur = [...new Set(items.map(m => m.kind || 'autre'))], one = cur.length === 1 ? cur[0] : '';
+    const sorted = [...items].sort((a, b) => U.num(a.order) - U.num(b.order) || U.sortFr(a.variant || a.name, b.variant || b.name));
     U.modal({
-      title: '✏️ Modifier le groupe', okLabel: 'Enregistrer',
+      title: '✏️ Modifier le produit', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Nom du produit (change toutes ses variantes)</label><input id="mg_name" value="${U.esc(key)}" autofocus></div>
-        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUTES les variantes du groupe. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>`,
+        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUTES les variantes du groupe. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Variantes (renomme ici les tailles, couleurs, matières…)</label>${sorted.map(m => `<input id="mg_v_${m.id}" value="${U.esc(m.variant || m.name)}" style="margin-bottom:6px;">`).join('')}</div>`,
       onOk: () => {
         const newName = U.val('mg_name').trim(), newKind = U.val('mg_kind');
-        if (!newName) { U.toast('Le nom ne peut pas être vide.', true); return false; }
+        if (!newName) { U.toast('Le nom du produit ne peut pas être vide.', true); return false; }
+        const newVar = {}; let vchanged = 0;
+        for (const m of items) { const v = U.val('mg_v_' + m.id).trim(); if (!v) { U.toast('Une variante ne peut pas être vide.', true); return false; } newVar[m.id] = v; if (v !== (m.variant || m.name)) vchanged++; }
+        const labs = Object.values(newVar).map(v => U.normSearch(v).replace(/\s+/g, ''));
+        if (new Set(labs).size !== labs.length) { U.toast('Deux variantes ont le même nom.', true); return false; }
         const rename = newName !== key, recat = !!newKind && items.some(m => (m.kind || 'autre') !== newKind);
-        if (!rename && !recat) { U.closeModal(); return; }
+        if (!rename && !recat && !vchanged) { U.closeModal(); return; }
         const snaps = items.map(m => Store.snapshot('materials', m));
         let copied = 0;
         if (recat) {
@@ -2831,13 +2836,17 @@ const Stock = {
           });
         }
         items.forEach(m => {
-          if (rename) { m.product = newName; m.name = (newName + ' ' + (m.variant || '')).trim(); }
+          if (rename || newVar[m.id] !== (m.variant || m.name)) {
+            const prod = rename ? newName : (m.product || key);
+            m.product = prod; if (newVar[m.id] !== (m.variant || m.name)) m.variant = newVar[m.id];
+            m.name = (prod + ' ' + (m.variant || '')).trim();
+          }
           if (recat) m.kind = newKind;
         });
         const lab = (Store.materialKinds().find(k => k.value === newKind) || {}).label || newKind;
-        const entry = Store.log('stock', `Groupe matière modifié : ${key}${rename ? ' → ' + newName : ''}${recat ? ' · catégorie « ' + lab + ' »' : ''}`, { type: 'restoreBatch', data: snaps });
+        const entry = Store.log('stock', `Produit matière modifié : ${key}${rename ? ' → ' + newName : ''}${recat ? ' · catégorie « ' + lab + ' »' : ''}${vchanged ? ' · ' + vchanged + ' variante(s) renommée(s)' : ''}`, { type: 'restoreBatch', data: snaps });
         Store.save('materials', 'settings'); U.closeModal(); App.rerender();
-        U.toast((recat ? `${items.length} variante(s) passée(s) en « ${lab} »` + (copied ? ` · ${copied} référence(s) du Calculateur recopiée(s)` : '') : 'Groupe renommé') + '.', false, entry.id);
+        U.toast((recat ? `${items.length} variante(s) passée(s) en « ${lab} »` + (copied ? ` · ${copied} référence(s) du Calculateur recopiée(s)` : '') : 'Produit modifié') + '.', false, entry.id);
       }
     });
   },
