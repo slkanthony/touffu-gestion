@@ -2478,7 +2478,7 @@ const Stock = {
         <div class="grid c4">
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_mat" value="${U.esc(f.q)}" placeholder="🔍 nom, produit, SKU…" oninput="Stock.matFilters.q=this.value;Stock.renderMatieres();U.refocus('stock_q_mat')"></div>
           <div class="fg mb0"><label>Type</label>${U.customSelect({ value: f.type, options: [{ v: 'all', l: 'Tous' }].concat(Store.materialKinds().map(k => ({ v: k.value, l: k.label }))), onPick: 'Stock._setMatType' })}</div>
-          <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ options: allVariants, selected: f.variants, toggle: 'Stock.matToggleVariant', setAll: 'Stock.matSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.matSetOpen' })}</div>
+          <div class="fg mb0"><label>Tailles</label>${U.multiSelect({ options: allVariants, selected: f.variants, toggle: 'Stock.matToggleVariant', setAll: 'Stock.matSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.matSetOpen' })}</div>
           <div class="fg mb0"><label>À compléter</label>${U.customSelect({ value: f.link, options: todoOpts, onPick: 'Stock._setMatLink' })}</div>
           <div class="fg mb0"><label>État du stock</label>${U.customSelect({ value: f.state || 'all', options: stateOpts, onPick: 'Stock._setMatState' })}</div>
         </div>
@@ -2519,21 +2519,17 @@ const Stock = {
           <span class="badge info">${this.matKindLabel[items[0].kind] || items[0].kind}</span>
           ${hasAlert ? '<span class="badge warn">Stock bas</span>' : ''}
         </span>
-        <span class="meta">${items.length} référence(s)${(() => {
-          if (items.length < 2 || Store.isSangleKind(items[0].kind)) return '';
-          const vals = items.map(m => this.costShown(m.costUnit, this.matVat(m))), avg = vals.reduce((a, x) => a + x.v, 0) / vals.length;
-          return ` · <span class="sensitive" title="Moyenne des prix de ses variantes : c'est ce prix qu'utilise Accessoires pour ce produit">prix moyen ${U.eur(avg, 3)} ${vals[0].lab}</span>`;
-        })()}</span>
+        <span class="meta">${items.length} référence(s)</span>
         <span class="prod-actions act-grid"><span class="act-row">
-          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, catégorie et noms des variantes" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
+          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, catégorie et noms des tailles" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
         </span></span>
       </summary>
       <div class="fold-body"><div class="table-wrap"><table class="mat-table">
-        <thead><tr><th class="col-name">Variante</th><th>SKU</th>${Store.hideSupplierInfo() ? '' : '<th>Réf. fournisseur</th>'}<th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
+        <thead><tr><th class="col-name">Taille</th><th>SKU</th>${Store.hideSupplierInfo() ? '' : '<th>Réf. fournisseur</th>'}<th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
         <tbody>${items.map((m, i) => this.materialRow(m, i, items)).join('')}</tbody>
       </table></div>
-      <button class="btn-cta btn-sm mt" onclick="Stock.addMatVariant('${keyEsc}')">＋ Ajouter une variante</button>
+      <button class="btn-cta btn-sm mt" onclick="Stock.addMatVariant('${keyEsc}')">＋ Ajouter une taille</button>
       </div>
     </details>`;
   },
@@ -2697,17 +2693,31 @@ const Stock = {
 
   addMatVariant(product) { this.editMat(null, product); },
 
-  /* Fenêtre « matière » : PRODUIT = champ texte (on tape le nom) ; VARIANTE = champ texte + suggestions cliquables (les variantes déjà utilisées ailleurs et pas encore
-     dans ce produit : même orthographe, pas de doublon). Une variante = une déclinaison du produit (Noir, Argent, Or… ou 16mm, 20mm pour une sangle) avec son prix, sa réf.
-     et son lien : le prix MOYEN des variantes du produit sert dans Accessoires. */
-  _matVariantChips(m, prod) {
-    const taken = new Set(prod ? Store.state.materials.filter(x => x.id !== m.id && (x.product || x.name) === prod).map(x => U.normSearch(x.variant || x.name).replace(/\s+/g, '')) : []);
-    const labels = [...new Set(Store.state.materials.map(x => x.variant).filter(Boolean))].sort(U.sortFr).filter(v => !taken.has(U.normSearch(v).replace(/\s+/g, ''))).slice(0, 14);
-    return labels.length ? `<div id="m_variant_chips" class="muted" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:.8rem;">Déjà utilisées : ${labels.map(v => `<button type="button" class="btn-ghost btn-sm" data-v="${U.esc(v)}" onclick="document.getElementById('m_variant').value=this.dataset.v;document.getElementById('m_variant').focus();">${U.esc(v)}</button>`).join('')}</div>` : '<div id="m_variant_chips"></div>';
+  /* Fenêtre « matière » : PRODUIT = champ texte (on tape le nom) ; TAILLE = menu déroulant des tailles DÉJÀ utilisées (10mm, 16mm, 20mm…) + « Autre… » pour en créer une
+     (champ texte qui apparaît). Les tailles déjà présentes dans le produit tapé restent visibles mais grisées (« déjà dans ce produit »). Aucune matière existante → champ texte.
+     Dans le code la taille est `m.variant` (ancien nom « variante », gardé pour ne rien migrer). */
+  _matSizeField(m, prod, curOverride) {
+    const cur = curOverride !== undefined ? curOverride : (m.variant || (m.product ? '' : m.name) || '');
+    const nrm = v => U.normSearch(v).replace(/\s+/g, '');
+    const taken = new Set(prod ? Store.state.materials.filter(x => x.id !== m.id && (x.product || x.name) === prod).map(x => nrm(x.variant || x.name)) : []);
+    const labels = [...new Set(Store.state.materials.map(x => x.variant).filter(Boolean))].sort(U.sortFr);
+    const info = U.info("Choisis une taille déjà utilisée (10mm, 16mm, 20mm…) ou « Autre » pour en créer une nouvelle. Celles déjà dans ce produit sont grisées.");
+    if (!labels.length) return `<div class="fg" id="m_variant_fg"><label>Taille</label><input id="m_variant" value="${U.esc(cur)}" placeholder="ex: 20mm"></div>`;
+    return `<div class="fg" id="m_variant_fg"><label>Taille ${info}</label>
+      <select id="m_variant_sel" onchange="var i=document.getElementById('m_variant'),n=this.value==='__new';i.style.display=n?'':'none';if(n)i.focus();">
+        ${cur ? '' : '<option value="">— choisir —</option>'}
+        ${labels.map(v => { const t = taken.has(nrm(v)) && nrm(v) !== nrm(cur); return `<option value="${U.esc(v)}" ${v === cur ? 'selected' : ''} ${t ? 'disabled' : ''}>${U.esc(v)}${t ? ' — déjà dans ce produit' : ''}</option>`; }).join('')}
+        <option value="__new">＋ Autre (nouvelle taille)…</option></select>
+      <input id="m_variant" value="" placeholder="ex: 20mm" style="display:none;margin-top:6px;"></div>`;
   },
-  _matChipsRefresh() {
-    const m = this._matEditing, el = document.getElementById('m_variant_chips'); if (!m || !el) return;
-    el.outerHTML = this._matVariantChips(m, U.val('m_product').trim());
+  /* Quand le nom du produit change à la frappe : on reconstruit le menu des tailles (tailles déjà prises) en gardant le choix s'il est encore possible. */
+  _matSizeRefresh() {
+    const m = this._matEditing, fg = document.getElementById('m_variant_fg'); if (!m || !fg) return;
+    const sel = document.getElementById('m_variant_sel'), inp = document.getElementById('m_variant');
+    const picked = sel ? (sel.value === '__new' ? (inp ? inp.value : '') : sel.value) : (inp ? inp.value : '');
+    const prod = U.val('m_product').trim(), nrm = v => U.normSearch(v).replace(/\s+/g, '');
+    const clash = picked && prod && Store.state.materials.some(x => x.id !== m.id && (x.product || x.name) === prod && nrm(x.variant || x.name) === nrm(picked));
+    fg.outerHTML = this._matSizeField(m, prod, clash ? '' : picked);
   },
 
   editMat(id, presetProduct) {
@@ -2718,11 +2728,11 @@ const Stock = {
     this._matEditing = m;
     const mTax = m.costTax === 'TTC' ? 'TTC' : 'HT', mTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit), mQper = U.num(m.costQtyPer) || 1;
     U.modal({
-      title: id ? 'Modifier la matière — ' + U.esc(m.product || m.name) : (presetProduct ? '＋ Variante — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
+      title: id ? 'Modifier la matière — ' + U.esc(m.product || m.name) : (presetProduct ? '＋ Taille — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
       body: `
-      <div class="frow">
-        <div class="fg"><label>Produit ${U.info("Le produit regroupe ses variantes (ex : « Mousqueton 20mm » → Noir, Argent, Or). Le prix moyen de ses variantes sert dans Accessoires. Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label><input id="m_product" value="${U.esc(m.product || presetProduct || '')}" placeholder="ex: Mousqueton 20mm" oninput="Stock._matChipsRefresh()"></div>
-        <div class="fg"><label>Variante</label><input id="m_variant" value="${U.esc(m.variant || (m.product ? '' : m.name) || '')}" placeholder="ex: Noir, Argent, 16mm…">${this._matVariantChips(m, m.product || presetProduct || '')}</div>
+      <div class="frow" style="align-items:flex-start;">
+        <div class="fg"><label>Produit ${U.info("Le produit regroupe ses tailles (ex : « Mousqueton Argent » → 16mm, 20mm, 25mm). Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label><input id="m_product" value="${U.esc(m.product || presetProduct || '')}" placeholder="ex: Mousqueton Argent" oninput="Stock._matSizeRefresh()"></div>
+        ${this._matSizeField(m, m.product || presetProduct || '')}
       </div>
       <div class="frow">
         <div class="fg"><label>Type</label><select id="m_kind">
@@ -2748,10 +2758,10 @@ const Stock = {
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="m_url" value="${U.esc(m.url || '')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('m_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
       onOk: () => {
         const snap = id ? Store.snapshot('materials', m) : null;
-        const product = U.val('m_product').trim(), variant = U.val('m_variant').trim();
-        if (!product) { U.toast('Indique le produit (ex : Mousqueton 20mm).', true); return false; }
-        if (!variant) { U.toast('Indique la variante (ex : Noir).', true); return false; }
-        if (Store.state.materials.some(x => x.id !== m.id && (x.product || x.name) === product && U.normSearch(x.variant || x.name).replace(/\s+/g, '') === U.normSearch(variant).replace(/\s+/g, ''))) { U.toast('Cette variante existe déjà dans ce produit.', true); return false; }
+        const pickedVar = U.val('m_variant_sel'), product = U.val('m_product').trim(), variant = (pickedVar && pickedVar !== '__new' ? pickedVar : U.val('m_variant')).trim();
+        if (!product) { U.toast('Indique le produit (ex : Mousqueton Argent).', true); return false; }
+        if (!variant) { U.toast('Indique la taille (ex : 20mm).', true); return false; }
+        if (Store.state.materials.some(x => x.id !== m.id && (x.product || x.name) === product && U.normSearch(x.variant || x.name).replace(/\s+/g, '') === U.normSearch(variant).replace(/\s+/g, ''))) { U.toast('Cette taille existe déjà dans ce produit.', true); return false; }
         const dupM = this.dupWarnings({ url: U.val('m_url'), ref: U.val('m_ref'), self: { kind: 'T', id: m.id } });
         if (!U.dupGate(dupM, () => document.getElementById('modalOk').click())) return false;
         m.product = product; m.variant = variant;
@@ -2795,15 +2805,15 @@ const Stock = {
     U.modal({
       title: '✏️ Modifier le produit', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Nom du produit (s’applique à tout le produit)</label><input id="mg_name" value="${U.esc(key)}" autofocus></div>
-        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUT le produit. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>
-        <div class="fg"><label>Variantes (renomme-les ici)</label>${sorted.map(m => `<input id="mg_v_${m.id}" value="${U.esc(m.variant || m.name)}" style="margin-bottom:6px;">`).join('')}</div>`,
+        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUT le produit (toutes ses tailles). Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Tailles (renomme-les ici)</label>${sorted.map(m => `<input id="mg_v_${m.id}" value="${U.esc(m.variant || m.name)}" style="margin-bottom:6px;">`).join('')}</div>`,
       onOk: () => {
         const newName = U.val('mg_name').trim(), newKind = U.val('mg_kind');
         if (!newName) { U.toast('Le nom du produit ne peut pas être vide.', true); return false; }
         const newVar = {}; let vchanged = 0;
-        for (const m of items) { const v = U.val('mg_v_' + m.id).trim(); if (!v) { U.toast('Une variante ne peut pas être vide.', true); return false; } newVar[m.id] = v; if (v !== (m.variant || m.name)) vchanged++; }
+        for (const m of items) { const v = U.val('mg_v_' + m.id).trim(); if (!v) { U.toast('Une taille ne peut pas être vide.', true); return false; } newVar[m.id] = v; if (v !== (m.variant || m.name)) vchanged++; }
         const labs = Object.values(newVar).map(v => U.normSearch(v).replace(/\s+/g, ''));
-        if (new Set(labs).size !== labs.length) { U.toast('Deux variantes ont le même nom.', true); return false; }
+        if (new Set(labs).size !== labs.length) { U.toast('Deux tailles ont le même nom.', true); return false; }
         const rename = newName !== key, recat = !!newKind && items.some(m => (m.kind || 'autre') !== newKind);
         if (!rename && !recat && !vchanged) { U.closeModal(); return; }
         const snaps = items.map(m => Store.snapshot('materials', m));
