@@ -63,21 +63,7 @@ const Ventes = {
      d'un même produit dans l'ordre logique (S < M < L…) plutôt qu'alphabétique (L, M, S, XL, XS,
      XXL) — demande d'Antho, plus facile à repérer dans une liste de recherche (fromage à
      croquer S/M/L/XL/XS/XXL…). Même patron de reconnaissance que classifyBuckets. */
-  _labelSortKey(l) {
-    const s = String(l || '').trim();
-    let m = s.match(/^(\d+(?:[.,]\d+)?)\s*(kg|g|mg)$/i);
-    if (m) return parseFloat(m[1].replace(',', '.')) * { kg: 1000, g: 1, mg: 0.001 }[m[2].toLowerCase()];
-    m = s.match(/^(\d+(?:[.,]\d+)?)\s*(m|cm|mm)$/i);
-    if (m) return parseFloat(m[1].replace(',', '.')) * { m: 100, cm: 1, mm: 0.1 }[m[2].toLowerCase()];
-    const si = Stock.SIZE_ORDER.indexOf(s.toUpperCase());
-    if (si >= 0) return si;
-    return null;
-  },
-  _labelCmp(a, b) {
-    const ka = this._labelSortKey(a), kb = this._labelSortKey(b);
-    if (ka != null && kb != null) return ka - kb;
-    return U.sortFr(a, b);
-  },
+  _labelCmp(a, b) { return U.sortFr(a, b); },   // tri « alphabétique puis taille » commun à toute l'appli (U.sortFr gère poids, dimensions et S/M/L)
   avail(u) { return this.source === 'event' ? u.availE : u.availG; },
   lotQty(l) { return this.source === 'event' ? l.qtyE : l.qtyG; },
   lotQtyS(l, src) { return (src || this.source) === 'event' ? l.qtyE : l.qtyG; },

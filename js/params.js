@@ -1002,7 +1002,7 @@ const Params = {
         .map(s => { const d = this._blisterDims(s); return d ? d.widthStr : null; })
         .filter(Boolean)
     )];
-    const widthOpts = existingWidths.map(w => `<option value="${U.esc(w)}">${U.esc(w)}</option>`).join('');
+    const widthOpts = existingWidths.slice().sort(U.sortFr).map(w => `<option value="${U.esc(w)}">${U.esc(w)}</option>`).join('');
     U.modal({
       title: 'Nouveau sachet / blister', okLabel: 'Ajouter',
       body: `<div class="fg"><label>Type</label><select id="sc_type" onchange="Params._toggleSachetFields()"><option value="sachet">Sachet</option><option value="blister">Blister</option></select></div>

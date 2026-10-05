@@ -468,7 +468,7 @@ const Catalogue = {
         <hr class="sep">
         <div class="frow" style="align-items:flex-end;max-width:520px;">
           <div class="fg"><label>Étiquette</label><select id="cp_labeltype" onchange="Catalogue.setLabelType(this.value)">
-            ${Store.labelTypes().map(t => `<option value="${t.id}" ${p.labelTypeId === t.id ? 'selected' : ''}>${U.esc(t.name)} — ${U.eur(t.cost)}</option>`).join('')}
+            ${Store.labelTypes().slice().sort((x, y) => U.sortFr(x.name, y.name)).map(t => `<option value="${t.id}" ${p.labelTypeId === t.id ? 'selected' : ''}>${U.esc(t.name)} — ${U.eur(t.cost)}</option>`).join('')}
             <option value="" ${!Store.labelType(p.labelTypeId) ? 'selected' : ''}>Autre montant (vrac…)</option></select></div>
           <div class="fg" style="max-width:160px;"><label>Coût (€)</label><input id="cp_label" type="number" step="0.01" value="${Store.labelCostOf(p)}" ${Store.labelType(p.labelTypeId) ? 'disabled title="Suit le coût réglé dans Paramètres → Réglages financiers → Consommables"' : ''} oninput="Catalogue._d.labelCost=this.value;Catalogue.drawVars()"></div>
         </div>

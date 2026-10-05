@@ -761,6 +761,11 @@ table.sales-hist tr.sale-head td { background: rgba(166,113,83,.16); border-top:
 summary .prod-actions.act-grid { display: inline-flex; }
 .act-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .act-row:empty { display: none; }
+/* Matières : icônes d'action (lien, dupliquer, monter/descendre, supprimer) de même taille et même teinte, au survol la vraie couleur */
+.mat-table .act-row .btn-icon, details.prod-fold > summary .prod-actions .btn-icon { min-width: 30px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; filter: grayscale(1) brightness(1.2); }
+.mat-table .act-row .btn-icon:hover, details.prod-fold > summary .prod-actions .btn-icon:hover { filter: none; }
+.mat-table .act-row .btn-icon.faded { opacity: .45; }
+.mat-table .act-row .btn-icon[disabled] { opacity: .3; }
 
 /* Sachets & blisters (Paramètres + fiche Prix mastication) : texte plus grand, largeur exploitée */
 table.pack-table { width: 100%; table-layout: fixed; font-size: 1rem; }

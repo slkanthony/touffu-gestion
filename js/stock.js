@@ -594,7 +594,7 @@ const Stock = {
     this._evCatPickId = linkedCatId;
     this._evPid = p.id; this._evVid = v.id;
     const _kids = this.childrenOf(p, v);
-    const _parOpts = _kids.length ? [] : p.variants.filter(w => w.id !== v.id && !this.parentOf(p, w) && w.mode !== 'vrac');
+    const _parOpts = (_kids.length ? [] : p.variants.filter(w => w.id !== v.id && !this.parentOf(p, w) && w.mode !== 'vrac')).sort((x, y) => U.sortFr(Pricing.labelVariant(x), Pricing.labelVariant(y)));
     const _curPar = this.parentOf(p, v);
     let _parSel = _curPar ? _curPar.id : '', _suggested = false;
     if (!_parSel) {
@@ -813,7 +813,7 @@ const Stock = {
   /* ─── Ajouter une variante à un produit existant ─── */
   addVariant(pId) {
     const p = Store.state.stockM.find(x=>x.id===pId); if(!p) return;
-    const _tops = p.variants.filter(w => !this.parentOf(p, w) && w.mode !== 'vrac');
+    const _tops = p.variants.filter(w => !this.parentOf(p, w) && w.mode !== 'vrac').sort((x, y) => U.sortFr(Pricing.labelVariant(x), Pricing.labelVariant(y)));
     U.modal({
       title:'＋ Variante — '+U.esc(p.name), okLabel:'Ajouter',
       body:`<div class="frow">
@@ -1738,7 +1738,7 @@ const Stock = {
     const f=this.findLot(pId,vId,lId); if(!f) return;
     const p=f.p;
     if(p.catalogId) this.syncPricesFromCatalog(p.catalogId);
-    const targets=p.variants.filter(v=>v.mode!=='vrac');
+    const targets=p.variants.filter(v=>v.mode!=='vrac').sort((x,y)=>U.sortFr(Pricing.labelVariant(x),Pricing.labelVariant(y)));
     if(!targets.length){U.toast('Aucune variante de vente : ajoute une variante via ＋ Variante.',true);return;}
     const isKg=f.v.label.includes('kg');
     U.modal({
@@ -2521,6 +2521,7 @@ const Stock = {
         </span>
         <span class="meta">${items.length} référence(s)</span>
         <span class="prod-actions act-grid"><span class="act-row">
+          <button class="btn-icon" title="Dupliquer le produit avec toutes ses ${Store.isSangleKind(items[0].kind) ? 'tailles' : 'variantes'}" onclick="event.preventDefault();event.stopPropagation();Stock.dupMatGroup('${keyEsc}')">📋</button>
           <button class="btn-ghost btn-sm" title="Modifier le produit : nom, taille, catégorie" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
         </span></span>
@@ -2593,7 +2594,7 @@ const Stock = {
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
       <td><input type="number" step="0.01" value="${low}" title="Seuil d'alerte" onchange="Stock.setMatField('${m.id}','low',this.value)"></td>
       <td class="right"><div class="act-grid"><span class="act-row">
-        ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${m.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openMatLink('${m.id}')">${m.url ? '🔗' : '🔗＋'}</button>`}
+        ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon${m.url ? '' : ' faded'}" title="${m.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openMatLink('${m.id}')">🔗</button>`}
         <button class="btn-icon" title="Dupliquer : nouvelle ${isSangle ? 'taille' : 'variante'} avec le même prix" onclick="Stock.dupMat('${m.id}')">📋</button>
         <button class="btn-icon" title="Monter" ${i <= 0 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${i >= items.length - 1 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',1)">↓</button>
@@ -2761,6 +2762,35 @@ const Stock = {
   dupMat(id) {
     const src = Store.state.materials.find(x => x.id === id); if (!src) return;
     this.editMat(null, src.product || src.name, src);
+  },
+
+  /* 📋 Dupliquer un PRODUIT entier avec toutes ses lignes (variantes / tailles) : prix, type, unité, TVA, seuil conservés ; stock, réf., lien et SKU repartent vides (SKU recalculés).
+     Sert à créer « mousqueton 16mm » depuis « mousqueton 20mm ». Annulable en un coup (journal restoreBatch avec before:null = suppression des copies). */
+  dupMatGroup(key) {
+    const items = Store.state.materials.filter(m => (m.product || m.name) === key); if (!items.length) return;
+    const sang = Store.isSangleKind(items[0].kind), base = sang ? key : this.matBase(items[0]);
+    U.modal({
+      title: '📋 Dupliquer le produit', okLabel: 'Dupliquer',
+      body: `<p class="muted" style="margin:0 0 10px;">Copie « <b>${U.esc(key)}</b> » avec ses ${items.length} ${sang ? 'taille(s)' : 'variante(s)'} : prix, type et seuil sont gardés ; le stock, les réf., les liens et les SKU repartent vides.</p>
+        <div class="fg"><label>Nom du nouveau produit${sang ? '' : ' (la taille s’ajoute à la fin)'}</label><input id="dg_name" value="${U.esc(base)}" autofocus></div>
+        ${sang ? '' : `<div class="fg"><label>Taille</label>${this._sizeSelect('dg_size_sel', 'dg_size', '', null, true)}</div>`}`,
+      onOk: () => {
+        const name = U.val('dg_name').trim(); if (!name) { U.toast('Indique le nom du nouveau produit.', true); return false; }
+        const size = sang ? '' : this._pickedSize('dg_size_sel', 'dg_size'), prod = sang ? name : this.matCompose(name, size);
+        if (prod === key || Store.state.materials.some(x => (x.product || x.name) === prod)) { U.toast('Un produit « ' + prod + ' » existe déjà : change le nom ou la taille.', true); return false; }
+        const copies = items.map(m => {
+          const c = JSON.parse(JSON.stringify(m));
+          c.id = U.uid(); c.product = prod; if (!sang) { if (size) c.size = size; else delete c.size; }
+          c.name = (prod + ' ' + (c.variant || '')).trim(); c.qty = 0; delete c.rolls; c.ref = ''; c.url = '';
+          c.sku = Pricing.autoSkuMat(prod, c.kind, c.variant);
+          return c;
+        });
+        copies.forEach(c => Store.state.materials.push(c));
+        const entry = Store.log('stock', `Produit dupliqué — ${key} → ${prod} (${copies.length} ligne(s))`, { type: 'restoreBatch', data: copies.map(c => ({ domain: 'materials', id: c.id, before: null })) });
+        Store.save('materials'); U.closeModal(); App.rerender();
+        U.toast(`Produit « ${prod} » créé (${copies.length} ligne(s)).`, false, entry.id);
+      }
+    });
   },
 
   editMat(id, presetProduct, tpl) {

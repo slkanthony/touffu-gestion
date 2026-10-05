@@ -246,7 +246,9 @@ const U = {
     a.download = filename; a.click(); URL.revokeObjectURL(a.href);
   },
 
-  sortFr: (a, b) => String(a).localeCompare(String(b), 'fr', { sensitivity: 'base' }),
+  /* TRI UNIQUE de toute l'appli (règle d'Antho 2026-10-06) : ALPHABÉTIQUE (accents/casse ignorés), puis par TAILLE pour deux libellés qui ne diffèrent que par leur taille :
+     100G < 250G < 500G < 1KG, 10mm < 16mm < 20mm, XS < S < M < L < XL (et plus « 1KG avant 250G » ni « 10mm avant 5mm »). Ne JAMAIS retrier un menu à la main : utiliser U.sortFr. */
+  sortFr: (a, b) => U._cmpSmart(a, b),
   /* ───────── Recherche par MOTS (2026-10-03) — règle UNIQUE de toute l'appli ─────────
      U.has(texte, saisie) : vrai si CHAQUE mot saisi se retrouve dans le texte, dans n'importe quel ordre.
      • accents / majuscules ignorés (« œ » = oe) ; « 100 g » = « 100g » ; « lot 2 » = « lot2 » ; tirets et apostrophes = séparateurs (SKU compris) ;
@@ -911,3 +913,21 @@ document.addEventListener('keydown', (e) => {
     if (r !== n) t.value = String(r);
   }, true);
 })();
+
+/* Comparateur « alphabétique puis taille » (voir U.sortFr). Clé = (texte avant le 1er nombre, présence d'un nombre, famille d'unité, valeur en unité de base, reste). */
+U._coll = new Intl.Collator('fr', { sensitivity: 'base', numeric: true });
+U._unitFam = { mg: [0, 0.001], g: [0, 1], kg: [0, 1000], ml: [1, 1], cl: [1, 10], l: [1, 1000], mm: [2, 1], cm: [2, 10], m: [2, 1000], km: [2, 1000000] };
+U._smartKey = (v) => {
+  const t = String(v == null ? '' : v).trim();
+  const up = t.toUpperCase(), so = (typeof Stock !== 'undefined' && Stock.SIZE_ORDER) || ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'];
+  const si = so.indexOf(up);
+  if (si >= 0) return { pre: '', has: 1, fam: 9, val: si, rest: '' };                       // tailles S / M / L… dans l'ordre logique
+  const m = t.match(/(\d+(?:[.,]\d+)?)\s*(kg|mg|g|ml|cl|l|km|cm|mm|m)?(?![A-Za-z0-9])/i);
+  if (!m) return { pre: t, has: 0, fam: 0, val: 0, rest: '' };
+  const f = m[2] ? U._unitFam[m[2].toLowerCase()] : [5, 1];
+  return { pre: t.slice(0, m.index).trim(), has: 1, fam: f[0], val: parseFloat(m[1].replace(',', '.')) * f[1], rest: t.slice(m.index + m[0].length).trim() };
+};
+U._cmpSmart = (a, b) => {
+  const x = U._smartKey(a), y = U._smartKey(b);
+  return U._coll.compare(x.pre, y.pre) || (x.has - y.has) || (x.has && (x.fam - y.fam || x.val - y.val)) || U._coll.compare(x.rest, y.rest) || U._coll.compare(String(a), String(b));
+};

@@ -620,14 +620,14 @@ const Store = {
      — référentiel {value,label} éditable en Paramètres. Fallback sur les 3 par défaut. */
   materialKinds() {
     const k = this.state.settings.materialKinds;
-    return (Array.isArray(k) && k.length) ? k : [{ value: 'sangle', label: 'Sangle' }, { value: 'sangle-hexa', label: 'Sangle HEXA' }, { value: 'sangle-reflechissante', label: 'Sangle réfléchissante' }, { value: 'bouclerie', label: 'Bouclerie' }, { value: 'autre', label: 'Autre' }];
+    return ((Array.isArray(k) && k.length) ? k : [{ value: 'sangle', label: 'Sangle' }, { value: 'sangle-hexa', label: 'Sangle HEXA' }, { value: 'sangle-reflechissante', label: 'Sangle réfléchissante' }, { value: 'bouclerie', label: 'Bouclerie' }, { value: 'autre', label: 'Autre' }]).slice().sort((x, y) => U.sortFr(x.label, y.label));   // ordre alphabétique partout (règle d'Antho)
   },
   /* Types de produit (occupation/mastication, éducation/friandises, + ajouts d'Antho
      type complément alimentaire…) — référentiel {value,label} éditable en Paramètres.
      Fallback sur les 2 types historiques si le réglage n'existe pas encore. */
   productTypes() {
     const t = this.state.settings.productTypes;
-    return (Array.isArray(t) && t.length) ? t : [{ value: 'occupation', label: 'Occupation (mastication)' }, { value: 'education', label: 'Éducation (friandises)' }];
+    return ((Array.isArray(t) && t.length) ? t : [{ value: 'occupation', label: 'Occupation (mastication)' }, { value: 'education', label: 'Éducation (friandises)' }]).slice().sort((x, y) => U.sortFr(x.label, y.label));
   },
   productTypeLabel(v) { const t = this.productTypes().find(x => x.value === v); return t ? t.label : ''; },
 
