@@ -2594,6 +2594,7 @@ const Stock = {
       <td><input type="number" step="0.01" value="${low}" title="Seuil d'alerte" onchange="Stock.setMatField('${m.id}','low',this.value)"></td>
       <td class="right"><div class="act-grid"><span class="act-row">
         ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${m.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openMatLink('${m.id}')">${m.url ? '🔗' : '🔗＋'}</button>`}
+        <button class="btn-icon" title="Dupliquer : nouvelle ${isSangle ? 'taille' : 'variante'} avec le même prix" onclick="Stock.dupMat('${m.id}')">📋</button>
         <button class="btn-icon" title="Monter" ${i <= 0 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${i >= items.length - 1 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',1)">↓</button>
         </span><span class="act-row">
@@ -2755,16 +2756,23 @@ const Stock = {
     fg.outerHTML = this._matSizeField(m, prod, kind, clash ? '' : picked);
   },
 
-  editMat(id, presetProduct) {
+  /* 📋 Dupliquer une ligne (variante / taille) : ouvre « nouvelle ligne » dans le MÊME produit, préremplie avec le type, l'unité, le prix, la TVA et le seuil de la ligne copiée
+     (réf., lien, SKU et stock restent vides : propres à chaque ligne). Rien n'est créé tant qu'on n'a pas enregistré. */
+  dupMat(id) {
+    const src = Store.state.materials.find(x => x.id === id); if (!src) return;
+    this.editMat(null, src.product || src.name, src);
+  },
+
+  editMat(id, presetProduct, tpl) {
     this._matEditing = null; this._matPreset = presetProduct || '';
-    const ref = presetProduct ? Store.state.materials.find(x => (x.product || x.name) === presetProduct) : null;
+    const ref = tpl || (presetProduct ? Store.state.materials.find(x => (x.product || x.name) === presetProduct) : null);
     this._matPresetSize = ref?.size || '';
     const m = id ? Store.state.materials.find(x => x.id === id)
-      : { id: U.uid(), product: presetProduct || '', size: ref?.size || '', variant: '', name: '', kind: ref?.kind || 'sangle', unit: ref?.unit || 'm', sku: '', costUnit: '', qty: 0, low: 0, costTax: ref ? ref.costTax : 'TTC', costVat: ref ? ref.costVat : 21 };
+      : { id: U.uid(), product: presetProduct || '', size: ref?.size || '', variant: '', name: '', kind: ref?.kind || 'sangle', unit: ref?.unit || 'm', sku: '', costUnit: tpl ? tpl.costUnit : '', ...(tpl && tpl.costTotal != null ? { costTotal: tpl.costTotal, costQtyPer: tpl.costQtyPer } : {}), qty: 0, low: tpl ? tpl.low : 0, costTax: ref ? ref.costTax : 'TTC', costVat: ref ? ref.costVat : 21 };
     this._matEditing = m;
     const mTax = m.costTax === 'TTC' ? 'TTC' : 'HT', mTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit), mQper = U.num(m.costQtyPer) || 1;
     U.modal({
-      title: id ? 'Modifier la matière — ' + U.esc(m.product || m.name) : (presetProduct ? '＋ ' + (Store.isSangleKind(m.kind) ? 'Taille' : 'Variante') + ' — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
+      title: id ? 'Modifier la matière — ' + U.esc(m.product || m.name) : (tpl ? '📋 Dupliquer — ' + U.esc(presetProduct) : presetProduct ? '＋ ' + (Store.isSangleKind(m.kind) ? 'Taille' : 'Variante') + ' — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
       body: `
       <div class="frow" style="align-items:flex-start;">
         <div class="fg"><label>Produit ${U.info("Le nom du produit (ex : « mousqueton »). Pour un type hors sangle, la taille choisie à côté s'ajoute à la fin du nom (« mousqueton 20mm »). Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label><input id="m_product" value="${U.esc(presetProduct || (m.size ? this.matBase(m) : (m.product || '')))}" placeholder="ex: mousqueton" ${presetProduct ? 'readonly' : ''} oninput="Stock._matSizeRefresh()"></div>
