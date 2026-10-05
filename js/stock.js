@@ -2521,7 +2521,7 @@ const Stock = {
         </span>
         <span class="meta">${items.length} référence(s)</span>
         <span class="prod-actions act-grid"><span class="act-row">
-          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, catégorie et noms des tailles" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
+          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, taille, catégorie" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
         </span></span>
       </summary>
@@ -2845,24 +2845,19 @@ const Stock = {
     const items = Store.state.materials.filter(m => (m.product || m.name) === key);
     if (!items.length) return;
     const kinds = Store.materialKinds(), cur = [...new Set(items.map(m => m.kind || 'autre'))], one = cur.length === 1 ? cur[0] : '';
-    const sang = Store.isSangleKind(items[0].kind), sorted = [...items].sort((a, b) => U.num(a.order) - U.num(b.order) || U.sortFr(a.variant || a.name, b.variant || b.name));
+    const sang = Store.isSangleKind(items[0].kind);
     const baseName = sang ? key : this.matBase(items[0]), curSize = sang ? '' : (items[0].size || '');
     U.modal({
       title: '✏️ Modifier le produit', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Nom du produit${sang ? '' : ' (la taille s’ajoute à la fin)'}</label><input id="mg_name" value="${U.esc(baseName)}" autofocus></div>
         ${sang ? '' : `<div class="fg"><label>Taille ${U.info("La taille de sangle de ce produit : elle s'ajoute à la fin du nom et vaut pour toutes ses variantes.")}</label>${this._sizeSelect('mg_size_sel', 'mg_size', curSize, null, true)}</div>`}
-        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUT le produit. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>
-        <div class="fg"><label>${sang ? 'Tailles' : 'Variantes'} (renomme-les ici)</label>${sorted.map(m => `<input id="mg_v_${m.id}" value="${U.esc(m.variant || m.name)}" style="margin-bottom:6px;">`).join('')}</div>`,
+        <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUT le produit. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>`,
       onOk: () => {
         const newName = U.val('mg_name').trim(), newKind = U.val('mg_kind');
         if (!newName) { U.toast('Le nom du produit ne peut pas être vide.', true); return false; }
         const newSize = sang ? '' : this._pickedSize('mg_size_sel', 'mg_size'), newProd = sang ? newName : this.matCompose(newName, newSize);
-        const newVar = {}; let vchanged = 0;
-        for (const m of items) { const v = U.val('mg_v_' + m.id).trim(); if (!v) { U.toast(sang ? 'Une taille ne peut pas être vide.' : 'Une variante ne peut pas être vide.', true); return false; } newVar[m.id] = v; if (v !== (m.variant || m.name)) vchanged++; }
-        const labs = Object.values(newVar).map(v => U.normSearch(v).replace(/\s+/g, ''));
-        if (new Set(labs).size !== labs.length) { U.toast(sang ? 'Deux tailles ont le même nom.' : 'Deux variantes ont le même nom.', true); return false; }
         const rename = newProd !== key, sizeChanged = !sang && newSize !== curSize, recat = !!newKind && items.some(m => (m.kind || 'autre') !== newKind);
-        if (!rename && !recat && !vchanged && !sizeChanged) { U.closeModal(); return; }
+        if (!rename && !recat && !sizeChanged) { U.closeModal(); return; }
         if (rename && Store.state.materials.some(x => (x.product || x.name) === newProd && !items.includes(x))) { U.toast('Un produit « ' + newProd + ' » existe déjà : choisis un autre nom ou une autre taille.', true); return false; }
         const snaps = items.map(m => Store.snapshot('materials', m));
         let copied = 0;
@@ -2875,13 +2870,13 @@ const Stock = {
           });
         }
         items.forEach(m => {
-          m.product = newProd; m.variant = newVar[m.id];
+          m.product = newProd;
           if (!sang) { if (newSize) m.size = newSize; else delete m.size; }
           m.name = (newProd + ' ' + (m.variant || '')).trim();
           if (recat) m.kind = newKind;
         });
         const lab = (Store.materialKinds().find(k => k.value === newKind) || {}).label || newKind;
-        const entry = Store.log('stock', `Produit matière modifié : ${key}${rename ? ' → ' + newProd : ''}${recat ? ' · catégorie « ' + lab + ' »' : ''}${vchanged ? ' · ' + vchanged + (sang ? ' taille(s)' : ' variante(s)') + ' renommée(s)' : ''}`, { type: 'restoreBatch', data: snaps });
+        const entry = Store.log('stock', `Produit matière modifié : ${key}${rename ? ' → ' + newProd : ''}${recat ? ' · catégorie « ' + lab + ' »' : ''}`, { type: 'restoreBatch', data: snaps });
         Store.save('materials', 'settings'); U.closeModal(); App.rerender();
         U.toast((recat ? `${items.length} ligne(s) passée(s) en « ${lab} »` + (copied ? ` · ${copied} référence(s) du Calculateur recopiée(s)` : '') : 'Produit modifié') + '.', false, entry.id);
       }
