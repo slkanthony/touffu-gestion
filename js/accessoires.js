@@ -725,6 +725,14 @@ const Accessoires = {
     return '';
   },
 
+  /* Le texte (nom de produit) contient-il l'une des largeurs de sangle `ws` ? « Mousqueton 20mm » / « 20 mm » → vrai pour ['20mm'] ; « 120mm » → faux. */
+  _labelHasWidth(txt, ws) {
+    return ws.some(w => {
+      const n = parseFloat(String(w).replace(',', '.')); if (!n) return false;
+      return new RegExp('(^|[^\\d.,])' + String(n).replace('.', '[.,]') + '\\s*mm(?![a-z])', 'i').test(String(txt || ''));
+    });
+  },
+
   _bomListHTML(i) {
     const fams = this.families();
     const cat = this._bomCat[i] || '';
@@ -741,7 +749,10 @@ const Accessoires = {
           if (ws.some(w => f.key === f.kind + ':' + w)) items.push({ type: 'family', data: f });
         } else if (f.unit === 'piece') {
           // boucleries + toute catégorie à la pièce (mousqueton, anneau…) : sélection par article, filtrée par largeur
-          const compatible = f.materials.filter(m => !m.variant || ws.includes(m.variant));
+          // produit dédié à une largeur (« Mousqueton 20mm », variantes = finitions) : la famille (prix moyen) est proposée, puis chaque article
+          const dedicated = this._labelHasWidth(f.label, ws);
+          if (dedicated) items.push({ type: 'family', data: f });
+          const compatible = f.materials.filter(m => dedicated || !m.variant || ws.includes(m.variant));
           compatible.forEach(m => items.push({ type: 'material', data: m, family: f }));
         } else {
           items.push({ type: 'family', data: f });
