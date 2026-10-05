@@ -81,6 +81,7 @@ const Accessoires = {
   /* Taille d'une matière à la pièce, normalisée (« 20mm ») : la variante si c'est une largeur, sinon la largeur lue dans le nom du produit (« Mousqueton 20 mm »). */
   _sizeOf(m) {
     const w = s => { const x = String(s || '').match(/^\s*(\d+(?:[.,]\d+)?)\s*mm\s*$/i); return x ? x[1].replace(',', '.') + 'mm' : ''; };
+    const sz = w(m.size); if (sz) return sz;
     const v = w(m.variant); if (v) return v;
     const n = String(m.product || m.name || '').match(/(?:^|[^\d.,])(\d+(?:[.,]\d+)?)\s*mm(?![a-z])/i);
     return n ? n[1].replace(',', '.') + 'mm' : '';
