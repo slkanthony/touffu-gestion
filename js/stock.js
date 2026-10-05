@@ -2478,7 +2478,7 @@ const Stock = {
         <div class="grid c4">
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_mat" value="${U.esc(f.q)}" placeholder="🔍 nom, produit, SKU…" oninput="Stock.matFilters.q=this.value;Stock.renderMatieres();U.refocus('stock_q_mat')"></div>
           <div class="fg mb0"><label>Type</label>${U.customSelect({ value: f.type, options: [{ v: 'all', l: 'Tous' }].concat(Store.materialKinds().map(k => ({ v: k.value, l: k.label }))), onPick: 'Stock._setMatType' })}</div>
-          <div class="fg mb0"><label>Largeurs / matières</label>${U.multiSelect({ options: allVariants, selected: f.variants, toggle: 'Stock.matToggleVariant', setAll: 'Stock.matSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.matSetOpen' })}</div>
+          <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ options: allVariants, selected: f.variants, toggle: 'Stock.matToggleVariant', setAll: 'Stock.matSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.matSetOpen' })}</div>
           <div class="fg mb0"><label>À compléter</label>${U.customSelect({ value: f.link, options: todoOpts, onPick: 'Stock._setMatLink' })}</div>
           <div class="fg mb0"><label>État du stock</label>${U.customSelect({ value: f.state || 'all', options: stateOpts, onPick: 'Stock._setMatState' })}</div>
         </div>
@@ -2519,17 +2519,21 @@ const Stock = {
           <span class="badge info">${this.matKindLabel[items[0].kind] || items[0].kind}</span>
           ${hasAlert ? '<span class="badge warn">Stock bas</span>' : ''}
         </span>
-        <span class="meta">${items.length} référence(s)</span>
+        <span class="meta">${items.length} référence(s)${(() => {
+          if (items.length < 2 || Store.isSangleKind(items[0].kind)) return '';
+          const vals = items.map(m => this.costShown(m.costUnit, this.matVat(m))), avg = vals.reduce((a, x) => a + x.v, 0) / vals.length;
+          return ` · <span class="sensitive" title="Moyenne des prix de ses variantes : c'est ce prix qu'utilise Accessoires pour ce produit">prix moyen ${U.eur(avg, 3)} ${vals[0].lab}</span>`;
+        })()}</span>
         <span class="prod-actions act-grid"><span class="act-row">
-          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, catégorie et noms des lignes" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
+          <button class="btn-ghost btn-sm" title="Modifier le produit : nom, catégorie et noms des variantes" onclick="event.preventDefault();event.stopPropagation();Stock.editMatGroup('${keyEsc}')">Modifier</button>
           <button class="btn-icon" title="Supprimer tout le groupe" onclick="event.preventDefault();event.stopPropagation();Stock.delMatGroup('${keyEsc}')">🗑️</button>
         </span></span>
       </summary>
       <div class="fold-body"><div class="table-wrap"><table class="mat-table">
-        <thead><tr><th class="col-name">${this.varWord(items[0].kind).name}</th><th>SKU</th>${Store.hideSupplierInfo() ? '' : '<th>Réf. fournisseur</th>'}<th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
+        <thead><tr><th class="col-name">Variante</th><th>SKU</th>${Store.hideSupplierInfo() ? '' : '<th>Réf. fournisseur</th>'}<th>Coût / unité</th><th>En stock</th><th>Seuil</th><th></th></tr></thead>
         <tbody>${items.map((m, i) => this.materialRow(m, i, items)).join('')}</tbody>
       </table></div>
-      <button class="btn-cta btn-sm mt" onclick="Stock.addMatVariant('${keyEsc}')">＋ Ajouter ${this.varWord(items[0].kind).add}</button>
+      <button class="btn-cta btn-sm mt" onclick="Stock.addMatVariant('${keyEsc}')">＋ Ajouter une variante</button>
       </div>
     </details>`;
   },
@@ -2693,49 +2697,17 @@ const Stock = {
 
   addMatVariant(product) { this.editMat(null, product); },
 
-  /* Vocabulaire des lignes d'un produit de matières : pour une SANGLE les lignes sont des largeurs (10mm, 16mm…), pour le reste (mousquetons, anneaux, rivets…) ce sont
-     des matières / couleurs (Argent, Noir, Laiton…) : on n'appelle plus « variante » deux choses différentes (décision d'Antho 2026-10-05). */
-  varWord(kind) {
-    return Store.isSangleKind(kind)
-      ? { name: 'Largeur', lc: 'largeur', plural: 'Largeurs', add: 'une largeur', ph: 'ex: 16mm' }
-      : { name: 'Matière / couleur', lc: 'matière / couleur', plural: 'Matières / couleurs', add: 'une matière / couleur', ph: 'ex: Argent, Noir, Laiton…' };
+  /* Fenêtre « matière » : PRODUIT = champ texte (on tape le nom) ; VARIANTE = champ texte + suggestions cliquables (les variantes déjà utilisées ailleurs et pas encore
+     dans ce produit : même orthographe, pas de doublon). Une variante = une déclinaison du produit (Noir, Argent, Or… ou 16mm, 20mm pour une sangle) avec son prix, sa réf.
+     et son lien : le prix MOYEN des variantes du produit sert dans Accessoires. */
+  _matVariantChips(m, prod) {
+    const taken = new Set(prod ? Store.state.materials.filter(x => x.id !== m.id && (x.product || x.name) === prod).map(x => U.normSearch(x.variant || x.name).replace(/\s+/g, '')) : []);
+    const labels = [...new Set(Store.state.materials.map(x => x.variant).filter(Boolean))].sort(U.sortFr).filter(v => !taken.has(U.normSearch(v).replace(/\s+/g, ''))).slice(0, 14);
+    return labels.length ? `<div id="m_variant_chips" class="muted" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:.8rem;">Déjà utilisées : ${labels.map(v => `<button type="button" class="btn-ghost btn-sm" data-v="${U.esc(v)}" onclick="document.getElementById('m_variant').value=this.dataset.v;document.getElementById('m_variant').focus();">${U.esc(v)}</button>`).join('')}</div>` : '<div id="m_variant_chips"></div>';
   },
-  _matKindChanged(kind) { const w = document.getElementById('m_variant_wd'); if (w) w.textContent = this.varWord(kind).name; const i = document.getElementById('m_variant'); if (i) i.placeholder = this.varWord(kind).ph; },
-
-  /* Champ « Produit » de la fenêtre matière (obligatoire, toujours modifiable). Nouvelle matière : le NOM SE TAPE directement (« ＋ Nouveau produit » présélectionné) ;
-     la liste permet de choisir un produit existant (reprend alors son type et son unité). Variante existante / ajout dans un produit : le produit en cours est présélectionné
-     (changer = déplacer vers un autre produit). Aucun produit encore créé → champ texte. Renommer un produit entier = « Modifier » sur sa ligne. */
-  _matProductField(m, presetProduct) {
-    const cur = m.product || presetProduct || '';
-    const prods = [...new Set(Store.state.materials.map(x => x.product || x.name).filter(Boolean))].sort(U.sortFr);
-    if (!prods.length) return `<div class="fg"><label>Produit</label><input id="m_product" value="" placeholder="ex: Mousqueton 20mm"></div>`;
-    return `<div class="fg"><label>Produit ${U.info("Obligatoire. Tape le nom d'un nouveau produit, ou choisis un produit existant dans la liste. Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label>
-      <select id="m_product_sel" onchange="Stock._matProdPick(this.value)"><option value="__new" ${cur ? '' : 'selected'}>＋ Nouveau produit (je tape le nom)</option>${prods.map(p => `<option value="${U.esc(p)}" ${p === cur ? 'selected' : ''}>${U.esc(p)}</option>`).join('')}</select>
-      <input id="m_product" value="${U.esc(cur)}" placeholder="ex: Mousqueton 20mm" style="${cur ? 'display:none;' : ''}margin-top:6px;"></div>`;
-  },
-  _matProdPick(val) {
-    const inp = document.getElementById('m_product'), isNew = val === '__new', m = this._matEditing; if (!inp || !m) return;
-    inp.style.display = isNew ? '' : 'none'; inp.value = isNew ? '' : val; if (isNew) inp.focus();
-    const ref = !isNew && val ? Store.state.materials.find(x => (x.product || x.name) === val) : null;
-    if (ref && !Store.state.materials.includes(m)) { document.getElementById('m_kind').value = ref.kind || 'autre'; document.getElementById('m_unit').value = ref.unit === 'm' ? 'm' : 'piece'; }
-    const fg = document.getElementById('m_variant_fg'); if (fg) fg.outerHTML = this._matVariantField(m, isNew ? '' : val, (document.getElementById('m_kind') || {}).value || m.kind);
-  },
-
-  /* Champ « Largeur » (sangles) / « Matière / couleur » (le reste) de la fenêtre matière : liste des valeurs DÉJÀ utilisées (évite fautes de frappe et doublons « 10 mm » / « 10mm »)
-     + « Autre… » pour en créer une nouvelle (champ texte qui apparaît). Celles déjà présentes dans le même produit sont retirées de la liste (sauf la valeur en cours).
-     Aucune matière existante → simple champ texte. */
-  _matVariantField(m, prod, kind) {
-    const w = this.varWord(kind || m.kind);
-    const cur = m.variant || (m.product ? '' : m.name) || '';
-    const taken = new Set(prod ? Store.state.materials.filter(x => x.id !== m.id && (x.product || x.name) === prod).map(x => x.variant || x.name) : []);
-    const labels = [...new Set(Store.state.materials.map(x => x.variant).filter(Boolean))].sort(U.sortFr).filter(v => v === cur || !taken.has(v));   // les anciennes fiches sans variante ne polluent pas la liste
-    if (!labels.length) return `<div class="fg" id="m_variant_fg"><label><span id="m_variant_wd">${w.name}</span></label><input id="m_variant" value="${U.esc(cur)}" placeholder="${w.ph}"></div>`;
-    return `<div class="fg" id="m_variant_fg"><label><span id="m_variant_wd">${w.name}</span> ${U.info("Choisis une valeur déjà utilisée pour éviter les fautes et les doublons, ou « Autre » pour en créer une nouvelle. Celles déjà présentes dans ce produit ne sont pas proposées.")}</label>
-      <select id="m_variant_sel" onchange="var i=document.getElementById('m_variant'),n=this.value==='__new';i.style.display=n?'':'none';if(n)i.focus();">
-        ${cur ? '' : '<option value="">— choisir —</option>'}
-        <option value="__new">＋ Autre (je tape)</option>
-        ${labels.map(v => `<option value="${U.esc(v)}" ${v === cur ? 'selected' : ''}>${U.esc(v)}</option>`).join('')}</select>
-      <input id="m_variant" value="" placeholder="${w.ph}" style="display:none;margin-top:6px;"></div>`;
+  _matChipsRefresh() {
+    const m = this._matEditing, el = document.getElementById('m_variant_chips'); if (!m || !el) return;
+    el.outerHTML = this._matVariantChips(m, U.val('m_product').trim());
   },
 
   editMat(id, presetProduct) {
@@ -2746,14 +2718,14 @@ const Stock = {
     this._matEditing = m;
     const mTax = m.costTax === 'TTC' ? 'TTC' : 'HT', mTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit), mQper = U.num(m.costQtyPer) || 1;
     U.modal({
-      title: id ? 'Modifier — ' + U.esc(m.product || m.name) : (presetProduct ? '＋ ' + this.varWord(m.kind).name + ' — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
+      title: id ? 'Modifier la matière — ' + U.esc(m.product || m.name) : (presetProduct ? '＋ Variante — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
       body: `
       <div class="frow">
-        ${this._matProductField(m, presetProduct)}
-        ${this._matVariantField(m, m.product || presetProduct || '', m.kind)}
+        <div class="fg"><label>Produit ${U.info("Le produit regroupe ses variantes (ex : « Mousqueton 20mm » → Noir, Argent, Or). Le prix moyen de ses variantes sert dans Accessoires. Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label><input id="m_product" value="${U.esc(m.product || presetProduct || '')}" placeholder="ex: Mousqueton 20mm" oninput="Stock._matChipsRefresh()"></div>
+        <div class="fg"><label>Variante</label><input id="m_variant" value="${U.esc(m.variant || (m.product ? '' : m.name) || '')}" placeholder="ex: Noir, Argent, 16mm…">${this._matVariantChips(m, m.product || presetProduct || '')}</div>
       </div>
       <div class="frow">
-        <div class="fg"><label>Type</label><select id="m_kind" onchange="Stock._matKindChanged(this.value)">
+        <div class="fg"><label>Type</label><select id="m_kind">
           ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
         <div class="fg"><label>Unité</label><select id="m_unit">
           <option value="m" ${m.unit === 'm' ? 'selected' : ''}>mètre</option>
@@ -2776,12 +2748,10 @@ const Stock = {
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="m_url" value="${U.esc(m.url || '')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('m_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>`,
       onOk: () => {
         const snap = id ? Store.snapshot('materials', m) : null;
-        const pSel = U.val('m_product_sel'), product = (pSel && pSel !== '__new' ? pSel : U.val('m_product')).trim();
-        const pickedVar = U.val('m_variant_sel'), variant = (pickedVar && pickedVar !== '__new' ? pickedVar : U.val('m_variant')).trim();
+        const product = U.val('m_product').trim(), variant = U.val('m_variant').trim();
         if (!product) { U.toast('Indique le produit (ex : Mousqueton 20mm).', true); return false; }
-        const wd = this.varWord(U.val('m_kind'));
-        if (!variant) { U.toast('Indique ' + (Store.isSangleKind(U.val('m_kind')) ? 'la largeur' : 'la matière / couleur') + ' (' + wd.ph.replace('ex: ', 'ex : ') + ').', true); return false; }
-        if (Store.state.materials.some(x => x.id !== m.id && (x.product || x.name) === product && U.normSearch(x.variant || x.name).replace(/\s+/g, '') === U.normSearch(variant).replace(/\s+/g, ''))) { U.toast('Cette ' + wd.lc + ' existe déjà dans ce produit.', true); return false; }
+        if (!variant) { U.toast('Indique la variante (ex : Noir).', true); return false; }
+        if (Store.state.materials.some(x => x.id !== m.id && (x.product || x.name) === product && U.normSearch(x.variant || x.name).replace(/\s+/g, '') === U.normSearch(variant).replace(/\s+/g, ''))) { U.toast('Cette variante existe déjà dans ce produit.', true); return false; }
         const dupM = this.dupWarnings({ url: U.val('m_url'), ref: U.val('m_ref'), self: { kind: 'T', id: m.id } });
         if (!U.dupGate(dupM, () => document.getElementById('modalOk').click())) return false;
         m.product = product; m.variant = variant;
@@ -2826,14 +2796,14 @@ const Stock = {
       title: '✏️ Modifier le produit', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Nom du produit (s’applique à tout le produit)</label><input id="mg_name" value="${U.esc(key)}" autofocus></div>
         <div class="fg"><label>Catégorie ${U.info("Appliquée à TOUT le produit. Elle sert aux moyennes de coût dans Accessoires, aux références du Calculateur et aux filtres du Stock. Les SKU déjà créés ne changent pas.")}</label><select id="mg_kind">${one ? '' : '<option value="">— catégories mélangées : ne pas changer —</option>'}${kinds.map(k => `<option value="${U.esc(k.value)}" ${k.value === one ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>
-        <div class="fg"><label>${this.varWord(one || items[0].kind).plural} (renomme-les ici)</label>${sorted.map(m => `<input id="mg_v_${m.id}" value="${U.esc(m.variant || m.name)}" style="margin-bottom:6px;">`).join('')}</div>`,
+        <div class="fg"><label>Variantes (renomme-les ici)</label>${sorted.map(m => `<input id="mg_v_${m.id}" value="${U.esc(m.variant || m.name)}" style="margin-bottom:6px;">`).join('')}</div>`,
       onOk: () => {
         const newName = U.val('mg_name').trim(), newKind = U.val('mg_kind');
         if (!newName) { U.toast('Le nom du produit ne peut pas être vide.', true); return false; }
         const newVar = {}; let vchanged = 0;
-        for (const m of items) { const v = U.val('mg_v_' + m.id).trim(); if (!v) { U.toast('Un nom ne peut pas être vide dans la liste.', true); return false; } newVar[m.id] = v; if (v !== (m.variant || m.name)) vchanged++; }
+        for (const m of items) { const v = U.val('mg_v_' + m.id).trim(); if (!v) { U.toast('Une variante ne peut pas être vide.', true); return false; } newVar[m.id] = v; if (v !== (m.variant || m.name)) vchanged++; }
         const labs = Object.values(newVar).map(v => U.normSearch(v).replace(/\s+/g, ''));
-        if (new Set(labs).size !== labs.length) { U.toast('Deux lignes du produit ont le même nom.', true); return false; }
+        if (new Set(labs).size !== labs.length) { U.toast('Deux variantes ont le même nom.', true); return false; }
         const rename = newName !== key, recat = !!newKind && items.some(m => (m.kind || 'autre') !== newKind);
         if (!rename && !recat && !vchanged) { U.closeModal(); return; }
         const snaps = items.map(m => Store.snapshot('materials', m));
