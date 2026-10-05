@@ -104,6 +104,25 @@ const Stock = {
   _setConsoState(val) { this.consoFilters.state = val; this.renderConso(); },
   _setMatType(val) { this.matFilters.type = val; this.renderMatieres(); },
   _setMatLink(val) { this.matFilters.link = val; this.renderMatieres(); },
+  _setMatState(val) { this.matFilters.state = val; this.renderMatieres(); },
+  /* Filtres de Stock → Matières : « À compléter » (fiches incomplètes) et « État du stock ». Un test = une fonction (matière → booléen) ; les compteurs du menu
+     utilisent les mêmes fonctions que le filtrage. Rouleaux : seulement les catégories sangle. */
+  _matTests() {
+    const sangle = m => Store.isSangleKind(m.kind), nRolls = m => sangle(m) && m.rolls ? m.rolls.length : 0;
+    return {
+      todoLabel: { nourl: 'Sans lien fournisseur', noref: 'Sans réf. fournisseur', noboth: 'Sans lien ni réf.', nocost: 'Sans prix d\'achat', nosku: 'Sans SKU' },
+      supplierOnly: ['nourl', 'noref', 'noboth'],
+      todo: {
+        nourl: m => !m.url, noref: m => !String(m.ref || '').trim(), noboth: m => !m.url && !String(m.ref || '').trim(),
+        nocost: m => !(U.num(m.costUnit) > 0), nosku: m => !String(m.sku || '').trim()
+      },
+      stateLabel: { low: '⚠️ Stock bas', out: 'Rupture', multi: '🧵 Plusieurs rouleaux', entame: 'Rouleau entamé' },
+      state: {
+        low: m => U.num(m.low) > 0 && U.num(m.qty) <= U.num(m.low), out: m => U.num(m.qty) <= 0,
+        multi: m => nRolls(m) > 1, entame: m => nRolls(m) > 0 && m.rolls.some(r => r.entame)
+      }
+    };
+  },
 
   allVariantLabels() {
     return [...new Set(Store.state.stockM.flatMap(p => p.variants.map(v => Pricing.labelVariant(v))).filter(Boolean))].sort(U.sortFr);
@@ -2172,11 +2191,15 @@ const Stock = {
     const all = Store.state.consumables;
     const qn = U.normSearch(f.q || '');
     const isLow = c => U.num(c.low) > 0 && U.num(c.qty) <= U.num(c.low);
+    // « À compléter » : fiches incomplètes (même principe que Matières premières) ; réf./lien masqués pour les profils sans accès fournisseur
+    const hideSup = Store.hideSupplierInfo();
+    const todo = { nourl: c => !c.url, noref: c => !String(c.ref || '').trim(), noboth: c => !c.url && !String(c.ref || '').trim(), nocost: c => !(U.num(c.costUnit) > 0), nolow: c => !(U.num(c.low) > 0) };
+    if (!todo[f.link] || (hideSup && ['nourl', 'noref', 'noboth'].includes(f.link))) f.link = 'all';
     const list = all.filter(c =>
       (!qn || U.has(c.name + ' ' + (c.dimensions || '') + ' ' + (c.ref || ''), qn)) &&
       (!f.cat || f.cat === 'all' || (c.category || 'Autre') === f.cat) &&
-      (f.link === 'nourl' ? !c.url : f.link === 'url' ? !!c.url : true) &&
-      (f.state === 'low' ? isLow(c) : f.state === 'out' ? U.num(c.qty) <= 0 : f.state === 'replace' ? !!c.toReplace : true));
+      (!todo[f.link] || todo[f.link](c)) &&
+      (f.state === 'low' ? isLow(c) : f.state === 'out' ? U.num(c.qty) <= 0 : f.state === 'replace' ? !!c.toReplace : f.state === 'nodim' ? !this.consoDims(c) : true));
     const cats = [...new Set(all.map(c => c.category || 'Autre'))].sort(U.sortFr);
     const cnt = fn => all.filter(fn).length;
     const dir = f.sortDir === 'asc' ? 1 : -1;
@@ -2197,8 +2220,8 @@ const Stock = {
       <div class="card" style="padding:12px 16px;"><div class="grid c4">
         <div class="fg mb0"><label>Recherche</label><input id="conso_q" placeholder="nom, dimensions, réf…" value="${U.esc(f.q || '')}" oninput="Stock.consoFilters.q=this.value;Stock.renderConso();U.refocus('conso_q')"></div>
         <div class="fg mb0"><label>Catégorie</label>${U.customSelect({ value: f.cat || 'all', options: [{v:'all',l:'Toutes ('+all.length+')'}].concat(cats.map(c=>({v:c,l:c+' ('+cnt(x=>(x.category||'Autre')===c)+')'}))), onPick: 'Stock._setConsoCat' })}</div>
-        <div class="fg mb0"><label>Lien fournisseur</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'},{v:'url',l:'Avec lien ('+cnt(c=>!!c.url)+')'},{v:'nourl',l:'Sans lien ('+cnt(c=>!c.url)+')'}], onPick: 'Stock._setConsoLink' })}</div>
-        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state || 'all', options: [{v:'all',l:'Tous'},{v:'low',l:'⚠️ Stock bas ('+cnt(isLow)+')'},{v:'out',l:'Rupture ('+cnt(c=>U.num(c.qty)<=0)+')'},{v:'replace',l:'🚩 À ne plus racheter ('+cnt(c=>!!c.toReplace)+')'}], onPick: 'Stock._setConsoState' })}</div>
+        <div class="fg mb0"><label>À compléter</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'}].concat([['nourl','Sans lien fournisseur'],['noref','Sans réf. fournisseur'],['noboth','Sans lien ni réf.'],['nocost','Sans prix d\'achat'],['nolow','Sans seuil d\'alerte']].filter(o => !hideSup || !['nourl','noref','noboth'].includes(o[0])).map(o => ({v:o[0],l:o[1]+' ('+cnt(todo[o[0]])+')'}))), onPick: 'Stock._setConsoLink' })}</div>
+        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state || 'all', options: [{v:'all',l:'Tous'},{v:'low',l:'⚠️ Stock bas ('+cnt(isLow)+')'},{v:'out',l:'Rupture ('+cnt(c=>U.num(c.qty)<=0)+')'},{v:'replace',l:'🚩 À ne plus racheter ('+cnt(c=>!!c.toReplace)+')'},{v:'nodim',l:'Sans dimensions ('+cnt(c=>!this.consoDims(c))+')'}], onPick: 'Stock._setConsoState' })}</div>
       </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" style="flex:0 0 calc(25% - 9px);" onclick="Stock.editConso()">＋ Nouveau consommable</button>
@@ -2409,7 +2432,7 @@ const Stock = {
   /* ───── MATIÈRES PREMIÈRES (accessoires : sangle, bouclerie…) ─────
      Même traitement que Mastication : en-tête triable, filtres (recherche/type/variantes),
      colonne catégorie centrée, réordonnancement, ajout de variante directement sur le groupe. */
-  matFilters: { q: '', type: 'all', variants: [], variantsOpen: false, sort: 'name', sortDir: 'asc', link: 'all' },
+  matFilters: { q: '', type: 'all', variants: [], variantsOpen: false, sort: 'name', sortDir: 'asc', link: 'all', state: 'all' },
   _matVariantsCache: [],
   /* Dérivé du référentiel éditable Store.materialKinds (sangle/bouclerie/autre + ajouts).
      Getter → reste utilisable partout en Stock.matKindLabel[kind] et Object.keys(...). */
@@ -2427,11 +2450,16 @@ const Stock = {
     f.variants = f.variants.filter(v => allVariants.includes(v));
 
     const q = (f.q || '').toLowerCase();
+    const T = this._matTests(), cnt = fn => Store.state.materials.filter(fn).length, hideSup = Store.hideSupplierInfo();
+    const todoOpts = [{ v: 'all', l: 'Tous' }].concat(Object.keys(T.todoLabel).filter(k => !hideSup || !T.supplierOnly.includes(k)).map(k => ({ v: k, l: T.todoLabel[k] + ' (' + cnt(T.todo[k]) + ')' })));
+    const stateOpts = [{ v: 'all', l: 'Tous' }].concat(Object.keys(T.stateLabel).map(k => ({ v: k, l: T.stateLabel[k] + ' (' + cnt(T.state[k]) + ')' })));
+    if (!todoOpts.some(o => o.v === f.link)) f.link = 'all';
     const list = Store.state.materials.filter(m => {
       if (q && !U.has(m.name + ' ' + (m.product || '') + ' ' + (m.sku || ''), q)) return false;
       if (f.type !== 'all' && m.kind !== f.type) return false;
       if (f.variants.length && !f.variants.includes(m.variant || m.name)) return false;
-      if (f.link === 'nourl' && m.url) return false;
+      if (f.link !== 'all' && T.todo[f.link] && !T.todo[f.link](m)) return false;
+      if (f.state !== 'all' && T.state[f.state] && !T.state[f.state](m)) return false;
       return true;
     });
 
@@ -2451,7 +2479,8 @@ const Stock = {
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_mat" value="${U.esc(f.q)}" placeholder="🔍 nom, produit, SKU…" oninput="Stock.matFilters.q=this.value;Stock.renderMatieres();U.refocus('stock_q_mat')"></div>
           <div class="fg mb0"><label>Type</label>${U.customSelect({ value: f.type, options: [{ v: 'all', l: 'Tous' }].concat(Store.materialKinds().map(k => ({ v: k.value, l: k.label }))), onPick: 'Stock._setMatType' })}</div>
           <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ options: allVariants, selected: f.variants, toggle: 'Stock.matToggleVariant', setAll: 'Stock.matSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.matSetOpen' })}</div>
-          <div class="fg mb0"><label>Lien fournisseur</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'},{v:'nourl',l:'Sans lien fournisseur'}], onPick: 'Stock._setMatLink' })}</div>
+          <div class="fg mb0"><label>À compléter</label>${U.customSelect({ value: f.link, options: todoOpts, onPick: 'Stock._setMatLink' })}</div>
+          <div class="fg mb0"><label>État du stock</label>${U.customSelect({ value: f.state || 'all', options: stateOpts, onPick: 'Stock._setMatState' })}</div>
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="Stock.editMat()">＋ Nouvelle matière</button>
