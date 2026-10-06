@@ -746,7 +746,7 @@ const Paniers = {
     const S = Store.state.settings;
     if (this._shMode === 'cc') this.livraison = 0;
     else if (this._shMode === 'liv' && !this.livraison) this.livraison = U.num(S.shippingCost ?? 6.8);
-    document.querySelectorAll('.pan-mode').forEach(bx => { bx.innerHTML = this._modeBtns(); });   // fenêtre « Partager » ET barre du panier composé
+    document.querySelectorAll('.pan-mode').forEach(bx => { bx.innerHTML = this._modeBtns(); });   // carte Configuration
     const li = document.getElementById('pan_livr'); if (li) li.value = this.livraison;
     this._updateKPI(); this._shareRefresh(); this._draft();
   },
@@ -767,8 +767,6 @@ const Paniers = {
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
       </div>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
-        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Mode de remise (affiché sur le devis)</div>
-        <div class="pan-mode" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${this._modeBtns()}</div>
         <div class="pan-bal">${this._balBox()}</div>
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher sur ce panier</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">${chk('who', 'Nom de la cliente et des chiens')}${hasPay ? chk('pay', 'Moyens de paiement') : ''}${hasIban ? chk('iban', 'IBAN') : ''}${!hasPay && !hasIban ? '<span class="muted" style="font-size:.85rem;">Moyens de paiement et IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</span>' : ''}</div>
@@ -791,20 +789,30 @@ const Paniers = {
 
   /* ---------- Paniers / devis en attente ---------- */
   _pending() { return Store.state.baskets || (Store.state.baskets = []); },
-  savePending() {
+  /* Contenu du panier en cours tel qu'il est rangé dans « en attente » (dv = état du numéro de devis à lui donner) */
+  _pendingData(dv, name, now) {
+    return { dv: { ...dv }, name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
+      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
+  },
+  /* Range le panier en cours dans la liste « en attente » (le devis « sort » : numéro attribué, lettre suivante si le contenu a changé). Renvoie { rec, no } ou null. */
+  _storePending() {
     const name = String(this._shClient || '').trim();
-    if (!name) { U.toast('Indique le nom de la cliente pour mettre le panier en attente.', true); return; }
-    if (!this.basket.length) return;
+    if (!name) { U.toast('Indique le nom de la cliente pour mettre le panier en attente.', true); return null; }
+    if (!this.basket.length) return null;
     const list = this._pending(), now = Date.now();
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
-    const no = this._dvCommit();   // mise en attente = le devis « sort » : numéro attribué ; lettre suivante si le contenu a changé depuis la dernière version
-    const data = { dv: { ...this._dv }, name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
-      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
+    const no = this._dvCommit();
+    const data = this._pendingData(this._dv, name, now);
     if (rec) Object.assign(rec, data);
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._pendId = rec.id; this._pendUpd = rec.updated;
     Store.log('panier', `Panier en attente — ${name} (devis ${no})`);
     Store.save('baskets', 'journal');
+    return { rec, no };
+  },
+  savePending() {
+    const r = this._storePending(); if (!r) return;
+    const no = r.no;
     U.closeModal();
     U.toast('Panier mis en attente — devis n° ' + no + ' (« Reprendre » pour le retrouver).');
     // Le panier est maintenant dans la liste « en attente » : l'espace de travail repart à vide (plus de panier en cours, plus de blocage au « Reprendre »)
@@ -821,7 +829,10 @@ const Paniers = {
     return { d, txt: d <= 0 ? 'aujourd\'hui' : d === 1 ? 'depuis 1 jour' : `depuis ${d} jours` };
   },
   _pendingCard() {
-    const list = this._pending().filter(r => r.kind !== 'pro').sort((a, b) => (b.updated || b.ts) - (a.updated || a.ts));   // les devis pro (kind:'pro') sont gérés par la page Revente pro
+    // les devis pro (kind:'pro') sont gérés par la page Revente pro. Un devis et ses variantes (-V1, -V2…) sont rangés ensemble : famille la plus récente d'abord, devis d'origine puis variantes.
+    const all = this._pending().filter(r => r.kind !== 'pro'), fam = r => (r.dv && r.dv.base) || r.id, last = {};
+    all.forEach(r => { last[fam(r)] = Math.max(last[fam(r)] || 0, r.updated || r.ts || 0); });
+    const list = all.sort((a, b) => (last[fam(b)] - last[fam(a)]) || U.sortFr(fam(a), fam(b)) || (a.dv && a.dv.v ? 1 : 0) - (b.dv && b.dv.v ? 1 : 0) || U.sortFr((a.dv && a.dv.par) || '', (b.dv && b.dv.par) || '') || ((a.dv && a.dv.v) || 0) - ((b.dv && b.dv.v) || 0));
     if (!list.length) return '';
     const today = new Date().toISOString().slice(0, 10);
     const rows = list.map(r => {
@@ -831,12 +842,12 @@ const Paniers = {
       const dogs = this._dogsOf(r.name).map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ');
       const exp = r.validUntil && r.validUntil < today;
       return `<tr${this._pendId === r.id ? ' style="background:var(--th-bg);"' : ''}>
-        <td class="col-name"><b>${U.esc(Clients.show(r.name))}</b>${r.dv && r.dv.base ? ` <span class="badge info" title="N° de devis">${Devis.no(r.dv)}</span>` : ''}${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
+        <td class="col-name"${r.dv && r.dv.v ? ' style="padding-left:26px;"' : ''}>${r.dv && r.dv.v ? '<span class="muted">↳ </span>' : ''}<b>${U.esc(Clients.show(r.name))}</b>${r.dv && r.dv.base ? ` <span class="badge info" title="N° de devis">${Devis.no(r.dv)}</span>` : ''}${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
         <td><span class="badge ${age.d >= 7 ? 'warn' : ''}">⏳ ${age.txt}</span>${r.validUntil ? `<div class="${exp ? 'warn-txt' : 'muted'}" style="font-size:.8rem;">${exp ? '⚠ expiré le ' : 'valable jusqu\'au '}${U.frDate(r.validUntil)}</div>` : ''}</td>
         <td class="num" style="white-space:nowrap;">${nb} art.<br><b>${U.eur(tot)}</b></td>
         <td style="white-space:nowrap;text-align:right;">
           <button class="btn-ghost btn-sm" onclick="Paniers.resume('${r.id}')" title="Recharger ce panier pour le modifier">✏️ Reprendre</button>
-          <button class="btn-ghost btn-sm" onclick="Paniers.dupPending('${r.id}')" title="Garder cette version et en proposer une autre">📋 Dupliquer</button>
+          <button class="btn-ghost btn-sm" onclick="Paniers.makeVariant('${r.id}')" title="Garde ce devis tel quel et crée une variante (n° du devis + -V1, -V2…) pour changer un ou deux produits">🔀 Variante</button>
           <button class="btn-cta btn-sm" onclick="Paniers.sendToSale('${r.id}')" title="La cliente est d'accord : charge les produits dans le ticket de la page Ventes">🛒 Envoyer en vente</button>
           <button class="btn-icon" onclick="Paniers.delPending('${r.id}')" title="Supprimer">🗑️</button>
         </td></tr>`;
@@ -867,12 +878,29 @@ const Paniers = {
     if (!rec) { this._pendId = null; this._pendUpd = 0; return; }   // supprimé ailleurs : le panier en cours devient un panier libre
     if ((rec.updated || rec.ts || 0) > (this._pendUpd || 0)) { this._loadRec(rec); U.toast('Panier mis à jour depuis un autre appareil.'); }
   },
-  dupPending(id) {
-    const rec = this._pending().find(x => x.id === id); if (!rec) return;
-    const now = Date.now();
-    const copy = Object.assign(JSON.parse(JSON.stringify(rec)), { id: U.uid(), ts: now, updated: now, dv: null, label: (rec.label ? rec.label + ' ' : '') + '(copie)' });
-    this._pending().push(copy);
-    Store.save('baskets'); this.render(); U.toast('Panier dupliqué.');
+  /* 🔀 Variante d'un devis (2026-10-06) : copie du panier qui reçoit le n° du devis d'origine + « -V1 », « -V2 »… (cf. devis.js). Depuis la liste (id) : la fiche est d'abord rechargée
+     dans le panier composé. La variante part du panier TEL QU'IL EST affiché ; le devis d'origine reste comme il était dans « en attente » (ses modifications non enregistrées n'y sont pas écrites).
+     Un panier pas encore rangé (ou sans n°) est d'abord mis en attente pour recevoir son numéro. La variante est rangée en attente et chargée dans le panier composé. */
+  async makeVariant(id) {
+    if (id) {
+      const rec = this._pending().find(x => x.id === id); if (!rec) return;
+      if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' pour en faire une variante ?', { okLabel: 'Remplacer' })) return;
+      if (this._pendId !== id) this._loadRec(rec);
+    }
+    if (!this.basket.length) return;
+    this._shClient = String(this.client || this._shClient || '').trim();
+    if (!this._shClient) { U.toast('Indique d\'abord le nom de la cliente (champ « Cliente » à gauche).', true); return; }
+    const list = this._pending();
+    let parent = this._pendId ? list.find(x => x.id === this._pendId) : null;
+    if (!parent || !parent.dv || !parent.dv.base) { const r = this._storePending(); if (!r) return; parent = r.rec; }
+    const now = Date.now(), dv = Devis.makeVariant(parent.dv, this._shareData().h);
+    const copy = Object.assign({ id: U.uid(), ts: now }, this._pendingData(dv, this._shClient, now), { label: '' });
+    list.push(copy);
+    this._pendId = copy.id; this._pendUpd = copy.updated; this._dv = { ...dv }; this._shLabel = '';
+    Store.log('panier', `Variante de devis — ${this._shClient} (${Devis.no(parent.dv)} → ${Devis.no(dv)})`);
+    Store.save('baskets', 'journal');
+    this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    U.toast('Variante créée — devis n° ' + Devis.no(dv) + '. Change tes produits puis « Mettre en attente ».');
   },
   async delPending(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
@@ -886,7 +914,7 @@ const Paniers = {
      tant qu'on ne le vide pas ; s'il venait d'un panier en attente, celui-ci est retiré à la validation de la vente (comme avant). */
   sendCurrentToSale() {
     if (!this.basket.length) return;
-    this._sendRecToSale({ id: this._pendId || null, name: String(this.client || this._shClient || '').trim(), items: JSON.parse(JSON.stringify(this.basket)), reduction: this.reduction, livraison: this.livraison, balOn: this._balOn !== false, dv: this._pendId ? this._dv : null });
+    this._sendRecToSale({ id: this._pendId || null, name: String(this.client || this._shClient || '').trim(), items: JSON.parse(JSON.stringify(this.basket)), reduction: this.reduction, livraison: this.livraison, balOn: this._balOn !== false, dv: this._pendId ? this._dv : null, fromComposer: true });
   },
   async _sendRecToSale(rec) {
     const units = Ventes.units(), merged = new Map(), warns = [], general = [];
@@ -917,8 +945,24 @@ const Paniers = {
       ${warns.length ? `<p style="margin-top:10px;"><b>⚠️ À vérifier :</b></p><ul style="padding-left:18px;">${warns.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}`;
     if (!await U.ask({ title: '🛒 Envoyer en vente — confirmation', okLabel: 'Envoyer en vente', cancelLabel: 'Annuler', html })) return;
     if (Ventes.cart.length && !await U.confirm('Le ticket en cours de la page Ventes contient déjà des articles. Le remplacer par le panier de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Remplacer' })) return;
+    // Les autres versions du même devis (devis d'origine + variantes) ne servent plus : on propose de les supprimer, mais seulement APRÈS la validation de la vente (ticket abandonné = rien n'est perdu)
+    const others = rec.dv && rec.dv.base ? this._pending().filter(x => x.kind !== 'pro' && x.id !== rec.id && x.dv && x.dv.base === rec.dv.base) : [];
+    if (others.length && await U.ask({ title: '🗑️ Autres versions de ce devis', okLabel: 'Supprimer les autres', cancelLabel: 'Les garder', danger: true,
+      html: `<p style="margin:0 0 8px;">Tu envoies en vente la version <b>${U.esc(Devis.no(rec.dv))}</b>. Ce devis a ${others.length} autre${others.length > 1 ? 's' : ''} version${others.length > 1 ? 's' : ''} en attente :</p><ul style="padding-left:18px;margin:0 0 8px;">${others.map(x => `<li><b>${U.esc(Devis.no(x.dv))}</b>${x.label ? ' — ' + U.esc(x.label) : ''}</li>`).join('')}</ul><p style="margin:0;">Les supprimer une fois la vente validée ?</p>` })) rec = { ...rec, others: others.map(x => x.id) };
     Ventes.loadFromBasket(rec, lines);
   },
+
+  /* Menu « Partager ▾ » : fermé par clic extérieur (jamais par onblur) */
+  toggleShareMenu(e) {
+    if (e) e.stopPropagation();
+    const m = document.getElementById('pan_sharemenu'); if (!m) return;
+    m.style.display = m.style.display === 'none' ? 'block' : 'none';
+    if (!this._menuBound) {
+      this._menuBound = true;
+      document.addEventListener('click', ev => { const mm = document.getElementById('pan_sharemenu'); if (mm && mm.style.display !== 'none' && !mm.contains(ev.target)) mm.style.display = 'none'; });
+    }
+  },
+  menuDo(fn, arg) { const m = document.getElementById('pan_sharemenu'); if (m) m.style.display = 'none'; this[fn](arg); },
 
   _stockWarn(pId, vId) {
     const p = Store.state.stockM.find(x => x.id === pId), v = p && (p.variants || []).find(x => x.id === vId);
@@ -1042,12 +1086,13 @@ const Paniers = {
     Object.assign(this, JSON.parse(JSON.stringify(this._cfgDefaults || {})));
     this.client = ''; this.excludeMeatsOpen = false; this.addQ = ''; this.addOpen = false;
   },
-  clearBasket() {
+  clearBasket() { this.resetWork(); this.render(); },
+  /* Vide le panier composé SANS redessiner (aussi appelé par Ventes à la validation d'une vente : on n'est pas sur la page Paniers) */
+  resetWork() {
     this.resetConfig();
     this.basket = [];
     this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true; this._dv = Devis.blank();
     this.proposals = null;
-    this.render();
   },
   pickProposal(idx) {
     if (!this.proposals || !this.proposals[idx]) return;
@@ -1361,6 +1406,12 @@ const Paniers = {
         </div>
 
         <div class="frow" style="gap:12px;">
+          <div class="fg"><label>📬 Mode de remise ${U.info("Affiché sur le devis. Click & Collect = retrait, sans frais de livraison ; Livraison = frais habituels si aucun frais n'est saisi. Re-clique pour décocher.")}</label>
+            <div class="pan-mode" style="display:flex;gap:6px;flex-wrap:wrap;">${this._modeBtns()}</div>
+          </div>
+        </div>
+
+        <div class="frow" style="gap:12px;">
           <div class="fg"><label>🎯 Priorité</label>
             ${U.customSelect({ value: this.priority, options: [{v:'mix',l:'Mix (DLUO + rentabilité)'},{v:'dluo',l:"DLUO courte d'abord"},{v:'coeff',l:"Meilleur coeff d'abord"}], onPick: 'Paniers.setPriority' })}
           </div>
@@ -1439,16 +1490,22 @@ const Paniers = {
         ${this.proposals ? this._renderProposals() : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
           <h2 style="margin:0;">🧺 Panier composé${this.nbChiens > 1 ? ` <span class="muted">(${this.nbChiens} chiens)</span>` : ''}</h2>
-          ${this.basket.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-            <button class="btn-ghost btn-sm" onclick="Paniers.share()" title="Fenêtre propre à montrer au client : produit, variante et prix TTC">📤 Partager</button>
-            <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')" title="Copie l'image du devis (avec son n°)">🖼️ Copier l'image</button>
-            <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
-            <button class="btn-ghost btn-sm" onclick="Paniers.copyShare()">📋 Copier le texte</button>
+          ${this.basket.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
+            <div style="position:relative;display:inline-block;">
+              <button class="btn-ghost btn-sm" onclick="Paniers.toggleShareMenu(event)" title="Copier ou enregistrer l'image du devis, copier le texte, régler ce qui s'affiche">📤 Partager ▾</button>
+              <div id="pan_sharemenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;z-index:60;min-width:220px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
+                <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('shareImage','copy')" title="Copie l'image du devis (avec son n°)">🖼️ Copier l'image</button>
+                <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('shareImage','save')">⬇ Enregistrer l'image</button>
+                <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('copyShare')">📋 Copier le texte</button>
+                <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('share')" title="Fenêtre propre à montrer au client : produit, variante et prix TTC, avec les options d'affichage">⚙️ Aperçu et options…</button>
+              </div>
+            </div>
+            <button class="btn-ghost btn-sm" onclick="Paniers.makeVariant()" title="Crée une variante de ce devis (n° du devis + -V1, -V2…) : tu gardes le panier de base et tu changes un ou deux produits">🔀 Variante</button>
             <button class="btn-cta btn-sm" onclick="Paniers.sendCurrentToSale()" title="Charge ce panier dans le ticket de la page Ventes (rien n'est déduit tant que tu n'as pas validé la vente)">🛒 Envoyer en vente</button>
             <button class="btn-cta btn-sm" onclick="Paniers.quickPending()" title="Range le devis dans « Paniers en attente » et repart à vide">💾 Mettre en attente</button>
           </div>` : ''}
         </div>
-        ${this.basket.length ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"><span class="muted" style="font-size:.78rem;text-transform:uppercase;">Mode de remise (sur le devis)</span><div class="pan-mode" style="display:flex;gap:8px;flex-wrap:wrap;">${this._modeBtns()}</div><div class="pan-bal">${this._balBox()}</div><span class="badge info" id="pan_dvno" title="N° de devis (définitif à la copie ou à la mise en attente)">Devis n° ${U.esc(this._shareData().no)}</span></div>` : ''}
+        ${this.basket.length ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"><div class="pan-bal">${this._balBox()}</div><span class="badge info" id="pan_dvno" title="N° de devis (définitif à la copie ou à la mise en attente)">Devis n° ${U.esc(this._shareData().no)}</span></div>` : ''}
 
         <div class="kpi-row" id="pan_kpi" style="margin-bottom:16px;">
           <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>

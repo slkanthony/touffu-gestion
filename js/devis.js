@@ -16,12 +16,21 @@ const Devis = {
   hash(o) { const s = JSON.stringify(o); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); },
   blank(pre) { return { base: '', rev: 0, hash: '', pre: pre || '' }; },   // pre : préfixe du numéro (« P » = devis pro, 2026-10-03)
   /* numéro à AFFICHER : prévu tant que rien n'est sorti ; lettre suivante si le contenu a changé depuis la dernière sortie */
-  show(st, h) { const p = (st && st.pre) || ''; if (!st || !st.base) return p + this.peek() + this.letter(1); return p + st.base + this.letter(h !== st.hash ? st.rev + 1 : st.rev); },
+  show(st, h) { const p = (st && st.pre) || ''; if (!st || !st.base) return p + this.peek() + this.letter(1); return this._fmt(st, h !== st.hash ? st.rev + 1 : st.rev); },
   /* à la SORTIE du devis (copie, mise en attente) : attribue / fait avancer la lettre, renvoie le numéro final */
   commit(st, h) {
     if (!st.base) { st.base = this.assign(); st.rev = 1; st.hash = h; }
     else if (h !== st.hash) { st.rev++; st.hash = h; }
-    return (st.pre || '') + st.base + this.letter(st.rev);
+    return this._fmt(st, st.rev);
   },
-  no(st) { return st && st.base ? (st.pre || '') + st.base + this.letter(st.rev) : ''; }
+  no(st) { return st && st.base ? this._fmt(st, st.rev) : ''; },
+  /* VARIANTES d'un devis (2026-10-06) : « 261004-1A-V1 », « 261004-1A-V2 »… = autres propositions pour la même cliente. `par` = lettre du devis d'origine
+     au moment de la création, `v` = n° de variante (compteur par devis d'origine, jamais réutilisé). Une variante modifiée après sa sortie prend une lettre
+     comme un devis : « 261004-1A-V2B ». La variante d'une variante repart du devis d'origine (V3, pas « V2-V1 »). */
+  _fmt(st, rev) { return (st.pre || '') + st.base + (st.v ? st.par + '-V' + st.v + (rev > 1 ? this.letter(rev) : '') : this.letter(rev)); },
+  makeVariant(parent, h) {
+    const par = parent.v ? parent.par : this.letter(parent.rev), k = parent.base + par, m = Store.state.meta;
+    m.devisVar = m.devisVar || {}; m.devisVar[k] = (m.devisVar[k] || 0) + 1; Store.save('meta');
+    return { base: parent.base, rev: 1, hash: h, pre: parent.pre || '', par, v: m.devisVar[k] };
+  }
 };

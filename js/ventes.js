@@ -18,6 +18,8 @@ const Ventes = {
   cart: [],
   _pro: false,         // le ticket vient d'un devis pro (prix remisés) → sale.pro
   _basketId: null,     // panier en attente d'où vient le ticket en cours (supprimé de la liste à la validation)
+  _basketOthers: [],   // autres versions du même devis à supprimer aussi à la validation (choix d'Antho à « Envoyer en vente »)
+  _fromComposer: false, // le ticket vient du panier composé (vidé à la validation)
   customerName: '',
   // Historique des sorties : filtres (persistés), pagination, dépliage, sélection (2026-09-29)
   histF: { period: 'year', from: '', to: '', src: 'all', origin: 'all', q: '', sort: 'date', dir: 'desc', page: 1 },
@@ -403,6 +405,7 @@ const Ventes = {
   loadFromBasket(rec, lines) {
     this.source = lines.some(l => l.src === 'event') ? 'event' : 'general'; this.kind = 'M';
     this.cart = lines.map(({ u, qty, price, src }) => ({ key: u.key, kind: u.kind || 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: u.kind !== 'A' && !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
+    this._basketOthers = rec.others || []; this._fromComposer = !!rec.fromComposer;
     this.customerName = rec.name; this._basketId = rec.id; this._pro = rec.kind === 'pro'; this.balOn = rec.balOn !== false; this._devisNo = Devis.no(rec.dv);
     const rp = U.num(rec.reduction); this.discOn = rp > 0; if (rp > 0) this.discPct = rp;   // code de réduction du panier → réduction du ticket
     this.retourOpen = false; this.todoOpen = false; this.editTicketId = '';
@@ -474,7 +477,7 @@ const Ventes = {
       ${bal ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--caramel);border-radius:8px;"><input type="checkbox" ${this.balOn ? 'checked' : ''} onchange="Ventes.balOn=this.checked;Ventes.render()"> 💶 ${bal > 0 ? 'Déduire l\'avoir de ' + U.eur(bal) : 'Ajouter le solde dû de ' + U.eur(-bal)}</label>` : ''}
       <div class="frow mt">
         <button class="btn-ok" onclick="Ventes.validate()">✅ Valider la sortie de stock</button>
-        <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes._basketId=null;Ventes._pro=false;Ventes._devisNo='';Ventes.render()">Vider le ticket</button>
+        <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes._basketId=null;Ventes._basketOthers=[];Ventes._fromComposer=false;Ventes._pro=false;Ventes._devisNo='';Ventes.render()">Vider le ticket</button>
       </div>
     </div>`;
   },
@@ -549,11 +552,11 @@ const Ventes = {
     this.cart = [];
     this.customerName = '';
     this.discOn = false; this.balOn = true; this._devisNo = ''; this._pro = false;
-    if (this._basketId) {   // le panier en attente est maintenant une vraie vente : il quitte la liste
-      Store.state.baskets = (Store.state.baskets || []).filter(x => x.id !== this._basketId);
-      if (typeof Paniers !== 'undefined' && Paniers._pendId === this._basketId) Paniers._pendId = null;
-      this._basketId = null; Store.save('baskets');
-    }
+    // le panier en attente est maintenant une vraie vente : il quitte la liste (avec les autres versions du devis si Antho l'a demandé), et le panier composé qui y correspond est vidé
+    const gone = new Set([this._basketId, ...(this._basketOthers || [])].filter(Boolean)), fromComposer = this._fromComposer;
+    if (gone.size) { Store.state.baskets = (Store.state.baskets || []).filter(x => !gone.has(x.id)); Store.save('baskets'); }
+    if (typeof Paniers !== 'undefined' && (fromComposer && !Paniers._pendId || gone.has(Paniers._pendId))) Paniers.resetWork();
+    this._basketId = null; this._basketOthers = []; this._fromComposer = false;
     this.render();
     U.toast(`Sortie enregistrée : ${U.eur(sale.total)} · stock à jour.`, false, entry.id);
     if (shortfalls.length) this._alertShortfalls(shortfalls);
