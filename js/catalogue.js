@@ -205,7 +205,7 @@ const Catalogue = {
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT, 3)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
-          <label>Coeff</label><input type="number" min="0" step="0.01" value="${U.num(p.coefficient) || 2}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
+          <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 1000) / 1000}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
         <span class="b2b-disc-badge">
           <label>Décote</label><input type="number" min="0" max="100" step="1" value="${p.bulkDiscount ?? ''}" placeholder="${S.bulkDiscount}" title="Décote paliers propre à ce produit — vide = suit le réglage global (${S.bulkDiscount}%)" onchange="Catalogue.setCardBulkDiscount('${p.id}',this.value)"><span>%</span>
         </span>`}</span>
@@ -633,10 +633,14 @@ const Catalogue = {
     if (k <= 0) { App.rerender(); return; }
     const snap = Store.snapshot('catalogM', p);
     p.coefficient = k;
+    // Le coeff du haut = celui de la 1re variante : si elle avait un prix (ou un coeff) fixé, il est retiré pour qu'elle suive le nouveau coeff (annulable)
+    const first = (p.variants || []).find(x => x.enabled !== false);
+    const reset = !!first && this._isRef(p, first) && (U.num(first.priceTTCManual) > 0 || U.num(first.coeff) > 0);
+    if (reset) { delete first.priceTTCManual; first.coeff = ''; }
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient commun modifié — ' + p.name + ' : ' + k);
     Store.save('catalogM', 'stockM');
-    U.toast('Coefficient commun mis à jour.', false, entry.id);
+    U.toast(reset ? `Coefficient commun mis à jour · le prix fixé de « ${Pricing.labelVariant(first)} » est retiré (elle suit le coeff).` : 'Coefficient commun mis à jour.', false, entry.id);
     App.rerender();
   },
   resetCardLine(prodId, varId) {
@@ -666,6 +670,13 @@ const Catalogue = {
      décote de la ligne = 1 − coeff de la ligne ÷ coeff commun ; la décote paliers monte progressivement (0 sur la 1re
      variante active, pleine sur la dernière), donc décote du produit = décote de la ligne × (n−1) ÷ rang de la ligne.
      Retourne la valeur posée (en %), ou null si rien à déduire (1re variante, une seule variante, prix au-dessus du coeff commun). */
+  /* 1re variante active d'un produit « au gramme / à la pièce » (pas « par taille » : chaque taille a son propre prix d'achat, pas de coeff commun) = la RÉFÉRENCE :
+     son prix TTC (ou son coeff) tapé devient le coeff commun du produit, donc le « Coeff » de l'en-tête (demande d'Antho 2026-10-06) ; les lots en découlent avec la décote paliers. */
+  _isRef(p, v) {
+    const actives = (p.variants || []).filter(x => x.enabled !== false);
+    if (!actives.length || String(actives[0].id) !== String(v.id)) return false;
+    return !actives.every(x => x.mode === 'size' && (U.num(x.value) > 0 || U.num(x.weight) > 0));
+  },
   _deriveBulk(p, v) {
     const actives = (p.variants || []).filter(x => x.enabled !== false);
     const n = actives.length, idx = actives.findIndex(x => String(x.id) === String(v.id));
@@ -692,10 +703,16 @@ const Catalogue = {
       v.priceTTCManual = ttc;
     }
     const bulk = ttc > 0 ? this._deriveBulk(p, v) : null;
+    let common = null;
+    if (ttc > 0 && this._isRef(p, v)) {   // 1re variante : son prix devient le coeff commun (les lots en automatique en découlent)
+      const actives = (p.variants || []).filter(x => x.enabled !== false);
+      const c = Pricing.variantCalc(p, v, 0, Pricing.baseUnitCost(p), actives.length);
+      if (c.effCoeff > 0) { p.coefficient = Math.round(c.effCoeff * 10000) / 10000; common = p.coefficient; }
+    }
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Prix TTC modifié — ' + p.name + ' ' + Pricing.labelVariant(v));
     Store.save('catalogM', 'stockM');
-    U.toast(bulk !== null ? `Prix TTC mis à jour · décote du produit : ${bulk} %` : 'Prix TTC mis à jour.', false, entry.id);
+    U.toast(common !== null ? `Prix TTC mis à jour · coeff commun du produit : ${U.qty(Math.round(common * 1000) / 1000)}` : bulk !== null ? `Prix TTC mis à jour · décote du produit : ${bulk} %` : 'Prix TTC mis à jour.', false, entry.id);
     App.rerender();
   },
 
@@ -707,13 +724,15 @@ const Catalogue = {
     const k = U.num(val);
     if (k <= 0) { App.rerender(); return; }
     const snap = Store.snapshot('catalogM', p);
+    const isRef = this._isRef(p, v);
     v.coeff = k;
     delete v.priceTTCManual;
+    if (isRef) { p.coefficient = k; v.coeff = ''; }   // 1re variante : son coeff EST le coeff commun (la ligne reste automatique)
     const bulk = this._deriveBulk(p, v);
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient modifié — ' + p.name + ' ' + Pricing.labelVariant(v) + ' : ' + k);
     Store.save('catalogM', 'stockM');
-    U.toast(bulk !== null ? `Coefficient mis à jour · décote du produit : ${bulk} %` : 'Coefficient mis à jour.', false, entry.id);
+    U.toast(isRef ? `Coefficient commun du produit : ${U.qty(k)}` : bulk !== null ? `Coefficient mis à jour · décote du produit : ${bulk} %` : 'Coefficient mis à jour.', false, entry.id);
     App.rerender();
   },
 
