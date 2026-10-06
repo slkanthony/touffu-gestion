@@ -48,32 +48,35 @@ const Pricing = {
   baseUnitCost(p, overrideSupId) {
     const S = Store.state.settings;
     const b = this.mainEntry(p, overrideSupId);
-    if (!b) return { unitHT: 0, unit: 'kilo', src: 'aucun fournisseur', ppk: 0 };
+    if (!b) return { unitHT: 0, unitCost: 0, k: 1, unit: 'kilo', src: 'aucun fournisseur', ppk: 0 };
     const vat = 1 + U.num(b.vatRate !== undefined && b.vatRate !== '' ? b.vatRate : S.vatRate) / 100;
     let price = U.num(b.price);
     if ((b.taxType || 'HT') === 'TTC') price /= vat;
     const div = b.unit === 'kilo' ? (U.num(b.weight) || 1) : (U.num(b.quantity) || 1);
-    return { unitHT: price / div, unit: b.unit || 'kilo', src: Store.supplierName(b.supplierId), ppk: U.num(b.piecesPerKilo) };
+    // Tant qu'Antho n'est PAS assujetti à la TVA (S.vatActive faux), la TVA d'achat n'est pas récupérable : elle fait partie du COÛT (taux de la ligne fournisseur : 10 %, 20 %…,
+    // indépendant du taux de vente). Assujetti → coût HT. `k` = coefficient TVA d'achat ; `unitHT` = prix HT pur (comparaisons d'achat, affichages « HT »).
+    const k = S.vatActive ? 1 : vat;
+    return { unitHT: price / div, unitCost: price / div * k, k, unit: b.unit || 'kilo', src: Store.supplierName(b.supplierId), ppk: U.num(b.piecesPerKilo) };
   },
 
-  /* Coût de production d'une variante (hors emballage) */
+  /* Coût de production d'une variante (hors emballage) : prix d'achat + TVA d'achat tant que non assujetti (b.unitCost), sinon HT */
   variantProdCost(p, v, base) {
     const b = base || this.baseUnitCost(p);
     if (v.mode === 'gram') {
-      if (b.unit === 'kilo') return b.unitHT * (U.num(v.value) / 1000);
-      return b.unitHT; // achat à la pièce revendu au poids : approximation 1 pièce
+      if (b.unit === 'kilo') return b.unitCost * (U.num(v.value) / 1000);
+      return b.unitCost; // achat à la pièce revendu au poids : approximation 1 pièce
     }
     if (v.mode === 'piece') {
       const ratio = b.unit === 'kilo' ? U.num(v.value) / (b.ppk || 1) : U.num(v.value);
-      return b.unitHT * ratio;
+      return b.unitCost * ratio;
     }
     // mode 'size' : coût saisi sur la variante (valeur = prix d'achat HT de la taille,
     // cas "acheté à la pièce, prix différent par taille") — prioritaire si renseigné
-    if (U.num(v.value) > 0) return U.num(v.value);
+    if (U.num(v.value) > 0) return U.num(v.value) * (b.k || 1);   // prix d'achat saisi HT sur la taille : + TVA d'achat tant que non assujetti
     // cas "acheté au kilo, poids différent par taille" (v.weight en grammes) : permet
     // de refléter les grosses variations de poids entre tailles sur un même achat au kilo
-    if (b.unit === 'kilo' && U.num(v.weight) > 0) return b.unitHT * (U.num(v.weight) / 1000);
-    return b.unit === 'kilo' && b.ppk > 0 ? b.unitHT / b.ppk : b.unitHT;
+    if (b.unit === 'kilo' && U.num(v.weight) > 0) return b.unitCost * (U.num(v.weight) / 1000);
+    return b.unit === 'kilo' && b.ppk > 0 ? b.unitCost / b.ppk : b.unitCost;
   },
 
   /* Calcul complet d'une variante.

@@ -42,7 +42,7 @@ const Params = {
         </div>
         <label class="vat-toggle ${S.vatActive ? 'on' : ''}">
           <input type="checkbox" id="p_vatActive" ${S.vatActive ? 'checked' : ''} onchange="Params.toggleVatActive(this.checked)">
-          <span class="vat-toggle-txt"><b>Je suis assujetti à la TVA</b> ${U.info("À cocher le jour venu. Les prix TTC affichés ne changent pas ; une fois coché, la TVA cesse d'être comptée comme bénéfice et passe en déduction dans la compta (Stats + Tableau de bord).")} <span class="badge ${S.vatActive ? 'ok' : 'info'}">${S.vatActive ? '✅ ACTIVÉ — TVA reversée (déduite du bénéfice)' : '⚪ DÉSACTIVÉ — TVA conservée dans le bénéfice'}</span></span></label>
+          <span class="vat-toggle-txt"><b>Je suis assujetti à la TVA</b> ${U.info("À cocher le jour venu. Une fois coché, la TVA cesse d'être comptée comme bénéfice et passe en déduction dans la compta (Stats + Tableau de bord), et les coûts de revient repassent en HT (la TVA d'achat devient récupérable). Tant que ce n'est pas coché, la TVA d'achat (taux de chaque ligne fournisseur) fait partie du coût de revient.")} <span class="badge ${S.vatActive ? 'ok' : 'info'}">${S.vatActive ? '✅ ACTIVÉ — TVA reversée (déduite du bénéfice)' : '⚪ DÉSACTIVÉ — TVA conservée dans le bénéfice'}</span></span></label>
         </div>
         <div class="fin-block" style="order:${finPos('amort')}">${finTools('amort')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛠️ Amortissement du matériel (tout l'atelier) ${U.info("Charge fixe de l'atelier (imprimante, extracteur, scelleuse…), déduite du <b>bénéfice net mensuel</b> global (Tableau de bord + Stats, ligne « Entretien matériel »), <b>pas</b> du prix d'un produit.<br><br>⚠️ En micro-entreprise, l'amortissement n'est pas déductible fiscalement : c'est un indicateur pour toi (savoir si l'activité est rentable une fois le matériel payé).<br><br><b>Année d'achat</b> : l'amortissement s'arrête tout seul une fois la durée écoulée.<br><b>Catégorie</b> : sert seulement à ton suivi, le montant reste déduit du bénéfice net global.")}</div>
@@ -607,9 +607,12 @@ const Params = {
      des Stats/Tableau de bord basculent tout de suite), sans attendre « Enregistrer ». */
   toggleVatActive(checked) {
     Store.state.settings.vatActive = !!checked;
-    Store.save('settings');
+    // Le statut change la base des coûts de revient (TVA d'achat comprise tant que non assujetti) : on recalcule les produits stock reliés au catalogue prix
+    const catIds = [...new Set(Store.state.stockM.filter(p => p.catalogId && Store.state.catalogM.some(c => c.id === p.catalogId)).map(p => p.catalogId))];
+    catIds.forEach(id => { try { Stock.syncPricesFromCatalog(id); } catch (e) { console.error(e); } });
+    Store.save('settings', 'stockM', 'catalogM');
     App.rerender();
-    U.toast(checked ? 'Assujetti à la TVA : la TVA est désormais déduite du bénéfice.' : 'Non assujetti : la TVA reste dans le bénéfice.');
+    U.toast((checked ? 'Assujetti à la TVA : la TVA est désormais déduite du bénéfice, les coûts de revient repassent en HT' : 'Non assujetti : la TVA reste dans le bénéfice, la TVA d\'achat compte dans les coûts de revient') + (catIds.length ? ` · ${catIds.length} fiche(s) prix recalculée(s) et recopiées sur le Stock.` : '.'));
   },
 
   /* Bascule thème clair/sombre — déplacé de la barre du haut vers Paramètres → Apparence. */

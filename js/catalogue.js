@@ -45,7 +45,7 @@ const Catalogue = {
     list.sort((a, b) => {
       if (f.sort === 'name') return dir * U.sortFr(a.name, b.name);
       if (f.sort === 'supplier') return dir * U.sortFr(Store.supplierName(a.mainSupplierId), Store.supplierName(b.mainSupplierId));
-      if (f.sort === 'base') return dir * (Pricing.baseUnitCost(a).unitHT - Pricing.baseUnitCost(b).unitHT);
+      if (f.sort === 'base') return dir * (Pricing.baseUnitCost(a).unitCost - Pricing.baseUnitCost(b).unitCost);
       if (f.sort === 'critical') return dir * ((hasCritical(b) - hasCritical(a)) || U.sortFr(a.name, b.name));
       return dir * U.sortFr((a.meatType || '') + a.name, (b.meatType || '') + b.name); // 'meat' (défaut)
     });
@@ -203,7 +203,7 @@ const Catalogue = {
         <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
-        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i>`}</span>
+        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' · ' + U.qty(base.ppk) + ' pc/kg' : ''} <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
           <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
         <span class="b2b-disc-badge">
