@@ -633,14 +633,12 @@ const Catalogue = {
     if (k <= 0) { App.rerender(); return; }
     const snap = Store.snapshot('catalogM', p);
     p.coefficient = k;
-    // Le coeff du haut = celui de la 1re variante : si elle avait un prix (ou un coeff) fixé, il est retiré pour qu'elle suive le nouveau coeff (annulable)
-    const first = (p.variants || []).find(x => x.enabled !== false);
-    const reset = !!first && this._isRef(p, first) && (U.num(first.priceTTCManual) > 0 || U.num(first.coeff) > 0);
-    if (reset) { delete first.priceTTCManual; first.coeff = ''; }
+    // La DERNIÈRE valeur modifiée commande (Antho 2026-10-06) : le coeff du haut = celui de la 1re variante, et les autres en découlent → les prix (ou coeffs) fixés des variantes sont retirés pour qu'elles suivent (annulable)
+    const reset = this._freeLines(p, 0);
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Coefficient commun modifié — ' + p.name + ' : ' + k);
     Store.save('catalogM', 'stockM');
-    U.toast(reset ? `Coefficient commun mis à jour · le prix fixé de « ${Pricing.labelVariant(first)} » est retiré (elle suit le coeff).` : 'Coefficient commun mis à jour.', false, entry.id);
+    U.toast(reset ? `Coefficient commun mis à jour · ${reset} prix fixé${reset > 1 ? 's' : ''} retiré${reset > 1 ? 's' : ''} (les variantes suivent le coeff).` : 'Coefficient commun mis à jour.', false, entry.id);
     App.rerender();
   },
   resetCardLine(prodId, varId) {
@@ -659,10 +657,11 @@ const Catalogue = {
     if (!p) return;
     const snap = Store.snapshot('catalogM', p);
     p.bulkDiscount = val === '' ? undefined : U.num(val);
+    const reset = this._freeLines(p, 1);   // la dernière valeur modifiée commande : les lots dont le prix était fixé suivent maintenant la décote
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Décote paliers modifiée — ' + p.name);
     Store.save('catalogM', 'stockM');
-    U.toast('Décote paliers mise à jour.', false, entry.id);
+    U.toast(reset ? `Décote paliers mise à jour · ${reset} prix fixé${reset > 1 ? 's' : ''} retiré${reset > 1 ? 's' : ''} (les variantes suivent la décote).` : 'Décote paliers mise à jour.', false, entry.id);
     App.rerender();
   },
 
@@ -676,6 +675,15 @@ const Catalogue = {
     const actives = (p.variants || []).filter(x => x.enabled !== false);
     if (!actives.length || String(actives[0].id) !== String(v.id)) return false;
     return !actives.every(x => x.mode === 'size' && (U.num(x.value) > 0 || U.num(x.weight) > 0));
+  },
+  /* Retire le prix TTC / coeff fixé des variantes actives à partir du rang `from` (0 = toutes, 1 = les lots) pour qu'elles suivent le coeff commun et la décote ; renvoie le nombre de lignes libérées.
+     Produits « par taille » : rien (pas de coeff commun). */
+  _freeLines(p, from) {
+    const actives = (p.variants || []).filter(x => x.enabled !== false);
+    if (!actives.length || !this._isRef(p, actives[0])) return 0;
+    let n = 0;
+    actives.forEach((v, i) => { if (i >= from && (U.num(v.priceTTCManual) > 0 || U.num(v.coeff) > 0)) { delete v.priceTTCManual; v.coeff = ''; n++; } });
+    return n;
   },
   _deriveBulk(p, v) {
     const actives = (p.variants || []).filter(x => x.enabled !== false);
