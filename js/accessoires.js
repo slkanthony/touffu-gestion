@@ -58,7 +58,7 @@ const Accessoires = {
       }
       if (!groups[key]) groups[key] = { key, label, kind: m.kind, unit: m.unit, materials: [], totalCost: 0 };
       groups[key].materials.push(m);
-      groups[key].totalCost += U.num(m.costUnit);
+      groups[key].totalCost += this.matCost(m);
     }
     // Familles « type + taille » (Mousquetons 20mm = moyenne de TOUS les mousquetons 20mm, toutes finitions/produits confondus) pour les catégories à la pièce
     // hors sangles : proposées seulement quand la fiche accessoire a une largeur de sangle, et seulement si elles regroupent au moins 2 produits.
@@ -68,7 +68,7 @@ const Accessoires = {
       const size = this._sizeOf(m); if (!size) continue;
       const key = 'size:' + (m.kind || 'autre') + ':' + size;
       (bySize[key] = bySize[key] || { key, label: (Stock.matKindLabel[m.kind] || 'Matière') + ' ' + size, kind: m.kind, unit: 'piece', size, bySize: true, materials: [], totalCost: 0, prods: new Set() });
-      const g = bySize[key]; g.materials.push(m); g.totalCost += U.num(m.costUnit); g.prods.add(m.product || m.name);
+      const g = bySize[key]; g.materials.push(m); g.totalCost += this.matCost(m); g.prods.add(m.product || m.name);
     }
     Object.values(bySize).forEach(g => { if (g.prods.size >= 2) groups[g.key] = g; });
     return Object.values(groups).map(g => ({
@@ -94,9 +94,12 @@ const Accessoires = {
     return fam ? fam.avgCost : 0;
   },
 
+  /* Coût unitaire d'une matière POUR LES CALCULS : coût stocké HT + TVA d'achat de la matière (m.costVat, sinon taux global) tant qu'Antho n'est pas assujetti (TVA non récupérable). */
+  matCost(m) { return U.num(m.costUnit) * Pricing.vatK(Stock.matVat(m)); },
+
   bomLineCost(l) {
     if (l.familyKey) return this.familyCost(l.familyKey);
-    if (l.materialId) { const m = Store.material(l.materialId); return m ? U.num(m.costUnit) : 0; }
+    if (l.materialId) { const m = Store.material(l.materialId); return m ? this.matCost(m) : 0; }
     return 0;
   },
 
@@ -741,7 +744,7 @@ const Accessoires = {
     }
     if (l.materialId) {
       const m = Store.material(l.materialId);
-      return m ? `${m.name} (${U.eur(m.costUnit)}/${m.unit === 'm' ? 'm' : 'PCS'})` : '';
+      return m ? `${m.name} (${U.eur(this.matCost(m))}/${m.unit === 'm' ? 'm' : 'PCS'})` : '';
     }
     return '';
   },
@@ -799,7 +802,7 @@ const Accessoires = {
       }
       const m = it.data;
       const unit = m.unit === 'm' ? 'm' : 'PCS';
-      return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')"><span class="pp-a">${U.esc(m.name)}</span><span class="pp-b">stock ${U.qty(m.qty)} ${unit}</span><span class="pp-c">${U.eur(m.costUnit)} / ${unit}</span></div>`;
+      return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')"><span class="pp-a">${U.esc(m.name)}</span><span class="pp-b">stock ${U.qty(m.qty)} ${unit}</span><span class="pp-c">${U.eur(this.matCost(m))} / ${unit}</span></div>`;
     }).join('');
   },
 

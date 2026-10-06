@@ -203,7 +203,7 @@ const Catalogue = {
         <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
-        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' · ' + U.qty(base.ppk) + ' pc/kg' : ''} <i>(${base.src})</i>`}</span>
+        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
           <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
         <span class="b2b-disc-badge">

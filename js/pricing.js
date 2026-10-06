@@ -59,6 +59,17 @@ const Pricing = {
     return { unitHT: price / div, unitCost: price / div * k, k, unit: b.unit || 'kilo', src: Store.supplierName(b.supplierId), ppk: U.num(b.piecesPerKilo) };
   },
 
+  /* Coefficient « TVA d'achat non récupérable » (Antho 2026-10-07) : tant qu'il n'est pas assujetti, tout coût stocké HT (matières, consommables) compte avec sa TVA d'achat ;
+     assujetti → 1 (HT). `vatPct` vide = taux global. */
+  vatK(vatPct) { const S = Store.state.settings; return S.vatActive ? 1 : 1 + U.num(vatPct !== undefined && vatPct !== null && vatPct !== '' ? vatPct : S.vatRate) / 100; },
+  /* Sachet / blister dont le coût vient d'un consommable (coût stocké HT) ; un coût saisi à la main est pris tel quel. */
+  _packLinked(s) {
+    if ((s.type || 'sachet') === 'blister') {
+      const d = typeof Params !== 'undefined' && Params._blisterDims ? Params._blisterDims(s) : null;
+      return !!(d && ((Store.state.settings.blisterRolls || {})[String(d.widthMm)] || {}).consumableId);
+    }
+    return !!s.consumableId;
+  },
   /* Coût de production d'une variante (hors emballage) : prix d'achat + TVA d'achat tant que non assujetti (b.unitCost), sinon HT */
   variantProdCost(p, v, base) {
     const b = base || this.baseUnitCost(p);
@@ -100,7 +111,7 @@ const Pricing = {
     const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
     const prodCost = this.variantProdCost(p, v, base);
     const sac = Store.sachet(v.sachetId);
-    const sacCost = sac ? U.num(sac.cost) : 0;
+    const sacCost = sac ? U.num(sac.cost) * (this._packLinked(sac) ? this.vatK() : 1) : 0;   // sachet / blister lié à un consommable (coût stocké HT) : + TVA d'achat tant que non assujetti
     const labelCost = Store.labelCostOf(p);
     const costBase = prodCost + sacCost + labelCost;
     const portCost = prodCost * this.portRate('mastication') + (sacCost + labelCost) * this.portRate('conso');

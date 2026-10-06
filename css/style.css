@@ -1311,3 +1311,6 @@ details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed
 
 
 .mat-table input.mat-ref { width: 130px; max-width: 100%; text-align: left; }
+
+/* Prix au kilo et pièces au kilo dans l'en-tête d'une fiche prix : un peu de marron pour ressortir (plus discret que Coeff / Décote) — 2026-10-07 */
+.kg-hl { color: var(--caramel); font-weight: 700; background: color-mix(in srgb, var(--caramel) 14%, transparent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
