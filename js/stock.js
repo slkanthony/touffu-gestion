@@ -2747,8 +2747,8 @@ const Stock = {
   _matKindChanged(kind) {
     const m = this._matEditing; if (!m) return;
     const row = document.getElementById('m_vrow'); if (row) row.style.display = Store.isSangleKind(kind) ? 'none' : '';
-    const u = document.getElementById('m_unit');   // unité automatique : sangle = au mètre, le reste = à la pièce
-    if (u) { const sang = Store.isSangleKind(kind), l = document.getElementById('m_unit_lab'); u.value = sang ? 'm' : 'piece'; if (l) l.textContent = sang ? 'mètre' : 'pièce'; this._calcMatUnit(); }
+    const u = document.getElementById('m_unit');   // unité proposée selon le type (sangle = mètre, le reste = pièce), modifiable ensuite
+    if (u) { u.value = Store.isSangleKind(kind) ? 'm' : 'piece'; this._calcMatUnit(); }
     this._matSizeRefresh(kind);
   },
   _matSizeRefresh(kindArg) {
@@ -2815,7 +2815,9 @@ const Stock = {
       <div class="frow">
         <div class="fg"><label>Type</label><select id="m_kind" onchange="Stock._matKindChanged(this.value)">
           ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
-        <div class="fg"><label>Unité ${U.info("Automatique selon le type : au mètre pour les sangles, à la pièce pour tout le reste.")}</label><input type="hidden" id="m_unit" value="${m.unit === 'm' ? 'm' : 'piece'}"><span id="m_unit_lab" style="display:block;padding:8px 0;font-weight:600;">${m.unit === 'm' ? 'mètre' : 'pièce'}</span></div>
+        <div class="fg"><label>Unité ${U.info("Proposée automatiquement selon le type (mètre pour les sangles, pièce pour le reste) ; tu peux la changer si une matière sort de la règle.")}</label><select id="m_unit" onchange="Stock._calcMatUnit()">
+          <option value="m" ${m.unit === 'm' ? 'selected' : ''}>mètre</option>
+          <option value="piece" ${m.unit !== 'm' ? 'selected' : ''}>pièce</option></select></div>
       </div>
       <div class="frow">
         <div class="fg"><label>SKU</label><input id="m_sku" value="${U.esc(m.sku || '')}"></div>
