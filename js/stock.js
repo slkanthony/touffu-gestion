@@ -2455,7 +2455,7 @@ const Stock = {
     const stateOpts = [{ v: 'all', l: 'Tous' }].concat(Object.keys(T.stateLabel).map(k => ({ v: k, l: T.stateLabel[k] + ' (' + cnt(T.state[k]) + ')' })));
     if (!todoOpts.some(o => o.v === f.link)) f.link = 'all';
     const list = Store.state.materials.filter(m => {
-      if (q && !U.has(m.name + ' ' + (m.product || '') + ' ' + (m.sku || ''), q)) return false;
+      if (q && !U.has(m.name + ' ' + (m.product || '') + ' ' + (m.variant || '') + ' ' + (m.sku || '') + ' ' + (m.ref || ''), q)) return false;
       if (f.type !== 'all' && m.kind !== f.type) return false;
       if (f.variants.length && !f.variants.includes(m.variant || m.name)) return false;
       if (f.link !== 'all' && T.todo[f.link] && !T.todo[f.link](m)) return false;
@@ -2476,7 +2476,7 @@ const Stock = {
     document.getElementById('stockBody').innerHTML = `
       <div class="card" style="padding:12px 16px;">
         <div class="grid c4">
-          <div class="fg mb0"><label>Recherche</label><input id="stock_q_mat" value="${U.esc(f.q)}" placeholder="🔍 nom, produit, SKU…" oninput="Stock.matFilters.q=this.value;Stock.renderMatieres();U.refocus('stock_q_mat')"></div>
+          <div class="fg mb0"><label>Recherche</label><input id="stock_q_mat" value="${U.esc(f.q)}" placeholder="🔍 nom, produit, SKU, réf. fournisseur…" oninput="Stock.matFilters.q=this.value;Stock.renderMatieres();U.refocus('stock_q_mat')"></div>
           <div class="fg mb0"><label>Type</label>${U.customSelect({ value: f.type, options: [{ v: 'all', l: 'Tous' }].concat(Store.materialKinds().map(k => ({ v: k.value, l: k.label }))), onPick: 'Stock._setMatType' })}</div>
           <div class="fg mb0"><label>Tailles / variantes</label>${U.multiSelect({ options: allVariants, selected: f.variants, toggle: 'Stock.matToggleVariant', setAll: 'Stock.matSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.matSetOpen' })}</div>
           <div class="fg mb0"><label>À compléter</label>${U.customSelect({ value: f.link, options: todoOpts, onPick: 'Stock._setMatLink' })}</div>
