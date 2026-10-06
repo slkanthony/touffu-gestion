@@ -1500,13 +1500,14 @@ const Params = {
     const used = id => Store.state.catalogM.filter(p => p.labelTypeId === id).length;
     return `<div class="label-types">
       <div class="lt-row lt-head"><span>Défaut</span><span>Type d'étiquette</span><span>Coût (€)</span><span>Fiches</span><span></span></div>
-      ${list.map(t => `<div class="lt-row">
+      ${list.map(t => { const conso = t.consumableId ? Store.state.consumables.find(c => c.id === t.consumableId) : null; return `<div class="lt-row">
         <span><input type="radio" name="lt_def" ${def && def.id === t.id ? 'checked' : ''} title="Type proposé pour les nouvelles fiches prix" onchange="Params.setLabelDefault('${t.id}')" style="width:18px;height:18px;"></span>
         <input value="${U.esc(t.name)}" onchange="Params.setLabelType('${t.id}','name',this.value)">
-        <input type="number" step="0.01" min="0" value="${Math.round(U.num(t.cost) * 100) / 100}" onchange="Params.setLabelType('${t.id}','cost',this.value)">
+        ${conso ? `<span title="Coût repris du consommable « ${U.esc(conso.name)} » (par étiquette, HT) — se met à jour tout seul">${U.eur(conso.costUnit)} <span class="badge ok" style="font-size:.7rem;">🔗 auto</span></span>`
+          : `<input type="number" step="0.01" min="0" value="${Math.round(U.num(t.cost) * 100) / 100}" onchange="Params.setLabelType('${t.id}','cost',this.value)">`}
         <span class="muted">${used(t.id)}</span>
-        <button class="btn-icon" title="Supprimer ce type" onclick="Params.delLabelType('${t.id}')">🗑️</button>
-      </div>`).join('')}
+        <span style="display:flex;gap:2px;"><button class="btn-icon" title="${conso ? 'Modifier le lien' : 'Lier à un consommable (étiquettes en stock)'}" onclick="Params.linkLabelConso('${t.id}')">${conso ? '✏️' : '🔗＋'}</button>${conso ? `<button class="btn-icon" title="Délier" onclick="Params.unlinkLabelConso('${t.id}')">✕</button>` : ''}<button class="btn-icon" title="Supprimer ce type" onclick="Params.delLabelType('${t.id}')">🗑️</button></span>
+      </div>`; }).join('')}
       <button class="btn-ghost btn-sm mt" onclick="Params.addLabelType()">＋ Ajouter un type d'étiquette</button>
     </div>`;
   },
@@ -1516,6 +1517,32 @@ const Params = {
     if (Store.state.settings.labelDefaultId === id && field === 'cost') Store.state.settings.labelCost = t.cost;
     Store.state.catalogM.forEach(p => { if (p.labelTypeId === id) p.labelCost = U.num(t.cost); });
     Store.save('settings', 'catalogM'); App.rerender();
+  },
+  /* Relier un type d'étiquette à un consommable (étiquettes achetées par pochette : le coût / unité du consommable = coût d'UNE étiquette) :
+     le coût suit automatiquement les achats (2026-10-07). Les prix du Stock suivent après « Resynchroniser tout ». */
+  linkLabelConso(id) {
+    const t = Store.labelType(id); if (!t) return;
+    const all = Store.state.consumables;
+    if (!all.length) { U.toast('Aucun consommable en stock — ajoute d\'abord tes étiquettes dans Stock > Consommables.', true); return; }
+    const consos = all.filter(c => /etiquet/.test(U.normSearch(c.category || '') + ' ' + U.normSearch(c.name || '')));
+    const list = consos.length ? consos : all;
+    const picker = this._consoPickList('lab_conso', list, t.consumableId || '', (c, u) => `${U.eur(c.costUnit)} / ${U.esc(u)}`, '🏷️ Étiquettes' + (consos.length ? '' : ' (tous les consommables)'));
+    U.modal({
+      title: 'Lier « ' + t.name + ' » au consommable', okLabel: 'Enregistrer',
+      body: `<div class="fg"><label>Consommable (étiquettes en stock)</label>${picker}</div>
+      <p class="muted">Le coût d'une étiquette reprendra automatiquement le coût / unité du consommable (prix de la pochette ÷ nombre d'étiquettes). Il se met à jour à chaque nouvel achat.${consos.length ? '' : ' <br>⚠️ Aucun consommable « étiquettes » trouvé — tous les consommables sont affichés.'}</p>`,
+      onOk: () => {
+        const cid = U.val('lab_conso');
+        if (cid) t.consumableId = cid; else delete t.consumableId;
+        Store.save('settings'); U.closeModal(); App.rerender();
+      }
+    });
+  },
+  unlinkLabelConso(id) {
+    const t = Store.labelType(id); if (!t) return;
+    delete t.consumableId;
+    Store.save('settings'); App.rerender();
+    U.toast('Lien consommable retiré : le coût saisi à la main s\'applique de nouveau.');
   },
   setLabelDefault(id) {
     const S = Store.state.settings, t = Store.labelType(id); if (!t) return;

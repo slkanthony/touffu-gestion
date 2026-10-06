@@ -227,7 +227,7 @@ const Stats = {
       if (!v.sachetId || String(v.sachetId) === '0') return;
       (fichesByRef[v.sachetId] = fichesByRef[v.sachetId] || []).push(p.name + ' ' + Pricing.labelVariant(v));
     }));
-    const mk = c => ({ id: c.id, name: c.name, dims: c.dimensions || '', unitCost: U.num(c.costUnit), stock: U.num(c.qty), unit: c.unit, uses: 0, qty: 0, cost: 0, last: '', prods: {}, fiches: [] });
+    const mk = c => ({ id: c.id, name: c.name, dims: c.dimensions || '', unitCost: U.num(c.costUnit) * Pricing.vatK(), stock: U.num(c.qty), unit: c.unit, uses: 0, qty: 0, cost: 0, last: '', prods: {}, fiches: [] });
     // Sachets
     const sach = {};
     consos.filter(c => isCat(c, /sachet/i)).forEach(c => { sach[c.id] = mk(c); });
@@ -281,7 +281,7 @@ const Stats = {
     const blisters = Object.values(blis).sort((a, b) => a.widthMm - b.widthMm).map(w => {
       const roll = consos.find(c => c.id === w.rollId);
       const unit = ((roll && roll.unit) || 'm').toLowerCase();
-      const perM = roll ? U.num(roll.costUnit) * (unit === 'mm' ? 1000 : unit === 'cm' ? 100 : 1) : 0; // € par mètre
+      const perM = roll ? U.num(roll.costUnit) * Pricing.vatK() * (unit === 'mm' ? 1000 : unit === 'cm' ? 100 : 1) : 0; // € par mètre
       return { ...w, roll, perM, lengths: Object.values(w.lengths).sort((a, b) => a.lengthMm - b.lengthMm) };
     });
     return { sach: sort(sach), cart: sort(cart), blisters };

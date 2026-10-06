@@ -590,7 +590,7 @@ const Ventes = {
           for (const l of ordered) {
             if (remaining <= 0) break;
             const take = Math.min(U.num(l[field]), remaining);
-            if (take > 0) { l[field] = U.num(l[field]) - take; remaining -= take; lineCost += take * U.num(l.costUnit || v.costUnit); sale.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: l.id, field, qty: take, lotMeta: { lotNumber: l.lotNumber, dluo: l.dluo, costUnit: l.costUnit } }); }
+            if (take > 0) { l[field] = U.num(l[field]) - take; remaining -= take; lineCost += take * Stock.lotCost(p, v, l); sale.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: l.id, field, qty: take, lotMeta: { lotNumber: l.lotNumber, dluo: l.dluo, costUnit: l.costUnit } }); }
           }
           if (remaining > 0) { missing = remaining; shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: remaining, src: srcL }); lineCost += remaining * U.num(v.costUnit); }
           if (!touched.includes(v)) touched.push(v);
@@ -608,7 +608,7 @@ const Ventes = {
       } else if (c.kind === 'C') {
         const co = Store.state.consumables.find(x => x.id === c.pId);
         if (co) {
-          lineCost = U.num(co.costUnit) * c.qty;
+          lineCost = U.num(co.costUnit) * Pricing.vatK() * c.qty;   // consommable vendu : coût TTC tant que non assujetti
           const take = Math.min(U.num(co.qty), c.qty);
           if (take > 0) { co.qty = U.num(co.qty) - take; sale.undoOps.push({ kind: 'C', pId: co.id, qty: take }); }
           if (c.qty - take > 0) missing = c.qty - take;
@@ -1664,7 +1664,7 @@ const Ventes = {
     const qty = U.num(this.retourConsoQty);
     if (!c) { U.toast('Choisis un consommable.', true); return; }
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
-    (this.retourData.consoLines = this.retourData.consoLines || []).push({ consumableId: c.id, name: c.name, qty, costUnit: U.num(c.costUnit) });
+    (this.retourData.consoLines = this.retourData.consoLines || []).push({ consumableId: c.id, name: c.name, qty, costUnit: U.num(c.costUnit) * Pricing.vatK() });
     this.retourConsoId = ''; this.retourConsoQty = 1; this.render();
   },
   removeRetourConso(i) { this.retourData.consoLines.splice(i, 1); this.render(); },
@@ -1704,7 +1704,7 @@ const Ventes = {
     const qty = U.num(this.ticketConsoQty);
     if (!c) { U.toast('Choisis un consommable.', true); return; }
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
-    const cost = U.num(c.costUnit) * qty;
+    const cost = U.num(c.costUnit) * Pricing.vatK() * qty;
     let take = 0;
     if (!s.historical) {
       take = Math.min(U.num(c.qty), qty);
@@ -2423,7 +2423,7 @@ const Ventes = {
       picks.forEach(([lid, q, fld]) => {
         const lot = v.lots.find(l => l.id === lid); q = U.num(q); sum += q; if (fld === 'qtyGeneral') sumGen += q;
         lot[fld] = U.num(lot[fld]) - q;
-        cost += q * U.num(lot.costUnit || v.costUnit);
+        cost += q * Stock.lotCost(p, v, lot);
         s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field: fld, qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
         labels.push((lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') + ' ×' + q + (fld === 'qtyGeneral' ? ' (gén.)' : ''));
       });
@@ -2494,7 +2494,7 @@ const Ventes = {
       Object.entries(gp).forEach(([lid, q]) => {
         const lot = v.lots.find(l => l.id === lid);
         lot.qtyGeneral = U.num(lot.qtyGeneral) - q;
-        i.cost = U.num(i.cost) + q * (U.num(lot.costUnit || v.costUnit) - U.num(v.costUnit));
+        i.cost = U.num(i.cost) + q * (Stock.lotCost(p, v, lot) - U.num(v.costUnit));
         s.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: lot.id, field: 'qtyGeneral', qty: q, lotMeta: { lotNumber: lot.lotNumber, dluo: lot.dluo, costUnit: lot.costUnit } });
         labels.push((lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') + ' ×' + q + ' (gén.)');
       });

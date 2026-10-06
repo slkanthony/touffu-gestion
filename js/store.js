@@ -241,8 +241,11 @@ const Store = {
   labelTypes() { return (this.state.settings.labelTypes || []); },
   labelType(id) { return id ? this.labelTypes().find(t => t.id === id) : null; },
   labelDefault() { const S = this.state.settings; return this.labelType(S.labelDefaultId) || this.labelTypes()[0] || null; },
+  /* Consommable (étiquettes en stock) auquel le type d'étiquette d'une fiche est relié : son coût / unité (par étiquette) est alors repris automatiquement (2026-10-07). */
+  labelConso(p) { const t = this.labelType(p && p.labelTypeId); return t && t.consumableId ? (this.state.consumables || []).find(c => c.id === t.consumableId) || null : null; },
   labelCostOf(p) {
     const t = this.labelType(p && p.labelTypeId);
+    const lc = this.labelConso(p); if (lc) return U.num(lc.costUnit);   // coût HT du consommable (la TVA d'achat est ajoutée au calcul des prix, comme pour les sachets liés)
     if (t) return U.num(t.cost);
     return U.num(p && p.labelCost !== undefined && p.labelCost !== '' ? p.labelCost : this.state.settings.labelCost);
   },

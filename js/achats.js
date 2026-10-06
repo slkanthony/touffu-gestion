@@ -353,7 +353,7 @@ const Achats = {
         const snaps = [Store.snapshot('purchases', p)], sp = Store.state.stockM.find(x => x.id === l.ref);
         if (sp) snaps.push(Store.snapshot('stockM', sp));
         let n = 0;
-        dist.forEach(d => { (sp ? sp.variants : []).forEach(v => (v.lots || []).forEach(lot => { if (lot.id === d.lotId) { lot.costUnit = ht; n++; } })); });
+        dist.forEach(d => { (sp ? sp.variants : []).forEach(v => (v.lots || []).forEach(lot => { if (lot.id === d.lotId) { lot.costUnit = Math.round(ht * Stock.buyK(sp, v) * 10000) / 10000; lot.costFinal = true; n++; } })); });
         Object.assign(r, { closed: true, closedAt: Date.now(), pieces, loss, costPerPiece: ht, avgG: kg ? Math.round((U.num(l.qty) - loss) * 1000 / pieces) : 0 });
         const entry = Store.log('achat', `Tri terminé — ${l.label} (${U.qty(pieces)} pièces, ${U.eur(ht)} HT / pièce)`, { type: 'restoreBatch', data: snaps });
         Store.save('purchases', 'stockM'); U.closeModal(); this.render();

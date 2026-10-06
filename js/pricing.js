@@ -112,7 +112,7 @@ const Pricing = {
     const prodCost = this.variantProdCost(p, v, base);
     const sac = Store.sachet(v.sachetId);
     const sacCost = sac ? U.num(sac.cost) * (this._packLinked(sac) ? this.vatK() : 1) : 0;   // sachet / blister lié à un consommable (coût stocké HT) : + TVA d'achat tant que non assujetti
-    const labelCost = Store.labelCostOf(p);
+    const labelCost = Store.labelCostOf(p) * (Store.labelConso(p) ? this.vatK() : 1);   // étiquette liée à un consommable (coût HT) : + TVA d'achat tant que non assujetti
     const costBase = prodCost + sacCost + labelCost;
     const portCost = prodCost * this.portRate('mastication') + (sacCost + labelCost) * this.portRate('conso');
     const cost = costBase + portCost;
@@ -452,7 +452,7 @@ const Pricing = {
     if (i.cost !== undefined && i.cost !== null && i.cost !== '') return U.num(i.cost);
     const qty = U.num(i.qty);
     if (i.kind === 'A') { const a = Store.state.catalogA.find(x => x.id === i.pId); return a ? U.num(this.accCalc(a).costBase) * qty : 0; }
-    if (i.kind === 'C') { const co = Store.state.consumables.find(x => x.id === i.pId); return co ? U.num(co.costUnit) * qty : 0; }
+    if (i.kind === 'C') { const co = Store.state.consumables.find(x => x.id === i.pId); return co ? U.num(co.costUnit) * this.vatK() * qty : 0; }
     const p = Store.state.stockM.find(x => x.id === i.pId);
     const v = p && (p.variants || []).find(x => x.id === i.vId);
     return v ? U.num(v.costUnit) * qty : 0;

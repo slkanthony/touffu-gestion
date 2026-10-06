@@ -738,7 +738,7 @@ table.sales-hist tr.sale-head td { background: rgba(166,113,83,.16); border-top:
 
 /* Réglages → Consommables : liste des types d'étiquette */
 .label-types { max-width: 620px; margin: 0 auto; }
-.lt-row { display: grid; grid-template-columns: 56px 1fr 110px 56px 36px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.lt-row { display: grid; grid-template-columns: 56px 1fr 120px 56px auto; gap: 8px; align-items: center; margin-bottom: 6px; }
 .lt-head { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); margin-bottom: 2px; }
 .lt-row > span:first-child, .lt-row > span:nth-child(4) { text-align: center; }
 

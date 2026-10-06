@@ -1388,7 +1388,7 @@ const Stock = {
       onOk:()=>{
         // Le coût unitaire vient du prix d'achat déjà réglé sur la variante (colonne "Prix achat"
         // de la fiche produit) — pas besoin de le ressaisir à chaque lot.
-        const newLot={id:U.uid(),lotNumber:U.val('nl_num'),dluo:U.val('nl_dluo'),qtyGeneral:U.numVal('nl_qg'),qtyEvent:U.numVal('nl_qe'),costUnit:U.num(v.costUnit)};
+        const newLot={id:U.uid(),lotNumber:U.val('nl_num'),dluo:U.val('nl_dluo'),qtyGeneral:U.numVal('nl_qg'),qtyEvent:U.numVal('nl_qe'),costUnit:U.num(v.costUnit),costFinal:true};
         v.lots.push(newLot);
         const srcVal=U.val('nl_src'); let entry;
         if(srcVal){   // lot issu d'une réception d'achat : on l'inscrit dans le tri de cette réception (annulable avec le lot)
@@ -1603,7 +1603,7 @@ const Stock = {
     lot.pack = o.type === 'blister'
       ? { type: 'blister', key: o.key, refId: o.ref.id, consoId: o.conso ? o.conso.id : '', name: o.label, dims: o.dims.widthStr + '×' + o.dims.lengthStr, widthMm: o.dims.widthMm, lengthMm: o.dims.lengthMm, qty, unitCost: o.cost, date: U.today() }
       : { type: 'sachet', key: o.key, consoId: o.conso.id, name: o.conso.name, dims: o.conso.dimensions || '', qty, unitCost: o.cost, date: U.today() };
-    if (info) { const fresh = this._packCatInfo(p, v); if (fresh) lot.costUnit = fresh.calc.costBase; }
+    if (info) { const fresh = this._packCatInfo(p, v); if (fresh) { lot.costUnit = fresh.calc.costBase; lot.costFinal = true; } }
     v.lastPackKey = o.key;
     if (o.type === 'sachet') v.lastSachetConsoId = o.conso.id;
     // Historique durable sur la VARIANTE (les lots vides sont supprimés après vente).
@@ -1761,7 +1761,7 @@ const Stock = {
         const fromG=Math.min(U.num(f.lot.qtyGeneral),consumed);
         f.lot.qtyGeneral=U.num(f.lot.qtyGeneral)-fromG; f.lot.qtyEvent=U.num(f.lot.qtyEvent)-(consumed-fromG);
         let dest=tv.lots.find(l=>l.lotNumber===f.lot.lotNumber&&l.dluo===f.lot.dluo);
-        if(!dest){dest={id:U.uid(),lotNumber:f.lot.lotNumber,dluo:f.lot.dluo,qtyGeneral:0,qtyEvent:0,costUnit:U.num(tv.costUnit)||U.num(f.lot.costUnit)};tv.lots.push(dest);}
+        if(!dest){dest={id:U.uid(),lotNumber:f.lot.lotNumber,dluo:f.lot.dluo,qtyGeneral:0,qtyEvent:0,costUnit:U.num(tv.costUnit)||U.num(f.lot.costUnit),...((U.num(tv.costUnit)||f.lot.costFinal)?{costFinal:true}:{})};tv.lots.push(dest);}
         dest.qtyGeneral=U.num(dest.qtyGeneral)+n;
         const entry = Store.log('conditionnement',`${n}×${Pricing.labelVariant(tv)} — ${p.name} (lot ${f.lot.lotNumber||'—'})`,
           {type:'condition',data:{pId,vId,lId,tvId:tv.id,destLotId:dest.id,n,consumed,fromG}});
@@ -2379,6 +2379,20 @@ const Stock = {
   costShown(ht, vat) {
     const S = Store.state.settings;
     return S.vatActive ? { v: U.num(ht), lab: 'HT' } : { v: U.num(ht) * (1 + U.num(vat) / 100), lab: 'TTC' };
+  },
+  /* Coefficient « TVA d'achat » d'un produit stock : taux de la ligne fournisseur principale de sa fiche prix, sinon taux global ; 1 si assujetti. */
+  buyK(p, v) {
+    const S = Store.state.settings; if (S.vatActive) return 1;
+    const cat = Store.state.catalogM.find(x => x.id === ((v && v.catalogId) || (p && p.catalogId)));
+    const e = cat ? Pricing.mainEntry(cat) : null;
+    return Pricing.vatK(e ? e.vatRate : undefined);
+  },
+  /* Coût d'UNE pièce d'un lot pour la marge (2026-10-07) : les lots créés depuis cette date portent un coût déjà complet (`costFinal`, TVA d'achat comprise tant que non assujetti) ;
+     les lots plus anciens (coût HT) reçoivent la TVA d'achat au moment de la vente. Sans coût de lot : coût de la variante. */
+  lotCost(p, v, lot) {
+    const c = lot ? U.num(lot.costUnit) : 0;
+    if (!c) return U.num(v && v.costUnit);
+    return lot.costFinal ? c : c * this.buyK(p, v);
   },
   matVat(m) { return U.num(m.costVat !== undefined && m.costVat !== null && m.costVat !== '' ? m.costVat : (Store.state.settings.vatRate ?? 20)); },
   matUnitCostOf(total, qper, tax, vat) {

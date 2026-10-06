@@ -355,7 +355,7 @@ const App = {
         const qg = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
         const qe = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
         const q = qg + qe;
-        const cost = v.lots.reduce((a, l) => a + U.num(l.costUnit) * (U.num(l.qtyGeneral) + U.num(l.qtyEvent)), 0);
+        const cost = v.lots.reduce((a, l) => a + Stock.lotCost(sp, v, l) * (U.num(l.qtyGeneral) + U.num(l.qtyEvent)), 0);
         gen += qg; evt += qe; buy += cost; sell += q * U.num(v.priceTTC);
         if (v.mode === 'gram') kg += q * U.num(v.value) / 1000; else if (v.mode === 'vrac') kg += q; else pieces += q * (v.mode === 'piece' ? (U.num(v.value) || 1) : 1);
         vars.push({ label: Pricing.labelVariant(v), sku: v.sku || '', price: U.num(v.priceTTC), cost: q ? cost / q : 0, qGen: qg, qEvt: qe, low: U.num(v.low) });
@@ -399,8 +399,8 @@ const App = {
     let overview = [
       ...inv.map(r => ({ name: r.name, type: r.meat, stock: r.gen + r.evt, stockLabel: r.evt ? `${U.qty(r.gen)} + ${U.qty(r.evt)} évén.` : U.qty(r.gen), buy: r.buy, sell: r.sell, nv: r.vars.length, linked: r.linked, unlinked: r.unlinked, cat: 'Mastication', stockId: r.stockId })),
       ...acc.map(r => ({ name: r.name, type: r.category, stock: r.total, stockLabel: U.qty(r.total), buy: r.buy, sell: r.sell, nv: 1, linked: true, cat: 'Accessoire' })),
-      ...st.materials.map(m => ({ name: m.name, type: Stock.matKindLabel[m.kind] || m.kind, stock: U.num(m.qty), stockLabel: `${U.qty(m.qty)} ${m.unit === 'm' ? 'm' : 'PCS'}`, buy: U.num(m.qty) * U.num(m.costUnit), sell: null, nv: 1, linked: true, cat: 'Matières premières' })),
-      ...st.consumables.map(c => ({ name: c.name, type: c.category || 'Autre', stock: U.num(c.qty), stockLabel: `${U.qty(c.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}`, buy: U.num(c.qty) * U.num(c.costUnit), sell: null, nv: 1, linked: true, cat: 'Consommable' }))
+      ...st.materials.map(m => ({ name: m.name, type: Stock.matKindLabel[m.kind] || m.kind, stock: U.num(m.qty), stockLabel: `${U.qty(m.qty)} ${m.unit === 'm' ? 'm' : 'PCS'}`, buy: U.num(m.qty) * Accessoires.matCost(m), sell: null, nv: 1, linked: true, cat: 'Matières premières' })),
+      ...st.consumables.map(c => ({ name: c.name, type: c.category || 'Autre', stock: U.num(c.qty), stockLabel: `${U.qty(c.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}`, buy: U.num(c.qty) * U.num(c.costUnit) * Pricing.vatK(), sell: null, nv: 1, linked: true, cat: 'Consommable' }))
     ];
     const dashScope = this._dashScope || ['Mastication'];
     overview = overview.filter(r => dashScope.includes(r.cat));
