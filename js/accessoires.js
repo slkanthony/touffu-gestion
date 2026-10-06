@@ -773,9 +773,10 @@ const Accessoires = {
         } else if (f.unit === 'piece') {
           // boucleries + toute catégorie à la pièce (mousqueton, anneau…) : sélection par article, filtrée par largeur
           // produit dédié à une largeur (« Mousqueton 20mm », variantes = finitions) : la famille (prix moyen) est proposée, puis chaque article
-          const dedicated = this._labelHasWidth(f.label, ws);
-          if (dedicated) items.push({ type: 'family', data: f });
-          const wsn = ws.map(w => this._normWidth(w)), compatible = f.materials.filter(m => dedicated || !m.variant || ws.includes(m.variant) || wsn.includes(this._sizeOf(m)));
+          // produit « Toutes les tailles » (rivets, clous, décorations…) : proposé quelle que soit la largeur choisie
+          const dedicated = this._labelHasWidth(f.label, ws), allW = f.materials.every(m => m.allSizes);
+          if (dedicated || allW) items.push({ type: 'family', data: f });
+          const wsn = ws.map(w => this._normWidth(w)), compatible = f.materials.filter(m => dedicated || m.allSizes || !m.variant || ws.includes(m.variant) || wsn.includes(this._sizeOf(m)));
           compatible.forEach(m => items.push({ type: 'material', data: m, family: f }));
         } else {
           items.push({ type: 'family', data: f });

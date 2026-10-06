@@ -2698,7 +2698,10 @@ const Stock = {
      (« mousqueton » + 20mm → « mousqueton 20mm », stocké dans `m.product`) ; ses lignes sont des VARIANTES (`m.variant` : Noir, Argent, Or) avec chacune son SKU, sa réf., son prix,
      son stock. Le prix moyen des variantes sert dans Accessoires. SANGLES : produit = couleur, lignes = TAILLES (`m.variant` = largeur), pas de `m.size`. */
   matBase(m) { const p = m.product || m.name || ''; return m.size && p.toLowerCase().endsWith((' ' + m.size).toLowerCase()) ? p.slice(0, p.length - m.size.length - 1).trim() : p; },
-  matCompose(base, size) { base = String(base || '').trim(); size = String(size || '').trim(); return size && !base.toLowerCase().endsWith(size.toLowerCase()) ? (base + ' ' + size).trim() : base; },
+  /* « Toutes les tailles » (`m.allSizes`, valeur '__all' dans les menus) : pièce utilisable sur n'importe quelle largeur de sangle (rivets, clous, décorations…), sans suffixe de taille dans le nom.
+     Sans taille du tout (« aucune ») = pièce non rattachée (achat test) : elle n'est proposée dans Accessoires que si aucune largeur n'est choisie. */
+  _applySize(o, size) { delete o.size; delete o.allSizes; if (size === '__all') o.allSizes = true; else if (size) o.size = size; },
+  matCompose(base, size) { base = String(base || '').trim(); size = size === '__all' ? '' : String(size || '').trim(); return size && !base.toLowerCase().endsWith(size.toLowerCase()) ? (base + ' ' + size).trim() : base; },
   /* Toutes les tailles déjà utilisées : tailles des produits hors sangle + largeurs des sangles (+ anciennes variantes qui ressemblent à une largeur). */
   _allSizes() {
     const set = new Set();
@@ -2710,11 +2713,12 @@ const Stock = {
   },
   /* Menu « Taille » : tailles déjà utilisées + « Autre… » (champ texte). `taken` = tailles à griser (déjà dans ce produit, sangles). `none` = proposer « aucune ». */
   _sizeSelect(selId, inpId, cur, taken, none, onchange) {
-    const labels = this._allSizes(); if (cur && !labels.includes(cur)) labels.push(cur);
+    const labels = this._allSizes(); if (cur && cur !== '__all' && !labels.includes(cur)) labels.push(cur);
     const nrm = v => U.normSearch(v).replace(/\s+/g, '');
-    if (!labels.length) return `<input id="${inpId}" value="${U.esc(cur || '')}" placeholder="ex: 20mm">`;
+    if (!labels.length && !none) return `<input id="${inpId}" value="${U.esc(cur || '')}" placeholder="ex: 20mm">`;
     return `<select id="${selId}" onchange="var i=document.getElementById('${inpId}'),n=this.value==='__new';i.style.display=n?'':'none';if(n)i.focus();${onchange || ''}">
         ${cur ? (none ? '<option value="">— aucune —</option>' : '') : (none ? '<option value="">— aucune —</option>' : '<option value="">— choisir —</option>')}
+        ${none ? `<option value="__all" ${cur === '__all' ? 'selected' : ''}>Toutes les tailles</option>` : ''}
         ${labels.map(v => { const t = taken && taken.has(nrm(v)) && nrm(v) !== nrm(cur || ''); return `<option value="${U.esc(v)}" ${v === cur ? 'selected' : ''} ${t ? 'disabled' : ''}>${U.esc(v)}${t ? ' — déjà dans ce produit' : ''}</option>`; }).join('')}
         <option value="__new">＋ Autre (nouvelle taille)…</option></select>
       <input id="${inpId}" value="" placeholder="ex: 20mm" style="display:none;margin-top:6px;">`;
@@ -2727,11 +2731,11 @@ const Stock = {
     const sang = Store.isSangleKind(kind || m.kind);
     if (!sang && this._matPreset) return `<div class="fg" id="m_size_fg" style="display:none;"></div>`;
     let cur = curOverride;
-    if (cur === undefined) cur = sang ? (m.variant || (m.product ? '' : m.name) || '') : (m.size || (/^\s*\d+(?:[.,]\d+)?\s*mm\s*$/i.test(m.variant || '') ? m.variant : ''));
+    if (cur === undefined) cur = sang ? (m.variant || (m.product ? '' : m.name) || '') : (m.allSizes ? '__all' : (m.size || (/^\s*\d+(?:[.,]\d+)?\s*mm\s*$/i.test(m.variant || '') ? m.variant : '')));
     const nrm = v => U.normSearch(v).replace(/\s+/g, '');
     const taken = sang && prod ? new Set(Store.state.materials.filter(x => x.id !== m.id && (x.product || x.name) === prod).map(x => nrm(x.variant || x.name))) : null;
     const info = sang ? "La largeur de cette ligne (10mm, 16mm…). Celles déjà dans ce produit sont grisées."
-      : "La taille de sangle à laquelle ce produit est adapté (20mm…). Elle s'ajoute à la fin du nom du produit : « mousqueton » + 20mm → « mousqueton 20mm ». Laisse « aucune » si le produit n'a pas de taille.";
+      : "La taille de sangle à laquelle ce produit est adapté (20mm…). Elle s'ajoute à la fin du nom du produit : « mousqueton » + 20mm → « mousqueton 20mm ». « Toutes les tailles » : utilisable sur n'importe quelle largeur de sangle (rivets, clous, décorations…). « Aucune » : pièce non rattachée (achat test), proposée dans Accessoires seulement quand aucune largeur n'est choisie.";
     return `<div class="fg" id="m_size_fg"><label>Taille ${U.info(info)}</label>${this._sizeSelect('m_size_sel', 'm_size', cur, taken, !sang)}</div>`;
   },
   _matVariantRow(m, kind) {
@@ -2743,7 +2747,8 @@ const Stock = {
   _matKindChanged(kind) {
     const m = this._matEditing; if (!m) return;
     const row = document.getElementById('m_vrow'); if (row) row.style.display = Store.isSangleKind(kind) ? 'none' : '';
-    if (!Store.state.materials.includes(m)) { const u = document.getElementById('m_unit'); if (u) u.value = Store.isSangleKind(kind) ? 'm' : 'piece'; }   // nouvelle matière : sangle = au mètre, le reste = à la pièce
+    const u = document.getElementById('m_unit');   // unité automatique : sangle = au mètre, le reste = à la pièce
+    if (u) { const sang = Store.isSangleKind(kind), l = document.getElementById('m_unit_lab'); u.value = sang ? 'm' : 'piece'; if (l) l.textContent = sang ? 'mètre' : 'pièce'; this._calcMatUnit(); }
     this._matSizeRefresh(kind);
   },
   _matSizeRefresh(kindArg) {
@@ -2778,7 +2783,7 @@ const Stock = {
         if (prod === key || Store.state.materials.some(x => (x.product || x.name) === prod)) { U.toast('Un produit « ' + prod + ' » existe déjà : change le nom ou la taille.', true); return false; }
         const copies = items.map(m => {
           const c = JSON.parse(JSON.stringify(m));
-          c.id = U.uid(); c.product = prod; if (!sang) { if (size) c.size = size; else delete c.size; }
+          c.id = U.uid(); c.product = prod; if (!sang) this._applySize(c, size);
           c.name = (prod + ' ' + (c.variant || '')).trim(); c.qty = 0; delete c.rolls; c.ref = ''; c.url = '';
           c.sku = Pricing.autoSkuMat(prod, c.kind, c.variant);
           return c;
@@ -2794,25 +2799,23 @@ const Stock = {
   editMat(id, presetProduct, tpl) {
     this._matEditing = null; this._matPreset = presetProduct || '';
     const ref = tpl || (presetProduct ? Store.state.materials.find(x => (x.product || x.name) === presetProduct) : null);
-    this._matPresetSize = ref?.size || '';
+    this._matPresetSize = ref?.allSizes ? '__all' : (ref?.size || '');
     const m = id ? Store.state.materials.find(x => x.id === id)
-      : { id: U.uid(), product: presetProduct || '', size: ref?.size || '', variant: '', name: '', kind: ref?.kind || 'sangle', unit: ref?.unit || 'm', sku: '', costUnit: tpl ? tpl.costUnit : '', ...(tpl && tpl.costTotal != null ? { costTotal: tpl.costTotal, costQtyPer: tpl.costQtyPer } : {}), qty: 0, low: tpl ? tpl.low : 0, costTax: ref ? ref.costTax : 'TTC', costVat: ref ? ref.costVat : 21 };
+      : { id: U.uid(), product: presetProduct || '', size: ref?.size || '', ...(ref?.allSizes ? { allSizes: true } : {}), variant: '', name: '', kind: ref?.kind || 'sangle', unit: ref?.unit || 'm', sku: '', costUnit: tpl ? tpl.costUnit : '', ...(tpl && tpl.costTotal != null ? { costTotal: tpl.costTotal, costQtyPer: tpl.costQtyPer } : {}), qty: 0, low: tpl ? tpl.low : 0, costTax: ref ? ref.costTax : 'TTC', costVat: ref ? ref.costVat : 21 };
     this._matEditing = m;
     const mTax = m.costTax === 'TTC' ? 'TTC' : 'HT', mTotal = m.costTotal != null ? U.num(m.costTotal) : U.num(m.costUnit), mQper = U.num(m.costQtyPer) || 1;
     U.modal({
       title: id ? 'Modifier la matière — ' + U.esc(m.product || m.name) : (tpl ? '📋 Dupliquer — ' + U.esc(presetProduct) : presetProduct ? '＋ ' + (Store.isSangleKind(m.kind) ? 'Taille' : 'Variante') + ' — ' + U.esc(presetProduct) : 'Nouvelle matière'), okLabel: 'Enregistrer',
       body: `
       <div class="frow" style="align-items:flex-start;">
-        <div class="fg"><label>Produit ${U.info("Le nom du produit (ex : « mousqueton »). Pour un type hors sangle, la taille choisie à côté s'ajoute à la fin du nom (« mousqueton 20mm »). Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label><input id="m_product" value="${U.esc(presetProduct || (m.size ? this.matBase(m) : (m.product || '')))}" placeholder="ex: mousqueton" ${presetProduct ? 'readonly' : ''} oninput="Stock._matSizeRefresh()"></div>
+        <div class="fg"><label>Produit ${U.info("Le nom du produit (ex : « mousqueton »). Pour un type hors sangle, la taille choisie à côté s'ajoute à la fin du nom (« mousqueton 20mm » ; rien n'est ajouté pour « Toutes les tailles » ou « aucune »). Pour renommer un produit entier : bouton « Modifier » sur la ligne du produit.")}</label><input id="m_product" value="${U.esc(presetProduct || (m.size ? this.matBase(m) : (m.product || '')))}" placeholder="ex: mousqueton" ${presetProduct ? 'readonly' : ''} oninput="Stock._matSizeRefresh()"></div>
         ${this._matSizeField(m, m.product || presetProduct || '', m.kind)}
       </div>
       ${this._matVariantRow(m, m.kind)}
       <div class="frow">
         <div class="fg"><label>Type</label><select id="m_kind" onchange="Stock._matKindChanged(this.value)">
           ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
-        <div class="fg"><label>Unité</label><select id="m_unit">
-          <option value="m" ${m.unit === 'm' ? 'selected' : ''}>mètre</option>
-          <option value="piece" ${m.unit === 'piece' ? 'selected' : ''}>pièce</option></select></div>
+        <div class="fg"><label>Unité ${U.info("Automatique selon le type : au mètre pour les sangles, à la pièce pour tout le reste.")}</label><input type="hidden" id="m_unit" value="${m.unit === 'm' ? 'm' : 'piece'}"><span id="m_unit_lab" style="display:block;padding:8px 0;font-weight:600;">${m.unit === 'm' ? 'mètre' : 'pièce'}</span></div>
       </div>
       <div class="frow">
         <div class="fg"><label>SKU</label><input id="m_sku" value="${U.esc(m.sku || '')}"></div>
@@ -2844,7 +2847,7 @@ const Stock = {
         if (Store.state.materials.some(x => x.id !== m.id && (x.product || x.name) === product && U.normSearch(x.variant || x.name).replace(/\s+/g, '') === U.normSearch(variant).replace(/\s+/g, ''))) { U.toast(sang ? 'Cette taille existe déjà dans ce produit.' : 'Cette variante existe déjà dans ce produit.', true); return false; }
         const dupM = this.dupWarnings({ url: U.val('m_url'), ref: U.val('m_ref'), self: { kind: 'T', id: m.id } });
         if (!U.dupGate(dupM, () => document.getElementById('modalOk').click())) return false;
-        m.product = product; m.variant = variant; if (size) m.size = size; else delete m.size;
+        m.product = product; m.variant = variant; this._applySize(m, size);
         m.name = (product + ' ' + variant).trim();
         m.kind = U.val('m_kind'); m.unit = U.val('m_unit');
         m.sku = U.val('m_sku') || Pricing.autoSkuMat(product || m.name, m.kind, m.variant);
@@ -2882,7 +2885,7 @@ const Stock = {
     if (!items.length) return;
     const kinds = Store.materialKinds(), cur = [...new Set(items.map(m => m.kind || 'autre'))], one = cur.length === 1 ? cur[0] : '';
     const sang = Store.isSangleKind(items[0].kind);
-    const baseName = sang ? key : this.matBase(items[0]), curSize = sang ? '' : (items[0].size || '');
+    const baseName = sang ? key : this.matBase(items[0]), curSize = sang ? '' : (items[0].allSizes ? '__all' : (items[0].size || ''));
     U.modal({
       title: '✏️ Modifier le produit', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Nom du produit${sang ? '' : ' (la taille s’ajoute à la fin)'}</label><input id="mg_name" value="${U.esc(baseName)}" autofocus></div>
@@ -2907,7 +2910,7 @@ const Stock = {
         }
         items.forEach(m => {
           m.product = newProd;
-          if (!sang) { if (newSize) m.size = newSize; else delete m.size; }
+          if (!sang) this._applySize(m, newSize);
           m.name = (newProd + ' ' + (m.variant || '')).trim();
           if (recat) m.kind = newKind;
         });
