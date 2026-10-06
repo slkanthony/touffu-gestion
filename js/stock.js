@@ -361,7 +361,7 @@ const Stock = {
               <td class="num muted">${U.qty(tot)}</td>
               <td class="right"><div class="act-grid"><span class="act-row">
                 ${isVrac?`<button class="btn-ghost btn-sm" onclick="Stock.conditionner('${p.id}','${v.id}','${l.id}')">🎁 Conditionner</button>`:''}
-                ${l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost,3)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
+                ${l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
                 </span><span class="act-row">
                 <button class="btn-ghost btn-sm" title="Modifier le lot" onclick="Stock.editLot('${p.id}','${v.id}','${l.id}')">Modifier</button>
                 <button class="btn-icon" title="Supprimer le lot" onclick="Stock.delLot('${p.id}','${v.id}','${l.id}')">🗑️</button>
@@ -382,7 +382,7 @@ const Stock = {
       <td class="num" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
       <td class="num" title="Lots disponibles en stock événement (calculé)">${U.qty(vq.e)} <span class="muted" style="font-size:.72rem;">lots</span></td>
       <td class="num muted" title="Lots disponibles au total (calculé)"><b>${U.qty(vq.t)}</b></td>
-      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n}">${U.eur(U.num(vq.par.costUnit) * vq.n, 3)}</td>
+      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n}">${U.eur(U.num(vq.par.costUnit) * vq.n)}</td>
       <td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="Prix de vente TTC du lot" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>
       <td class="num muted">—</td>
       <td class="right"><div class="act-grid"><span class="act-row">
@@ -401,7 +401,7 @@ const Stock = {
       <td class="num ${lowCls}"><b>${U.qty(qg)}</b></td>
       <td class="num">${U.qty(qe)}${lowE>0&&qe<=lowE?` <span class="warn-txt" style="font-size:.75rem;">(min ${lowE})</span>`:''}</td>
       <td class="num muted" title="Stock gén. + Stock évén. — tout ce que tu possèdes physiquement pour cette variante"><b>${U.qty(qg+qe)}</b></td>
-      <td class="num sensitive"><input type="number" step="0.001" value="${U.num(v.costUnit).toFixed(3)}" style="width:78px;" title="Prix d'achat / coût unitaire de référence" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>
+      <td class="num sensitive"><input type="number" step="0.01" value="${U.num(v.costUnit).toFixed(2)}" style="width:78px;" title="Prix d'achat / coût unitaire de référence" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>
       <td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="Prix de vente TTC" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>
       <td class="num muted">${lots.length}</td>
       <td class="right"><div class="act-grid"><span class="act-row">
@@ -1426,7 +1426,7 @@ const Stock = {
   replaceInfo(c) {
     if (!c || !c.toReplace) return null;
     const by = c.replaceBy ? Store.state.consumables.find(x => x.id === c.replaceBy) : null;
-    const txt = '🚩 Ne plus racheter' + (by ? ' → ' + by.name + (by.dimensions ? ' ' + by.dimensions : '') + (U.num(by.costUnit) ? ' (' + U.eur(by.costUnit, 3) + ' au lieu de ' + U.eur(c.costUnit, 3) + ')' : '') : '') + (c.replaceNote ? ' — ' + c.replaceNote : '');
+    const txt = '🚩 Ne plus racheter' + (by ? ' → ' + by.name + (by.dimensions ? ' ' + by.dimensions : '') + (U.num(by.costUnit) ? ' (' + U.eur(by.costUnit) + ' au lieu de ' + U.eur(c.costUnit) + ')' : '') : '') + (c.replaceNote ? ' — ' + c.replaceNote : '');
     return { by, txt };
   },
   replaceBadge(c) {
@@ -1508,7 +1508,7 @@ const Stock = {
     const def = v.lastPackKey || (v.lastSachetConsoId ? 'c:' + v.lastSachetConsoId : '') || (info && info.key) || '';
     const units = U.num(lot.qtyGeneral) + U.num(lot.qtyEvent);
     this._packCtx = { pId, vId, lId, units };
-    const opt = o => `<option value="${o.key}" ${o.key === def ? 'selected' : ''} data-a="${U.esc((o.flag ? '🚩 ' : '') + o.label)}" data-b="stock ${U.esc(o.stock)}" data-c="${U.esc(U.eur(o.cost, 3))}">${o.flag ? '🚩 ' : ''}${U.esc(o.label)} — ${U.eur(o.cost, 3)} (stock ${U.esc(o.stock)})</option>`;
+    const opt = o => `<option value="${o.key}" ${o.key === def ? 'selected' : ''} data-a="${U.esc((o.flag ? '🚩 ' : '') + o.label)}" data-b="stock ${U.esc(o.stock)}" data-c="${U.esc(U.eur(o.cost))}">${o.flag ? '🚩 ' : ''}${U.esc(o.label)} — ${U.eur(o.cost)} (stock ${U.esc(o.stock)})</option>`;
     const opts = (po.sachets.length ? `<optgroup label="Sachets">${po.sachets.map(opt).join('')}</optgroup>` : '')
       + (po.blisters.length ? `<optgroup label="Blisters (découpe)">${po.blisters.map(opt).join('')}</optgroup>` : '');
     U.modal({
@@ -1540,10 +1540,10 @@ const Stock = {
     const info = this._packCatInfo(f.p, f.v);
     const sacLbl = info && info.sachet ? info.sachet.name + (info.sachet.type !== 'blister' && info.sachet.dims ? ' · ' + info.sachet.dims : '') : 'aucun';
     if (!info) { box.innerHTML = html + `<p class="muted">Pas de fiche prix liée à cette variante : l'emballage est seulement déduit et mémorisé.</p>`; return; }
-    if (!o) { box.innerHTML = html + `<p class="muted">Emballage de la fiche prix actuelle : <b>${U.esc(sacLbl)}</b> (${U.eur(info.calc.sacCost, 3)}).</p>`; return; }
+    if (!o) { box.innerHTML = html + `<p class="muted">Emballage de la fiche prix actuelle : <b>${U.esc(sacLbl)}</b> (${U.eur(info.calc.sacCost)}).</p>`; return; }
     const im = this._packImpact(info, o.cost);
     const same = o.key === info.key;
-    const dEur = (a, b, lowerIsGood) => { const x = b - a; if (Math.abs(x) < 0.0005) return '<span class="muted">=</span>'; const good = lowerIsGood ? x < 0 : x > 0; return `<b class="${good ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${U.eur(x, 3)}</b>`; };
+    const dEur = (a, b, lowerIsGood) => { const x = b - a; if (Math.abs(x) < 0.0005) return '<span class="muted">=</span>'; const good = lowerIsGood ? x < 0 : x > 0; return `<b class="${good ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${U.eur(x)}</b>`; };
     const dCo = (a, b) => { const x = b - a; if (Math.abs(x) < 0.005) return '<span class="muted">=</span>'; return `<b class="${x > 0 ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${x.toFixed(2)}</b>`; };
     const cls = (coeff, profit) => (profit < 0 || coeff < im.thr) ? 'neg' : 'pos';
     const n = this._packCtx.units;
@@ -1554,10 +1554,10 @@ const Stock = {
     else if (im.after.coeffB2B < im.thr) flags.push(`🟠 <b>Coeff pro critique</b> (sous ${im.thr} avec ta remise de ${im.disc} %) — pense à baisser la remise ou revoir le prix`);
     box.innerHTML = html + `
       <div class="table-wrap mt"><table>
-        <thead><tr><th></th><th class="num">Emballage de la fiche<br><span class="muted">${U.esc(sacLbl)} · ${U.eur(info.calc.sacCost, 3)}</span></th><th class="num">Emballage choisi<br><span class="muted">${U.esc(o.label)} · ${U.eur(o.cost, 3)}</span></th><th class="num">Écart</th></tr></thead>
+        <thead><tr><th></th><th class="num">Emballage de la fiche<br><span class="muted">${U.esc(sacLbl)} · ${U.eur(info.calc.sacCost)}</span></th><th class="num">Emballage choisi<br><span class="muted">${U.esc(o.label)} · ${U.eur(o.cost)}</span></th><th class="num">Écart</th></tr></thead>
         <tbody>
           <tr><td>Prix de vente TTC</td><td class="num">${U.eur(im.priceTTC)}</td><td class="num">${U.eur(im.priceTTC)}</td><td class="num muted">inchangé</td></tr>
-          <tr><td>Coût de revient / unité</td><td class="num">${U.eur(im.before.cost, 3)}</td><td class="num">${U.eur(im.after.cost, 3)}</td><td class="num">${dEur(im.before.cost, im.after.cost, true)}</td></tr>
+          <tr><td>Coût de revient / unité</td><td class="num">${U.eur(im.before.cost)}</td><td class="num">${U.eur(im.after.cost)}</td><td class="num">${dEur(im.before.cost, im.after.cost, true)}</td></tr>
           <tr><td>Coeff public</td><td class="num">${im.before.coeff.toFixed(2)}</td><td class="num ${cls(im.after.coeff, im.after.profit)}">${im.after.coeff.toFixed(2)}</td><td class="num">${dCo(im.before.coeff, im.after.coeff)}</td></tr>
           <tr><td>Bénéfice / unité</td><td class="num">${U.eur(im.before.profit)}</td><td class="num ${im.after.profit >= 0 ? 'pos' : 'neg'}">${U.eur(im.after.profit)}</td><td class="num">${dEur(im.before.profit, im.after.profit)}</td></tr>
           <tr><td>Bénéfice sur le lot (${n} u.)</td><td class="num">${U.eur(im.before.profit * n)}</td><td class="num ${im.after.profit >= 0 ? 'pos' : 'neg'}">${U.eur(im.after.profit * n)}</td><td class="num">${dEur(im.before.profit * n, im.after.profit * n)}</td></tr>
@@ -2236,7 +2236,7 @@ const Stock = {
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
             <input type="number" step="1" value="${c.qty}" style="width:85px;text-align:center;" onchange="Stock.setConsoQty('${c.id}',this.value)"> ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td>
           <td style="text-align:center;">${U.num(c.low)||'—'}</td>
-          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20), ent = c.costTax === 'TTC' ? 'TTC' : 'HT'; return (cQper !== 1 || Math.abs(sh.v - cTotal) > 0.0005) ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">${ent !== sh.lab ? `<span class="badge warn" style="font-size:.68rem;">saisi ${ent}</span> ` : ''}= ${U.eur(sh.v, 3)} ${sh.lab} / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''; })()}</td>
+          <td style="text-align:center;" class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${cTotal}" onchange="Stock.setConsoCost('${c.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${cQper}" onchange="Stock.setConsoCost('${c.id}','costQtyPer',this.value)"></div>${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20), ent = c.costTax === 'TTC' ? 'TTC' : 'HT'; return (cQper !== 1 || Math.abs(sh.v - cTotal) > 0.0005) ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">${ent !== sh.lab ? `<span class="badge warn" style="font-size:.68rem;">saisi ${ent}</span> ` : ''}= ${U.eur(sh.v)} ${sh.lab} / ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</div>` : ''; })()}</td>
           <td class="right"><div class="act-grid"><span class="act-row">${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${c.url ? 'Ouvrir la page fournisseur' : 'Ajouter un lien fournisseur'}" onclick="Stock.openConsoLink('${c.id}')">${c.url ? '🔗' : '🔗＋'}</button>`}
             <button class="btn-icon" title="Dupliquer" onclick="Stock.dupConso('${c.id}')">📋</button></span><span class="act-row">
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
@@ -2285,7 +2285,7 @@ const Stock = {
       <div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Prix d'achat (€)</label><div class="tax-in"><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"><button type="button" id="c_tax" class="tax-tag" data-tax="${c.costTax==='TTC'?'TTC':'HT'}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleConsoTax()">${c.costTax==='TTC'?'TTC':'HT'}</button></div></div>
         <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
-        <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20); return U.eur(sh.v, 3) + ' ' + sh.lab; })()} /u</span></div>
+        <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20); return U.eur(sh.v) + ' ' + sh.lab; })()} /u</span></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
@@ -2325,7 +2325,7 @@ const Stock = {
   _replaceOpts(selfId, cat, cur) {
     const same = Store.state.consumables.filter(x => x.id !== selfId && (x.category || 'Autre') === (cat || 'Autre'))
       .sort((a, b) => U.sortFr(a.name + (this.consoDims(a) || ''), b.name + (this.consoDims(b) || '')));
-    return `<option value="">—</option>` + same.map(x => `<option value="${x.id}" ${cur === x.id ? 'selected' : ''} data-a="${U.esc(x.name)}" data-b="${U.esc(this.consoDims(x) || '')}" data-c="${U.esc(U.eur(x.costUnit, 3))}">${U.esc(x.name)}${this.consoDims(x) ? ' · ' + U.esc(this.consoDims(x)) : ''}</option>`).join('');
+    return `<option value="">—</option>` + same.map(x => `<option value="${x.id}" ${cur === x.id ? 'selected' : ''} data-a="${U.esc(x.name)}" data-b="${U.esc(this.consoDims(x) || '')}" data-c="${U.esc(U.eur(x.costUnit))}">${U.esc(x.name)}${this.consoDims(x) ? ' · ' + U.esc(this.consoDims(x)) : ''}</option>`).join('');
   },
   _onConsoCatChange() {
     const cat = U.val('c_cat');
@@ -2398,7 +2398,7 @@ const Stock = {
     const unit = document.getElementById('m_unit') ? U.val('m_unit') : 'm';
     const el = document.getElementById('m_costResult');
     const sh = this.costShown(this.matUnitCostOf(U.numVal('m_costTotal'), U.numVal('m_costQty'), tax, vat), vat);
-    if (el) el.textContent = U.eur(sh.v, 3) + ' ' + sh.lab + ' / ' + (unit === 'm' ? 'm' : 'pièce');
+    if (el) el.textContent = U.eur(sh.v) + ' ' + sh.lab + ' / ' + (unit === 'm' ? 'm' : 'pièce');
   },
   _toggleConsoTax() {
     const b = document.getElementById('c_tax'); if (!b) return;
@@ -2411,7 +2411,7 @@ const Stock = {
     const unit = this.consoUnitCost(U.numVal('c_costTotal'), U.numVal('c_costQty'), tax);
     const el = document.getElementById('c_costResult');
     const sh = this.costShown(unit, Store.state.settings.vatRate ?? 20);
-    if (el) el.textContent = U.eur(sh.v, 3) + ' ' + sh.lab + ' /u';
+    if (el) el.textContent = U.eur(sh.v) + ' ' + sh.lab + ' /u';
   },
   async delConso(id){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
@@ -2588,7 +2588,7 @@ const Stock = {
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}<span class="mini-reorder" style="display:inline-flex;margin:0 0 0 8px;vertical-align:middle;"><button class="btn-icon" title="Monter" ${i <= 0 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',-1)">↑</button><button class="btn-icon" title="Descendre" ${i >= items.length - 1 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',1)">↓</button></span></td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
       ${Store.hideSupplierInfo() ? '' : `<td><input class="mat-ref" value="${U.esc(m.ref || '')}" placeholder="réf." title="Référence chez le fournisseur" onchange="Stock.setMatText('${m.id}','ref',this.value)"></td>`}
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v, 3)} ${shown.lab} / ${unit}</div>` : ''}</td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v)} ${shown.lab} / ${unit}</div>` : ''}</td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
@@ -2827,7 +2827,7 @@ const Stock = {
         <div class="fg"><label>Prix d'achat (€, hors port)</label><div class="tax-in"><input id="m_costTotal" type="number" step="0.01" value="${mTotal}" oninput="Stock._calcMatUnit()"><button type="button" id="m_tax" class="tax-tag" data-tax="${mTax}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleMatTaxIn()">${mTax}</button></div></div>
         <div class="fg"><label>Pour (quantité achetée)</label><input id="m_costQty" type="number" step="0.01" min="0.01" value="${mQper}" oninput="Stock._calcMatUnit()"></div>
       </div>
-      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v, 3) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : 'pièce'}</span></div>
+      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : 'pièce'}</span></div>
       <div class="frow">
         <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>

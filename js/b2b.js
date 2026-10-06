@@ -169,11 +169,11 @@ const B2B = {
           <th class="num" style="border-left:2px solid var(--caramel);">Prix B2B HT</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${this.noVat ? 'Prix B2B HT' : 'Prix B2B TTC'}</th></tr></thead>
           <tbody><tr>
             <td class="col-name">${mainW ? U.esc(mainW) : 'Standard'}</td>
-            <td class="num muted sensitive">${U.eur(it.cost, 3)}</td>
-            <td class="num sensitive">${it.coeffPublic.toFixed(3)}</td>
+            <td class="num muted sensitive">${U.eur(it.cost)}</td>
+            <td class="num sensitive">${it.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(it.priceTTCPublic)}</td>
             <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)} <span class="muted">HT</span>${this._expBadge(this._expDiff('a:' + it.a.id, it.priceHTB2B))}</td>
-            <td class="num sensitive ${it.critical ? 'neg' : ''}">${it.coeffB2B.toFixed(3)}${it.critical ? ' ⚠️' : ''}</td>
+            <td class="num sensitive ${it.critical ? 'neg' : ''}">${it.coeffB2B.toFixed(2)}${it.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${it.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(it.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(it.socialB2B)}</td>
             <td class="num sensitive ${it.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(it.profitB2B)}</b></td>
@@ -313,11 +313,11 @@ const B2B = {
           <th class="num" style="border-left:2px solid var(--caramel);">Prix B2B HT</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${B2B.noVat ? 'Prix B2B HT' : 'Prix B2B TTC'}</th></tr></thead>
           <tbody>${rows.map(r => `<tr>
             <td class="col-name">${U.esc(r.label)}</td>
-            <td class="num muted sensitive">${U.eur(r.cost, 3)}</td>
-            <td class="num sensitive">${r.coeffPublic.toFixed(3)}</td>
+            <td class="num muted sensitive">${U.eur(r.cost)}</td>
+            <td class="num sensitive">${r.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(r.priceTTCPublic)}</td>
             <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)} <span class="muted">HT</span>${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
-            <td class="num sensitive ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(3)}${r.critical ? ' ⚠️' : ''}</td>
+            <td class="num sensitive ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(2)}${r.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${r.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(r.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(r.socialB2B)}</td>
             <td class="num sensitive ${r.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(r.profitB2B)}</b></td>

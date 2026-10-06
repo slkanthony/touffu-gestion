@@ -149,7 +149,7 @@ const Achats = {
       ap.newCost = it.costUnit; l.applied = ap;
       const nm = this.itemName(l.cat === 'conso' ? 'C' : 'T', l.ref) || l.label, pct = prevCost > 0 ? (it.costUnit - prevCost) / prevCost * 100 : 0;
       notes.push(`${nm} +${U.qty(add)} (${U.qty(prevQty)} → ${U.qty(it.qty)})`);
-      if (Math.abs(it.costUnit - prevCost) > 0.00005 && prevCost > 0) notes.push(`💶 prix ${pct > 0 ? '↑ +' : '↓ '}${Math.round(pct * 10) / 10} % : ${nm} ${U.eur(prevCost, 3)} → ${U.eur(it.costUnit, 3)} HT (vérifie les fiches prix concernées)`);
+      if (Math.abs(it.costUnit - prevCost) > 0.00005 && prevCost > 0) notes.push(`💶 prix ${pct > 0 ? '↑ +' : '↓ '}${Math.round(pct * 10) / 10} % : ${nm} ${U.eur(prevCost)} → ${U.eur(it.costUnit)} HT (vérifie les fiches prix concernées)`);
     });
   },
   _newPurchase() {
@@ -277,7 +277,7 @@ const Achats = {
     if (!rows.length) return '';
     rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
     return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent (ou de ta fiche prix) : pense à vérifier les fiches concernées</span></summary>
-      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from, 3)} → ${U.eur(c.to, 3)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span></div>`).join('')}</div></details>`;
+      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span></div>`).join('')}</div></details>`;
   },
 
   /* ---------- mastication : réceptions à ranger (lot → plusieurs tailles) ----------
@@ -300,7 +300,7 @@ const Achats = {
       if (!(kg || pc) || !(b.unitHT > 0)) return;
       l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
       const ci = this._chgInfo(l);
-      if (ci) notes.push(`💶 ${l.label} : fiche prix ${U.eur(ci.from, 3)} → payé ${U.eur(ci.to, 3)} HT/${l.priceCmp.unit} (${ci.pct > 0 ? '↑ +' : '↓ '}${Math.round(ci.pct * 10) / 10} %) — vérifie la fiche`);
+      if (ci) notes.push(`💶 ${l.label} : fiche prix ${U.eur(ci.from)} → payé ${U.eur(ci.to)} HT/${l.priceCmp.unit} (${ci.pct > 0 ? '↑ +' : '↓ '}${Math.round(ci.pct * 10) / 10} %) — vérifie la fiche`);
     });
   },
   /* Réceptions en attente de rangement pour un produit du stock (proposées dans « ＋ Ajouter un lot ») */
@@ -355,16 +355,16 @@ const Achats = {
         let n = 0;
         dist.forEach(d => { (sp ? sp.variants : []).forEach(v => (v.lots || []).forEach(lot => { if (lot.id === d.lotId) { lot.costUnit = ht; n++; } })); });
         Object.assign(r, { closed: true, closedAt: Date.now(), pieces, loss, costPerPiece: ht, avgG: kg ? Math.round((U.num(l.qty) - loss) * 1000 / pieces) : 0 });
-        const entry = Store.log('achat', `Tri terminé — ${l.label} (${U.qty(pieces)} pièces, ${U.eur(ht, 3)} HT / pièce)`, { type: 'restoreBatch', data: snaps });
+        const entry = Store.log('achat', `Tri terminé — ${l.label} (${U.qty(pieces)} pièces, ${U.eur(ht)} HT / pièce)`, { type: 'restoreBatch', data: snaps });
         Store.save('purchases', 'stockM'); U.closeModal(); this.render();
-        U.toast(`Tri terminé : ${U.eur(ht, 3)} HT / pièce${r.avgG ? ' · ' + r.avgG + ' g en moyenne' : ''} · ${n} lot(s) mis à jour.`, false, entry.id);
+        U.toast(`Tri terminé : ${U.eur(ht)} HT / pièce${r.avgG ? ' · ' + r.avgG + ' g en moyenne' : ''} · ${n} lot(s) mis à jour.`, false, entry.id);
       } });
   },
   _detailRow(p) {
     const lines = (p.lines || []).map(l => {
       const c = this.cat(l.cat);
       return `<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);">
-        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from, 3)} → ${U.eur(this._chgInfo(l).to, 3)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece, 3)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
+        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from)} → ${U.eur(this._chgInfo(l).to)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');

@@ -312,7 +312,7 @@ const Stats = {
         else st = '<span class="badge bad">jamais utilisé</span>';
         if (cObj && cObj.toReplace) st += typeof Stock !== 'undefined' ? Stock.replaceBadge(cObj) : ' 🚩';
         const dim = !r.qty && !nF;
-        return `<tr class="${dim ? 'dim' : ''}"><td class="col-name">${lbl(r)}</td><td class="num sensitive">${U.eur(r.unitCost, 3)}</td><td class="num">${U.qty(r.stock)}</td>${withFiches ? this._fichesCell(r.fiches || []) : ''}<td class="num"><b>${U.qty(r.qty)}</b></td><td class="num">${Math.round(r.qty / total * 100)} %</td><td class="num sensitive">${U.eur(r.cost)}</td><td>${r.last ? U.frDate(r.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
+        return `<tr class="${dim ? 'dim' : ''}"><td class="col-name">${lbl(r)}</td><td class="num sensitive">${U.eur(r.unitCost)}</td><td class="num">${U.qty(r.stock)}</td>${withFiches ? this._fichesCell(r.fiches || []) : ''}<td class="num"><b>${U.qty(r.qty)}</b></td><td class="num">${Math.round(r.qty / total * 100)} %</td><td class="num sensitive">${U.eur(r.cost)}</td><td>${r.last ? U.frDate(r.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
       }).join('')}</tbody></table></div>`;
   },
 
@@ -326,13 +326,13 @@ const Stats = {
       const opts2 = w.lengths.map((L, i) => `<option value="${L.lengthMm}" ${i === 1 ? 'selected' : ''}>${U.esc(L.lengthStr)}</option>`).join('');
       const open = !!(this._rollOpen || {})[w.widthMm];
       return `<details class="fold sachet-group" style="margin:8px 0;" ${open ? 'open' : ''} ontoggle="(Stats._rollOpen=Stats._rollOpen||{})[${w.widthMm}]=this.open">
-        <summary style="cursor:pointer;padding:8px 0;"><b style="font-size:1rem;">Rouleau ${U.esc(w.widthStr)}</b> <span class="muted" style="font-size:.85rem;">${w.roll ? '· ' + U.esc(w.roll.name) + ' · ' + U.eur(w.perM, 3) + '/m · stock ' + U.qty(w.roll.qty) + ' ' + U.esc(w.roll.unit || 'm') : '· rouleau non lié'} · ${nF} fiche(s) prix · ${U.qty(Math.round(meters * 100) / 100)} m consommés</span>${w.roll && w.roll.toReplace && typeof Stock !== 'undefined' ? Stock.replaceBadge(w.roll) : ''}</summary>
+        <summary style="cursor:pointer;padding:8px 0;"><b style="font-size:1rem;">Rouleau ${U.esc(w.widthStr)}</b> <span class="muted" style="font-size:.85rem;">${w.roll ? '· ' + U.esc(w.roll.name) + ' · ' + U.eur(w.perM) + '/m · stock ' + U.qty(w.roll.qty) + ' ' + U.esc(w.roll.unit || 'm') : '· rouleau non lié'} · ${nF} fiche(s) prix · ${U.qty(Math.round(meters * 100) / 100)} m consommés</span>${w.roll && w.roll.toReplace && typeof Stock !== 'undefined' ? Stock.replaceBadge(w.roll) : ''}</summary>
         <div class="table-wrap"><table class="pack-tbl">
           <thead><tr><th class="col-name">Longueur de découpe</th><th class="num">Coût / découpe</th><th class="num" title="Variantes de fiches prix qui utilisent cette découpe — survole pour la liste">Fiches prix</th><th class="num">Découpes</th><th class="num">Part</th><th class="num">Mètres</th><th class="num">Coût</th><th>Dernier usage</th><th>Produits conditionnés</th><th>Statut</th></tr></thead>
           <tbody>${w.lengths.map(L => {
             const top = Object.entries(L.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ') || '<span class="muted">—</span>';
             const st = L.qty ? '<span class="badge ok">actif</span>' : L.fiches.length ? '<span class="badge info">prévu (fiches prix)</span>' : '<span class="badge bad">aucune fiche</span>';
-            return `<tr class="${!L.qty && !L.fiches.length ? 'dim' : ''}"><td class="col-name"><b>${U.esc(L.lengthStr)}</b></td><td class="num sensitive">${U.eur(L.unitCost, 3)}</td>${this._fichesCell(L.fiches)}<td class="num"><b>${U.qty(L.qty)}</b></td><td class="num">${Math.round(L.qty / tot * 100)} %</td><td class="num">${U.qty(Math.round(L.qty * L.lengthMm / 10) / 100)}</td><td class="num sensitive">${U.eur(L.cost)}</td><td>${L.last ? U.frDate(L.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
+            return `<tr class="${!L.qty && !L.fiches.length ? 'dim' : ''}"><td class="col-name"><b>${U.esc(L.lengthStr)}</b></td><td class="num sensitive">${U.eur(L.unitCost)}</td>${this._fichesCell(L.fiches)}<td class="num"><b>${U.qty(L.qty)}</b></td><td class="num">${Math.round(L.qty / tot * 100)} %</td><td class="num">${U.qty(Math.round(L.qty * L.lengthMm / 10) / 100)}</td><td class="num sensitive">${U.eur(L.cost)}</td><td>${L.last ? U.frDate(L.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
           }).join('')}</tbody></table></div>
         ${w.lengths.length > 1 ? `<div class="frow mt" style="align-items:flex-end;gap:8px;">
           <div class="fg" style="max-width:170px;"><label>Simuler : remplacer</label><select id="bsim_a_${w.widthMm}" onchange="Stats._simBlister(${w.widthMm})">${opts}</select></div>
@@ -353,7 +353,7 @@ const Stats = {
     if (!A || !B) return;
     if (b <= a) { out.innerHTML = 'Choisis une longueur de remplacement <b>plus longue</b> que celle remplacée.'; return; }
     const perCut = (b - a) / 1000 * w.perM || (B.unitCost - A.unitCost);
-    let html = `Chaque découpe de ${U.esc(A.lengthStr)} faite en ${U.esc(B.lengthStr)} = <b>+${U.qty((b - a) / 10)} cm</b> de rouleau, soit <b class="neg">+${U.eur(perCut, 3)}</b> par découpe · <b>${A.fiches.length}</b> fiche(s) prix concernée(s)`;
+    let html = `Chaque découpe de ${U.esc(A.lengthStr)} faite en ${U.esc(B.lengthStr)} = <b>+${U.qty((b - a) / 10)} cm</b> de rouleau, soit <b class="neg">+${U.eur(perCut)}</b> par découpe · <b>${A.fiches.length}</b> fiche(s) prix concernée(s)`;
     if (A.qty) {
       const extraM = A.qty * (b - a) / 1000;
       html += `<br>Sur la période : ${U.qty(A.qty)} découpes → <b class="neg">+${U.qty(Math.round(extraM * 100) / 100)} m</b>` + (w.perM ? `, <b class="neg">+${U.eur(extraM * w.perM)}</b>` : '');
@@ -568,7 +568,7 @@ const Stats = {
           return `<a href="#/catalogue/edit/${p.id}" class="card" style="text-decoration:none;color:inherit;display:block;${anyCritical ? 'border-left:4px solid #c0564a;' : ''}" title="Ouvrir la fiche produit (clic molette : nouvel onglet)">
             <b>${U.esc(p.name)}</b> ${anyCritical ? '<span class="badge bad">critique</span>' : ''}
             <div class="mt">${shown.map(v => `<div class="frow" style="justify-content:space-between;font-size:.8rem;padding:2px 0;">
-              <span class="muted">${U.esc(v.label)}</span><span class="sensitive" style="font-weight:600;${v.critical ? 'color:#c0564a;' : 'color:#4a7c59;'}">coeff ${v.coeff.toFixed(3)} · ${v.margin.toFixed(1)}%</span></div>`).join('')}</div>
+              <span class="muted">${U.esc(v.label)}</span><span class="sensitive" style="font-weight:600;${v.critical ? 'color:#c0564a;' : 'color:#4a7c59;'}">coeff ${v.coeff.toFixed(2)} · ${v.margin.toFixed(1)}%</span></div>`).join('')}</div>
           </a>`;
         }).join('');
         if (!cards) return '';

@@ -40,8 +40,8 @@ document.addEventListener('click', (e) => {
 const U = {
   uid: () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
   num: (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? 0 : n; },
-  eur: (v, dec = 2) => (U.num(v)).toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + ' €',
-  qty: (v) => (U.num(v)).toLocaleString('fr-FR', { maximumFractionDigits: 3 }),
+  eur: (v, dec = 2) => (U.num(v)).toLocaleString('fr-FR', { minimumFractionDigits: Math.min(dec, 2), maximumFractionDigits: Math.min(dec, 2) }) + ' €',
+  qty: (v) => (U.num(v)).toLocaleString('fr-FR', { maximumFractionDigits: 2 }),
   pct: (v) => (U.num(v)).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %',
   esc: (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
   today: () => new Date().toISOString().slice(0, 10),
@@ -898,7 +898,7 @@ document.addEventListener('keydown', (e) => {
 
 /* Champs numériques (2026-10-04, demande d'Antho) :
    1. la molette de la souris ne MODIFIE plus jamais une valeur (un coup de molette sur un champ actif la faisait monter/descendre) : on retire le focus, la page défile normalement ;
-   2. une valeur validée est arrondie aux décimales du pas du champ (pas 0,01 → 2 décimales ; 0,001 → 3, pour les coûts unitaires fins) : plus de 44,6100000001. Pas entier ou « any » : seulement le bruit au-delà de 4 décimales. */
+   2. une valeur validée est arrondie aux décimales du pas du champ, jamais plus de 2 (pas 0,5 → 1 ; 0,01, 0,001 ou « any » → 2) : plus de 44,6100000001. Affichage (U.eur / U.qty) et saisie = 2 décimales max (2026-10-06) ; les calculs internes gardent toute leur précision. */
 (function () {
   document.addEventListener('wheel', e => {
     const t = e.target;
@@ -908,7 +908,7 @@ document.addEventListener('keydown', (e) => {
     const t = e.target;
     if (!t || t.tagName !== 'INPUT' || t.type !== 'number' || t.value === '') return;
     const st = String(t.step || ''), n = parseFloat(t.value); if (!isFinite(n)) return;
-    const sd = st && st !== 'any' ? (st.split('.')[1] || '').length : 0, d = sd > 0 ? sd : 4;   // pas entier / « any » : on ne retire que le bruit au-delà de 4 décimales (jamais de décimale utile)
+    const sd = st && st !== 'any' ? (st.split('.')[1] || '').length : 0, d = sd > 0 ? Math.min(sd, 2) : 2;   // jamais plus de 2 décimales saisies (demande d'Antho 2026-10-06) ; les CALCULS gardent toute leur précision
     const r = Math.round(n * Math.pow(10, d)) / Math.pow(10, d);
     if (r !== n) t.value = String(r);
   }, true);

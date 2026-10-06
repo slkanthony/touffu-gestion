@@ -347,7 +347,7 @@ const Accessoires = {
       const isFamily = !!l.familyKey;
       return `<tr><td class="col-name">${U.esc(label)}${isFamily ? ' <span class="muted">(moy.)</span>' : ''}</td>
         <td class="num"><input type="number" step="0.01" value="${l.qty}" class="acc-inline-input" onchange="Accessoires.setAccBomQty('${a.id}',${li},this.value)"> ${unit}</td>
-        <td class="num sensitive">${U.eur(unitCost * U.num(l.qty), 3)}</td></tr>`;
+        <td class="num sensitive">${U.eur(unitCost * U.num(l.qty))}</td></tr>`;
     }).join('');
     const fabHTML = this._fabCardHTML(a);
     const notesHTML = this._notesHTML(a);
@@ -737,11 +737,11 @@ const Accessoires = {
     if (l.familyKey) {
       const fam = this.families().find(f => f.key === l.familyKey);
       if (!fam) return l.familyKey;
-      return `${fam.label} (moy. ${U.eur(fam.avgCost, 3)}/${fam.unit === 'm' ? 'm' : 'PCS'})`;
+      return `${fam.label} (moy. ${U.eur(fam.avgCost)}/${fam.unit === 'm' ? 'm' : 'PCS'})`;
     }
     if (l.materialId) {
       const m = Store.material(l.materialId);
-      return m ? `${m.name} (${U.eur(m.costUnit, 3)}/${m.unit === 'm' ? 'm' : 'PCS'})` : '';
+      return m ? `${m.name} (${U.eur(m.costUnit)}/${m.unit === 'm' ? 'm' : 'PCS'})` : '';
     }
     return '';
   },
@@ -795,11 +795,11 @@ const Accessoires = {
     return items.map(it => {
       if (it.type === 'family') {
         const f = it.data;
-        return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomFamily(${i},'${U.esc(f.key)}')"><span class="pp-a">${U.esc(f.label)}</span><span class="pp-b">${f.count} réf.</span><span class="pp-c">moy. ${U.eur(f.avgCost, 3)} / ${f.unit === 'm' ? 'm' : 'PCS'}</span></div>`;
+        return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomFamily(${i},'${U.esc(f.key)}')"><span class="pp-a">${U.esc(f.label)}</span><span class="pp-b">${f.count} réf.</span><span class="pp-c">moy. ${U.eur(f.avgCost)} / ${f.unit === 'm' ? 'm' : 'PCS'}</span></div>`;
       }
       const m = it.data;
       const unit = m.unit === 'm' ? 'm' : 'PCS';
-      return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')"><span class="pp-a">${U.esc(m.name)}</span><span class="pp-b">stock ${U.qty(m.qty)} ${unit}</span><span class="pp-c">${U.eur(m.costUnit, 3)} / ${unit}</span></div>`;
+      return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')"><span class="pp-a">${U.esc(m.name)}</span><span class="pp-b">stock ${U.qty(m.qty)} ${unit}</span><span class="pp-c">${U.eur(m.costUnit)} / ${unit}</span></div>`;
     }).join('');
   },
 

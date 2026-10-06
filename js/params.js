@@ -157,7 +157,7 @@ const Params = {
         <div class="grid c3">
           <div class="fg"><label>Consommation du véhicule (L / 100 km)</label><input id="p_fuel_cons" type="number" step="0.1" value="${S.fuelConsumption ?? 7}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Prix du carburant (€ / L)</label><input id="p_fuel_price" type="number" step="0.01" value="${S.fuelPrice ?? 1.85}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
-          <div class="fg"><label>Coût carburant au km</label><span style="display:block;padding:8px 0;font-weight:600;">${U.eur(Store.fuelCostPerKm(), 3)} / km</span></div>
+          <div class="fg"><label>Coût carburant au km</label><span style="display:block;padding:8px 0;font-weight:600;">${U.eur(Store.fuelCostPerKm())} / km</span></div>
         </div>
         </div>
         </div>
@@ -463,7 +463,7 @@ const Params = {
               <div class="fg"><label>Hébergement / autres (€)</label><input type="number" step="0.01" min="0" value="${e.other ?? ''}" onchange="Params.setEventInfo('${enc(n)}','other',this.value)"></div>
             </div>
             <div class="fg"><label>Note</label><textarea class="note-area" rows="1" placeholder="ex : installation 7h, prévoir tonnelle" onchange="Params.setEventInfo('${enc(n)}','note',this.value)">${U.esc(e.note || '')}</textarea></div>
-            <p class="muted" style="font-size:.8rem;margin:4px 0;">🚗 Déplacement calculé : ${U.num(e.km)} km × ${String(U.num(Store.state.settings.fuelConsumption ?? 7)).replace(".", ",")} L/100 km × ${U.eur(U.num(Store.state.settings.fuelPrice ?? 1.85))}/L (soit ${U.eur(Store.fuelCostPerKm(), 3)}/km) + péages + autres = <b>${U.eur(tc)}</b> — pré-rempli au retour d'événement (modifiable).</p>
+            <p class="muted" style="font-size:.8rem;margin:4px 0;">🚗 Déplacement calculé : ${U.num(e.km)} km × ${String(U.num(Store.state.settings.fuelConsumption ?? 7)).replace(".", ",")} L/100 km × ${U.eur(U.num(Store.state.settings.fuelPrice ?? 1.85))}/L (soit ${U.eur(Store.fuelCostPerKm())}/km) + péages + autres = <b>${U.eur(tc)}</b> — pré-rempli au retour d'événement (modifiable).</p>
             <button class="btn-ghost btn-sm" onclick="Params.delEvent('${enc(n)}')">🗑️ Retirer cet événement</button>
           </div></details>`; }).join('') || '<span class="muted">Aucun événement.</span>'}
       </div>
@@ -937,11 +937,11 @@ const Params = {
       <tbody>${items.map(s => {
         const conso = s.consumableId ? Store.state.consumables.find(c => c.id === s.consumableId) : null;
         return `<tr>
-        <td class="col-name">${U.esc(s.name)}${conso ? ` <span class="badge ok" style="font-size:.7rem;" title="Lié à ${U.esc(conso.name)} — ${U.eur(conso.costUnit, 3)}/${U.esc(!conso.unit || conso.unit === 'pc' ? 'PCS' : conso.unit)}">🔗 lié</span>` : ''}</td>
+        <td class="col-name">${U.esc(s.name)}${conso ? ` <span class="badge ok" style="font-size:.7rem;" title="Lié à ${U.esc(conso.name)} — ${U.eur(conso.costUnit)}/${U.esc(!conso.unit || conso.unit === 'pc' ? 'PCS' : conso.unit)}">🔗 lié</span>` : ''}</td>
         <td class="pack-dims">${U.esc(s.dims || '—')}</td>
         <td class="num">${conso
-          ? U.eur(s.cost, 3) + ' <span class="muted" style="font-size:.75rem;">(auto)</span>'
-          : `<input type="number" step="0.001" value="${s.cost}" style="width:80px;text-align:right;" onchange="Params.editSachetCost('${s.id}',this.value)">`}</td>
+          ? U.eur(s.cost) + ' <span class="muted" style="font-size:.75rem;">(auto)</span>'
+          : `<input type="number" step="0.01" value="${Math.round(U.num(s.cost) * 100) / 100}" style="width:80px;text-align:right;" onchange="Params.editSachetCost('${s.id}',this.value)">`}</td>
         <td class="right">
           <button class="btn-icon" onclick="Params.linkSachetConso('${s.id}')" title="${conso ? 'Modifier le lien' : 'Lier au consommable'}">${conso ? '✏️' : '🔗＋'}</button>
           ${conso ? `<button class="btn-icon" onclick="Params.unlinkSachetConso('${s.id}')" title="Délier">✕</button>` : ''}
@@ -981,8 +981,8 @@ const Params = {
           <tbody>${g.items.map(({ s, d }) => `<tr>
             <td><input value="${d ? U.esc(d.lengthStr) : U.esc(s.dims || '')}" style="width:110px;" onchange="Params.editBlisterLength('${s.id}',this.value)"></td>
             <td class="num">${isLinked
-              ? U.eur(s.cost, 3)
-              : `<input type="number" step="0.001" value="${s.cost}" style="width:80px;text-align:right;" onchange="Params.editBlisterCost('${s.id}',this.value)">`}</td>
+              ? U.eur(s.cost)
+              : `<input type="number" step="0.01" value="${Math.round(U.num(s.cost) * 100) / 100}" style="width:80px;text-align:right;" onchange="Params.editBlisterCost('${s.id}',this.value)">`}</td>
             <td class="right"><button class="btn-icon" onclick="Params.delSachet('${s.id}')">🗑️</button></td></tr>`).join('')}</tbody></table></div>
           <div style="margin:6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <button class="btn-ghost btn-sm" onclick="Params.addBlisterLength('${g.key}')">＋ Longueur</button>
@@ -1017,7 +1017,7 @@ const Params = {
         </div>
         <div class="fg"><label>Longueur de découpe</label><input id="sc_blength" placeholder="ex: 25cm ou 1m"></div>
       </div>
-      <div class="fg"><label>Coût (€)</label><input id="sc_cost" type="number" step="0.001"></div>`,
+      <div class="fg"><label>Coût (€)</label><input id="sc_cost" type="number" step="0.01"></div>`,
       onOk: () => {
         const type = U.val('sc_type');
         let dims;
@@ -1135,7 +1135,7 @@ const Params = {
     const consos = all.filter(c => c.category === 'Sachets');
     const list = consos.length ? consos : all;
     const current = s.consumableId || '';
-    const picker = this._consoPickList('sac_conso', list, current, (c, u) => `${U.eur(c.costUnit, 3)} / ${U.esc(u)}`, '🛍️ Sachets' + (consos.length ? '' : ' (tous les consommables)'));
+    const picker = this._consoPickList('sac_conso', list, current, (c, u) => `${U.eur(c.costUnit)} / ${U.esc(u)}`, '🛍️ Sachets' + (consos.length ? '' : ' (tous les consommables)'));
     U.modal({
       title: 'Lier ' + (s.name || 'ce sachet') + ' au consommable', okLabel: 'Enregistrer',
       body: `<div class="fg"><label>Consommable (sachet en stock)</label>${picker}</div>
@@ -1500,7 +1500,7 @@ const Params = {
       ${list.map(t => `<div class="lt-row">
         <span><input type="radio" name="lt_def" ${def && def.id === t.id ? 'checked' : ''} title="Type proposé pour les nouvelles fiches prix" onchange="Params.setLabelDefault('${t.id}')" style="width:18px;height:18px;"></span>
         <input value="${U.esc(t.name)}" onchange="Params.setLabelType('${t.id}','name',this.value)">
-        <input type="number" step="0.001" min="0" value="${U.num(t.cost)}" onchange="Params.setLabelType('${t.id}','cost',this.value)">
+        <input type="number" step="0.01" min="0" value="${Math.round(U.num(t.cost) * 100) / 100}" onchange="Params.setLabelType('${t.id}','cost',this.value)">
         <span class="muted">${used(t.id)}</span>
         <button class="btn-icon" title="Supprimer ce type" onclick="Params.delLabelType('${t.id}')">🗑️</button>
       </div>`).join('')}

@@ -6,7 +6,7 @@
    ============================================================ */
 const Catalogue = {
   /* Petite ligne « dont port » sous le coût de revient quand un taux de port à l'achat (Paramètres) est appliqué : le coût affiché l'inclut déjà. */
-  _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Port à l'achat estimé (Paramètres → Réglages financiers → Port à l'achat), déjà compris dans le coût de revient">dont port ${U.eur(c.portCost, 3)}</div>` : ''; },
+  _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Port à l'achat estimé (Paramètres → Réglages financiers → Port à l'achat), déjà compris dans le coût de revient">dont port ${U.eur(c.portCost)}</div>` : ''; },
   filters: { q: '', meat: 'all', sup: 'all', sort: 'meat', sortDir: 'asc' },
   mode: 'list',      // 'list' | 'new' | 'edit'
   editId: null,
@@ -159,7 +159,7 @@ const Catalogue = {
       if (on) { idx++; if (c.critical) critCount++; }
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
-        <td class="num sensitive">${U.eur(c.cost, 3)}${Catalogue._portNote(c)}</td>
+        <td class="num sensitive">${U.eur(c.cost)}${Catalogue._portNote(c)}</td>
         <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, perSize ? undefined : (U.num(p.coefficient) || 2))}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
@@ -186,7 +186,7 @@ const Catalogue = {
       const link = (s.url && !Store.hideSupplierInfo()) ? ` <button class="btn-icon" title="Ouvrir la page fournisseur" onclick="window.open('${U.esc(s.url)}','_blank','noopener')">🔗</button>` : '';
       return `<tr class="${isMain ? '' : 'dim'}">
         <td class="col-name">${isMain ? '★ ' : ''}${U.esc(Store.supplierName(s.supplierId))}${vatNote}${link}</td>
-        <td class="num sensitive">${U.eur(this.supUnitHT(s), 3)}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</td>
+        <td class="num sensitive">${U.eur(this.supUnitHT(s))}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</td>
         <td>${isMain ? '<span class="badge main-sup">principal</span>' : `<button class="btn-ghost btn-sm" onclick="Catalogue.setMain('${p.id}','${s.supplierId}')">Passer principal</button>`}</td>
       </tr>`;
     }).join('');
@@ -203,9 +203,9 @@ const Catalogue = {
         <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
-        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT, 3)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i>`}</span>
+        <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · <span class="sensitive">base ${U.eur(base.unitHT)}/${base.unit === 'kilo' ? 'kg' : 'pc'}</span> <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
-          <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 1000) / 1000}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
+          <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
         <span class="b2b-disc-badge">
           <label>Décote</label><input type="number" min="0" max="100" step="1" value="${p.bulkDiscount ?? ''}" placeholder="${S.bulkDiscount}" title="Décote paliers propre à ce produit — vide = suit le réglage global (${S.bulkDiscount}%)" onchange="Catalogue.setCardBulkDiscount('${p.id}',this.value)"><span>%</span>
         </span>`}</span>
@@ -478,7 +478,7 @@ const Catalogue = {
       <div class="card" style="border-left:4px solid #c0564a;">
         <h2>💰 4. Rentabilité & taxes</h2>
         <div class="frow">
-          <div class="fg"><label>Coefficient par défaut</label><input id="cp_coeff" type="number" step="0.001" value="${p.coefficient}" oninput="Catalogue.syncMargin('coeff')"></div>
+          <div class="fg"><label>Coefficient par défaut</label><input id="cp_coeff" type="number" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 100) / 100}" oninput="Catalogue.syncMargin('coeff')"></div>
           <div class="fg"><label>Marge commerciale (%)</label><input id="cp_marge" type="number" step="0.1" value="${U.num(p.coefficient) > 0 ? ((1 - 1 / U.num(p.coefficient)) * 100).toFixed(1) : ''}" oninput="Catalogue.syncMargin('marge')"></div>
         </div>
         <p class="muted help mb0">Modifier l'un met à jour l'autre automatiquement — coefficient par défaut, utilisé si une variante n'a ni prix fixe ni coefficient propre.</p>
@@ -519,7 +519,7 @@ const Catalogue = {
       margeEl.value = c > 0 ? ((1 - 1 / c) * 100).toFixed(1) : '';
     } else {
       const m = U.numVal('cp_marge');
-      coeffEl.value = (m < 100 && m > -1000) ? (1 / (1 - m / 100)).toFixed(3) : '';
+      coeffEl.value = (m < 100 && m > -1000) ? (1 / (1 - m / 100)).toFixed(2) : '';
     }
     this._d.coefficient = U.numVal('cp_coeff');
     this.drawVars();
@@ -550,14 +550,14 @@ const Catalogue = {
         <div class="fg"><label>Fournisseur</label>
           <select onchange="Catalogue._d.suppliers[${i}].supplierId=this.value">${App.supplierOptions(s.supplierId)}</select></div>
         <div class="fg"><label>Prix d'achat</label><input type="number" step="0.01" value="${s.price ?? ''}" onchange="Catalogue._d.suppliers[${i}].price=this.value;Catalogue.drawSuppliers()">
-          <span class="muted" style="font-size:.78rem;">→ ${U.eur(this.supUnitHT(s), 3)}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</span></div>
+          <span class="muted" style="font-size:.78rem;">→ ${U.eur(this.supUnitHT(s))}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</span></div>
         <div class="fg"><label>HT / TTC</label><select onchange="Catalogue._d.suppliers[${i}].taxType=this.value;Catalogue.drawSuppliers()">
           <option ${(s.taxType || 'HT') === 'HT' ? 'selected' : ''}>HT</option><option ${s.taxType === 'TTC' ? 'selected' : ''}>TTC</option></select></div>
         <div class="fg"><label title="TVA d'achat (%)">TVA achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Store.state.settings.vatRate}" onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
         <div class="fg"><label>Acheté</label><select onchange="Catalogue._d.suppliers[${i}].unit=this.value;Catalogue.drawSuppliers()">
           <option value="kilo" ${(s.unit || 'kilo') === 'kilo' ? 'selected' : ''}>au kilo</option>
           <option value="piece" ${s.unit === 'piece' ? 'selected' : ''}>à la pièce</option></select></div>
-        <div class="fg"><label>Poids (kg) / Qté</label><input type="number" step="0.001" value="${s.unit === 'piece' ? (s.quantity ?? 1) : (s.weight ?? 1)}" onchange="Catalogue.setSupDiv(${i},this.value)"></div>
+        <div class="fg"><label>Poids (kg) / Qté</label><input type="number" step="0.01" value="${s.unit === 'piece' ? (s.quantity ?? 1) : (s.weight ?? 1)}" onchange="Catalogue.setSupDiv(${i},this.value)"></div>
         <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
         <div class="fg"><label>&nbsp;</label><div class="sup-cell"><button class="btn-icon" title="Retirer ce fournisseur" onclick="Catalogue.delSupplier(${i})">🗑️</button></div></div>
       </div>
@@ -748,17 +748,17 @@ const Catalogue = {
     const sachetBlock = sachets.length ? `<div class="pp-head">🛍️ Sachets</div>` + sachets.map(s => {
       const dims = s.dims || '';
       const name = dims && s.name.endsWith(' — ' + dims) ? s.name.slice(0, -(' — ' + dims).length) : s.name;
-      return row(s.id, U.esc(name), U.esc(dims || '—'), U.eur(s.cost, 3), String(s.id) === String(sel));
+      return row(s.id, U.esc(name), U.esc(dims || '—'), U.eur(s.cost), String(s.id) === String(sel));
     }).join('') : '';
     const groups = {};
     blisters.forEach(s => { const d = Params._blisterDims(s); const k = d ? d.widthStr : '?'; (groups[k] = groups[k] || []).push({ s, d }); });
     const blisterBlock = Object.entries(groups).map(([w, items]) => `<div class="pp-head">🎞️ Blister ${U.esc(w)}</div>` +
-      items.map(({ s, d }) => row(s.id, 'Longueur', U.esc(d ? d.lengthStr : (s.dims || '?')), U.eur(s.cost, 3), String(s.id) === String(sel))).join('')).join('');
+      items.map(({ s, d }) => row(s.id, 'Longueur', U.esc(d ? d.lengthStr : (s.dims || '?')), U.eur(s.cost), String(s.id) === String(sel))).join('')).join('');
     let label = 'Aucun';
     if (cur) {
       if ((cur.type || 'sachet') === 'blister') { const d = Params._blisterDims(cur); label = `Blister ${d ? d.widthStr + ' × ' + d.lengthStr : (cur.dims || '')}`; }
       else label = cur.dims && !cur.name.includes(cur.dims) ? `${cur.name} — ${cur.dims}` : cur.name;
-      label += ` · ${U.eur(cur.cost, 3)}`;
+      label += ` · ${U.eur(cur.cost)}`;
     }
     return `<details class="multiselect custom-select pack-picker">
       <summary>${U.esc(label)}</summary>
@@ -823,7 +823,7 @@ const Catalogue = {
         ${kilo ? `<td class="num sensitive"><input type="number" step="1" value="${v.weight || ''}" class="v-price" placeholder="g" title="Poids de cette taille en grammes (coût = prix au kilo × poids)" onchange="Catalogue._d.variants[${i}].weight=this.value;Catalogue.drawVars()"></td>` : ''}
         <td>${this.packPicker(i, v.sachetId, v.mode)}</td>
         <td><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('size');Catalogue.drawVars()" class="sz-sku"></td>
-        <td class="num sensitive">${U.eur(c.cost, 3)}${Catalogue._portNote(c)}</td>
+        <td class="num sensitive">${U.eur(c.cost)}${Catalogue._portNote(c)}</td>
         <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setVarCoeff(${i},this.value)`, `Catalogue.resetVariantPrice(${i})`)}</td>
         <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
         <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
@@ -870,7 +870,7 @@ const Catalogue = {
       </td>
       <td>${this.packPicker(i, v.sachetId, v.mode)}
         <div><input value="${U.esc(v.sku || '')}" placeholder="SKU" title="SKU WooCommerce" onchange="Catalogue._d.variants[${i}].sku=this.value;if(this.value)Catalogue.autoFillSkus('${v.mode}');Catalogue.drawVars()" style="margin-top:4px;width:100%;font-size:.82rem;"></div></td>
-      <td class="num sensitive">${U.eur(c.cost, 3)}${Catalogue._portNote(c)}</td>
+      <td class="num sensitive">${U.eur(c.cost)}${Catalogue._portNote(c)}</td>
       <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
       <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
       <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
