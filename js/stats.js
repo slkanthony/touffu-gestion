@@ -385,7 +385,6 @@ const Stats = {
     // avant la page Revente pro, la remise partagée doit quand même refléter
     // la dernière valeur enregistrée (ou 20% par défaut), pas rester à 0.
     B2B.discount = B2B.discount || U.num(localStorage.getItem('touffu_b2bDiscount')) || 20;
-    if (!B2B._noVatLoaded) { B2B.noVat = localStorage.getItem('touffu_b2bNoVat') === 'true'; B2B._noVatLoaded = true; }
     const statsPublic = (p) => this.variantStats(p, false);
     const statsB2B = (p) => this.variantStats(p, true);
 
@@ -402,17 +401,10 @@ const Stats = {
       supplierCount[sup] = (supplierCount[sup] || 0) + 1;
     });
 
-    const t = U.num(S.b2bCoeffThreshold) || 1;
-    const bins = [
-      { label: `0 – ${t.toFixed(2)}`, min: 0, max: t },
-      { label: `${t.toFixed(2)} – ${(t + 0.5).toFixed(2)}`, min: t, max: t + 0.5 },
-      { label: `${(t + 0.5).toFixed(2)} – ${(t + 1).toFixed(2)}`, min: t + 0.5, max: t + 1 },
-      { label: `${(t + 1).toFixed(2)} – ${(t + 1.5).toFixed(2)}`, min: t + 1, max: t + 1.5 },
-      { label: `${(t + 1.5).toFixed(2)}+`, min: t + 1.5, max: Infinity }
-    ];
-    const binCounts = (statsFn) => bins.map(b => {
+    const bins = this._bins();
+    const binCounts = (statsFn, key) => bins.map(b => {
       let n = 0;
-      products.forEach(p => { const s = statsFn(p); if (s) n += s.coeffs.filter(c => c >= b.min && c < b.max).length; });
+      products.forEach(p => { const s = statsFn(p); if (s) n += s[key || 'coeffs'].filter(c => c >= b.min && c < b.max).length; });
       return n;
     });
 
@@ -444,7 +436,7 @@ const Stats = {
       </div>
       <div id="statsDetail"></div>`);
 
-    if (products.length) this.drawCharts(meatCount, supplierCount, bins, binCounts(statsPublic), binCounts(statsB2B), statsPublic, statsB2B);
+    if (products.length) this.drawCharts(meatCount, supplierCount, bins, binCounts(statsPublic), { ent: binCounts(statsB2B), micro: binCounts(statsB2B, 'coeffsMicro') }, statsPublic, statsB2B);
     if (this.detail) this.renderDetail();
   },
 
@@ -456,20 +448,23 @@ const Stats = {
     const S = Store.state.settings;
     const base = Pricing.baseUnitCost(p);
     const discPct = isB2B ? B2B.effectiveDiscount(p) : 0;
+    const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;   // même TVA que B2B.productStats
     const na = (p.variants || []).filter(v => v.enabled !== false).length;
     let idx = 0;
     const variants = (p.variants || []).filter(v => v.enabled !== false).map(v => {
       const c = Pricing.variantCalc(p, v, idx, base, na); idx++;
-      let coeff = c.effCoeff;
+      let coeff = c.effCoeff, coeffMicro = c.effCoeff, profitB2B = 0;
       if (isB2B) {
         const proHT = c.priceHT * (1 - discPct / 100);
         coeff = c.cost > 0 ? proHT / c.cost : 0;
+        coeffMicro = coeff * (1 + vat);   // prix micro = prix entreprise × (1 + TVA)
+        profitB2B = proHT - c.cost - proHT * U.num(S.socialTaxRate) / 100;   // même formule que « Bénéfice B2B » de Revente pro
       }
-      return { label: Pricing.labelVariant(v), coeff, margin: coeff > 0 ? (1 - 1 / coeff) * 100 : 0, critical: coeff < U.num(S.b2bCoeffThreshold) };
+      return { label: Pricing.labelVariant(v), coeff, coeffMicro, profitB2B, margin: coeff > 0 ? (1 - 1 / coeff) * 100 : 0, critical: coeff < U.num(S.b2bCoeffThreshold) };
     });
     if (!variants.length) return null;
     const coeffs = variants.map(v => v.coeff);
-    return { variants, coeffs, avg: coeffs.reduce((a, b) => a + b, 0) / coeffs.length, marginAvg: variants.reduce((a, v) => a + v.margin, 0) / variants.length };
+    return { variants, coeffs, coeffsMicro: variants.map(v => v.coeffMicro), avg: coeffs.reduce((a, b) => a + b, 0) / coeffs.length, marginAvg: variants.reduce((a, v) => a + v.margin, 0) / variants.length };
   },
 
   /* Remise B2B globale partagée avec la page Revente pro (même localStorage
@@ -509,32 +504,86 @@ const Stats = {
     buildPie('statsChartSupplier', supplierCount, 'pie', (label) =>
       this.showDetail(p => (p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : 'Non spécifié') === label, `Fournisseur : ${label}`, statsPublic));
 
-    const buildBar = (id, counts, statsFn, isB2B) => {
+    // Seuil critique (S.b2bCoeffThreshold) : bande rouge à gauche + ligne pointillée « Seuil x,xx » (plugin maison, pas de librairie).
+    // La position est interpolée dans la tranche de 0,25 qui contient le seuil (au-delà de la dernière tranche : à son bord gauche).
+    const thr = U.num(Store.state.settings.b2bCoeffThreshold);
+    const thrX = (chart) => {
+      const sx = chart.scales.x, w = sx.getPixelForValue(1) - sx.getPixelForValue(0);
+      const last = bins.length - 1, idx = Math.min(Math.floor(thr / this.BIN_STEP), last);
+      const frac = idx < last ? (thr - idx * this.BIN_STEP) / this.BIN_STEP : 0;
+      return sx.getPixelForValue(idx) - w / 2 + frac * w;
+    };
+    const thresholdPlugin = {
+      id: 'coeffThreshold',
+      beforeDatasetsDraw: (chart) => {
+        if (!(thr > 0)) return;
+        const { ctx, chartArea: a } = chart, x = thrX(chart);
+        ctx.save(); ctx.fillStyle = 'rgba(192,86,74,.3)'; ctx.fillRect(a.left, a.top, Math.max(0, x - a.left), a.bottom - a.top); ctx.restore();
+      },
+      afterDatasetsDraw: (chart) => {
+        if (!(thr > 0)) return;
+        const { ctx, chartArea: a } = chart, x = thrX(chart), txt = 'Seuil ' + thr.toFixed(2).replace('.', ',');
+        ctx.save();
+        ctx.strokeStyle = '#c0564a'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#c0564a'; ctx.font = '700 12px Quicksand, "Segoe UI", sans-serif'; ctx.textBaseline = 'top';
+        const wTxt = ctx.measureText(txt).width, onLeft = x - 6 - wTxt >= a.left;   // étiquette dans la bande rouge (à gauche), sinon à droite de la ligne
+        ctx.textAlign = onLeft ? 'right' : 'left'; ctx.fillText(txt, onLeft ? x - 6 : x + 6, a.top + 4);
+        ctx.restore();
+      }
+    };
+    // Barres : chaque série garde sa couleur ; le danger est marqué par la ligne et la bande, pas par la couleur des barres.
+    const buildBar = (id, datasets, statsFn, isB2B) => {
       const canvas = document.getElementById(id); if (!canvas) return;
       this._charts[id] = new Chart(canvas, {
         type: 'bar',
-        data: {
-          labels: bins.map(b => b.label),
-          datasets: [{
-            label: isB2B ? 'Variantes (B2B)' : 'Variantes (Public)', data: counts, borderRadius: 5,
-            backgroundColor: bins.map(b => b.max <= bins[0].max ? '#c0564a' : (isB2B ? '#a67153' : '#4a7c59'))
-          }]
-        },
+        data: { labels: bins.map(b => b.label), datasets: datasets.map(d => ({ ...d, borderRadius: 4 })) },
+        plugins: [thresholdPlugin],
         options: {
           maintainAspectRatio: false,
-          scales: { y: { beginAtZero: true, ticks: { color: textColor, precision: 0 } }, x: { ticks: { color: textColor } } },
+          scales: { y: { beginAtZero: true, ticks: { color: textColor, precision: 0 } }, x: { ticks: { color: textColor, autoSkip: false, maxRotation: 60, font: { size: 10 } } } },
           plugins: { legend: { labels: { color: textColor } } },
           onClick: (evt, els) => {
             if (!els.length) return;
             const b = bins[els[0].index];
+            if (isB2B) { this.showCoeffDetail(els[0].datasetIndex, els[0].index); return; }
             this.showDetail(p => { const s = statsFn(p); return s && s.coeffs.some(c => c >= b.min && c < b.max); },
-              `Variantes ${isB2B ? 'B2B' : 'Public'} — coeff ${b.label}`, statsFn, b.min, b.max);
+              `Variantes Public — coeff ${b.label}`, statsFn, b.min, b.max);
           }
         }
       });
     };
-    buildBar('statsChartCoeff', binsPublic, statsPublic, false);
-    buildBar('statsChartCoeffB2B', binsB2B, statsB2B, true);
+    buildBar('statsChartCoeff', [{ label: 'Variantes (Public)', data: binsPublic, backgroundColor: '#4a7c59' }], statsPublic, false);
+    buildBar('statsChartCoeffB2B', [
+      { label: 'Entreprise', data: binsB2B.ent, backgroundColor: '#a67153' },
+      { label: 'Micro', data: binsB2B.micro, backgroundColor: '#6b8e9e' }
+    ], statsB2B, true);
+  },
+
+  /* Tranches FIXES de 0,25 ancrées sur 0 : [0–0,25) … [2,25–2,50), puis « 2,5+ ». */
+  BIN_STEP: 0.25,
+  _bins() {
+    const st = this.BIN_STEP, f = x => x.toFixed(2).replace('.', ',').replace(/,?0+$/, '');
+    const bins = [];
+    for (let i = 0; i < 10; i++) bins.push({ label: `${f(i * st)} – ${f((i + 1) * st)}`, min: i * st, max: (i + 1) * st });
+    bins.push({ label: `${f(2.5)}+`, min: 2.5, max: Infinity });
+    return bins;
+  },
+
+  /* Clic sur une barre du graphe B2B : variantes de la tranche pour la série cliquée (0 = entreprise, 1 = micro), triées par coeff croissant.
+     Un 2e clic sur la même barre referme la liste. */
+  showCoeffDetail(serie, binIdx) {
+    const d = this.detail;
+    if (d && d.kind === 'coeff' && d.serie === serie && d.binIdx === binIdx) { this.closeDetail(); return; }
+    const b = this._bins()[binIdx], rows = [];
+    Store.state.catalogM.forEach(p => {
+      const s = this.variantStats(p, true); if (!s) return;
+      s.variants.forEach(v => { const c = serie === 0 ? v.coeff : v.coeffMicro; if (c >= b.min && c < b.max) rows.push({ p, v, key: c }); });
+    });
+    rows.sort((x, y) => x.key - y.key || U.sortFr(x.p.name, y.p.name));
+    this.detail = { kind: 'coeff', serie, binIdx, title: `Variantes B2B — ${serie === 0 ? 'prix entreprise' : 'prix micro'} — coeff ${b.label} (${rows.length})`, rows };
+    this.renderDetail();
+    setTimeout(() => document.getElementById('statsDetail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   },
 
   /* Drill-down : liste des produits (groupés par viande) correspondant au
@@ -554,6 +603,21 @@ const Stats = {
   renderDetail() {
     const box = document.getElementById('statsDetail'); if (!box) return;
     if (!this.detail) { box.innerHTML = ''; return; }
+    if (this.detail.kind === 'coeff') {
+      const thr = U.num(Store.state.settings.b2bCoeffThreshold), { title, rows } = this.detail;
+      box.innerHTML = `<div class="card mt">
+        <div class="frow" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">${U.esc(title)}</h2><button class="btn-ghost btn-sm" onclick="Stats.closeDetail()">✕ Fermer</button></div>
+        ${rows.length ? `<div class="table-wrap"><table>
+          <thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Coeff entreprise</th><th class="num">Coeff micro</th><th class="num">Bénéfice B2B</th></tr></thead>
+          <tbody>${rows.map(({ p, v }) => `<tr>
+            <td class="col-name"><a href="#/catalogue/edit/${p.id}" title="Ouvrir la fiche produit">${U.esc(p.name)}</a></td>
+            <td>${U.esc(v.label)}</td>
+            <td class="num sensitive ${v.coeff < thr ? 'neg' : ''}">${v.coeff.toFixed(2)}${v.coeff < thr ? ' ⚠️' : ''}</td>
+            <td class="num sensitive ${v.coeffMicro < thr ? 'neg' : ''}">${v.coeffMicro.toFixed(2)}</td>
+            <td class="num sensitive ${v.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(v.profitB2B)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted mt">Aucune variante dans cette tranche.</p>'}
+      </div>`;
+      return;
+    }
     const { title, meats, groups, statsFn, min, max } = this.detail;
     box.innerHTML = `<div class="card mt">
       <div class="frow" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">${U.esc(title)}</h2><button class="btn-ghost btn-sm" onclick="Stats.closeDetail()">✕ Fermer</button></div>

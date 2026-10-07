@@ -17,8 +17,7 @@
    ============================================================ */
 const B2B = {
   discount: 0,      // % de remise pro globale (repli si le produit n'a pas de décote propre)
-  noVat: false,     // true = micro-entreprise, pas de TVA sur la revente pro
-  tab: 'mast',      // 'mast' | 'acc' — onglet actif (défaut mastication)
+  tab: 'mast',     // 'mast' | 'acc' — onglet actif (défaut mastication)
   filters: { q: '', meat: 'all', sup: 'all', cat: 'all', width: 'all', sort: 'meat', sortDir: 'asc' },
   accSort: { key: 'name', dir: 'asc' },
   _prodOpen: {},    // pId -> true/false, mémorise les fiches mastication dépliées entre deux re-rendus
@@ -40,7 +39,6 @@ const B2B = {
       const s = localStorage.getItem('touffu_b2bDiscountAcc');
       this.discountAcc = s !== null ? U.num(s) : 20;
     }
-    if (!this._noVatLoaded) { this.noVat = localStorage.getItem('touffu_b2bNoVat') === 'true'; this._noVatLoaded = true; }
     U.syncFilters('b2b', this.filters);
     const tab = this.tab || 'mast';
     const disc = tab === 'acc' ? this.discountAcc : this.discount;
@@ -59,7 +57,6 @@ const B2B = {
               <span>%</span>
             </div>
           </div>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;" title="Micro-entreprise : pas de TVA appliquée sur la revente pro"><input type="checkbox" ${this.noVat ? 'checked' : ''} onchange="B2B.setNoVat(this.checked)"> Hors TVA (micro-entreprise)</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button class="btn-ghost" onclick="B2B.exportQuote()">🧾 Exporter le tarif pro (CSV)</button>
             <button class="btn-ghost" onclick="B2B.openQuote('micro')" title="Pour une micro-entreprise (ne collecte pas la TVA) : prix TTC avec la remise + prix de vente conseillé — à copier en image ou en texte">🧑‍💼 Spécial micro-entreprises</button>
@@ -68,7 +65,7 @@ const B2B = {
             <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
           </div>
         </div>
-        <p class="muted help" style="margin-top:10px;">Le prix pro applique la remise sur le prix HT public. Chaque fiche peut avoir sa propre décote (surcharge le champ ci-dessus) — utile pour les produits où tu marges moins ou plus que la moyenne.${tab === 'acc' ? ` Cotisations accessoires au taux <b>fait main (${U.pct(Pricing.socialRateHandmade())})</b>.` : ''}</p>
+        <p class="muted help" style="margin-top:10px;">Le prix pro applique la remise sur le prix HT public. Chaque fiche peut avoir sa propre décote (surcharge le champ ci-dessus) — utile pour les produits où tu marges moins ou plus que la moyenne. Les intitulés des colonnes de prix suivent la case « assujetti » des Paramètres : tant que tu ne factures pas de TVA, « Prix entreprise » (le prix de la remise) et « Prix micro » (ce prix + la TVA) ; une fois assujetti, « Prix B2B HT » et « Prix B2B TTC ». Les montants sont les mêmes dans les deux cas.${tab === 'acc' ? ` Cotisations accessoires au taux <b>fait main (${U.pct(Pricing.socialRateHandmade())})</b>.` : ''}</p>
       </div>`;
 
     App.mount(`
@@ -165,19 +162,19 @@ const B2B = {
       </summary>
       <div class="fold-body">
         <div class="table-wrap"><table>
-          <thead><tr><th class="col-name">Prix de vente</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">Prix public TTC</th>
-          <th class="num" style="border-left:2px solid var(--caramel);">Prix B2B HT</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${this.noVat ? 'Prix B2B HT' : 'Prix B2B TTC'}</th></tr></thead>
+          <thead><tr><th class="col-name">Prix de vente</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">${this._lbl().pub}</th>
+          <th class="num" style="border-left:2px solid var(--caramel);">${this._lbl().ent}</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${this._lbl().micro}</th></tr></thead>
           <tbody><tr>
             <td class="col-name">${mainW ? U.esc(mainW) : 'Standard'}</td>
             <td class="num muted sensitive">${U.eur(it.cost)}</td>
             <td class="num sensitive">${it.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(it.priceTTCPublic)}</td>
-            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)} <span class="muted">HT</span>${this._expBadge(this._expDiff('a:' + it.a.id, it.priceHTB2B))}</td>
+            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)}${this._lbl().ht}${this._expBadge(this._expDiff('a:' + it.a.id, it.priceHTB2B))}</td>
             <td class="num sensitive ${it.critical ? 'neg' : ''}">${it.coeffB2B.toFixed(2)}${it.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${it.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(it.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(it.socialB2B)}</td>
             <td class="num sensitive ${it.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(it.profitB2B)}</b></td>
-            <td class="num"><b>${U.eur(it.priceTTCB2B)}</b>${this.noVat ? ' <span class="muted">HT</span>' : ''}</td>
+            <td class="num"><b>${U.eur(it.priceTTCB2B)}</b></td>
           </tr></tbody>
         </table></div>
       </div>
@@ -206,7 +203,7 @@ const B2B = {
       const priceTTC = cMain.priceTTC;
       const coeffPublic = cost > 0 ? priceHT / cost : 0;
       const priceHTB2B = priceHT * (1 - discPct / 100);
-      const priceTTCB2B = this.noVat ? priceHTB2B : priceHTB2B * (1 + vat);
+      const priceTTCB2B = priceHTB2B * (1 + vat);
       const coeffB2B = cost > 0 ? priceHTB2B / cost : 0;
       const marginB2B = priceHTB2B - cost;
       const socialB2B = priceHTB2B * U.num(S.socialTaxRate) / 100;
@@ -227,7 +224,7 @@ const B2B = {
     const cost = c.cost;
     const priceHT = c.priceHT;
     const priceHTB2B = priceHT * (1 - discPct / 100);
-    const priceTTCB2B = this.noVat ? priceHTB2B : priceHTB2B * (1 + U.num(S.vatRate) / 100);
+    const priceTTCB2B = priceHTB2B * (1 + U.num(S.vatRate) / 100);
     const coeffB2B = cost > 0 ? priceHTB2B / cost : 0;
     const marginB2B = priceHTB2B - cost;
     const socialB2B = priceHTB2B * Pricing.socialRateHandmade() / 100;
@@ -309,19 +306,19 @@ const B2B = {
       <div class="fold-body">
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — cliquer à nouveau pour revenir au principal</div>' : ''}
         <div class="table-wrap"><table>
-          <thead><tr><th class="col-name">Variante</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">Prix public TTC</th>
-          <th class="num" style="border-left:2px solid var(--caramel);">Prix B2B HT</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${B2B.noVat ? 'Prix B2B HT' : 'Prix B2B TTC'}</th></tr></thead>
+          <thead><tr><th class="col-name">Variante</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">${B2B._lbl().pub}</th>
+          <th class="num" style="border-left:2px solid var(--caramel);">${B2B._lbl().ent}</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${B2B._lbl().micro}</th></tr></thead>
           <tbody>${rows.map(r => `<tr>
             <td class="col-name">${U.esc(r.label)}</td>
             <td class="num muted sensitive">${U.eur(r.cost)}</td>
             <td class="num sensitive">${r.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(r.priceTTCPublic)}</td>
-            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)} <span class="muted">HT</span>${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
+            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)}${B2B._lbl().ht}${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
             <td class="num sensitive ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(2)}${r.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${r.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(r.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(r.socialB2B)}</td>
             <td class="num sensitive ${r.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(r.profitB2B)}</b></td>
-            <td class="num"><b>${U.eur(r.priceTTCB2B)}</b>${B2B.noVat ? ' <span class="muted">HT</span>' : ''}</td>
+            <td class="num"><b>${U.eur(r.priceTTCB2B)}</b></td>
           </tr>`).join('')}</tbody>
         </table></div>
       </div>
@@ -404,10 +401,11 @@ const B2B = {
     }
   },
 
-  setNoVat(checked) {
-    this.noVat = !!checked;
-    localStorage.setItem('touffu_b2bNoVat', this.noVat);
-    this.render();
+  /* Intitulés des colonnes de prix (mêmes montants dans les deux cas) : non assujetti → entreprise / micro, sans « HT/TTC » ; assujetti → HT / TTC. */
+  _lbl() {
+    return Pricing.vatMention()
+      ? { ent: 'Prix entreprise', micro: 'Prix micro', pub: 'Prix public', ht: '' }
+      : { ent: 'Prix B2B HT', micro: 'Prix B2B TTC', pub: 'Prix public TTC', ht: ' <span class="muted">HT</span>' };
   },
 
   exportQuote() {
@@ -424,7 +422,7 @@ const B2B = {
   },
 
   exportQuoteAcc() {
-    const lines = [['Produit', 'Categorie', 'Decote_pct', 'Cout_revient', 'Coeff_public', 'Public_TTC', 'Prix_B2B_HT', 'Coeff_B2B', 'Marge_B2B', 'Cotisations_B2B_faitmain', 'Benefice_B2B', this.noVat ? 'Prix_B2B_HT' : 'Prix_B2B_TTC']];
+    const lines = [['Produit', 'Categorie', 'Decote_pct', 'Cout_revient', 'Coeff_public', 'Public_TTC', 'Prix_B2B_HT', 'Coeff_B2B', 'Marge_B2B', 'Cotisations_B2B_faitmain', 'Benefice_B2B', 'Prix_B2B_TTC']];
     const accKept = (this._accItems || []).filter(r => !this._isOffVar(this._accVariant(r.a)));
     accKept.forEach(r => lines.push([r.a.name, r.a.category || '', r.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]));
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
