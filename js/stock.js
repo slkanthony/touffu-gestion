@@ -1492,7 +1492,7 @@ const Stock = {
       return {
         cost,
         coeff: cost > 0 ? c.priceHT / cost : 0,
-        profit: c.priceHT - cost - c.social - c.vatAmt,
+        profit: c.priceHT - cost - c.social,   // = profitAssujetti, comme tous les écrans (la TVA n'est pas retirée une 2e fois)
         coeffB2B: cost > 0 ? proHT / cost : 0,
         profitB2B: proHT - cost - proHT * soc
       };
