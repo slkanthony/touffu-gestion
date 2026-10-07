@@ -351,6 +351,61 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .b2b-seg { display: inline-flex; border: 1.5px solid var(--caramel); border-radius: 10px; overflow: hidden; }
 .b2b-seg button { background: transparent; color: var(--texte); border: 0; border-radius: 0; padding: 7px 14px; font: inherit; font-weight: 700; cursor: pointer; box-shadow: none; }
 .b2b-seg button.on { background: var(--caramel); color: #fff; }
+/* Fenêtre « Tarif / devis pro » de Revente pro : 3 zones — haut fixe, tableau = seul défilement, bas fixe (boutons). Pas de barre horizontale :
+   colonnes à largeur fixe et en-têtes qui peuvent se replier (la règle globale `th { white-space: nowrap }` forçait un tableau trop large). */
+.modal.wide.qt-xl { max-width: min(1040px, 96vw); display: flex; flex-direction: column; overflow: hidden; max-height: 94vh; padding: 16px 18px; }
+.modal.wide.qt-xl h2 { margin-bottom: 8px; flex: none; }
+.modal.wide.qt-xl #modalBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.modal.wide.qt-xl .actions { flex: none; margin-top: 10px; align-items: center; justify-content: flex-end; }
+.qt-layout { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.qt-top { flex: none; display: flex; flex-direction: column; gap: 8px; }
+.qt-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.qt-who { flex: 1 1 260px; margin: 0; }
+.qt-no { font-weight: 800; white-space: nowrap; padding-bottom: 9px; }
+.qt-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.qt-total { font-weight: 600; font-size: 1rem; }
+.qt-total b { font-weight: 800; font-size: 1.08rem; }
+.qt-total .qt-reco { color: var(--caramel); font-size: .9rem; }
+.qt-search { flex: 1 1 180px; min-width: 140px; }
+.qt-fold { border: 1px solid var(--card-border); border-radius: 8px; padding: 5px 10px; }
+.qt-fold > summary { cursor: pointer; font-size: .85rem; color: var(--gris); }
+.qt-fold-body { max-height: 38vh; overflow: auto; padding-top: 10px; }
+.qt-scroll { flex: 1 1 auto; min-height: 150px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--card-border); border-radius: 8px; }
+.qt-t { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .92rem; }
+.qt-t th { position: sticky; top: 0; z-index: 1; white-space: normal; padding: 6px 8px; font-size: .7rem; line-height: 1.2; }
+.qt-t td { padding: 2px 8px; border-bottom: 1px solid var(--card-border); line-height: 1.25; }
+.qt-t tr.grp td { border-top: 1px solid var(--caramel); }
+.qt-t .ck { text-align: center; padding-left: 4px; padding-right: 4px; }
+.qt-t .ctr { text-align: center; }
+.qt-t .nm { font-weight: 700; word-break: break-word; }
+.qt-t .pr { font-weight: 700; white-space: nowrap; }
+.qt-t td.num, .qt-t th.num { text-align: right; white-space: nowrap; }
+.qt-t input[type=number] { width: 58px; height: 24px; text-align: center; padding: 1px 4px; }
+.qt-t input[type=checkbox] { margin: 0; }
+.qt-per { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; margin-right: auto; }
+.qt-per input { width: 60px; padding: 4px 6px; }
+@media (max-width: 640px) {
+  .modal.wide.qt-xl { padding: 12px; max-height: 96vh; }
+  /* Téléphone : chaque ligne sur deux niveaux — produit / (variante · prix · sous-total · quantité) ; en-tête et colonne « Conseillé » masqués */
+  .qt-t, .qt-t tbody { display: block; }
+  .qt-t colgroup, .qt-t thead, .qt-t .c-reco { display: none !important; }
+  .qt-t tr { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto 54px; grid-template-areas: "ck nm nm nm nm" "ck va pc sb qy"; align-items: center; border-bottom: 1px solid var(--card-border); padding: 3px 0; }
+  .qt-t tr.grp { border-top: 1px solid var(--caramel); }
+  .qt-t td, .qt-t tr.grp td { display: block; border: 0; padding: 1px 4px; }
+  .qt-t td.ck { grid-area: ck; align-self: center; }
+  .qt-t td.nm { grid-area: nm; }
+  .qt-t td.nm:empty { display: none; }
+  .qt-t td.va { grid-area: va; text-align: left; color: var(--gris); }
+  .qt-t td.pc { grid-area: pc; }
+  .qt-t td.sb { grid-area: sb; min-width: 56px; }
+  .qt-t td.qy { grid-area: qy; }
+  .qt-t tr:has(td[colspan]) { display: block; }
+  .qt-t td[colspan] { display: block; }
+  .qt-t input[type=number] { width: 48px; }
+  .qt-no { white-space: normal; padding-bottom: 0; }
+  .qt-lg { display: none; }
+  .qt-total { font-size: .9rem; }
+}
 /* Colonnes (prix + coeff) du client sélectionné dans les tableaux Revente pro ; sous-titre des colonnes calculées sur le prix entreprise */
 details.fold.b2b-fold .fold-body table th.b2b-sel, details.fold.b2b-fold .fold-body table td.b2b-sel { background: rgba(166, 113, 83, 0.2); }
 .b2b-sfx { display: block; font-size: 0.65rem; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--gris); }

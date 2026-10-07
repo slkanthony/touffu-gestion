@@ -569,31 +569,46 @@ const B2B = {
   _qtNoRefresh() { const e = document.getElementById('qt_no'); if (e) e.textContent = this._dvShow(); },
   _qtTotalLabel() { return this._qt.type === 'micro' || !Pricing.vatActive() ? 'Total' : 'Total HT'; },
   _qtRecoLabel() { return this._qt.type === 'micro' ? 'Total revente conseillé' : 'Total revente conseillé TTC'; },
-  _qtTotalsTxt() { const { devis, total, totalReco } = this._qtRows(true); return devis ? this._qtTotalLabel() + ' : ' + U.eur(total) + '<br><span style="font-weight:600;font-size:.95rem;color:var(--caramel);">' + this._qtRecoLabel() + ' : ' + U.eur(totalReco) + '</span>' : ''; },
-  _qtInner() {
-    const { all, devis, total } = this._qtRows(true), c = this._qtCols(), x = this._qtExtras();
-    const th = (t, al) => `<th style="padding:7px 10px;text-align:${al};">${U.esc(t).replace(/\n/g, ' ')}</th>`;
-    return `${this._qtVarChips()}<p style="margin:0 10px 6px;font-weight:800;">Devis n° <span id="qt_no">${U.esc(this._dvShow())}</span> <span class="muted" style="font-weight:400;font-size:.8rem;">— définitif à la copie ; la lettre avance si tu modifies le devis</span></p><div style="max-height:46vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:.95rem;">
-      <thead><tr style="border-bottom:2px solid var(--caramel);position:sticky;top:0;background:var(--card-bg);"><th style="padding:7px 10px;width:34px;"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th>${th('Produit', 'left')}${th('Variante', 'center')}${th(c.price, 'right')}${th(c.reco, 'right')}${th('Qté', 'center')}${th('Sous-total', 'right')}</tr></thead>
-      <tbody>${all.map((r, i) => `<tr id="qt_row_${i}" style="border-bottom:1px solid var(--card-border);${r.on ? '' : 'opacity:.4;'}"><td style="padding:6px 10px;"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td style="padding:6px 10px;font-weight:700;">${U.esc(r.name)}</td><td style="padding:6px 10px;text-align:center;">${U.esc(r.variant)}</td><td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(r.price)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;">${U.eur(r.reco)}</td><td style="padding:4px 10px;text-align:center;"><input type="number" min="1" step="1" value="${r.qty}" style="width:64px;text-align:center;" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${r.on ? U.eur(r.sub) : ''}</td></tr>`).join('')}</tbody></table></div>
-      <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${this._qtTotalsTxt()}</div>
-      ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
-      ${x.refHint ? `<p style="margin:6px 10px 0;font-style:italic;">${U.esc(x.refHint)}</p>` : ''}
-      ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}
-      ${x.vatMention ? `<p style="margin:10px 10px 0;font-size:.85rem;color:var(--gris);">${U.esc(x.vatMention)}</p>` : ''}`;
+  /* Total en direct (barre fixe en haut de la fenêtre) : nombre de lignes · total · total revente conseillé. */
+  _qtTotalsTxt() {
+    const { devis, all, total, totalReco } = this._qtRows(true);
+    return devis ? `<span class="muted">${all.filter(r => r.on).length} ligne(s)</span> · ${this._qtTotalLabel()} : <b>${U.eur(total)}</b> <span class="qt-reco">· ${this._qtRecoLabel()} : ${U.eur(totalReco)}</span>` : '';
   },
+  /* Tableau seul (zone qui défile). Colonnes à largeur fixe (aucune barre horizontale), une ligne par variante, nom du produit écrit une seule fois
+     par groupe. Lignes décochées masquées (compteur + bouton dans la barre) sauf si une recherche est en cours. */
+  _qtInner() {
+    const { all } = this._qtRows(true), c = this._qtCols(), q = this._qt;
+    const search = String(q.q || '').trim(), showOff = !!q.showOff;
+    const vis = [];
+    all.forEach((r, i) => { if (search ? U.has(r.name + ' ' + r.variant, search) : (r.on || showOff)) vis.push({ r, i }); });
+    let prev = null;
+    const rows = vis.map(({ r, i }) => {
+      const first = r.name !== prev; prev = r.name;
+      return `<tr id="qt_row_${i}" class="${first ? 'grp' : ''}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va">${U.esc(r.variant)}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`;
+    }).join('');
+    const empty = `<tr><td colspan="7" class="muted" style="padding:16px;text-align:center;">${search ? 'Aucune ligne pour cette recherche.' : 'Aucune ligne cochée — utilise « Afficher les décochées » ou les formats ci-dessus.'}</td></tr>`;
+    return `<table class="qt-t"><colgroup><col style="width:36px"><col><col style="width:118px"><col style="width:84px"><col class="c-reco" style="width:92px"><col style="width:72px"><col style="width:92px"></colgroup>
+      <thead><tr><th class="ck"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th><th>Produit</th><th class="ctr">Variante</th><th class="num">${U.esc(c.price)}</th><th class="num c-reco" title="${U.esc(c.reco.replace(/\n/g, ' '))}">Conseillé</th><th class="ctr">Qté</th><th class="num">Sous-total</th></tr></thead>
+      <tbody>${rows || empty}</tbody></table>`;
+  },
+  /* Bouton « Afficher / Masquer les N décochées » (absent s'il n'y en a aucune). */
+  _qtOffBtn() {
+    const nOff = this._qtRows(true).all.filter(r => !r.on).length, s = !!this._qt.showOff;
+    return nOff ? `<button type="button" class="btn-ghost btn-sm" onclick="B2B._qtToggleOff()">${s ? '🙈 Masquer' : '👁 Afficher'}<span class="qt-lg"> les</span> ${nOff}<span class="qt-lg"> décochée${nOff > 1 ? 's' : ''}</span></button>` : '';
+  },
+  _qtToggleOff() { this._qt.showOff = !this._qt.showOff; this._qtRefresh(); },
+  _qtSearch(v) { this._qt.q = v; this._qtRefresh(); },
   /* Quantité saisie : mise à jour sur place (sous-total + total), sans redessiner le tableau (le défilement reste). */
   _qtQty(i, val) {
     const all = this._qtRows(true).all, r = all[i]; if (!r) return;
     this._qt.qty = this._qt.qty || {};
     this._qt.qty[r.key] = Math.max(1, Math.round(U.num(val)) || 1);
-    const { all: a2, devis, total } = this._qtRows(true), r2 = a2[i];
+    const { all: a2 } = this._qtRows(true), r2 = a2[i];
     const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.on ? U.eur(r2.sub) : '';
-    const inp = document.querySelectorAll('#qt_box input[type=number]')[i]; if (inp && String(inp.value) !== String(r2.qty)) inp.value = r2.qty;
-    const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
-    this._qtNoRefresh();
+    const inp = document.getElementById('qt_q_' + i); if (inp && String(inp.value) !== String(r2.qty)) inp.value = r2.qty;
+    this._qtChrome();
   },
-  /* Case d'une ligne : la ligne décochée sort du devis (total, images, texte) mais reste affichée, grisée. */
+  /* Case d'une ligne : la ligne décochée sort du devis (total, images, texte) ; elle reste affichée, grisée, jusqu'au prochain rafraîchissement (puis masquée si l'option est active). */
   _qtOn(i, on) {
     const r = this._qtRows(true).all[i]; if (!r) return;
     this._qt.off = this._qt.off || {};
@@ -601,16 +616,21 @@ const B2B = {
     const { all: a2 } = this._qtRows(true), r2 = a2[i];
     const row = document.getElementById('qt_row_' + i); if (row) row.style.opacity = r2.on ? '' : '.4';
     const sub = document.getElementById('qt_sub_' + i); if (sub) sub.textContent = r2.on ? U.eur(r2.sub) : '';
-    const tot = document.getElementById('qt_total'); if (tot) tot.innerHTML = this._qtTotalsTxt();
     const all = document.getElementById('qt_all'); if (all) all.checked = a2.every(x => x.on);
-    this._qtNoRefresh();
+    this._qtChrome();
   },
   _qtAll(on) {
     this._qt.off = {};
     if (!on) this._qtRows(true).all.forEach(r => { this._qt.off[r.key] = true; });
     this._qtRefresh();
   },
-  _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); },
+  /* Éléments hors tableau (barre fixe du haut, formats, n° de devis) : mis à jour à chaque changement. */
+  _qtChrome() {
+    const set = (id, h) => { const e = document.getElementById(id); if (e) e.innerHTML = h; };
+    set('qt_total', this._qtTotalsTxt()); set('qt_offwrap', this._qtOffBtn()); set('qt_fmt', this._qtVarChips());
+    this._qtNoRefresh();
+  },
+  _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); this._qtChrome(); },
   openQuote(type) {
     this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {}, off: {} };
     const rows = this._qtRows(true).all;
@@ -618,21 +638,37 @@ const B2B = {
     if (!rows.length) { U.toast('Aucun produit à exporter.', true); return; }
     const S = Store.state.settings, hasIban = !!String(S.payIban || '').trim();
     const nSel = this._curItems().filter(x => this._sel[x.id]).length;
-    const body = `<div class="fg" style="margin:0 0 10px;"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value;B2B._qtNoRefresh()"></div>
-      <p class="muted" style="margin:0 0 4px;font-size:.85rem;">${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée.</p>
-      <p id="qt_hint" class="muted" style="margin:0 0 8px;font-size:.85rem;">Quantité à 1 par défaut : change-la pour chaque ligne. Décoche les variantes que tu ne veux pas proposer (ou un format entier avec les pastilles).</p>
-      <div id="qt_box">${this._qtInner()}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
-        <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>
-        <button class="btn-ghost btn-sm" onclick="B2B.quotePending()" title="Garde ce devis (numéro attribué) pour le retrouver plus bas, le modifier ou le passer en vente quand le client accepte">💾 Mettre en attente</button>
-        <label class="muted" style="display:inline-flex;align-items:center;gap:6px;font-size:.85rem;">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" style="width:64px;" onchange="B2B._qt.per=this.value"></label>
+    // Mise en page « fenêtre de travail » (2026-10-07) : haut fixe (entreprise, n° de devis, total en direct, recherche, options repliées) /
+    // tableau = seule zone qui défile / bas fixe (boutons). Voir `.modal.qt-xl` dans style.css.
+    const body = `<div class="qt-layout">
+      <div class="qt-top">
+        <div class="qt-row">
+          <div class="fg qt-who"><label>Entreprise (affichée en haut à gauche)</label><input type="text" id="qt_who" placeholder="nom de l'entreprise…" oninput="B2B._qt.who=this.value;B2B._qtNoRefresh()"></div>
+          <div class="qt-no">Devis n° <span id="qt_no">${U.esc(this._dvShow())}</span> <span class="muted help" data-help-anchor="~ .qt-no">Le n° de devis est définitif à la copie ; la lettre avance si tu modifies le devis. ${nSel ? nSel + ' produit(s) coché(s)' : 'Aucun produit coché : tous les produits de l\'onglet'} · ${rows.length} ligne(s) · remise B2B déjà appliquée. Quantité à 1 par défaut : change-la pour chaque ligne. Décoche les variantes que tu ne veux pas proposer (ou un format entier avec les formats ci-dessous).</span></div>
+        </div>
+        <div class="qt-bar">
+          <div id="qt_total" class="qt-total">${this._qtTotalsTxt()}</div>
+          <input type="text" id="qt_search" class="qt-search" placeholder="🔍 Chercher un produit…" oninput="B2B._qtSearch(this.value)">
+          <span id="qt_offwrap">${this._qtOffBtn()}</span>
+        </div>
+        <details class="qt-fold"><summary>⚙️ Options du devis — formats proposés, pied de page (IBAN, message)</summary>
+          <div class="qt-fold-body">
+            <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:5px;">Formats à proposer <span class="muted" style="text-transform:none;letter-spacing:0;">— un clic décoche tous ceux du tableau ; ton choix est mémorisé (aussi pour les exports CSV)</span></div>
+            <div id="qt_fmt" style="margin-bottom:12px;">${this._qtVarChips()}</div>
+            <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher en bas</div>
+            ${hasIban ? `<label style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;"><input type="checkbox" checked onchange="B2B._qt.iban=this.checked;B2B._qtRefresh()"> IBAN</label>` : '<p class="muted" style="font-size:.85rem;margin:0 0 6px;">IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</p>'}
+            <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message (vide = rien d'affiché)" oninput="B2B._qt.msg=this.value;B2B._qtRefresh()">${U.esc(String(S.payMessage || ''))}</textarea>
+          </div>
+        </details>
       </div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--card-border);">
-        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Afficher en bas</div>
-        ${hasIban ? `<label style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;"><input type="checkbox" checked onchange="B2B._qt.iban=this.checked;B2B._qtRefresh()"> IBAN</label>` : '<p class="muted" style="font-size:.85rem;margin:0 0 6px;">IBAN : à renseigner dans Paramètres → Réglages financiers → Paniers & livraison.</p>'}
-        <textarea class="note-area" rows="2" style="width:100%;" placeholder="Message (vide = rien d'affiché)" oninput="B2B._qt.msg=this.value;B2B._qtRefresh()">${U.esc(String(S.payMessage || ''))}</textarea>
-      </div>`;
-    U.modal({ title: type === 'micro' ? '🧑‍💼 Tarif — micro-entreprise' : '🏢 Tarif — entreprise (TVA collectée)', body, wide: true, okLabel: '📋 Copier le texte', onOk: () => { B2B.quoteText(); return false; } });
+      <div id="qt_box" class="qt-scroll">${this._qtInner()}</div>
+    </div>`;
+    const bg = U.modal({ title: type === 'micro' ? '🧑‍💼 Tarif — micro-entreprise' : '🏢 Tarif — entreprise (TVA collectée)', body, wide: true, okLabel: '📋 Copier le texte', onOk: () => { B2B.quoteText(); return false; } });
+    bg.querySelector('.modal').classList.add('qt-xl');
+    // Boutons d'action dans le pied FIXE de la fenêtre (toujours visibles), avec « Fermer » et « Copier le texte ».
+    bg.querySelector('.actions').insertAdjacentHTML('afterbegin', `<label class="muted qt-per">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" onchange="B2B._qt.per=this.value"></label>
+      <button class="btn-ghost btn-sm" onclick="B2B.quotePending()" title="Garde ce devis (numéro attribué) pour le retrouver plus bas, le modifier ou le passer en vente quand le client accepte">💾 Mettre en attente</button>
+      <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>`);
   },
   _qtTitle() { const w = String(this._qt.who || '').trim(); return 'Tarif Touffu' + (w ? ' — ' + w : ''); },
   /* Découpe en pages : on remplit une page jusqu'à `per` lignes sans couper un produit en deux (sauf produit plus long qu'une page) */
@@ -732,7 +768,7 @@ const B2B = {
         <span class="muted" style="font-size:.85rem;">${n} image${n > 1 ? 's' : ''}${n > 1 ? ` · ${U.qty(this._qt.per || 20)} lignes max. par image` : ''}</span>
         ${n > 1 ? `<button class="btn-ghost btn-sm" onclick="B2B.qtSave(-1)">⬇ Tout enregistrer (${n} images)</button>` : ''}
       </div>
-      <div style="max-height:52vh;overflow:auto;">${imgs.map((im, i) => `<div style="margin-bottom:14px;">
+      <div>${imgs.map((im, i) => `<div style="margin-bottom:14px;">
         <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-bottom:4px;"><b>Image ${i + 1}${n > 1 ? ' / ' + n : ''}</b>
           <span><button class="btn-ghost btn-sm" onclick="B2B.qtCopy(${i})">🖼️ Copier</button> <button class="btn-ghost btn-sm" onclick="B2B.qtSave(${i})">⬇ Enregistrer</button></span></div>
         <img src="${im.url}" style="width:100%;border-radius:8px;display:block;" alt="Tarif Touffu ${i + 1}"></div>`).join('')}</div>
@@ -791,8 +827,7 @@ const B2B = {
     const list = [...groups.values()].sort((a, b) => Ventes._labelCmp(a.label, b.label));
     this._qtVarList = list.map(g => g.label);
     if (list.length < 2) return '';
-    return `<div style="margin:0 10px 10px;"><div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:5px;">Formats à proposer <span class="muted" style="text-transform:none;letter-spacing:0;">— un clic décoche tous ceux du tableau ; ton choix est mémorisé (aussi pour les exports CSV)</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">${list.map((g, i) => this._fmtChip(g.label, g.on === g.n ? 'on' : g.on === 0 ? 'off' : 'mix', `B2B._qtVar(${i})`, g.n)).join('')}</div></div>`;
+    return `<div style="display:flex;flex-wrap:wrap;gap:6px;">${list.map((g, i) => this._fmtChip(g.label, g.on === g.n ? 'on' : g.on === 0 ? 'off' : 'mix', `B2B._qtVar(${i})`, g.n)).join('')}</div>`;
   },
   _qtVar(i) {
     const label = (this._qtVarList || [])[i]; if (label == null) return;
