@@ -147,12 +147,11 @@ const Pricing = {
     const socialTTC = priceTTC * (U.num(S.socialTaxRate) / 100);
     const profitAssujetti = margin - social;               // bénéfice si assujetti (TVA mise de côté) = base de fixation des prix
     const profitActuel = priceTTC - cost - socialTTC;      // bénéfice réel aujourd'hui, TVA conservée = Stats
-    const profit = profitAssujetti;
     const effCoeff = cost > 0 ? priceHT / cost : 0;
     // Réglage propre à la ligne (coeff ou prix tapé) : signalé (↺) seulement s'il donne un prix DIFFÉRENT du calcul automatique
     let own = priceFixed || U.num(v.coeff) > 0;
     if (own && !_noRec) { const auto = this.variantCalc(p, { ...v, coeff: '', priceTTCManual: undefined }, idxActive, base, nActive, true); if (Math.abs(auto.priceTTC - priceTTC) < 0.005) own = false; }
-    return { prodCost, sacCost, labelCost, costBase, portCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profit, profitAssujetti, profitActuel, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
+    return { prodCost, sacCost, labelCost, costBase, portCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
   },
 
   labelVariant(v) {
@@ -443,10 +442,9 @@ const Pricing = {
     const socialTTC = priceTTC * (this.socialRateHandmade() / 100);
     const profitAssujetti = margin - social;
     const profitActuel = priceTTC - c.cost - socialTTC;
-    const profit = profitAssujetti;
     const effCoeff = c.cost > 0 ? priceHT / c.cost : 0;
     const thr = U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    return { ...c, coeff, storedCoeff, priceFixed, priceHT, priceTTC, margin, social, vatAmt, profit, profitAssujetti, profitActuel, effCoeff, critical: effCoeff < thr };
+    return { ...c, coeff, storedCoeff, priceFixed, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, critical: effCoeff < thr };
   },
 
   /* Coût de revient TOTAL d'une ligne de vente (pour la marge).

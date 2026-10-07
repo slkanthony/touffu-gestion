@@ -155,8 +155,7 @@ const Catalogue = {
         const vatAmt = priceTTC - priceHT;
         const profitAssujetti = margin - social;
         const profitActuel = priceTTC - cost - priceTTC * (U.num(S.socialTaxRate) / 100);
-        const profit = profitAssujetti;
-        c = { ...cRaw, priceHT, priceTTC, coeff, margin, social, vatAmt, profit, profitAssujetti, profitActuel, effCoeff: coeff, priceFixed: true, critical: coeff < U.num(S.b2bCoeffThreshold) };
+        c = { ...cRaw, priceHT, priceTTC, coeff, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff: coeff, priceFixed: true, critical: coeff < U.num(S.b2bCoeffThreshold) };
       }
       if (on) { idx++; if (c.critical) critCount++; }
       return `<tr class="${on ? '' : 'dim'}">
