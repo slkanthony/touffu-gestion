@@ -343,6 +343,17 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
   background: var(--nuit); color: var(--beige); border: none; border-radius: 8px; padding: 4px 8px;
 }
 .b2b-global-disc-input > span { font-size: 1.2rem; font-weight: 700; color: var(--gris); }
+/* Les deux lectures de la remise (micro / entreprise) sous le champ ; la ligne du client sélectionné est mise en avant */
+.b2b-disc-lines { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; color: var(--gris); }
+.b2b-disc-lines > div.on { color: var(--caramel); font-weight: 700; }
+.b2b-disc-lines > div.muted { font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
+/* Sélecteur client Entreprise / Micro (Revente pro) */
+.b2b-seg { display: inline-flex; border: 1.5px solid var(--caramel); border-radius: 10px; overflow: hidden; }
+.b2b-seg button { background: transparent; color: var(--texte); border: 0; border-radius: 0; padding: 7px 14px; font: inherit; font-weight: 700; cursor: pointer; box-shadow: none; }
+.b2b-seg button.on { background: var(--caramel); color: #fff; }
+/* Colonnes (prix + coeff) du client sélectionné dans les tableaux Revente pro ; sous-titre des colonnes calculées sur le prix entreprise */
+details.fold.b2b-fold .fold-body table th.b2b-sel, details.fold.b2b-fold .fold-body table td.b2b-sel { background: rgba(166, 113, 83, 0.2); }
+.b2b-sfx { display: block; font-size: 0.65rem; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--gris); }
 
 /* Badge décote par produit (dans la grille) */
 .b2b-disc-badge {

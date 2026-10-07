@@ -41,13 +41,25 @@ const B2B = {
     }
     U.syncFilters('b2b', this.filters);
     const tab = this.tab || 'mast';
-    const disc = tab === 'acc' ? this.discountAcc : this.discount;
+    const disc = tab === 'acc' ? this.discountAcc : this.discount;   // remise de l'ONGLET ACTIF (jamais une valeur unique)
+    const cl = this._client();
+    // Les deux lectures de la MÊME remise (valeur stockée inchangée) : micro = −disc % sur le prix public TTC ; entreprise (prix HT) = −(1 − (1−disc)/(1+TVA)) %.
+    const vatPct = U.num(Store.state.settings.vatRate);
+    const discEnt = (1 - (1 - U.num(disc) / 100) / (1 + vatPct / 100)) * 100;
+    const pct1 = x => U.qty(Math.round(x * 10) / 10);
+    const discLines = `<div class="b2b-disc-lines">
+              <div class="${cl === 'micro' ? 'on' : ''}">🧑‍💼 Micro : −${pct1(U.num(disc))} % du prix public</div>
+              <div class="${cl === 'ent' ? 'on' : ''}">🏢 Entreprise : −${pct1(discEnt)} % du prix public</div>
+              <div class="muted">Micro = entreprise + ${pct1(vatPct)} % <span class="muted help" data-help-anchor="~ .b2b-global-disc > label">L'entreprise récupère la TVA : elle paie le prix HT. Le micro-entrepreneur ne la récupère pas : il paie le prix TTC. Le champ ci-dessus est la seule remise réelle (−${pct1(U.num(disc))} % sur le prix public HT) ; les deux pourcentages sont juste deux façons de la lire, avec la TVA globale (${pct1(vatPct)} %).</span></div>
+            </div>`;
 
     const controls = `
       <div class="card">
-        <div class="frow" style="gap:8px;margin-bottom:14px;">
+        <div class="frow" style="gap:8px;margin-bottom:14px;align-items:center;">
           <button class="${tab === 'mast' ? 'btn-cta' : 'btn-ghost'}" onclick="B2B.setTab('mast')">🥩 Mastication</button>
           <button class="${tab === 'acc' ? 'btn-cta' : 'btn-ghost'}" onclick="B2B.setTab('acc')">🐕 Accessoires</button>
+          <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;"><span class="muted" style="font-size:.85rem;">Client</span>
+            <span class="b2b-seg" role="group" aria-label="Client"><button class="${cl === 'ent' ? 'on' : ''}" onclick="B2B.setClient('ent')">🏢 Entreprise</button><button class="${cl === 'micro' ? 'on' : ''}" onclick="B2B.setClient('micro')">🧑‍💼 Micro</button></span></span>
         </div>
         <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
           <div class="b2b-global-disc">
@@ -56,11 +68,11 @@ const B2B = {
               <input id="b2b_disc" type="text" inputmode="numeric" value="${disc}" onchange="B2B.setDiscount(this.value)" onkeydown="if(event.key==='Enter')this.blur()" onclick="this.select()">
               <span>%</span>
             </div>
+            ${discLines}
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <button class="btn-ghost" onclick="B2B.exportQuote()">🧾 Exporter le tarif pro (CSV)</button>
-            <button class="btn-ghost" onclick="B2B.openQuote('micro')" title="Pour une micro-entreprise (ne collecte pas la TVA) : prix TTC avec la remise + prix de vente conseillé — à copier en image ou en texte">🧑‍💼 Spécial micro-entreprises</button>
-            <button class="btn-ghost" onclick="B2B.openQuote('ent')" title="Pour une entreprise qui collecte la TVA : prix HT avec la remise + prix de vente conseillé TTC — à copier en image ou en texte">🏢 Spécial entreprises</button>
+            <button class="btn-cta" onclick="B2B.openQuote(B2B._client())" title="${cl === 'micro' ? 'Pour une micro-entreprise (ne récupère pas la TVA) : prix avec TVA après remise + prix de vente conseillé' : 'Pour une entreprise qui récupère la TVA : prix HT après remise + prix de vente conseillé TTC'} — à copier en image ou en texte">📋 Partager le devis ${cl === 'micro' ? 'micro' : 'entreprise'}</button>
+            <button class="btn-ghost" onclick="B2B.exportQuote()" title="Fichier interne (coûts, marges) avec les deux prix">🧾 Exporter le tarif pro (CSV)</button>
             <button class="btn-ghost btn-sm" onclick="B2B.expandAll()">📂 Tout développer</button>
             <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
           </div>
@@ -163,18 +175,19 @@ const B2B = {
       <div class="fold-body">
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Prix de vente</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">${this._lbl().pub}</th>
-          <th class="num" style="border-left:2px solid var(--caramel);">${this._lbl().ent}</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${this._lbl().micro}</th></tr></thead>
+          <th class="num${this._hl('ent')}" style="border-left:2px solid var(--caramel);">${this._lbl().ent}</th><th class="num${this._hl('ent')}">${this._lbl().ce}</th><th class="num">${this._hdSfx('Marge B2B')}</th><th class="num">${this._hdSfx('Cotisations B2B')}</th><th class="num">${this._hdSfx('Bénéfice B2B')}</th><th class="num${this._hl('micro')}">${this._lbl().micro}</th><th class="num${this._hl('micro')}">${this._lbl().cm}</th></tr></thead>
           <tbody><tr>
             <td class="col-name">${mainW ? U.esc(mainW) : 'Standard'}</td>
             <td class="num muted sensitive">${U.eur(it.cost)}</td>
             <td class="num sensitive">${it.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(it.priceTTCPublic)}</td>
-            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)}${this._lbl().ht}${this._expBadge(this._expDiff('a:' + it.a.id, it.priceHTB2B))}</td>
-            <td class="num sensitive ${it.critical ? 'neg' : ''}">${it.coeffB2B.toFixed(2)}${it.critical ? ' ⚠️' : ''}</td>
+            <td class="num sensitive${this._hl('ent')}" style="border-left:2px solid var(--caramel);">${U.eur(it.priceHTB2B)}${this._lbl().ht}${this._expBadge(this._expDiff('a:' + it.a.id, it.priceHTB2B))}</td>
+            <td class="num sensitive${this._hl('ent')} ${it.critical ? 'neg' : ''}">${it.coeffB2B.toFixed(2)}${it.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${it.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(it.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(it.socialB2B)}</td>
             <td class="num sensitive ${it.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(it.profitB2B)}</b></td>
-            <td class="num"><b>${U.eur(it.priceTTCB2B)}</b></td>
+            <td class="num${this._hl('micro')}"><b>${U.eur(it.priceTTCB2B)}</b></td>
+            <td class="num sensitive${this._hl('micro')}">${it.coeffMicro.toFixed(2)}</td>
           </tr></tbody>
         </table></div>
       </div>
@@ -209,7 +222,7 @@ const B2B = {
       const socialB2B = priceHTB2B * U.num(S.socialTaxRate) / 100;
       const profitB2B = marginB2B - socialB2B;
       const critical = coeffB2B < U.num(S.b2bCoeffThreshold);
-      return { vid: v.id, label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
+      return { vid: v.id, label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, coeffMicro: coeffB2B * (1 + vat), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
     });
     const activeSup = preview || p.mainSupplierId;
     return { p, rows, discPct, supplierName: activeSup ? Store.supplierName(activeSup) : '—', critical: rows.some(r => r.critical), preview };
@@ -232,7 +245,7 @@ const B2B = {
     // ⚠️ Accessoires (fait main) : leur propre seuil critique (S.accCoeffThreshold),
     // pas celui de la mastication — cohérent avec le calcul de prix public (Pricing.accCalc).
     const critical = coeffB2B < U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    return { a, discPct, cost, coeffPublic: c.effCoeff, priceTTCPublic: c.priceTTC, priceHTB2B, coeffB2B, marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + U.num(S.vatRate) / 100), critical };
+    return { a, discPct, cost, coeffPublic: c.effCoeff, priceTTCPublic: c.priceTTC, priceHTB2B, coeffB2B, coeffMicro: coeffB2B * (1 + U.num(S.vatRate) / 100), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + U.num(S.vatRate) / 100), critical };
   },
 
   effectiveDiscount(p) {
@@ -307,18 +320,19 @@ const B2B = {
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — cliquer à nouveau pour revenir au principal</div>' : ''}
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Variante</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">${B2B._lbl().pub}</th>
-          <th class="num" style="border-left:2px solid var(--caramel);">${B2B._lbl().ent}</th><th class="num">Coeff B2B</th><th class="num">Marge B2B</th><th class="num">Cotisations B2B</th><th class="num">Bénéfice B2B</th><th class="num">${B2B._lbl().micro}</th></tr></thead>
+          <th class="num${B2B._hl('ent')}" style="border-left:2px solid var(--caramel);">${B2B._lbl().ent}</th><th class="num${B2B._hl('ent')}">${B2B._lbl().ce}</th><th class="num">${B2B._hdSfx('Marge B2B')}</th><th class="num">${B2B._hdSfx('Cotisations B2B')}</th><th class="num">${B2B._hdSfx('Bénéfice B2B')}</th><th class="num${B2B._hl('micro')}">${B2B._lbl().micro}</th><th class="num${B2B._hl('micro')}">${B2B._lbl().cm}</th></tr></thead>
           <tbody>${rows.map(r => `<tr>
             <td class="col-name">${U.esc(r.label)}</td>
             <td class="num muted sensitive">${U.eur(r.cost)}</td>
             <td class="num sensitive">${r.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(r.priceTTCPublic)}</td>
-            <td class="num sensitive" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)}${B2B._lbl().ht}${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
-            <td class="num sensitive ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(2)}${r.critical ? ' ⚠️' : ''}</td>
+            <td class="num sensitive${B2B._hl('ent')}" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)}${B2B._lbl().ht}${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
+            <td class="num sensitive${B2B._hl('ent')} ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(2)}${r.critical ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${r.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(r.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(r.socialB2B)}</td>
             <td class="num sensitive ${r.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(r.profitB2B)}</b></td>
-            <td class="num"><b>${U.eur(r.priceTTCB2B)}</b></td>
+            <td class="num${B2B._hl('micro')}"><b>${U.eur(r.priceTTCB2B)}</b></td>
+            <td class="num sensitive${B2B._hl('micro')}">${r.coeffMicro.toFixed(2)}</td>
           </tr>`).join('')}</tbody>
         </table></div>
       </div>
@@ -404,9 +418,23 @@ const B2B = {
   /* Intitulés des colonnes de prix (mêmes montants dans les deux cas) : non assujetti → entreprise / micro, sans « HT/TTC » ; assujetti → HT / TTC. */
   _lbl() {
     return Pricing.vatMention()
-      ? { ent: 'Prix entreprise', micro: 'Prix micro', pub: 'Prix public', ht: '' }
-      : { ent: 'Prix B2B HT', micro: 'Prix B2B TTC', pub: 'Prix public TTC', ht: ' <span class="muted">HT</span>' };
+      ? { ent: 'Prix entreprise', micro: 'Prix micro', pub: 'Prix public', ht: '', ce: 'Coeff entreprise', cm: 'Coeff micro', sfx: 'entreprise' }
+      : { ent: 'Prix B2B HT', micro: 'Prix B2B TTC', pub: 'Prix public TTC', ht: ' <span class="muted">HT</span>', ce: 'Coeff B2B HT', cm: 'Coeff B2B TTC', sfx: 'HT' };
   },
+  /* En-tête « Marge / Cotisations / Bénéfice B2B » : toujours calculés sur le prix entreprise (HT), précisé en petit sous le titre. */
+  _hdSfx(txt) { return `${txt} <span class="b2b-sfx">${this._lbl().sfx}</span>`; },
+
+  /* Client sélectionné (Revente pro) : 'ent' (défaut) | 'micro' — mémorisé dans le navigateur (touffu_b2bClient). Ne change AUCUN prix :
+     choisit seulement la colonne mise en avant, la ligne de remise surlignée et le devis du bouton « Partager ». */
+  client: 'ent',
+  _clientLoaded: false,
+  _client() {
+    if (!this._clientLoaded) { try { this.client = localStorage.getItem('touffu_b2bClient') === 'micro' ? 'micro' : 'ent'; } catch (e) {} this._clientLoaded = true; }
+    return this.client;
+  },
+  _setClientQuiet(c) { this.client = c === 'micro' ? 'micro' : 'ent'; this._clientLoaded = true; try { localStorage.setItem('touffu_b2bClient', this.client); } catch (e) {} },
+  setClient(c) { this._setClientQuiet(c); this.render(); },
+  _hl(c) { return this._client() === c ? ' b2b-sel' : ''; },
 
   exportQuote() {
     if ((this.tab || 'mast') === 'acc') return this.exportQuoteAcc();
@@ -772,6 +800,7 @@ const B2B = {
   resumePro(id) {
     const rec = this._proPending().find(x => x.id === id); if (!rec) return;
     this.tab = rec.tab || 'mast';
+    this._setClientQuiet(rec.type);   // le sélecteur suit le type du devis rouvert
     this._sel = {}; (rec.sel || []).forEach(i => { this._sel[i] = true; });
     if (rec.dv && rec.dv.base) { const m = Store.state.meta; m.devisB2B = m.devisB2B || {}; m.devisB2B[rec.type + '|' + String(rec.name).trim().toLowerCase()] = { ...rec.dv, ts: Date.now() }; }
     this.render();
