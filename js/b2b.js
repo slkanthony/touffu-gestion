@@ -34,23 +34,20 @@ const B2B = {
     // ⚠️ Deux remises globales INDÉPENDANTES : mastication (achat-revente) et accessoires
     // (fait main) — marges et cotisations différentes, une réduction ne doit jamais
     // s'appliquer à l'autre catégorie (demande explicite d'Antho). Clés localStorage séparées.
-    this.discount = this.discount || U.num(localStorage.getItem('touffu_b2bDiscount')) || 20;
-    if (this.discountAcc === undefined) {
-      const s = localStorage.getItem('touffu_b2bDiscountAcc');
-      this.discountAcc = s !== null ? U.num(s) : 20;
-    }
+    this._loadDiscounts();
     U.syncFilters('b2b', this.filters);
     const tab = this.tab || 'mast';
     const disc = tab === 'acc' ? this.discountAcc : this.discount;   // remise de l'ONGLET ACTIF (jamais une valeur unique)
     const cl = this._client();
-    // Les deux lectures de la MÊME remise (valeur stockée inchangée) : micro = −disc % sur le prix public TTC ; entreprise (prix HT) = −(1 − (1−disc)/(1+TVA)) %.
-    const vatPct = U.num(Store.state.settings.vatRate);
-    const discEnt = (1 - (1 - U.num(disc) / 100) / (1 + vatPct / 100)) * 100;
-    const pct1 = x => U.qty(Math.round(x * 10) / 10);
+    // Valeur stockée UNIQUE (`disc` = base : % sur le prix public HT = prix entreprise) ; le champ affiche la lecture du client sélectionné, les deux lectures sont rappelées dessous.
+    const vatPct = Pricing.vatRate();   // taux global (en-tête) ; les fiches utilisent leur propre taux
+    const pct1 = x => U.qty(this._pct1(x));
+    const vEnt = this._discView(disc, vatPct, 'ent'), vMicro = this._discView(disc, vatPct, 'micro');
+    const shown = this._pct1(cl === 'ent' ? vEnt : vMicro);
     const discLines = `<div class="b2b-disc-lines">
-              <div class="${cl === 'micro' ? 'on' : ''}">🧑‍💼 Micro : −${pct1(U.num(disc))} % du prix public</div>
-              <div class="${cl === 'ent' ? 'on' : ''}">🏢 Entreprise : −${pct1(discEnt)} % du prix public</div>
-              <div class="muted">Micro = entreprise + ${pct1(vatPct)} % <span class="muted help" data-help-anchor="~ .b2b-global-disc > label">L'entreprise récupère la TVA : elle paie le prix HT. Le micro-entrepreneur ne la récupère pas : il paie le prix TTC. Le champ ci-dessus est la seule remise réelle (−${pct1(U.num(disc))} % sur le prix public HT) ; les deux pourcentages sont juste deux façons de la lire, avec la TVA globale (${pct1(vatPct)} %).</span></div>
+              <div class="${cl === 'micro' ? 'on' : ''}">🧑‍💼 Micro : −${pct1(vMicro)} % du prix public</div>
+              <div class="${cl === 'ent' ? 'on' : ''}">🏢 Entreprise : −${pct1(vEnt)} % du prix public</div>
+              <div class="muted">Micro = entreprise + ${pct1(vatPct)} % <span class="muted help" data-help-anchor="~ .b2b-global-disc > label">Le champ affiche la remise du client choisi ; la valeur réellement enregistrée est unique : −${pct1(disc)} % sur le prix public HT (= le prix entreprise). Tant que tu n'es pas assujetti, l'entreprise paie sans TVA : comparée au prix public TTC, sa remise paraît plus grande (${pct1(vEnt)} %) ; la remise « entreprise » ne peut pas descendre sous ${pct1(this._discBase(0, vatPct, 'ent').min)} % (= le prix public HT). Une fois assujetti, l'entreprise récupère la TVA (HT contre HT) et le micro compare TTC contre TTC : les deux remises sont alors égales. Le micro-entrepreneur ne récupère pas la TVA : il paie le prix TTC.</span></div>
             </div>`;
 
     const controls = `
@@ -63,9 +60,9 @@ const B2B = {
         </div>
         <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
           <div class="b2b-global-disc">
-            <label>Réduction B2B ${tab === 'acc' ? 'accessoires' : 'mastication'} (%)</label>
+            <label>Remise ${cl === 'ent' ? 'entreprise' : 'micro'} — ${tab === 'acc' ? 'accessoires' : 'mastication'} (%)</label>
             <div class="b2b-global-disc-input">
-              <input id="b2b_disc" type="text" inputmode="numeric" value="${disc}" onchange="B2B.setDiscount(this.value)" onkeydown="if(event.key==='Enter')this.blur()" onclick="this.select()">
+              <input id="b2b_disc" type="text" inputmode="decimal" value="${shown}" onchange="B2B.setDiscount(this.value)" onkeydown="if(event.key==='Enter')this.blur()" onclick="this.select()">
               <span>%</span>
             </div>
             ${discLines}
@@ -169,7 +166,7 @@ const B2B = {
         <span class="type-col"><span class="badge info">${U.esc(a.category || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${widthBadges}</span>
         <span class="b2b-disc-badge" onclick="event.preventDefault();event.stopPropagation()">
-          <label>Réduction</label><input type="number" min="0" max="100" step="1" value="${a.b2bDiscount ?? ''}" placeholder="${this.discountAcc}" title="Réduction B2B propre à cet accessoire — vide = suit la remise globale accessoires" onchange="B2B.setAccDiscount('${a.id}',this.value)"><span>%</span>
+          <label>Réduction</label><input type="number" min="0" max="100" step="0.1" value="${this._fieldVal(a.b2bDiscount, Pricing.vatRate(a))}" placeholder="${this._pct1(this._discView(this.discountAcc, Pricing.vatRate(a), this._client()))}" title="Remise ${this._client() === 'ent' ? 'entreprise' : 'micro'} propre à cet accessoire — vide = suit la remise globale accessoires" onchange="B2B.setAccDiscount('${a.id}',this.value)"><span>%</span>
         </span>
       </summary>
       <div class="fold-body">
@@ -204,7 +201,7 @@ const B2B = {
     const baseMain = Pricing.baseUnitCost(p);
     const base = preview ? Pricing.baseUnitCost(p, preview) : baseMain;
     const discPct = this.effectiveDiscount(p);
-    const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;
+    const vat = Pricing.vatRate(p) / 100;
     const na = (p.variants || []).filter(v => v.enabled !== false).length;
     let idx = 0;
     const rows = (p.variants || []).filter(v => v.enabled !== false).map(v => {
@@ -222,7 +219,7 @@ const B2B = {
       const socialB2B = priceHTB2B * U.num(S.socialTaxRate) / 100;
       const profitB2B = marginB2B - socialB2B;
       const critical = coeffB2B < U.num(S.b2bCoeffThreshold);
-      return { vid: v.id, label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, coeffMicro: coeffB2B * (1 + vat), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
+      return { vid: v.id, label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, coeffMicro: this.coeffMicro(coeffB2B, vat), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
     });
     const activeSup = preview || p.mainSupplierId;
     return { p, rows, discPct, supplierName: activeSup ? Store.supplierName(activeSup) : '—', critical: rows.some(r => r.critical), preview };
@@ -237,7 +234,8 @@ const B2B = {
     const cost = c.cost;
     const priceHT = c.priceHT;
     const priceHTB2B = priceHT * (1 - discPct / 100);
-    const priceTTCB2B = priceHTB2B * (1 + U.num(S.vatRate) / 100);
+    const vat = Pricing.vatRate(a) / 100;
+    const priceTTCB2B = priceHTB2B * (1 + vat);
     const coeffB2B = cost > 0 ? priceHTB2B / cost : 0;
     const marginB2B = priceHTB2B - cost;
     const socialB2B = priceHTB2B * Pricing.socialRateHandmade() / 100;
@@ -245,8 +243,42 @@ const B2B = {
     // ⚠️ Accessoires (fait main) : leur propre seuil critique (S.accCoeffThreshold),
     // pas celui de la mastication — cohérent avec le calcul de prix public (Pricing.accCalc).
     const critical = coeffB2B < U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    return { a, discPct, cost, coeffPublic: c.effCoeff, priceTTCPublic: c.priceTTC, priceHTB2B, coeffB2B, coeffMicro: coeffB2B * (1 + U.num(S.vatRate) / 100), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + U.num(S.vatRate) / 100), critical };
+    return { a, discPct, cost, coeffPublic: c.effCoeff, priceTTCPublic: c.priceTTC, priceHTB2B, coeffB2B, coeffMicro: this.coeffMicro(coeffB2B, vat), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
   },
+
+  /* Coefficient du prix micro. Non assujetti : le client paie le prix entreprise + TVA et tu gardes tout → coeff × (1+TVA).
+     Assujetti : ce prix est un TTC dont tu reverses la TVA → ta recette nette = le prix entreprise → coeff micro = coeff entreprise. */
+  coeffMicro(coeffB2B, vat) { return Pricing.vatActive() ? coeffB2B : coeffB2B * (1 + vat); },
+
+  /* Remise STOCKÉE (« base » = % sur le prix public HT = prix entreprise) ⇄ remise AFFICHÉE du client sélectionné.
+     Non assujetti : l'entreprise paie sans TVA → comparée au prix public TTC, sa remise = 1 − (1−base)/(1+TVA) (20 → 33,3) ; le micro = base.
+     Assujetti : l'entreprise récupère la TVA (HT contre HT) et le micro compare TTC contre TTC → les deux = base. */
+  _discView(base, vatPct, client) {
+    base = U.num(base);
+    if (Pricing.vatActive() || client !== 'ent') return base;
+    return (1 - (1 - base / 100) / (1 + U.num(vatPct) / 100)) * 100;
+  },
+  /* Inverse : valeur saisie → base stockée (bornée 0–100, 2 décimales). `min` = plancher de la saisie « entreprise » non assujettie (base 0 = prix public HT). */
+  _discBase(shown, vatPct, client) {
+    const x = U.num(shown), conv = !Pricing.vatActive() && client === 'ent';
+    const raw = conv ? (1 - (1 - x / 100) * (1 + U.num(vatPct) / 100)) * 100 : x;
+    const base = Math.round(Math.min(100, Math.max(0, raw)) * 100) / 100;
+    return { base, clamped: raw < -0.005 || raw > 100.005, min: conv ? (1 - 1 / (1 + U.num(vatPct) / 100)) * 100 : 0 };
+  },
+  /* Chargement UNIQUE des deux remises globales (20 % si jamais réglées). Avant : `discount || … || 20` ramenait une remise à 0 % à 20 %. */
+  _discLoaded: false,
+  _loadDiscounts() {
+    if (this._discLoaded) return;
+    const g = localStorage.getItem('touffu_b2bDiscount'), a = localStorage.getItem('touffu_b2bDiscountAcc');
+    this.discount = g !== null ? U.num(g) : 20;
+    this.discountAcc = a !== null ? U.num(a) : 20;
+    this._discLoaded = true;
+  },
+  _pct1(x) { return Math.round(U.num(x) * 10) / 10; },
+  /* Champ « Réduction » d'une fiche : vide = suit la remise globale ; sinon affiché / saisi dans l'unité du client sélectionné (TVA de la fiche). */
+  _fieldVal(base, vatPct) { return (base === undefined || base === null || base === '') ? '' : this._pct1(this._discView(base, vatPct, this._client())); },
+  _fieldBase(shown, vatPct) { return String(shown == null ? '' : shown).trim() === '' ? null : this._discBase(shown, vatPct, this._client()); },
+  _clampToast(r) { if (r && r.clamped) U.toast(r.min > 0 ? `Remise entreprise minimum ${U.qty(this._pct1(r.min))} % (= prix public HT).` : 'Remise bornée entre 0 et 100 %.', true); },
 
   effectiveDiscount(p) {
     const specific = p.b2bDiscount;
@@ -313,7 +345,7 @@ const B2B = {
         </span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="b2b-disc-badge" onclick="event.preventDefault();event.stopPropagation()">
-          <label>Réduction</label><input type="number" min="0" max="100" step="1" value="${p.b2bDiscount ?? ''}" placeholder="${this.discount}" title="Réduction B2B propre à ce produit — vide = suit la remise globale" onchange="B2B.setProductDiscount('${p.id}',this.value)"><span>%</span>
+          <label>Réduction</label><input type="number" min="0" max="100" step="0.1" value="${this._fieldVal(p.b2bDiscount, Pricing.vatRate(p))}" placeholder="${this._pct1(this._discView(this.discount, Pricing.vatRate(p), this._client()))}" title="Remise ${this._client() === 'ent' ? 'entreprise' : 'micro'} propre à ce produit — vide = suit la remise globale" onchange="B2B.setProductDiscount('${p.id}',this.value)"><span>%</span>
         </span>
       </summary>
       <div class="fold-body">
@@ -379,22 +411,26 @@ const B2B = {
   setProductDiscount(pId, val) {
     const p = Store.state.catalogM.find(x => String(x.id) === String(pId)); if (!p) return;
     const snap = Store.snapshot('catalogM', p);
-    p.b2bDiscount = val;
+    const r = this._fieldBase(val, Pricing.vatRate(p));
+    p.b2bDiscount = r ? r.base : '';
     const entry = Store.commitSnapshot(snap, 'b2b', 'Décote B2B modifiée — ' + p.name);
     Store.save('catalogM');
     U.toast('Décote mise à jour.', false, entry.id);
     this.render();
+    this._clampToast(r);
   },
 
   /* Idem pour un accessoire (`a.b2bDiscount` sur catalogA). */
   setAccDiscount(aId, val) {
     const a = Store.state.catalogA.find(x => String(x.id) === String(aId)); if (!a) return;
     const snap = Store.snapshot('catalogA', a);
-    a.b2bDiscount = val;
+    const r = this._fieldBase(val, Pricing.vatRate(a));
+    a.b2bDiscount = r ? r.base : '';
     const entry = Store.commitSnapshot(snap, 'b2b', 'Décote B2B modifiée — ' + a.name);
     Store.save('catalogA');
     U.toast('Décote mise à jour.', false, entry.id);
     this.render();
+    this._clampToast(r);
   },
 
   /* Remise globale de l'onglet ACTIF (mastication OU accessoires — deux valeurs
@@ -405,7 +441,8 @@ const B2B = {
   setDiscount(v) {
     const acc = (this.tab || 'mast') === 'acc';
     const before = acc ? this.discountAcc : this.discount;
-    const val = Math.min(100, Math.max(0, U.num(v)));
+    const r = this._discBase(v, Pricing.vatRate(), this._client());   // saisie dans l'unité du client choisi → base stockée
+    const val = r.base;
     if (acc) { this.discountAcc = val; localStorage.setItem('touffu_b2bDiscountAcc', val); }
     else { this.discount = val; localStorage.setItem('touffu_b2bDiscount', val); }
     this.render();
@@ -413,13 +450,14 @@ const B2B = {
       const entry = Store.log('b2b', `Remise B2B ${acc ? 'accessoires' : 'mastication'} modifiée (${before}% → ${val}%)`, { type: 'b2bGlobalDiscount', data: { before, acc } });
       U.toast('Remise globale mise à jour.', false, entry.id);
     }
+    this._clampToast(r);   // en dernier : le message de plancher ne doit pas être écrasé par le toast précédent
   },
 
   /* Intitulés des colonnes de prix (mêmes montants dans les deux cas) : non assujetti → entreprise / micro, sans « HT/TTC » ; assujetti → HT / TTC. */
   _lbl() {
-    return Pricing.vatMention()
-      ? { ent: 'Prix entreprise', micro: 'Prix micro', pub: 'Prix public', ht: '', ce: 'Coeff entreprise', cm: 'Coeff micro', sfx: 'entreprise' }
-      : { ent: 'Prix B2B HT', micro: 'Prix B2B TTC', pub: 'Prix public TTC', ht: ' <span class="muted">HT</span>', ce: 'Coeff B2B HT', cm: 'Coeff B2B TTC', sfx: 'HT' };
+    return Pricing.vatActive()
+      ? { ent: 'Prix B2B HT', micro: 'Prix B2B TTC', pub: 'Prix public TTC', ht: ' <span class="muted">HT</span>', ce: 'Coeff B2B HT', cm: 'Coeff B2B TTC', sfx: 'HT' }
+      : { ent: 'Prix entreprise', micro: 'Prix micro', pub: 'Prix public', ht: '', ce: 'Coeff entreprise', cm: 'Coeff micro', sfx: 'entreprise' };
   },
   /* En-tête « Marge / Cotisations / Bénéfice B2B » : toujours calculés sur le prix entreprise (HT), précisé en petit sous le titre. */
   _hdSfx(txt) { return `${txt} <span class="b2b-sfx">${this._lbl().sfx}</span>`; },
@@ -503,7 +541,7 @@ const B2B = {
     return { rows, all: list, devis, keys: rows.map(r => [r.key, r.ht]), total: list.reduce((a, r) => a + r.sub, 0), totalReco: list.reduce((a, r) => a + r.subReco, 0) };
   },
   _qtCols() {
-    const micro = this._qt.type === 'micro', franchise = !!Pricing.vatMention();   // non assujetti : pas de « HT » (aucune TVA facturée)
+    const micro = this._qt.type === 'micro', franchise = !Pricing.vatActive();   // non assujetti : pas de « HT » (aucune TVA facturée)
     return { price: micro || franchise ? 'Prix' : 'Prix HT', reco: micro ? 'Prix de vente\nconseillé' : 'Prix de vente\nconseillé TTC' };
   },
   _qtExtras() {
@@ -511,6 +549,9 @@ const B2B = {
     const iban = String(S.payIban || '').trim(), holder = String(S.payHolder || '').trim(), bic = String(S.payBic || '').trim();
     const ibanLines = (q.iban !== false && iban) ? [].concat(['RIB :'], holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
     const msg = String(q.msg != null ? q.msg : (S.payMessage || '')).trim();
+    // TODO (assujettissement) : si Pricing.vatActive(), détailler le devis (HT + TVA par taux + total TTC) via une fonction
+    // quoteVatBreakdown(lignes) à écrire AVEC son affichage ; à faire aussi pour le devis de Paniers (clients particuliers).
+    // La mention 293 B disparaît déjà seule (Pricing.vatMention()) ; les montants ne changent pas, seul leur sens (HT/TTC).
     return { ibanLines, msg, vatMention: Pricing.vatMention(), refHint: ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '' };
   },
   /* N° de devis (voir devis.js) : un état par entreprise (nom saisi) et par type de tarif, repris pendant 30 jours ; la lettre avance seulement si le contenu change */
@@ -526,7 +567,7 @@ const B2B = {
   _dvShow() { return Devis.show(this._dvState(), this._dvHash()); },
   _dvCommit() { const st = this._dvState(), no = Devis.commit(st, this._dvHash()); st.ts = Date.now(); Store.save('meta'); this._qtNoRefresh(); return no; },
   _qtNoRefresh() { const e = document.getElementById('qt_no'); if (e) e.textContent = this._dvShow(); },
-  _qtTotalLabel() { return this._qt.type === 'micro' || Pricing.vatMention() ? 'Total' : 'Total HT'; },
+  _qtTotalLabel() { return this._qt.type === 'micro' || !Pricing.vatActive() ? 'Total' : 'Total HT'; },
   _qtRecoLabel() { return this._qt.type === 'micro' ? 'Total revente conseillé' : 'Total revente conseillé TTC'; },
   _qtTotalsTxt() { const { devis, total, totalReco } = this._qtRows(true); return devis ? this._qtTotalLabel() + ' : ' + U.eur(total) + '<br><span style="font-weight:600;font-size:.95rem;color:var(--caramel);">' + this._qtRecoLabel() + ' : ' + U.eur(totalReco) + '</span>' : ''; },
   _qtInner() {

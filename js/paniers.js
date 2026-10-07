@@ -693,6 +693,8 @@ const Paniers = {
     const valid = this._shValid ? 'Devis valable jusqu\'au ' + U.frDate(this._shValid) : '';
     const mode = this._shMode === 'cc' ? 'Mode de remise : Click & Collect (retrait)' : this._shMode === 'liv' ? 'Mode de remise : Livraison' : '';
     const refHint = ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '';
+    // TODO (assujettissement) : si Pricing.vatActive(), détailler le devis (HT + TVA par taux + total TTC) avec quoteVatBreakdown(lignes),
+    // à écrire en même temps que celui de Revente pro (b2b.js `_qtExtras`) ; « Total » redevient « Total TTC ». Mention 293 B déjà masquée.
     return { pay, ibanLines, msg, who, valid, mode, refHint, vatMention: Pricing.vatMention() };
   },
   /* Sortie du devis (copie image / texte, mise en attente) : le numéro devient définitif, la lettre avance si le contenu a changé */

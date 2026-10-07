@@ -384,7 +384,7 @@ const Stats = {
     // même init paresseuse que B2B.render() : au cas où cette page est ouverte
     // avant la page Revente pro, la remise partagée doit quand même refléter
     // la dernière valeur enregistrée (ou 20% par défaut), pas rester à 0.
-    B2B.discount = B2B.discount || U.num(localStorage.getItem('touffu_b2bDiscount')) || 20;
+    B2B._loadDiscounts();
     const statsPublic = (p) => this.variantStats(p, false);
     const statsB2B = (p) => this.variantStats(p, true);
 
@@ -429,7 +429,7 @@ const Stats = {
         <div class="card sensitive" style="border-left:4px solid var(--caramel);">
           <div class="frow" style="justify-content:space-between;align-items:center;">
             <h2 style="margin:0;">🤝 Distribution des coefficients (B2B)</h2>
-            <div class="fg" style="max-width:110px;margin:0;"><label>Remise globale (%)</label><input type="number" step="1" value="${B2B.discount}" onchange="Stats.setB2BDiscount(this.value)"></div>
+            <div class="fg" style="max-width:150px;margin:0;"><label>Remise globale ${B2B._client() === 'ent' ? 'entreprise' : 'micro'} (%)</label><input type="number" step="0.1" value="${B2B._pct1(B2B._discView(B2B.discount, Pricing.vatRate(), B2B._client()))}" onchange="Stats.setB2BDiscount(this.value)"></div>
           </div>
           <div style="position:relative;height:230px;">${products.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div>
         </div>
@@ -448,7 +448,7 @@ const Stats = {
     const S = Store.state.settings;
     const base = Pricing.baseUnitCost(p);
     const discPct = isB2B ? B2B.effectiveDiscount(p) : 0;
-    const vat = U.num(p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate) / 100;   // même TVA que B2B.productStats
+    const vat = Pricing.vatRate(p) / 100;   // même TVA que B2B.productStats
     const na = (p.variants || []).filter(v => v.enabled !== false).length;
     let idx = 0;
     const variants = (p.variants || []).filter(v => v.enabled !== false).map(v => {
@@ -457,7 +457,7 @@ const Stats = {
       if (isB2B) {
         const proHT = c.priceHT * (1 - discPct / 100);
         coeff = c.cost > 0 ? proHT / c.cost : 0;
-        coeffMicro = coeff * (1 + vat);   // prix micro = prix entreprise × (1 + TVA)
+        coeffMicro = B2B.coeffMicro(coeff, vat);   // non assujetti : × (1 + TVA) ; assujetti : = coeff entreprise (recette nette)
         profitB2B = proHT - c.cost - proHT * U.num(S.socialTaxRate) / 100;   // même formule que « Bénéfice B2B » de Revente pro
       }
       return { label: Pricing.labelVariant(v), coeff, coeffMicro, profitB2B, margin: coeff > 0 ? (1 - 1 / coeff) * 100 : 0, critical: coeff < U.num(S.b2bCoeffThreshold) };
@@ -470,10 +470,12 @@ const Stats = {
   /* Remise B2B globale partagée avec la page Revente pro (même localStorage
      touffu_b2bDiscount) : la modifier ici la modifie aussi là-bas. */
   setB2BDiscount(v) {
-    B2B.discount = U.num(v);
+    const r = B2B._discBase(v, Pricing.vatRate(), B2B._client());   // saisie dans l'unité du client choisi (page Revente pro) → base stockée
+    B2B.discount = r.base;
     localStorage.setItem('touffu_b2bDiscount', B2B.discount);
     this.detail = null;
     this.render();
+    B2B._clampToast(r);
   },
 
   drawCharts(meatCount, supplierCount, bins, binsPublic, binsB2B, statsPublic, statsB2B) {

@@ -1484,7 +1484,7 @@ const Stock = {
   _packImpact(info, newSacCost) {
     const S = Store.state.settings, c = info.calc;
     const thr = U.num(S.b2bCoeffThreshold);
-    if (typeof B2B !== 'undefined') B2B.discount = B2B.discount || U.num(localStorage.getItem('touffu_b2bDiscount')) || 20;
+    if (typeof B2B !== 'undefined') B2B._loadDiscounts();
     const disc = typeof B2B !== 'undefined' ? B2B.effectiveDiscount(info.cat) : 0;
     const soc = U.num(S.socialTaxRate) / 100;
     const mk = cost => {
