@@ -1584,24 +1584,24 @@ const Paniers = {
       const cat = catId ? Store.state.catalogM.find(c => c.id === catId) : null;
       const cvId = sv ? sv.catalogVariantId : null;
       const cv = cat && cvId ? (cat.variants || []).find(x => x.id === cvId) : null;
-      let cost = 0, priceHT = 0, margin = 0, social = 0, profit = 0, coeff = b.coeff, vatAmt = 0;
+      let cost = 0, priceHT = 0, priceTTC = 0, coeff = b.coeff;
       if (cat && cv) {
         const base = Pricing.baseUnitCost(cat);
         const calc = Pricing.variantCalc(cat, cv, 0, base);
-        cost = calc.cost; priceHT = calc.priceHT; margin = calc.margin; social = calc.social; profit = calc.profit; coeff = calc.effCoeff; vatAmt = calc.vatAmt;
+        cost = calc.cost; priceHT = calc.priceHT; priceTTC = calc.priceTTC; coeff = calc.effCoeff;
       } else {
         const vat = U.num(S.vatRate) / 100;
+        priceTTC = b.price;
         priceHT = b.price / (1 + vat);
         cost = U.num(sv ? sv.costUnit : 0);
-        margin = priceHT - cost;
-        social = priceHT * (U.num(S.socialTaxRate) / 100);
-        vatAmt = b.price - priceHT;
-        profit = margin - social - vatAmt;
       }
-      if (fd < 1) { priceHT *= fd; vatAmt *= fd; social *= fd; margin = priceHT - cost; profit = margin - social - vatAmt; }
-      // Non assujetti : la TVA reste dans le bénéfice (cohérent avec Prix mastication / Accessoires / compta).
-      if (!S.vatActive) profit += vatAmt;
-      return { ...b, cost, priceHT, margin, social, profit, coeff };
+      if (fd < 1) { priceHT *= fd; priceTTC *= fd; }   // réduction client : le prix encaissé baisse, pas le coût
+      // Même règle que les autres écrans : bénéfice « assujetti » (hors TVA) pour les totaux ; le gain réel non assujetti vient en plus.
+      const rate = U.num(S.socialTaxRate) / 100;
+      const margin = priceHT - cost, social = priceHT * rate;
+      const profit = margin - social;
+      const profitActuel = priceTTC - cost - priceTTC * rate;
+      return { ...b, cost, priceHT, margin, social, profit, profitActuel, coeff };
     });
 
     const totVente = rows.reduce((a, r) => a + r.price * r.qty, 0) * fd;
@@ -1609,6 +1609,7 @@ const Paniers = {
     const totMargin = rows.reduce((a, r) => a + r.margin * r.qty, 0);
     const totSocial = rows.reduce((a, r) => a + r.social * r.qty, 0);
     const totProfit = rows.reduce((a, r) => a + r.profit * r.qty, 0);
+    const totActuel = rows.reduce((a, r) => a + r.profitActuel * r.qty, 0);
     const avgCoeff = nbArticles > 0 ? rows.reduce((a, r) => a + r.coeff * r.qty, 0) / nbArticles : 0;
     const nViandes = [...new Set(this.basket.map(b => b.meat))].filter(Boolean).length;
     const nProduits = [...new Set(this.basket.map(b => b.pId))].length;
@@ -1660,7 +1661,7 @@ const Paniers = {
             <td class="num sensitive">${avgCoeff > 0 ? avgCoeff.toFixed(2) : ''}</td>
           </tr></tbody>
         </table></div>
-        <p class="muted sensitive" style="margin-top:6px;font-size:.82rem;">Commission ${feeName} : ${U.eur(cbFee)} (${U.pct(feeRate)}) · Bénéfice après frais : ${U.eur(totProfit - cbFee)}</p>
+        <p class="muted sensitive" style="margin-top:6px;font-size:.82rem;">Commission ${feeName} : ${U.eur(cbFee)} (${U.pct(feeRate)}) · Bénéfice après frais : ${U.eur(totProfit - cbFee)}${S.vatActive ? '' : ` · Gain réel aujourd'hui (TVA conservée) : ${U.eur(totActuel - cbFee)}`}</p>
       </div>
     </details>`;
   },

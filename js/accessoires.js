@@ -340,9 +340,9 @@ const Accessoires = {
 
   accCard(a) {
     const c = Pricing.accCalc(a);
-    // TVA : déduite du profit seulement si assujetti (S.vatActive) ; sinon conservée dans le profit.
+    // Profit net = bénéfice « assujetti » (marge − cotisations, TVA hors calcul). Non assujetti : le gain réel (TVA conservée) est affiché en dessous.
     const vatOn = Store.state.settings.vatActive;
-    const netProfit = vatOn ? c.profit : c.profit + c.vatAmt;
+    const netProfit = c.profitAssujetti;
     const bomRows = (a.bom || []).map((l, li) => {
       const label = this.bomLineLabel(l);
       const unit = this.bomLineUnit(l);
@@ -385,10 +385,8 @@ const Accessoires = {
               <tr><td><b>Prix TTC</b></td><td class="num">${c.priceFixed ? '<button class="btn-icon" title="Revenir au calcul auto" onclick="Accessoires.setAccInline(\''+a.id+'\',\'priceTTCManual\',0)" style="vertical-align:middle;">↺</button>' : ''}<input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="acc-inline-input" style="font-weight:700;" onchange="Accessoires.setAccInline('${a.id}','priceTTCManual',this.value)"></td></tr>
               <tr><td>Marge</td><td class="num sensitive">${U.eur(c.margin)}</td></tr>
               <tr><td>Cotisations URSSAF <span class="muted">(${U.pct(Pricing.socialRateHandmade())} — fait main)</span></td><td class="num sensitive neg">− ${U.eur(c.social)}</td></tr>
-              ${c.vatAmt ? (vatOn
-                ? `<tr><td>TVA <span class="muted">(${U.pct(Store.state.settings.vatRate)} — reversée)</span></td><td class="num sensitive neg">− ${U.eur(c.vatAmt)}</td></tr>`
-                : `<tr><td>TVA <span class="muted">(${U.pct(Store.state.settings.vatRate)} — conservée)</span></td><td class="num sensitive pos" title="Non assujetti : la TVA reste dans ton profit">${U.eur(c.vatAmt)}</td></tr>`) : ''}
-              <tr><td><b>Profit net</b></td><td class="num sensitive ${netProfit >= 0 ? 'pos' : 'neg'}"><b>${U.eur(netProfit)}</b></td></tr>
+              <tr><td><b>Profit net</b> <span class="muted help">Marge moins cotisations, TVA non comptée (c'est le bénéfice que tu auras une fois assujetti).</span></td><td class="num sensitive ${netProfit >= 0 ? 'pos' : 'neg'}"><b>${U.eur(netProfit)}</b></td></tr>
+              ${vatOn ? '' : `<tr><td>Gain réel aujourd'hui <span class="muted help">Non assujetti : tu gardes la TVA (${U.eur(c.vatAmt)}) et les cotisations se calculent sur le prix TTC encaissé. C'est le même chiffre que dans les Stats.</span></td><td class="num sensitive ${c.profitActuel >= 0 ? 'pos' : 'neg'}">${U.eur(c.profitActuel)}</td></tr>`}
             </tbody></table></div>
           </div>
         </div>

@@ -153,8 +153,10 @@ const Catalogue = {
         const margin = priceHT - cost;
         const social = priceHT * (U.num(S.socialTaxRate) / 100);
         const vatAmt = priceTTC - priceHT;
-        const profit = margin - social - vatAmt;
-        c = { ...cRaw, priceHT, priceTTC, coeff, margin, social, vatAmt, profit, effCoeff: coeff, priceFixed: true, critical: coeff < U.num(S.b2bCoeffThreshold) };
+        const profitAssujetti = margin - social;
+        const profitActuel = priceTTC - cost - priceTTC * (U.num(S.socialTaxRate) / 100);
+        const profit = profitAssujetti;
+        c = { ...cRaw, priceHT, priceTTC, coeff, margin, social, vatAmt, profit, profitAssujetti, profitActuel, effCoeff: coeff, priceFixed: true, critical: coeff < U.num(S.b2bCoeffThreshold) };
       }
       if (on) { idx++; if (c.critical) critCount++; }
       return `<tr class="${on ? '' : 'dim'}">
@@ -165,7 +167,7 @@ const Catalogue = {
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
         <td class="num sensitive ${S.vatActive ? 'num-cotis' : 'num-marge'}">${S.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
-        <td class="num sensitive num-benef-cell ${c.profit >= 0 ? 'pos' : 'neg'}" data-normal="${U.eur(c.profit)}" data-peek="${U.eur(c.profit + c.priceTTC - c.priceHT)}"><b>${U.eur(c.profit)}</b></td>
+        <td class="num sensitive num-benef-cell ${c.profitAssujetti >= 0 ? 'pos' : 'neg'}" data-normal="${U.eur(c.profitAssujetti)}" data-peek="${U.eur(S.vatActive ? c.profitAssujetti : c.profitActuel)}"><b>${U.eur(c.profitAssujetti)}</b></td>
         <td class="num"><b><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" style="width:85px;text-align:right;font-weight:700;" onchange="Catalogue.setCardPriceTTC('${p.id}','${v.id}',this.value,${on ? curIdx : -1})"></b></td>
       </tr>`;
     };
@@ -822,7 +824,7 @@ const Catalogue = {
     const th = (t, cls) => `<th class="${cls || 'num'}">${t}</th>`;
     const rows = groupRows.map((r, j) => {
       const { v, i, c, on } = r;
-      const benef = S.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT;
+      const benef = c.profitAssujetti;
       return `<tr class="${on ? '' : 'dim'}">
         <td class="sz-ck"><input type="checkbox" ${on ? 'checked' : ''} onchange="Catalogue._d.variants[${i}].enabled=this.checked;if(this.checked)Catalogue.autoFillSkus('size');Catalogue.drawVars()">
           <span class="mini-reorder"><button class="btn-icon" title="Monter" ${j <= 0 ? 'disabled' : ''} onclick="Catalogue.moveVar(${i},-1)">↑</button><button class="btn-icon" title="Descendre" ${j >= groupRows.length - 1 ? 'disabled' : ''} onclick="Catalogue.moveVar(${i},1)">↓</button></span></td>
@@ -883,7 +885,7 @@ const Catalogue = {
       <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
       <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
       <td class="num sensitive ${Store.state.settings.vatActive ? 'num-cotis' : 'num-marge'}">${Store.state.settings.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
-      <td class="num num-benef sensitive ${(Store.state.settings.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT) >= 0 ? 'pos' : 'neg'}"><b>${U.eur(Store.state.settings.vatActive ? c.profit : c.profit + c.priceTTC - c.priceHT)}</b></td>
+      <td class="num num-benef sensitive ${c.profitAssujetti >= 0 ? 'pos' : 'neg'}"><b>${U.eur(c.profitAssujetti)}</b></td>
       <td class="num"><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="v-price strong" onchange="Catalogue.setVariantPrice(${i},'ttc',this.value)">
 </td>
       <td><button class="btn-icon" onclick="Catalogue._d.variants.splice(${i},1);Catalogue.drawVars()">🗑️</button></td>
