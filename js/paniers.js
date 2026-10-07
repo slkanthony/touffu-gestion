@@ -693,7 +693,7 @@ const Paniers = {
     const valid = this._shValid ? 'Devis valable jusqu\'au ' + U.frDate(this._shValid) : '';
     const mode = this._shMode === 'cc' ? 'Mode de remise : Click & Collect (retrait)' : this._shMode === 'liv' ? 'Mode de remise : Livraison' : '';
     const refHint = ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '';
-    return { pay, ibanLines, msg, who, valid, mode, refHint };
+    return { pay, ibanLines, msg, who, valid, mode, refHint, vatMention: Pricing.vatMention() };
   },
   /* Sortie du devis (copie image / texte, mise en attente) : le numéro devient définitif, la lettre avance si le contenu a changé */
   _dvCommit() {
@@ -713,7 +713,7 @@ const Paniers = {
           ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
           ${d.av > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Avoir déduit</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.av)}</td></tr>` : ''}
           ${d.det > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Solde à régler</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">+ ${U.eur(d.det)}</td></tr>` : ''}
-          <tr style="border-top:2px solid var(--caramel);"><td colspan="4" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">Total TTC</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
+          <tr style="border-top:2px solid var(--caramel);"><td colspan="4" style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;">${x.vatMention ? 'Total' : 'Total TTC'}</td><td style="padding:9px 10px;text-align:right;font-weight:800;font-size:1.1rem;white-space:nowrap;">${U.eur(d.total)}</td></tr>
         </tfoot>
       </table>
       ${x.mode ? `<p style="margin:10px 10px 0;font-weight:700;">${U.esc(x.mode)}</p>` : ''}
@@ -721,7 +721,8 @@ const Paniers = {
       ${x.pay ? `<p style="margin:12px 10px 0;">${U.esc(x.pay)}</p>` : ''}
       ${x.ibanLines.length ? `<p style="margin:8px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.refHint ? `<p style="margin:6px 10px 0;font-style:italic;">${U.esc(x.refHint)}</p>` : ''}
-      ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
+      ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}
+      ${x.vatMention ? `<p style="margin:10px 10px 0;font-size:.85rem;color:var(--gris);">${U.esc(x.vatMention)}</p>` : ''}`;
   },
   _shareRefresh() {
     const box = document.getElementById('pan_share');
@@ -990,6 +991,7 @@ const Paniers = {
     if (d.x.pay) blocks.push({ f: font(500, 16), l: wrap(d.x.pay, font(500, 16)) });
     if (d.x.ibanLines.length) blocks.push({ f: font(700, 16), l: d.x.ibanLines.concat(d.x.refHint ? wrap(d.x.refHint, font(500, 15)) : []) });
     if (d.x.msg) blocks.push({ f: font(500, 16), l: wrap(d.x.msg, font(500, 16)) });
+    if (d.x.vatMention) blocks.push({ f: font(500, 15), l: wrap(d.x.vatMention, font(500, 15)) });
     if (d.x.valid) blocks.unshift({ f: font(500, 16), l: [d.x.valid] });
     if (d.x.mode) blocks.unshift({ f: font(700, 16), l: [d.x.mode] });
     const whoH = d.x.who ? 30 : 0;
@@ -1040,7 +1042,7 @@ const Paniers = {
     });
     x.strokeStyle = car; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
     x.fillStyle = fg; x.font = font(800, 21); x.textAlign = 'right';
-    x.fillText('Total TTC', rUnit, y + 36); x.fillText(U.eur(d.total), rTot, y + 36);
+    x.fillText(d.x.vatMention ? 'Total' : 'Total TTC', rUnit, y + 36); x.fillText(U.eur(d.total), rTot, y + 36);
     y += 72; x.textAlign = 'left';
     blocks.forEach(b => { x.font = b.f; x.fillStyle = fg; b.l.forEach(t => { x.fillText(t, pad + 12, y + 12); y += 24; }); y += 12; });
     return cv;
@@ -1075,8 +1077,8 @@ const Paniers = {
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu' + (d.no ? ' — Devis n° ' + d.no : '')].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
-      [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], ['Total TTC : ' + eur(d.total)],
-      d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines, d.x.refHint ? [d.x.refHint] : []) : [], d.x.msg ? ['', d.x.msg] : []).join('\n');
+      [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], [(d.x.vatMention ? 'Total' : 'Total TTC') + ' : ' + eur(d.total)],
+      d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines, d.x.refHint ? [d.x.refHint] : []) : [], d.x.msg ? ['', d.x.msg] : [], d.x.vatMention ? ['', d.x.vatMention] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
   },

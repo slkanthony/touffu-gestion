@@ -477,15 +477,15 @@ const B2B = {
     return { rows, all: list, devis, keys: rows.map(r => [r.key, r.ht]), total: list.reduce((a, r) => a + r.sub, 0), totalReco: list.reduce((a, r) => a + r.subReco, 0) };
   },
   _qtCols() {
-    const micro = this._qt.type === 'micro';
-    return { price: micro ? 'Prix' : 'Prix HT', reco: micro ? 'Prix de vente\nconseillé' : 'Prix de vente\nconseillé TTC' };
+    const micro = this._qt.type === 'micro', franchise = !!Pricing.vatMention();   // non assujetti : pas de « HT » (aucune TVA facturée)
+    return { price: micro || franchise ? 'Prix' : 'Prix HT', reco: micro ? 'Prix de vente\nconseillé' : 'Prix de vente\nconseillé TTC' };
   },
   _qtExtras() {
     const S = Store.state.settings, q = this._qt;
     const iban = String(S.payIban || '').trim(), holder = String(S.payHolder || '').trim(), bic = String(S.payBic || '').trim();
     const ibanLines = (q.iban !== false && iban) ? [].concat(['RIB :'], holder ? ['Titulaire : ' + holder] : [], ['IBAN : ' + iban], bic ? ['BIC : ' + bic] : []) : [];
     const msg = String(q.msg != null ? q.msg : (S.payMessage || '')).trim();
-    return { ibanLines, msg, refHint: ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '' };
+    return { ibanLines, msg, vatMention: Pricing.vatMention(), refHint: ibanLines.length ? 'Merci d\'indiquer le n° de devis dans le libellé de votre virement.' : '' };
   },
   /* N° de devis (voir devis.js) : un état par entreprise (nom saisi) et par type de tarif, repris pendant 30 jours ; la lettre avance seulement si le contenu change */
   _dvKey() { return this._qt.type + '|' + String(this._qt.who || '').trim().toLowerCase(); },
@@ -500,7 +500,7 @@ const B2B = {
   _dvShow() { return Devis.show(this._dvState(), this._dvHash()); },
   _dvCommit() { const st = this._dvState(), no = Devis.commit(st, this._dvHash()); st.ts = Date.now(); Store.save('meta'); this._qtNoRefresh(); return no; },
   _qtNoRefresh() { const e = document.getElementById('qt_no'); if (e) e.textContent = this._dvShow(); },
-  _qtTotalLabel() { return this._qt.type === 'micro' ? 'Total' : 'Total HT'; },
+  _qtTotalLabel() { return this._qt.type === 'micro' || Pricing.vatMention() ? 'Total' : 'Total HT'; },
   _qtRecoLabel() { return this._qt.type === 'micro' ? 'Total revente conseillé' : 'Total revente conseillé TTC'; },
   _qtTotalsTxt() { const { devis, total, totalReco } = this._qtRows(true); return devis ? this._qtTotalLabel() + ' : ' + U.eur(total) + '<br><span style="font-weight:600;font-size:.95rem;color:var(--caramel);">' + this._qtRecoLabel() + ' : ' + U.eur(totalReco) + '</span>' : ''; },
   _qtInner() {
@@ -512,7 +512,8 @@ const B2B = {
       <div id="qt_total" style="text-align:right;margin:8px 10px 0;font-weight:800;font-size:1.05rem;">${this._qtTotalsTxt()}</div>
       ${x.ibanLines.length ? `<p style="margin:10px 10px 0;font-weight:700;">${x.ibanLines.map(U.esc).join('<br>')}</p>` : ''}
       ${x.refHint ? `<p style="margin:6px 10px 0;font-style:italic;">${U.esc(x.refHint)}</p>` : ''}
-      ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}`;
+      ${x.msg ? `<p style="margin:8px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}
+      ${x.vatMention ? `<p style="margin:10px 10px 0;font-size:.85rem;color:var(--gris);">${U.esc(x.vatMention)}</p>` : ''}`;
   },
   /* Quantité saisie : mise à jour sur place (sous-total + total), sans redessiner le tableau (le défilement reste). */
   _qtQty(i, val) {
@@ -592,6 +593,7 @@ const B2B = {
     const blocks = [];
     if (last && x.ibanLines.length) blocks.push({ f: font(700, 16), l: x.ibanLines.concat(x.refHint ? wrap(x.refHint, font(500, 15)) : []) });
     if (last && x.msg) blocks.push({ f: font(500, 16), l: wrap(x.msg, font(500, 16)) });
+    if (last && x.vatMention) blocks.push({ f: font(500, 15), l: wrap(x.vatMention, font(500, 15)) });
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
     const totalH = last && devis ? 84 : 0;
     const H = pad + 56 + 54 + pageRows.length * rowH + totalH + (extraH ? 24 : 0) + extraH + pad;
@@ -690,9 +692,9 @@ const B2B = {
     const { rows, keys, devis, total, totalReco } = this._qtRows(), x = this._qtExtras(), micro = this._qt.type === 'micro';
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = [this._qtTitle(), 'Devis n° ' + dvNo, ''].concat(
-      rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${devis ? r.qty + ' × ' : ''}${micro ? '' : 'HT '}${eur(r.price)}${devis ? ' = ' + eur(r.sub) : ''} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
+      rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${devis ? r.qty + ' × ' : ''}${micro || x.vatMention ? '' : 'HT '}${eur(r.price)}${devis ? ' = ' + eur(r.sub) : ''} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
       devis ? ['', this._qtTotalLabel() + ' : ' + eur(total), this._qtRecoLabel() + ' : ' + eur(totalReco)] : [],
-      x.ibanLines.length ? [''].concat(x.ibanLines, x.refHint ? [x.refHint] : []) : [], x.msg ? ['', x.msg] : []).join('\n');
+      x.ibanLines.length ? [''].concat(x.ibanLines, x.refHint ? [x.refHint] : []) : [], x.msg ? ['', x.msg] : [], x.vatMention ? ['', x.vatMention] : []).join('\n');
     this._recordExport(keys);
     const fb = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fb); else fb();

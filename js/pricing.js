@@ -61,6 +61,8 @@ const Pricing = {
 
   /* Coefficient « TVA d'achat non récupérable » (Antho 2026-10-07) : tant qu'il n'est pas assujetti, tout coût stocké HT (matières, consommables) compte avec sa TVA d'achat ;
      assujetti → 1 (HT). `vatPct` vide = taux global. */
+  /* Mention légale des devis tant qu'on n'est PAS assujetti (franchise en base) ; vide dès que la case « assujetti » est cochée. */
+  vatMention() { return Store.state.settings.vatActive ? '' : 'TVA non applicable, art. 293 B du CGI'; },
   vatK(vatPct) { const S = Store.state.settings; return S.vatActive ? 1 : 1 + U.num(vatPct !== undefined && vatPct !== null && vatPct !== '' ? vatPct : S.vatRate) / 100; },
   /* Sachet / blister dont le coût vient d'un consommable (coût stocké HT) ; un coût saisi à la main est pris tel quel. */
   _packLinked(s) {
