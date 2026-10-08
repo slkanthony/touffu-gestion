@@ -440,6 +440,7 @@ const Catalogue = {
         <h1>${isNew ? 'Nouveau produit mastication' : 'Modifier — ' + U.esc(p.name || '')}</h1>
         <span class="spacer"></span>
         <button class="btn-ghost" data-team-ok onclick="Catalogue.cancelEdit()">← Retour à la liste</button>
+        <button class="btn-cta" data-team-ok onclick="Catalogue.save()">💾 ${isNew ? 'Créer le produit' : 'Enregistrer'}</button>
       </div>
       ${App.isTeam ? `<div class="card team-note">👥 <b>Profil équipe</b> : sur cette fiche tu peux compléter uniquement le <b>lien</b>, la <b>réf.</b> et les <b>notes fournisseur</b> (section 2). Le reste est verrouillé.</div>` : ''}
 
