@@ -497,6 +497,15 @@ const Paniers = {
     this.render();
     if (delta > 0) this._stockWarn(item.pId, item.vId);
   },
+  setQty(idx, v) {   // quantité tapée à la main (nombre entier ; 0 ou vide = retirer la ligne, comme le « − » arrivé à 0)
+    const item = this.basket[idx]; if (!item) return;
+    const n = Math.max(0, Math.round(U.num(v)));
+    const up = n > item.qty;
+    item.qty = n;
+    if (n <= 0) this.basket.splice(idx, 1);
+    this.render();
+    if (up) this._stockWarn(item.pId, item.vId);
+  },
   setItemPrice(idx, v) {   // prix TTC modifié à la main pour CE panier seulement (le stock n'est pas touché)
     const item = this.basket[idx]; if (!item) return;
     item.price = Math.max(0, Math.round(U.num(v) * 100) / 100);
@@ -1541,7 +1550,7 @@ const Paniers = {
               <td class="num"><input type="number" step="0.1" min="0" value="${(Math.round(U.num(b.price) * 100) / 100)}" style="width:84px;text-align:right;" title="Prix TTC modifiable pour ce panier (le prix du stock ne change pas)" onchange="Paniers.setItemPrice(${i},this.value)"></td>
               <td class="num" style="white-space:nowrap;">
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},-1)">−</button>
-                <b>${b.qty}</b>
+                <input type="text" inputmode="numeric" value="${b.qty}" style="width:52px;text-align:center;font-weight:700;" title="Quantité : tape un nombre (0 = retirer du panier)" onfocus="this.select()" onchange="Paniers.setQty(${i},this.value)">
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},1)">+</button>
               </td>
               <td class="num"><b>${U.eur(b.price * b.qty)}</b></td>
