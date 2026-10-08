@@ -969,9 +969,10 @@ const Paniers = {
 
   _stockWarn(pId, vId) {
     const p = Store.state.stockM.find(x => x.id === pId), v = p && (p.variants || []).find(x => x.id === vId);
-    if (!v || Stock.isVirtual(p, v)) return;
+    if (!v) return;
     const want = this.basket.filter(b => b.pId === pId && b.vId === vId).reduce((a, b) => a + U.num(b.qty), 0);
-    const g = (v.lots || []).reduce((a, l) => a + U.num(l.qtyGeneral), 0), e = (v.lots || []).reduce((a, l) => a + U.num(l.qtyEvent), 0);
+    const vq = Stock.isVirtual(p, v) ? Stock.virtualQty(p, v) : null;   // déclinaison sans stock propre : stock de la variante principale ÷ packQty
+    const g = vq ? vq.g : (v.lots || []).reduce((a, l) => a + U.num(l.qtyGeneral), 0), e = vq ? vq.e : (v.lots || []).reduce((a, l) => a + U.num(l.qtyEvent), 0);
     if (want > g + e) U.toast(`⚠️ Stock insuffisant : ${U.qty(want)} ${p.name} ${Pricing.labelVariant(v)} dans le panier, ${U.qty(g + e)} en stock (général + événement).`, true);
     else if (want > g) U.toast(`⚠️ Stock général insuffisant : ${U.qty(want)} ${p.name} ${Pricing.labelVariant(v)} demandé(s), ${U.qty(g)} en général (le reste est en événement).`, true);
   },
@@ -1111,7 +1112,9 @@ const Paniers = {
     Store.state.stockM.forEach(p => {
       p.variants.forEach(v => {
         const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
-        const lots = v.lots.filter(l => {
+        // Déclinaison « sans stock propre » (Lot 5…) : pas de lots à elle, son stock = celui de la variante principale ÷ packQty → une seule ligne, sans lot ni DLUO
+        const vq = Stock.isVirtual(p, v) ? Stock.virtualQty(p, v) : null;
+        const lots = vq ? (vq.t > 0 ? [{ id: '', qtyGeneral: vq.g, qtyEvent: vq.e, dluo: '', lotNumber: '' }] : []) : v.lots.filter(l => {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           if (q <= 0) return false;
           const d = U.daysTo(l.dluo);
