@@ -7,7 +7,7 @@
 const Catalogue = {
   /* Petite ligne « dont port » sous le coût de revient quand un taux de port à l'achat (Paramètres) est appliqué : le coût affiché l'inclut déjà. */
   _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Port à l'achat estimé (Paramètres → Réglages financiers → Port à l'achat), déjà compris dans le coût de revient">dont port ${U.eur(c.portCost)}</div>` : ''; },
-  filters: { q: '', meat: 'all', sup: 'all', sort: 'meat', sortDir: 'asc' },
+  filters: { q: '', meat: 'all', sup: 'all', ctl: 'all', sort: 'meat', sortDir: 'asc' },
   mode: 'list',      // 'list' | 'new' | 'edit'
   editId: null,
   _loadedKey: null,
@@ -18,6 +18,76 @@ const Catalogue = {
   _meatFilterOpen: false,
   _setMeatFilter(val) { this.filters.meat = val; this._meatFilterOpen = false; this.render(); },
   _setSupFilter(val) { this.filters.sup = val; this.render(); },
+  _setCtlFilter(val) { this.filters.ctl = val; this.render(); },
+
+  /* ---------- menu « Contrôle » (filtre d'aide au contrôle des fiches) ---------- */
+  _CTL: [
+    ['all', 'Tous'],
+    ['crit', '⚠ Coeff critique'],
+    ['under', '📉 Vendu sous le coût de revient'],
+    ['own', '🎚 Coeff ou décote personnalisé'],
+    ['px_old', '🕒 Prix à vérifier : plus de 30 jours ou jamais daté'],
+    ['px_old90', '🕒 Prix à vérifier : plus de 90 jours ou jamais daté'],
+    ['px_new', '✅ Prix mis à jour ces 30 derniers jours'],
+    ['px_none', '❔ Prix jamais daté'],
+    ['vat0', '🧾 Sans TVA d\'achat : 0 %'],
+    ['vat10', '🧾 TVA d\'achat à 10 %'],
+    ['vat20', '🧾 TVA d\'achat à 20 %'],
+    ['vatOwn', '🧾 TVA d\'achat propre à la fiche'],
+    ['noRef', '📝 Sans réf. fournisseur'],
+    ['noUrl', '📝 Sans lien fournisseur'],
+    ['noPpk', '📝 Vente à la pièce sans pièces par kilo'],
+    ['noSku', '📝 Variante sans SKU'],
+    ['unlinked', '🔗 Non relié au Stock'],
+    ['linked', '🔗 Relié au Stock'],
+    ['t_gram', '⚖ Vendu au poids'],
+    ['t_piece', '🔢 Vendu à la pièce'],
+    ['t_size', '📏 Vendu par taille'],
+    ['inactive', '🙈 Avec variantes désactivées']
+  ],
+  /* Calculs de toutes les variantes ACTIVES d'une fiche (même position/décote que dans la liste) */
+  _activeCalcs(p) {
+    const base = Pricing.baseUnitCost(p), act = (p.variants || []).filter(v => v.enabled !== false);
+    return act.map((v, i) => Pricing.variantCalc(p, v, i, base, act.length));
+  },
+  /* Date de dernière mise à jour du prix d'achat du fournisseur principal (0 = jamais datée) */
+  priceDateOf(p, supId) { const s = Pricing.mainEntry(p, supId); return (s && U.num(s.priceDate)) || 0; },
+  _ageDays(ts) { return ts ? Math.floor((Date.now() - ts) / 86400000) : null; },
+  _ageTxt(ts) {
+    const d = this._ageDays(ts); if (d === null) return 'date inconnue';
+    const ago = d <= 0 ? 'aujourd\'hui' : d === 1 ? 'hier' : d < 60 ? d + ' j' : Math.round(d / 30) + ' mois';
+    return new Date(ts).toLocaleDateString('fr-FR') + ' · ' + ago;
+  },
+  _ctlMatch(p, key, linked) {
+    if (key === 'all') return true;
+    const S = Store.state.settings, main = Pricing.mainEntry(p), act = (p.variants || []).filter(v => v.enabled !== false);
+    const vatOf = () => main ? U.num(main.vatRate !== undefined && main.vatRate !== '' ? main.vatRate : S.vatRate) : null;
+    const age = this._ageDays(this.priceDateOf(p));
+    switch (key) {
+      case 'crit': return this._activeCalcs(p).some(c => c.critical);
+      case 'under': return this._activeCalcs(p).some(c => c.margin < 0);
+      case 'own': return (p.bulkDiscount !== undefined && p.bulkDiscount !== '' && p.bulkDiscount !== null) || act.some(v => U.num(v.coeff) > 0);
+      case 'px_old': return age === null || age > 30;
+      case 'px_old90': return age === null || age > 90;
+      case 'px_new': return age !== null && age <= 30;
+      case 'px_none': return age === null;
+      case 'vat0': return vatOf() === 0;
+      case 'vat10': return vatOf() === 10;
+      case 'vat20': return vatOf() === 20;
+      case 'vatOwn': return !!main && main.vatRate !== undefined && main.vatRate !== '' && U.num(main.vatRate) !== U.num(S.vatRate);
+      case 'noRef': return !main || !String(main.ref || '').trim();
+      case 'noUrl': return !main || !String(main.url || '').trim();
+      case 'noPpk': return !!main && (main.unit || 'kilo') === 'kilo' && !(U.num(main.piecesPerKilo) > 0) && act.some(v => v.mode === 'piece');
+      case 'noSku': return act.some(v => !String(v.sku || '').trim());
+      case 'unlinked': return !linked.has(p.id);
+      case 'linked': return linked.has(p.id);
+      case 't_gram': return act.some(v => v.mode === 'gram');
+      case 't_piece': return act.some(v => v.mode === 'piece');
+      case 't_size': return act.some(v => v.mode === 'size');
+      case 'inactive': return (p.variants || []).some(v => v.enabled === false);
+    }
+    return true;
+  },
 
   render() {
     if (this.mode === 'new' || this.mode === 'edit') {
@@ -35,15 +105,19 @@ const Catalogue = {
     const S = Store.state.settings;
     const f = this.filters;
     U.syncFilters('catalogue', f);
+    const linked = new Set();
+    Store.state.stockM.forEach(sp => { if (sp.catalogId) linked.add(sp.catalogId); (sp.variants || []).forEach(sv => { if (sv.catalogId) linked.add(sv.catalogId); }); });
     let list = Store.state.catalogM.filter(p =>
+      this._ctlMatch(p, f.ctl || 'all', linked) &&
       (!f.q || U.has(p.name, f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
       (f.sup === 'all' || (f.sup === '_multi' ? (p.suppliers || []).length >= 2 : f.sup === '_single' ? (p.suppliers || []).length <= 1 : (p.suppliers || []).some(s => s.supplierId === f.sup)))
     );
     const dir = f.sortDir === 'desc' ? -1 : 1;
-    const hasCritical = (p) => { const base = Pricing.baseUnitCost(p); const na = (p.variants||[]).filter(v => v.enabled !== false).length; let idx = 0; return (p.variants||[]).some(v => { if (v.enabled === false) return false; const c = Pricing.variantCalc(p, v, idx, base, na); idx++; return c.critical; }); };
+    const hasCritical = (p) => this._activeCalcs(p).some(c => c.critical);
     list.sort((a, b) => {
       if (f.sort === 'name') return dir * U.sortFr(a.name, b.name);
+      if (f.sort === 'priceDate') return dir * ((this.priceDateOf(a) - this.priceDateOf(b)) || U.sortFr(a.name, b.name));
       if (f.sort === 'supplier') return dir * U.sortFr(Store.supplierName(a.mainSupplierId), Store.supplierName(b.mainSupplierId));
       if (f.sort === 'base') return dir * (Pricing.baseUnitCost(a).unitCost - Pricing.baseUnitCost(b).unitCost);
       if (f.sort === 'critical') return dir * ((hasCritical(b) - hasCritical(a)) || U.sortFr(a.name, b.name));
@@ -52,11 +126,12 @@ const Catalogue = {
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Catalogue.setSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
 
     App.mount(`
-      <div class="view-title"><h1>Prix mastication</h1><span class="sub">${Store.state.catalogM.length} produits · coefficient, marges & profit</span></div>
+      <div class="view-title"><h1>Prix mastication</h1><span class="sub">${list.length === Store.state.catalogM.length ? Store.state.catalogM.length + ' produits' : list.length + ' sur ' + Store.state.catalogM.length + ' produits'} · coefficient, marges & profit</span></div>
       <div class="toolbar">
         <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
         <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
+        <div class="fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._CTL.map(([v, l]) => ({ v, l })), onPick: 'Catalogue._setCtlFilter' })}</div>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
@@ -67,12 +142,12 @@ const Catalogue = {
         <span>${sortHead('name', 'Nom du produit')}</span>
         <span>${sortHead('critical', 'Alertes')}</span>
         <span>${sortHead('meat', 'Viande')}</span>
-        <span>${sortHead('supplier', 'Fournisseurs')}</span>
+        <span>${sortHead('supplier', 'Fournisseurs')} · ${sortHead('priceDate', '📅 MAJ')}</span>
         <span class="right">${sortHead('base', 'Variantes / base')}</span>
         <span style="text-align:right">Coeff commun · Décote paliers</span>
         <span></span>
       </div>` : ''}
-      ${list.map(p => this.card(p)).join('') || `<div class="card empty"><span class="big">🥩</span>Aucun produit. Crée ton premier produit ou importe ton fichier <b>Prix_final.json</b> depuis Paramètres → Import.</div>`}
+      ${list.map(p => this.card(p)).join('') || (Store.state.catalogM.length ? `<div class="card empty"><span class="big">🔎</span>Aucun produit ne correspond à ces filtres.</div>` : `<div class="card empty"><span class="big">🥩</span>Aucun produit. Crée ton premier produit ou importe ton fichier <b>Prix_final.json</b> depuis Paramètres → Import.</div>`)}
       ${this._sel.size ? `<div class="cat-sel-bar">
         <span class="cat-sel-count">${this._sel.size} produit${this._sel.size>1?'s':''} sélectionné${this._sel.size>1?'s':''}</span>
         ${this._sel.size>=2?'<button class="btn btn-cta btn-sm" onclick="Catalogue.mergeSelected()">🔀 Fusionner</button>':''}
@@ -188,6 +263,7 @@ const Catalogue = {
       return `<tr class="${isMain ? '' : 'dim'}">
         <td class="col-name">${isMain ? '★ ' : ''}${U.esc(Store.supplierName(s.supplierId))}${vatNote}${link}</td>
         <td class="num sensitive">${U.eur(this.supUnitHT(s))}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</td>
+        <td class="muted" style="white-space:nowrap;">${this._ageTxt(U.num(s.priceDate) || 0)}</td>
         <td>${isMain ? '<span class="badge main-sup">principal</span>' : `<button class="btn-ghost btn-sm" onclick="Catalogue.setMain('${p.id}','${s.supplierId}')">Passer principal</button>`}</td>
       </tr>`;
     }).join('');
@@ -203,7 +279,7 @@ const Catalogue = {
         <b>${U.esc(p.name)}</b>
         <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
-        <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
+        <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges + (() => { const ts = this.priceDateOf(p, activeSup), d = this._ageDays(ts); return `<span class="muted" style="flex-basis:100%;font-size:.7rem;line-height:1.1;${d === null || d > 30 ? 'color:var(--warn);' : ''}" title="Dernière mise à jour du prix d'achat de ce fournisseur">📅 ${this._ageTxt(ts)}</span>`; })() : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
           <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
@@ -221,8 +297,8 @@ const Catalogue = {
         <p class="muted help mt" data-help-anchor="~ th.th-benef">* bénéfice = marge − cotisations URSSAF − TVA (toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
         <h3 style="font-size:.85rem;margin:14px 0 6px;">Fournisseurs</h3>
         <div class="table-wrap"><table>
-          <thead><tr><th class="col-name">Fournisseur</th><th class="num">Prix d'achat</th><th></th></tr></thead>
-          <tbody>${supRows || '<tr><td colspan="3" class="muted">Aucun fournisseur renseigné.</td></tr>'}</tbody></table></div>
+          <thead><tr><th class="col-name">Fournisseur</th><th class="num">Prix d'achat</th><th>Prix mis à jour</th><th></th></tr></thead>
+          <tbody>${supRows || '<tr><td colspan="4" class="muted">Aucun fournisseur renseigné.</td></tr>'}</tbody></table></div>
         <div class="frow mt">
           <a class="btn btn-ghost" style="text-decoration:none;text-align:center;" href="#/catalogue/edit/${p.id}">Modifier</a>
         </div>
@@ -563,6 +639,8 @@ const Catalogue = {
         <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
         <div class="fg"><label>&nbsp;</label><div class="sup-cell"><button class="btn-icon" title="Retirer ce fournisseur" onclick="Catalogue.delSupplier(${i})">🗑️</button></div></div>
       </div>
+      <div class="muted" style="font-size:.78rem;margin:-2px 4px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">📅 Prix d'achat enregistré le <b>${this._ageTxt(U.num(s.priceDate) || 0)}</b>
+        <button type="button" class="btn-ghost btn-sm" title="Le prix est inchangé mais tu viens de le vérifier chez le fournisseur : met la date à aujourd'hui" onclick="Catalogue.markPriceChecked(${i})">✓ Prix vérifié aujourd'hui</button></div>
       <div class="sup-grid2" data-team-ok style="${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg"><label>Réf. fournisseur</label><input value="${U.esc(s.ref || '')}" placeholder="ex : C-23012" onchange="Catalogue._d.suppliers[${i}].ref=this.value.trim()"></div>
         <div class="fg"><label>Lien page fournisseur (URL)</label>
@@ -591,6 +669,11 @@ const Catalogue = {
     const s = this._d.suppliers[i];
     if (s.unit === 'piece') s.quantity = val; else s.weight = val;
     this.drawSuppliers();
+  },
+  markPriceChecked(i) {
+    this._d.suppliers[i].priceDate = Date.now();
+    this.drawSuppliers();
+    U.toast('Prix marqué comme vérifié — pense à enregistrer la fiche.');
   },
   delSupplier(i) {
     const removed = this._d.suppliers[i];
@@ -1049,6 +1132,9 @@ const Catalogue = {
     // pas les fiches stock resynchronisées en cascade juste après (leur propre bouton 🔄 permet
     // de rattraper ça séparément si besoin).
     const before = idx >= 0 ? JSON.parse(JSON.stringify(Store.state.catalogM[idx])) : null;
+    // Date de mise à jour du prix d'achat : nouvelle ligne ou prix/TVA/unité/poids modifié → aujourd'hui (sinon on garde la date, y compris « Prix vérifié »)
+    const now = Date.now(), priceKey = x => [x.price, x.taxType || 'HT', x.vatRate, x.unit || 'kilo', x.weight, x.quantity].map(y => String(y ?? '')).join('|');
+    p.suppliers.forEach(s => { const o = before && (before.suppliers || []).find(x => x.id === s.id); if (!o || priceKey(o) !== priceKey(s)) s.priceDate = now; });
     if (idx >= 0) Store.state.catalogM[idx] = p; else Store.state.catalogM.push(p);
     // répercuter les prix TTC sur le stock lié
     Stock.syncPricesFromCatalog(p.id);
