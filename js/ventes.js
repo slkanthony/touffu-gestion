@@ -11,7 +11,7 @@
 const Ventes = {
   source: 'event',   // 'general' (site/boutique) | 'event' (marché) — événement par défaut, comme l'ancienne appli
   q: '', qOpen: false, qFreshOpen: false,
-  catQ: '', cat: 'all', catOpen: false, catFreshOpen: false,
+  catQ: '', cat: 'all', catOpen: false, catFreshOpen: false, custOpen: false, custFresh: false,
   variant: 'all',
   selKey: '', lotId: '', qty: 1,
   consoId: '', consoQty: 1,
@@ -256,6 +256,20 @@ const Ventes = {
   // Fermeture au blur (voir U.autocomplete) — un mousedown sur une suggestion empêche
   // le blur de se déclencher avant le pick, donc pas de conflit avec closeCatMenu/closeQMenu.
   closeCatMenu() { if (this.catOpen) { this.catOpen = false; this.catFreshOpen = false; this.render(); } },
+  /* Client du ticket : menu de suggestions (clients de la fiche Clients + noms déjà vus dans les ventes), recherche par mots comme partout.
+     Tant que le champ est rempli par un nom qu'on vient de choisir, un clic dans le champ montre toute la liste (custFresh). */
+  _custSuggestions() {
+    const seen = new Set();
+    return Clients.names().map(n => Clients.show(n)).filter(n => n && !seen.has(n) && seen.add(n))
+      .filter(n => this.custFresh || !this.customerName || U.has(n, this.customerName)).slice(0, 20);
+  },
+  setCust(v) {
+    this.custFresh = !this.custOpen && v === (this.customerName || '');
+    this.customerName = v; this.custOpen = true;
+    this.render();
+  },
+  pickCust(n) { this.customerName = n; this.custOpen = false; this.custFresh = false; this.render(); },
+  closeCustMenu() { if (this.custOpen) { this.custOpen = false; this.custFresh = false; this.render(); } },
   closeQMenu() { if (this.qOpen) { this.qOpen = false; this.qFreshOpen = false; this.render(); } },
 
   pickProduct(key) {
@@ -473,7 +487,7 @@ const Ventes = {
         <tfoot>${this.discOn ? `<tr><th colspan="5">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="5">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="5">Total</th><th class="num">${U.eur(total)}</th><th></th></tr>${ba ? `<tr><th colspan="5">${ba > 0 ? 'Avoir déduit' : 'Solde à régler'}</th><th class="num">${ba > 0 ? '−' : '+'} ${U.eur(Math.abs(ba))}</th><th></th></tr><tr><th colspan="5">À payer</th><th class="num">${U.eur(total - ba)}</th><th></th></tr>` : ''}</tfoot></table></div>
       <div class="fg mt" style="max-width:420px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${this.discOn ? 'checked' : ''} onchange="Ventes.discOn=this.checked;Ventes.render()"> 🏷️ Réduction sur la commande (client partenaire…)</label>
         ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span></div>` : ''}</div>
-      <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label><input id="v_customer" value="${U.esc(this.customerName || '')}" placeholder="nom du client…" oninput="Ventes.customerName=this.value" onchange="Ventes.render()"></div>
+      <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label>${U.autocomplete({ id: 'v_customer', value: this.customerName || '', placeholder: 'nom du client…', options: this.custOpen ? this._custSuggestions() : [], open: this.custOpen, onInput: 'Ventes.setCust', onPick: 'Ventes.pickCust', onClose: 'Ventes.closeCustMenu' })}</div>
       ${bal ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--caramel);border-radius:8px;"><input type="checkbox" ${this.balOn ? 'checked' : ''} onchange="Ventes.balOn=this.checked;Ventes.render()"> 💶 ${bal > 0 ? 'Déduire l\'avoir de ' + U.eur(bal) : 'Ajouter le solde dû de ' + U.eur(-bal)}</label>` : ''}
       <div class="frow mt">
         <button class="btn-ok" onclick="Ventes.validate()">✅ Valider la sortie de stock</button>
