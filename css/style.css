@@ -277,6 +277,8 @@ summary .prod-actions { display: flex; gap: 2px; justify-self: end; }
   display: grid; grid-template-columns: minmax(180px, 2fr) 140px 150px 1fr 130px; gap: 10px; align-items: center;
 }
 details.fold.prod-fold > summary { position: relative; padding: 13px 16px 13px 30px; }
+/* Date de mise à jour du prix d'achat (Prix mastication) : coin haut-droit, très discrète, hors grille */
+details.fold.prod-fold > summary .px-date { position: absolute; top: 3px; right: 10px; font-size: 0.58rem; line-height: 1; color: var(--gris); opacity: .5; pointer-events: auto; }
 details.fold.prod-fold > summary::before { position: absolute; left: 16px; top: 50%; margin-top: -7px; }
 details.fold.prod-fold[open] > summary::before { transform: rotate(90deg); margin-top: -6px; }
 details.fold.prod-fold > summary .type-col { text-align: center; }

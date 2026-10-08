@@ -54,7 +54,7 @@ const Catalogue = {
   priceDateOf(p, supId) { const s = Pricing.mainEntry(p, supId); return (s && U.num(s.priceDate)) || 0; },
   _ageDays(ts) { return ts ? Math.floor((Date.now() - ts) / 86400000) : null; },
   _ageTxt(ts) {
-    const d = this._ageDays(ts); if (d === null) return 'date inconnue';
+    const d = this._ageDays(ts); if (d === null) return '';
     const ago = d <= 0 ? 'aujourd\'hui' : d === 1 ? 'hier' : d < 60 ? d + ' j' : Math.round(d / 30) + ' mois';
     return new Date(ts).toLocaleDateString('fr-FR') + ' · ' + ago;
   },
@@ -276,10 +276,10 @@ const Catalogue = {
     }).join('');
     return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
       <summary onclick="Catalogue.summaryNav(event,'${p.id}')" onauxclick="Catalogue.summaryNav(event,'${p.id}')">
-        <b>${U.esc(p.name)}</b>
+        <b>${U.esc(p.name)}</b>${(() => { const t = this._ageTxt(this.priceDateOf(p, activeSup)); return t ? `<span class="px-date" title="Prix d'achat mis à jour le ${t}">${t}</span>` : ''; })()}
         <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
-        <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges + (() => { const ts = this.priceDateOf(p, activeSup), d = this._ageDays(ts); return `<span class="muted" style="flex-basis:100%;font-size:.7rem;line-height:1.1;${d === null || d > 30 ? 'color:var(--warn);' : ''}" title="Dernière mise à jour du prix d'achat de ce fournisseur">📅 ${this._ageTxt(ts)}</span>`; })() : '<span class="muted">—</span>'}</span>
+        <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
           <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((U.num(p.coefficient) || 2) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
@@ -639,7 +639,7 @@ const Catalogue = {
         <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
         <div class="fg"><label>&nbsp;</label><div class="sup-cell"><button class="btn-icon" title="Retirer ce fournisseur" onclick="Catalogue.delSupplier(${i})">🗑️</button></div></div>
       </div>
-      <div class="muted" style="font-size:.78rem;margin:-2px 4px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">📅 Prix d'achat enregistré le <b>${this._ageTxt(U.num(s.priceDate) || 0)}</b>
+      <div class="muted" style="font-size:.78rem;margin:-2px 4px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${s.priceDate ? `📅 Prix d'achat mis à jour le <b>${this._ageTxt(U.num(s.priceDate))}</b>` : ''}
         <button type="button" class="btn-ghost btn-sm" title="Le prix est inchangé mais tu viens de le vérifier chez le fournisseur : met la date à aujourd'hui" onclick="Catalogue.markPriceChecked(${i})">✓ Prix vérifié aujourd'hui</button></div>
       <div class="sup-grid2" data-team-ok style="${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg"><label>Réf. fournisseur</label><input value="${U.esc(s.ref || '')}" placeholder="ex : C-23012" onchange="Catalogue._d.suppliers[${i}].ref=this.value.trim()"></div>
