@@ -60,8 +60,8 @@ const Catalogue = {
   },
   _ctlMatch(p, key, linked) {
     if (key === 'all') return true;
-    const S = Store.state.settings, main = Pricing.mainEntry(p), act = (p.variants || []).filter(v => v.enabled !== false);
-    const vatOf = () => main ? U.num(main.vatRate !== undefined && main.vatRate !== '' ? main.vatRate : S.vatRate) : null;
+    const main = Pricing.mainEntry(p), act = (p.variants || []).filter(v => v.enabled !== false);
+    const vatOf = () => main ? Pricing.purchaseVatOf(main.supplierId, main.vatRate) : null;
     const age = this._ageDays(this.priceDateOf(p));
     switch (key) {
       case 'crit': return this._activeCalcs(p).some(c => c.critical);
@@ -74,7 +74,7 @@ const Catalogue = {
       case 'vat0': return vatOf() === 0;
       case 'vat10': return vatOf() === 10;
       case 'vat20': return vatOf() === 20;
-      case 'vatOwn': return !!main && main.vatRate !== undefined && main.vatRate !== '' && U.num(main.vatRate) !== U.num(S.vatRate);
+      case 'vatOwn': return !!main && main.vatRate !== undefined && main.vatRate !== '' && U.num(main.vatRate) !== Pricing.purchaseVatOf(main.supplierId, '');
       case 'noRef': return !main || !String(main.ref || '').trim();
       case 'noUrl': return !main || !String(main.url || '').trim();
       case 'noPpk': return !!main && (main.unit || 'kilo') === 'kilo' && !(U.num(main.piecesPerKilo) > 0) && act.some(v => v.mode === 'piece');
@@ -168,7 +168,7 @@ const Catalogue = {
 
   /* Prix d'achat HT/u d'une fiche fournisseur (même formule que Pricing.baseUnitCost) */
   supUnitHT(s) {
-    const vat = 1 + U.num(s.vatRate !== undefined && s.vatRate !== '' ? s.vatRate : Store.state.settings.vatRate) / 100;
+    const vat = 1 + Pricing.purchaseVatOf(s.supplierId, s.vatRate) / 100;
     let price = U.num(s.price);
     if ((s.taxType || 'HT') === 'TTC') price /= vat;
     const div = s.unit === 'kilo' ? (U.num(s.weight) || 1) : (U.num(s.quantity) || 1);
@@ -258,7 +258,8 @@ const Catalogue = {
       return U.sortFr(Store.supplierName(a.supplierId), Store.supplierName(b.supplierId));
     }).map(s => {
       const isMain = s.supplierId === p.mainSupplierId;
-      const vatNote = (s.vatRate !== undefined && s.vatRate !== '') ? ` <span class="muted">(TVA achat ${U.num(s.vatRate)}%)</span>` : '';
+      const vatOwn = s.vatRate !== undefined && s.vatRate !== '', vatSup = (Store.state.settings.suppliers || []).some(x => x.id === s.supplierId && x.purchaseVatRate !== undefined && x.purchaseVatRate !== '');
+      const vatNote = (vatOwn || vatSup) ? ` <span class="muted">(TVA achat ${Pricing.purchaseVatOf(s.supplierId, s.vatRate)}%)</span>` : '';
       const link = (s.url && !Store.hideSupplierInfo()) ? ` <button class="btn-icon" title="Ouvrir la page fournisseur" onclick="window.open('${U.esc(s.url)}','_blank','noopener')">🔗</button>` : '';
       return `<tr class="${isMain ? '' : 'dim'}">
         <td class="col-name">${isMain ? '★ ' : ''}${U.esc(Store.supplierName(s.supplierId))}${vatNote}${link}</td>
@@ -626,12 +627,12 @@ const Catalogue = {
         <div class="fg"><label>Principal</label><div class="sup-cell">
           <input type="radio" name="cp_main" ${this._d.mainSupplierId === s.supplierId ? 'checked' : ''} onchange="Catalogue._d.mainSupplierId='${s.supplierId}'" style="width:20px;height:20px;"></div></div>
         <div class="fg"><label>Fournisseur</label>
-          <select onchange="Catalogue._d.suppliers[${i}].supplierId=this.value">${App.supplierOptions(s.supplierId)}</select></div>
+          <select onchange="Catalogue._d.suppliers[${i}].supplierId=this.value;Catalogue.drawSuppliers()">${App.supplierOptions(s.supplierId)}</select></div>
         <div class="fg"><label>Prix d'achat</label><input type="number" step="0.01" value="${s.price ?? ''}" onchange="Catalogue._d.suppliers[${i}].price=this.value;Catalogue.drawSuppliers()">
           <span class="muted" style="font-size:.78rem;">→ ${U.eur(this.supUnitHT(s))}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</span></div>
         <div class="fg"><label>HT / TTC</label><select onchange="Catalogue._d.suppliers[${i}].taxType=this.value;Catalogue.drawSuppliers()">
           <option ${(s.taxType || 'HT') === 'HT' ? 'selected' : ''}>HT</option><option ${s.taxType === 'TTC' ? 'selected' : ''}>TTC</option></select></div>
-        <div class="fg"><label title="TVA d'achat (%)">TVA achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Store.state.settings.vatRate}" onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
+        <div class="fg"><label title="TVA d'achat (%)">TVA achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Pricing.purchaseVatOf(s.supplierId, '')}" title="Vide = suit le taux du fournisseur (Paramètres → Référentiels), sinon le taux global. Un taux tapé ici ne concerne que ce produit." onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
         <div class="fg"><label>Acheté</label><select onchange="Catalogue._d.suppliers[${i}].unit=this.value;Catalogue.drawSuppliers()">
           <option value="kilo" ${(s.unit || 'kilo') === 'kilo' ? 'selected' : ''}>au kilo</option>
           <option value="piece" ${s.unit === 'piece' ? 'selected' : ''}>à la pièce</option></select></div>

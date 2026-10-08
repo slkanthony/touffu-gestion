@@ -45,11 +45,20 @@ const Pricing = {
 
   /* Prix d'achat HT unitaire de base (au kg ou à la pièce), d'après la
      fiche du fournisseur principal (ou overrideSupId si fourni). */
+  /* TVA d'ACHAT (%) d'une ligne fournisseur de fiche, du plus précis au plus général :
+     1) taux de la ligne de la fiche (surcharge ce produit) · 2) taux du fournisseur (Paramètres → Référentiels) · 3) taux global. */
+  purchaseVatOf(supplierId, lineVat) {
+    const S = Store.state.settings, has = x => x !== undefined && x !== null && x !== '';
+    if (has(lineVat)) return U.num(lineVat);
+    const sup = (S.suppliers || []).find(x => x.id === supplierId);
+    if (sup && has(sup.purchaseVatRate)) return U.num(sup.purchaseVatRate);
+    return U.num(S.vatRate);
+  },
   baseUnitCost(p, overrideSupId) {
     const S = Store.state.settings;
     const b = this.mainEntry(p, overrideSupId);
     if (!b) return { unitHT: 0, unitCost: 0, k: 1, unit: 'kilo', src: 'aucun fournisseur', ppk: 0 };
-    const vat = 1 + U.num(b.vatRate !== undefined && b.vatRate !== '' ? b.vatRate : S.vatRate) / 100;
+    const vat = 1 + this.purchaseVatOf(b.supplierId, b.vatRate) / 100;
     let price = U.num(b.price);
     if ((b.taxType || 'HT') === 'TTC') price /= vat;
     const div = b.unit === 'kilo' ? (U.num(b.weight) || 1) : (U.num(b.quantity) || 1);

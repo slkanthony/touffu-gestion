@@ -768,7 +768,7 @@ const Params = {
     let list = (S.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
     if (!edit) list = list.filter(s => Store.supplierTypes(s).some(t => t !== 'autre'));   // un visiteur ne voit pas les fournisseurs « autres »
     const row = s => edit
-      ? `<div class="ref-line"><input value="${U.esc(s.name)}" style="flex:1 1 130px;min-width:120px;font-weight:600;" onchange="Params.renameSupplier('${s.id}',this.value)">${this._supMs(s.id, Store.supplierTypes(s), t => `Params.toggleSupType('${s.id}','${t}')`)}<button class="btn-icon" title="Retirer ce fournisseur" onclick="Params.delSupplier('${s.id}')">🗑️</button></div>`
+      ? `<div class="ref-line"><input value="${U.esc(s.name)}" style="flex:1 1 130px;min-width:120px;font-weight:600;" onchange="Params.renameSupplier('${s.id}',this.value)">${this._supMs(s.id, Store.supplierTypes(s), t => `Params.toggleSupType('${s.id}','${t}')`)}<label class="muted" style="display:flex;flex-direction:column;flex:0 0 90px;font-size:.68rem;line-height:1.2;">TVA achat (%)<input type="number" step="0.1" min="0" value="${s.purchaseVatRate ?? ''}" placeholder="${S.vatRate}" title="TVA d'achat par défaut des fiches prix de ce fournisseur. Vide = taux global (${S.vatRate} %). Une fiche peut garder son propre taux." onchange="Params.setSupPurchaseVat('${s.id}',this.value)"></label><button class="btn-icon" title="Retirer ce fournisseur" onclick="Params.delSupplier('${s.id}')">🗑️</button></div>`
       : `<div class="ref-line"><b style="flex:1 1 170px;">${U.esc(Store.supplierName(s.id))}</b><span class="muted">${U.esc(this._supTypesLabel(Store.supplierTypes(s)))}</span></div>`;
     return `<div class="ref-card"><h3>🏭 Fournisseurs <span class="muted" style="font-weight:400;font-size:.8rem;">(ce qu'ils te vendent)</span></h3>
       <p class="muted help" style="font-size:.82rem;">Une seule liste. Pour chaque fournisseur, coche ce qu'il te vend : Mastication, Matières premières, Consommables ou Autre (outillage, matériel, frais…). Les fiches prix ne proposent que les fournisseurs « Mastication » ; la page Achats les propose tous.</p>
@@ -794,6 +794,18 @@ const Params = {
     const cur = Store.supplierTypes(s).slice(), i = cur.indexOf(t);
     if (i >= 0) { if (cur.length === 1) { U.toast('Un fournisseur doit avoir au moins un type.', true); this._supMsSync(id, cur); return; } cur.splice(i, 1); } else cur.push(t);
     s.types = cur; Store.save('settings'); this._supMsSync(id, cur);
+  },
+  /* TVA d'achat par défaut d'un fournisseur (vide = taux global). Les coûts des fiches dont la ligne n'a pas son propre taux changent :
+     on recopie les prix sur les produits Stock reliés, comme pour la bascule « assujetti ». */
+  setSupPurchaseVat(id, val) {
+    const S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;
+    const t = String(val ?? '').trim();
+    s.purchaseVatRate = t === '' ? '' : Math.max(0, Math.round(U.num(t) * 100) / 100);
+    const catIds = (Store.state.catalogM || []).filter(p => (p.suppliers || []).some(x => x.supplierId === id)).map(p => p.id);
+    catIds.forEach(cid => { try { Stock.syncPricesFromCatalog(cid); } catch (e) { console.error(e); } });
+    Store.save('settings', 'stockM');
+    App.rerender();
+    U.toast('TVA d\'achat de ' + s.name + ' : ' + (s.purchaseVatRate === '' ? 'taux global (' + S.vatRate + ' %)' : s.purchaseVatRate + ' %') + (catIds.length ? ` · ${catIds.length} fiche(s) prix concernée(s), recopiées sur le Stock.` : '.'));
   },
   renameSupplier(id, val) {
     const n = String(val || '').trim(), S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;

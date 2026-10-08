@@ -430,7 +430,8 @@ const Achats = {
     if (sel.value !== '__new') {
       this._d.supplierId = sel.value; this._touch();
       const s = (Store.state.settings.suppliers || []).find(x => x.id === sel.value);   // reprend le dernier taux de TVA utilisé avec ce fournisseur
-      if (s && s.vatRate !== undefined && s.vatRate !== '' && (this._d.vatRate === undefined || this._d.vatRate === '')) { this._d.vatRate = U.num(s.vatRate); this._touch(); this.render(); }
+      const sv = s ? (s.vatRate !== undefined && s.vatRate !== '' ? s.vatRate : s.purchaseVatRate) : undefined;   // dernier taux utilisé, sinon TVA d'achat du fournisseur (Paramètres)
+      if (sv !== undefined && sv !== '' && (this._d.vatRate === undefined || this._d.vatRate === '')) { this._d.vatRate = U.num(sv); this._touch(); this.render(); }
       return;
     }
     sel.value = this._d.supplierId || '';
@@ -645,7 +646,8 @@ const Achats = {
   },
   _histSup(id) {
     const s = (Store.state.settings.suppliers || []).find(x => x.id === id), v = document.getElementById('oh_vat');
-    if (s && s.vatRate !== undefined && s.vatRate !== '' && v && v.value === '') v.value = s.vatRate;
+    const sv = s ? (s.vatRate !== undefined && s.vatRate !== '' ? s.vatRate : s.purchaseVatRate) : undefined;
+    if (sv !== undefined && sv !== '' && v && v.value === '') v.value = sv;
   },
   _histMode() { const h = document.getElementById('oh_hint'); if (h) h.textContent = 'Les montants et le port sont saisis en ' + (U.val('oh_mode') === 'ht' ? 'HT (la TVA sera ajoutée au total).' : 'TTC.'); },
   _saveHist() {

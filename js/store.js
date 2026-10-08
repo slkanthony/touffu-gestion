@@ -203,6 +203,12 @@ const Store = {
     const S = s.settings; if (!S) return;
     if (!Array.isArray(S.suppliers)) S.suppliers = [];
     S.suppliers.forEach(x => { if (!Array.isArray(x.types) || !x.types.length) x.types = ['mastication', 'matiere', 'conso']; });
+    // TVA d'achat par fournisseur (2026-10-08) : valeurs proposées tant que rien n'a été saisi (jamais d'écrasement ; vide « » saisi = volontaire)
+    const supVatDefaults = { kuaurtikel: 10, cernunos: 20, masticorp: 20, psf: 20 };
+    S.suppliers.forEach(x => {
+      const k = String(x.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+      if (x.purchaseVatRate === undefined && k in supVatDefaults) x.purchaseVatRate = supVatDefaults[k];
+    });
     const oth = Array.isArray(S.suppliersOther) ? S.suppliersOther : [];
     oth.forEach(o => { if (o && o.id && !S.suppliers.some(x => x.id === o.id)) S.suppliers.push({ id: o.id, name: o.name, types: ['autre'] }); });
     if (oth.length) S.suppliersOther = [];

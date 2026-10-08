@@ -2385,7 +2385,7 @@ const Stock = {
     const S = Store.state.settings; if (S.vatActive) return 1;
     const cat = Store.state.catalogM.find(x => x.id === ((v && v.catalogId) || (p && p.catalogId)));
     const e = cat ? Pricing.mainEntry(cat) : null;
-    return Pricing.vatK(e ? e.vatRate : undefined);
+    return Pricing.vatK(e ? Pricing.purchaseVatOf(e.supplierId, e.vatRate) : undefined);
   },
   /* Coût d'UNE pièce d'un lot pour la marge (2026-10-07) : les lots créés depuis cette date portent un coût déjà complet (`costFinal`, TVA d'achat comprise tant que non assujetti) ;
      les lots plus anciens (coût HT) reçoivent la TVA d'achat au moment de la vente. Sans coût de lot : coût de la variante. */
