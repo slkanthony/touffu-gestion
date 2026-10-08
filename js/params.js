@@ -797,15 +797,32 @@ const Params = {
   },
   /* TVA d'achat par défaut d'un fournisseur (vide = taux global). Les coûts des fiches dont la ligne n'a pas son propre taux changent :
      on recopie les prix sur les produits Stock reliés, comme pour la bascule « assujetti ». */
-  setSupPurchaseVat(id, val) {
+  async setSupPurchaseVat(id, val) {
     const S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;
-    const t = String(val ?? '').trim();
+    const t = String(val ?? '').trim(), has = x => x !== undefined && x !== null && x !== '';
     s.purchaseVatRate = t === '' ? '' : Math.max(0, Math.round(U.num(t) * 100) / 100);
-    const catIds = (Store.state.catalogM || []).filter(p => (p.suppliers || []).some(x => x.supplierId === id)).map(p => p.id);
-    catIds.forEach(cid => { try { Stock.syncPricesFromCatalog(cid); } catch (e) { console.error(e); } });
-    Store.save('settings', 'stockM');
+    const eff = s.purchaseVatRate === '' ? U.num(S.vatRate) : s.purchaseVatRate;
+    const lines = p => (p.suppliers || []).filter(x => x.supplierId === id);
+    const prods = (Store.state.catalogM || []).filter(p => lines(p).length);
+    // Une ligne de fiche qui a son PROPRE taux passe avant celui du fournisseur : on demande si elles doivent suivre le fournisseur
+    const own = prods.filter(p => lines(p).some(x => has(x.vatRate)));
+    const differ = own.filter(p => lines(p).some(x => has(x.vatRate) && U.num(x.vatRate) !== eff));
+    let follow = false;
+    if (differ.length) {
+      const sample = U.num(lines(differ[0]).find(x => has(x.vatRate)).vatRate);
+      follow = await U.confirm(`${differ.length} fiche(s) prix de « ${s.name} » ont leur propre TVA d'achat (par exemple ${sample} %), qui passe avant le taux du fournisseur (${eff} %).\n\nLes faire suivre « ${s.name} » ? Leur taux propre sera vidé (tu pourras annuler).`, { title: '🧾 TVA d\'achat', okLabel: 'Oui, suivre le fournisseur', cancelLabel: 'Non, garder leur taux' });
+    }
+    const snaps = [], seen = new Set(), snap = (dom, it) => { const k = dom + ':' + it.id; if (!seen.has(k)) { seen.add(k); snaps.push(Store.snapshot(dom, it)); } };
+    const ids = new Set(prods.map(p => p.id));
+    (Store.state.stockM || []).forEach(sp => { if (ids.has(sp.catalogId) || (sp.variants || []).some(v => ids.has(v.catalogId))) snap('stockM', sp); });
+    let cleared = 0;
+    prods.forEach(p => { snap('catalogM', p); if (follow) lines(p).forEach(x => { if (has(x.vatRate)) { x.vatRate = ''; cleared++; } }); });
+    prods.forEach(p => { try { Stock.syncPricesFromCatalog(p.id); } catch (e) { console.error(e); } });
+    const msg = 'TVA d\'achat de ' + s.name + ' : ' + (s.purchaseVatRate === '' ? 'taux global (' + S.vatRate + ' %)' : s.purchaseVatRate + ' %');
+    const entry = prods.length ? Store.log('paramètres', msg + ` — ${prods.length} fiche(s) prix` + (cleared ? `, ${cleared} taux propre(s) vidé(s)` : ''), { type: 'restoreBatch', data: snaps }) : null;
+    Store.save('settings', 'catalogM', 'stockM');
     App.rerender();
-    U.toast('TVA d\'achat de ' + s.name + ' : ' + (s.purchaseVatRate === '' ? 'taux global (' + S.vatRate + ' %)' : s.purchaseVatRate + ' %') + (catIds.length ? ` · ${catIds.length} fiche(s) prix concernée(s), recopiées sur le Stock.` : '.'));
+    U.toast(msg + (prods.length ? ` · ${prods.length} fiche(s) prix concernée(s)` + (cleared ? `, ${cleared} taux propre(s) remis sur le fournisseur` : '') + ', recopiées sur le Stock.' : '.'), false, entry ? entry.id : undefined);
   },
   renameSupplier(id, val) {
     const n = String(val || '').trim(), S = Store.state.settings, s = S.suppliers.find(x => x.id === id); if (!s) return;
