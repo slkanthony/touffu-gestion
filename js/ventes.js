@@ -35,6 +35,7 @@ const Ventes = {
   balOn: true,   // déduire l'avoir / ajouter la dette du client (fiche client)
   discOn: false, discPct: 5,   // réduction sur le ticket (clients partenaires…), 5 % par défaut, modifiable
   editTicketId: '', ticketConsoId: '', ticketConsoQty: 1,
+  edRepl: -1, edKey: '', edQ: '', edOpen: false, edQty: 1, edPrice: '', // « Modifier la vente » : ajout / remplacement d'un produit sur une vente déjà enregistrée
   ticketCashQ: '', ticketCashOpen: false, ticketCashSelKey: '', ticketCashQty: 1, ticketCashPrice: '', // vente en liquide ajoutée après coup sur un ticket événement déjà validé
   todoOpen: false, todoFilter: 'all', todoShowDone: false, _tt: {}, _todoBanner: null, _memOpen: false, // page « 🧩 Articles à traiter » // édition d'un ticket d'événement déjà validé (frais de stand + consommables)
 
@@ -1709,7 +1710,7 @@ const Ventes = {
      du ticket : déduites du stock (sauf ticket historique) et comptées en coût dans la marge
      du mois de l'événement. Le retrait re-crédite le stock ; annuler le ticket entier re-crédite
      tout (via undoOps). */
-  editEventTicket(id) { this.editTicketId = id; this.ticketConsoId = ''; this.ticketConsoQty = 1; this.ticketCashQ = ''; this.ticketCashOpen = false; this.ticketCashSelKey = ''; this.ticketCashQty = 1; this.ticketCashPrice = ''; this.cashFType = 'all'; this.cashFVariant = 'all'; this.render(); },
+  editEventTicket(id) { this.editTicketId = id; this.edRepl = -1; this.edKey = ''; this.edQ = ''; this.edOpen = false; this.edQty = 1; this.edPrice = ''; this.ticketConsoId = ''; this.ticketConsoQty = 1; this.ticketCashQ = ''; this.ticketCashOpen = false; this.ticketCashSelKey = ''; this.ticketCashQty = 1; this.ticketCashPrice = ''; this.cashFType = 'all'; this.cashFVariant = 'all'; this.render(); },
   closeEditTicket() { this.editTicketId = ''; this.render(); },
   _setTicketConso(id) { this.ticketConsoId = id; this.render(); },
   addTicketConso() {
@@ -1746,6 +1747,144 @@ const Ventes = {
     Store.save('sales', 'consumables');
     this.render();
     U.toast('Consommable retiré du ticket.');
+  },
+
+  /* ── Modifier les PRODUITS d'une vente déjà enregistrée (2026-10-09) : retirer une ligne, changer sa quantité, la remplacer, en ajouter ──
+     Le stock suit toujours : retirer / diminuer re-crédite les lots d'où les pièces étaient sorties (retrouvés dans `sale.undoOps`),
+     augmenter / ajouter / remplacer sort du stock (lot à la DLUO la plus courte, stock de la vente). Une vente d'historique (jamais
+     passée par le stock) ou une ligne non déduite ne touche pas au stock. Chaque action est annulable (↺) : fiche vente + produits touchés. */
+  /* Pour chaque ligne produit (M / A) : les morceaux d'`undoOps` qui la concernent [{ e:{op,left}, take }]. Reconstruit à chaque fois (jamais stocké) :
+     on parcourt les lignes dans l'ordre et chacune « consomme » les opérations du même produit / de la même variante de stock (une déclinaison sans stock propre → sa variante principale). */
+  _attribute(s) {
+    const pool = (s.undoOps || []).map(op => ({ op, left: U.num(op.qty) }));
+    return (s.items || []).map(it => {
+      if ((it.kind !== 'M' && it.kind !== 'A') || it.deducted === false) return [];
+      let key, need = U.num(it.qty) - U.num(it.missing);
+      if (it.kind === 'M') { const p = Store.state.stockM.find(x => x.id === it.pId), v = p && Stock.stockVar(p, it.vId); key = 'M|' + it.pId + '|' + (v ? v.id : it.vId); } else key = 'A|' + it.pId + '|';
+      const out = [];
+      for (const e of pool) {
+        if (need <= 0) break;
+        if (e.left <= 0 || (e.op.kind + '|' + e.op.pId + '|' + (e.op.kind === 'M' ? e.op.vId : '')) !== key) continue;
+        const t = Math.min(e.left, need); e.left -= t; need -= t; out.push({ e, take: t });
+      }
+      return out;
+    });
+  },
+  _creditParts(parts) { let n = 0; parts.forEach(({ e, take }) => { if (take > 0) { this.applyUndoOp({ ...e.op, qty: take }); e.op.qty = U.num(e.op.qty) - take; n += take; } }); return n; },
+  _cleanOps(s) { s.undoOps = (s.undoOps || []).filter(o => U.num(o.qty) > 0); },
+  /* Photographie AVANT modification : la vente + tous les produits stock / accessoires qu'elle référence (+ ceux qu'on va ajouter) */
+  _editSnaps(s, extra) {
+    const snaps = [Store.snapshot('sales', s)], seen = new Set();
+    const add = (kind, pId) => {
+      const k = kind + '|' + pId; if (seen.has(k)) return; seen.add(k);
+      const rec = kind === 'A' ? Store.state.catalogA.find(x => x.id === pId) : Store.state.stockM.find(x => x.id === pId);
+      if (rec) snaps.push(Store.snapshot(kind === 'A' ? 'catalogA' : 'stockM', rec));
+    };
+    (s.items || []).forEach(i => { if (i.kind === 'M' || i.kind === 'A') add(i.kind, i.pId); });
+    (extra || []).forEach(e => add(e.kind, e.pId));
+    return snaps;
+  },
+  _editDone(s, snaps, label, msg, short) {
+    this._retotal(s);
+    const entry = Store.log('vente', `${label} — vente du ${U.frDateTime(s.ts)}`, { type: 'restoreBatch', data: snaps });
+    Store.save('sales', 'stockM', 'catalogA');
+    this.render();
+    U.toast(msg, false, entry.id);
+    if (short && short.length) this._alertShortfalls(short);
+  },
+  _itemUnits(it) { return U.num(it.pack) >= 2 ? U.num(it.packs) : U.num(it.qty); },
+  async removeSaleItem(id, idx) {
+    const s = Store.state.sales.find(x => x.id === id), it = s && s.items[idx]; if (!it || s.cancelled) return;
+    const back0 = (this._attribute(s)[idx] || []).reduce((a, x) => a + x.take, 0);
+    const lbl = it.name + (it.label ? ' ' + it.label : '');
+    if (!await U.confirm(`Retirer « ${lbl} » × ${U.qty(this._itemUnits(it))} de cette vente ?\n\n` + (back0 > 0 ? `Le stock est re-crédité de ${U.qty(back0)} pièce(s), sur les lots d'où elles étaient sorties.` : `Cette vente n'avait pas sorti ce produit du stock : rien à re-créditer.`) + `\nLe total, le bénéfice et les statistiques sont recalculés. Tu pourras annuler.`, { title: '🗑️ Retirer ce produit', okLabel: 'Retirer', danger: true })) return;
+    const snaps = this._editSnaps(s);
+    const back = this._creditParts(this._attribute(s)[idx] || []); this._cleanOps(s);
+    s.items.splice(idx, 1);
+    if (this.edRepl >= 0) this.edRepl = -1;
+    this._editDone(s, snaps, `Produit retiré — ${lbl}`, `« ${lbl} » retiré de la vente` + (back > 0 ? ` · ${U.qty(back)} pièce(s) remise(s) en stock.` : '.'));
+  },
+  setItemQty(id, idx, val) {
+    const s = Store.state.sales.find(x => x.id === id), it = s && s.items[idx];
+    if (!it || s.cancelled || (it.kind !== 'M' && it.kind !== 'A')) return;
+    const mul = U.num(it.pack) >= 2 ? U.num(it.pack) : 1, cur = this._itemUnits(it), n = Math.max(0, Math.round(U.num(val)));
+    if (n === cur) { this.render(); return; }
+    if (n === 0) { this.render(); this.removeSaleItem(id, idx); return; }
+    const oldPieces = U.num(it.qty), newPieces = n * mul, delta = newPieces - oldPieces, lbl = it.name + (it.label ? ' ' + it.label : '');
+    const snaps = this._editSnaps(s), attr = this._attribute(s)[idx] || [];
+    let back = 0, took = 0, short = [];
+    if (delta < 0) {
+      const deductedOld = oldPieces - U.num(it.missing), deductedNew = Math.min(deductedOld, newPieces);
+      let left = deductedOld - deductedNew; const parts = [];
+      for (let k = attr.length - 1; k >= 0 && left > 0; k--) { const t = Math.min(attr[k].take, left); left -= t; parts.push({ e: attr[k].e, take: t }); }   // on rend d'abord les dernières pièces sorties
+      back = this._creditParts(parts); this._cleanOps(s);
+      it.cost = oldPieces > 0 ? U.num(it.cost) * newPieces / oldPieces : 0;
+      if (newPieces - deductedNew > 0) it.missing = newPieces - deductedNew; else delete it.missing;
+    } else if (!s.historical && it.deducted !== false) {
+      const tmp = { items: [], total: 0, undoOps: [] };
+      short = this._deductSale(tmp, [{ kind: it.kind, pId: it.pId, vId: it.vId, name: it.name, label: it.label, sku: it.sku, lotLabel: '', price: U.num(it.price), qty: delta }], s.source);
+      const ni = tmp.items[0] || {};
+      s.undoOps = (s.undoOps || []).concat(tmp.undoOps);
+      took = delta - U.num(ni.missing);
+      it.cost = U.num(it.cost) + U.num(ni.cost);
+      if (U.num(ni.missing) > 0) it.missing = U.num(it.missing) + U.num(ni.missing);
+    }
+    it.qty = newPieces; if (mul > 1) it.packs = n;
+    this._editDone(s, snaps, `Quantité modifiée — ${lbl} : ${U.qty(cur)} → ${U.qty(n)}`, `${lbl} : ${U.qty(cur)} → ${U.qty(n)}` + (back > 0 ? ` · ${U.qty(back)} pièce(s) remise(s) en stock.` : took > 0 ? ` · ${U.qty(took)} pièce(s) sortie(s) du stock.` : '.'), short);
+  },
+  startReplace(id, idx) {
+    this.edRepl = idx; this.edKey = ''; this.edQ = ''; this.edOpen = true; this.edQty = 1; this.edPrice = '';
+    this.render();
+    const el = document.getElementById('ed_prod'); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); }
+  },
+  cancelEdLine() { this.edRepl = -1; this.edKey = ''; this.edQ = ''; this.edOpen = false; this.edQty = 1; this.edPrice = ''; this.render(); },
+  setEdQ(v) { this.edQ = v; this.edOpen = true; this.edKey = ''; this.render(); },
+  closeEdMenu() { if (this.edOpen) { this.edOpen = false; this.render(); } },
+  pickEd(key) {
+    const u = this.units().find(x => x.key === key), s = Store.state.sales.find(x => x.id === this.editTicketId), old = s && this.edRepl >= 0 ? s.items[this.edRepl] : null;
+    this.edKey = key; this.edQ = u ? u.name + (u.label ? ' · ' + u.label : '') : this.edQ; this.edOpen = false;
+    this.edPrice = u ? Math.round(u.price * 100) / 100 : ''; this.edQty = old ? Math.max(1, this._itemUnits(old)) : 1;
+    this.render();
+  },
+  applyEdLine() {
+    const s = Store.state.sales.find(x => x.id === this.editTicketId); if (!s || s.cancelled) return;
+    const u = this.units().find(x => x.key === this.edKey); if (!u) { U.toast('Choisis un produit.', true); return; }
+    const qty = Math.max(1, Math.round(U.num(this.edQty))), price = Math.round((this.edPrice !== '' ? U.num(this.edPrice) : u.price) * 100) / 100;
+    const repl = this.edRepl >= 0 ? s.items[this.edRepl] : null, pos = repl ? this.edRepl : s.items.length;
+    const snaps = this._editSnaps(s, [{ kind: u.kind, pId: u.pId }]);
+    let back = 0, short = [], items;
+    if (repl) { back = this._creditParts(this._attribute(s)[pos] || []); this._cleanOps(s); }
+    if (s.historical) items = [{ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, qty, price }];   // vente d'historique : jamais passée par le stock
+    else {
+      const tmp = { items: [], total: 0, undoOps: [] };
+      short = this._deductSale(tmp, [{ kind: u.kind, pId: u.pId, vId: u.vId, name: u.name, label: u.label, sku: u.sku, lotLabel: '', price, qty, ...(U.num(u.vLots) >= 2 ? { vLots: u.vLots } : {}) }], s.source);
+      s.undoOps = (s.undoOps || []).concat(tmp.undoOps); items = tmp.items;
+    }
+    s.items.splice(pos, repl ? 1 : 0, ...items);
+    const lbl = u.name + (u.label ? ' ' + u.label : '');
+    this.edRepl = -1; this.edKey = ''; this.edQ = ''; this.edOpen = false; this.edQty = 1; this.edPrice = '';
+    this._editDone(s, snaps, repl ? `Produit remplacé — ${repl.name} → ${lbl}` : `Produit ajouté — ${lbl}`,
+      (repl ? `« ${repl.name}${repl.label ? ' ' + repl.label : ''} » remplacé par « ${lbl} » × ${U.qty(qty)}` : `« ${lbl} » × ${U.qty(qty)} ajouté`) + (s.historical ? ' (stock non touché : vente d\'historique).' : (repl && back > 0 ? ` · ${U.qty(back)} pièce(s) de l'ancien produit remise(s) en stock, le nouveau est sorti du stock.` : ' · sorti du stock.')), short);
+  },
+  /* Bloc « ajouter / remplacer un produit » sous le tableau des articles d'une vente enregistrée */
+  editLinePicker(s) {
+    const sel = this.units().find(u => u.key === this.edKey), repl = this.edRepl >= 0 ? s.items[this.edRepl] : null;
+    const sugg = this.edOpen ? U.rank(this.units().filter(u => this._cashFMatch(u)), (this.edQ || '').toLowerCase(), u => u.name + ' ' + u.label + ' ' + u.sku).slice(0, 30) : [];
+    return `<div class="mt" style="border-top:1px dashed var(--card-border);padding-top:12px;">
+      <h3 style="font-size:.9rem;margin:0 0 6px;">${repl ? `🔄 Remplacer « ${U.esc(repl.name + (repl.label ? ' ' + repl.label : ''))} » par…` : '➕ Ajouter un produit oublié'} ${repl ? `<button class="btn-ghost btn-sm" style="margin-left:8px;" onclick="Ventes.cancelEdLine()">✖ Annuler le remplacement</button>` : ''}</h3>
+      <p class="muted help">${s.historical ? 'Vente d\'historique (jamais passée par le stock) : le stock n\'est pas modifié.' : 'Le produit choisi est sorti du stock tout de suite' + (repl ? ' ; l\'ancien est remis en stock' : '') + '. Prix, quantité et bénéfice de la vente sont recalculés.'}</p>
+      ${this._cashFilterRow()}
+      <div class="grid c2">
+        <div class="fg autocomplete" data-onclose="Ventes.closeEdMenu"><label>Produit</label>
+          <input id="ed_prod" type="text" autocomplete="off" placeholder="tape un nom ou un SKU…" value="${U.esc(this.edQ)}" oninput="Ventes.setEdQ(this.value);U.refocus('ed_prod')">
+          ${this.edOpen && sugg.length ? `<div class="ac-list" style="position:static;margin-top:4px;max-height:230px;overflow-y:auto;">${sugg.map(u => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Ventes.pickEd('${u.key}')"><span class="pp-a">${U.esc(u.name)}${u.label ? ` <span class="pp-v">${U.esc(u.label)}</span>` : ''}</span><span class="pp-b">${U.esc(u.sku || '')}</span><span class="pp-c">${U.eur(u.price)}</span></div>`).join('')}</div>` : ''}
+          ${this.edOpen && !sugg.length && this.edQ ? `<div class="muted" style="padding:6px 2px;">Aucun produit ne correspond à « ${U.esc(this.edQ)} ».</div>` : ''}
+        </div>
+        ${sel ? `<div class="fg"><label>Quantité${U.num(sel.vLots) >= 2 ? ' (lots de ' + sel.vLots + ')' : ''}</label><input type="text" inputmode="numeric" value="${this.edQty || 1}" onchange="Ventes.edQty=Math.max(1,Math.round(U.num(this.value)))"></div>` : ''}
+      </div>
+      ${sel ? `<div class="fg" style="max-width:200px;"><label>Prix unitaire TTC</label><input type="number" step="0.01" min="0" value="${this.edPrice !== '' ? this.edPrice : Math.round(sel.price * 100) / 100}" onchange="Ventes.edPrice=Math.max(0,Math.round(U.num(this.value)*100)/100)"></div>
+      <button class="btn-cta btn-sm" onclick="Ventes.applyEdLine()">${repl ? '🔄 Remplacer' : '＋ Ajouter à la vente'}</button>` : ''}
+    </div>`;
   },
 
   /* ── Vente en liquide ajoutée APRÈS COUP sur un ticket SumUp déjà validé (2026-09-30) ──
@@ -1925,8 +2064,9 @@ const Ventes = {
       ${isEv ? this.ticketCashCard(s) : ''}
       ${!(isEv && s.payment === 'cash') ? `<div class="card">
         <h2 class="mb0">🧾 Articles vendus</h2>
-        <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th>🎁 Offert</th><th class="num">Total</th></tr></thead>
-        <tbody>${soldItems.length ? soldItems.map(({ it, i }) => `<tr><td class="col-name"><b>${U.esc(it.name)}</b></td><td>${it.label ? U.esc(it.label) : '—'}</td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${U.qty(it.qty)}</td><td class="num"><input type="number" step="0.01" min="0" style="width:90px;text-align:right;" value="${U.num(it.price)}" onchange="Ventes.setItemPrice('${s.id}',${i},this.value)"></td><td style="text-align:center;"><input type="checkbox" ${it.free ? 'checked' : ''} title="Produit offert : sorti du stock mais valeur de vente 0 €" onchange="Ventes.toggleItemFree('${s.id}',${i},this.checked)"></td><td class="num"><b>${U.eur(U.num(it.price) * U.num(it.qty))}</b></td></tr>`).join('') : '<tr><td colspan="7" class="muted">Aucun article vendu sur ce ticket.</td></tr>'}</tbody></table></div>
+        <div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th>🎁 Offert</th><th class="num">Total</th>${s.cancelled ? '' : '<th></th>'}</tr></thead>
+        <tbody>${soldItems.length ? soldItems.map(({ it, i }) => `<tr><td class="col-name"><b>${U.esc(it.name)}</b></td><td>${it.label ? U.esc(it.label) : '—'}</td><td>${it.sku ? `<span class="tag">${U.esc(it.sku)}</span>` : '—'}</td><td class="num">${s.cancelled || (it.kind !== 'M' && it.kind !== 'A') ? U.qty(it.qty) : `<input type="text" inputmode="numeric" style="width:64px;text-align:center;font-weight:700;" value="${U.qty(this._itemUnits(it))}" title="${U.num(it.pack) >= 2 ? 'Nombre de lots (' + it.pack + ' pièces chacun)' : 'Quantité'} : le stock est re-crédité ou déduit de la différence (0 = retirer)" onfocus="this.select()" onchange="Ventes.setItemQty('${s.id}',${i},this.value)">${U.num(it.pack) >= 2 ? `<div class="muted" style="font-size:.7rem;">lots de ${it.pack}</div>` : ''}`}</td><td class="num"><input type="number" step="0.01" min="0" style="width:90px;text-align:right;" value="${U.num(it.price)}" onchange="Ventes.setItemPrice('${s.id}',${i},this.value)"></td><td style="text-align:center;"><input type="checkbox" ${it.free ? 'checked' : ''} title="Produit offert : sorti du stock mais valeur de vente 0 €" onchange="Ventes.toggleItemFree('${s.id}',${i},this.checked)"></td><td class="num"><b>${U.eur(U.num(it.price) * U.num(it.qty))}</b></td>${s.cancelled ? '' : `<td style="white-space:nowrap;">${it.kind === 'M' || it.kind === 'A' ? `<button class="btn-icon" title="Remplacer par un autre produit" onclick="Ventes.startReplace('${s.id}',${i})">🔄</button>` : ''}<button class="btn-icon" title="Retirer de la vente (le stock est remis)" onclick="Ventes.removeSaleItem('${s.id}',${i})">🗑️</button></td>`}</tr>`).join('') : `<tr><td colspan="${s.cancelled ? 7 : 8}" class="muted">Aucun article vendu sur ce ticket.</td></tr>`}</tbody></table></div>
+        ${s.cancelled ? '<p class="muted">Vente annulée : ses articles ne sont plus modifiables (le stock a déjà été re-crédité).</p>' : this.editLinePicker(s)}
       </div>` : ''}
       `);
   },
