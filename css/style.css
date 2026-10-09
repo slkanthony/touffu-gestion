@@ -347,13 +347,12 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .b2b-disc-lines > div.muted { font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
 /* Bascule fusionnée « un seul choix actif » (U.seg) : modèle = sélecteur Entreprise / Micro de Revente pro.
    .full = toute la largeur ; .scroll = glisse au doigt quand le bloc est plus large que l'écran. */
-.seg { display: inline-flex; max-width: 100%; border: 1.5px solid var(--caramel); border-radius: 10px; overflow: hidden; vertical-align: middle; box-sizing: border-box; }
-.seg > button, .seg > a { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: var(--texte); border: 0; border-radius: 0; padding: 8px 16px; font: inherit; font-weight: 700; white-space: nowrap; text-decoration: none; cursor: pointer; box-shadow: none; filter: none; transform: none; }
-.seg > * + * { border-left: 1px solid rgba(166, 113, 83, 0.35); }
+.seg { position: relative; display: inline-flex; gap: 2px; padding: 3px; max-width: 100%; background: var(--card-bg); border: 1.5px solid var(--caramel); border-radius: 12px; overflow: hidden; vertical-align: middle; box-sizing: border-box; }
+.seg > button, .seg > a { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: var(--texte); border: 0; border-radius: 8px; padding: 6px 16px; font: inherit; font-weight: 700; white-space: nowrap; text-decoration: none; cursor: pointer; box-shadow: none; filter: none; transform: none; }
 .seg > :hover:not(.on) { background: rgba(166, 113, 83, 0.16); filter: none; }
 .seg > .on { background: var(--caramel); color: #fff; }
 .seg.full { display: flex; width: 100%; }
-.seg.full > * { flex: 1 1 0; padding: 11px 16px; }
+.seg.full > * { flex: 1 1 0; padding: 9px 16px; }
 .seg.scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; overscroll-behavior-x: contain; }
 .seg.scroll::-webkit-scrollbar { display: none; }
 .seg-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
