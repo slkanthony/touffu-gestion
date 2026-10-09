@@ -149,7 +149,6 @@ const Paniers = {
 
       p.variants.forEach(v => {
         if (v.mode === 'vrac') return;
-        const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
 
         const tags = this._mergeTags(pTags, Stock.variantTags(p, v));
         if (cl && ((cl.odor && tags.odeur === 'forte') || (cl.fat && tags.gras === 'gras'))) return;
@@ -175,18 +174,10 @@ const Paniers = {
         });
         if (!lots.length) return;
 
-        const price = U.num(v.priceTTC);
+        const rc = Stock.refCalc(p, v);   // prix = fiche Prix mastication (la référence), jamais la copie du Stock
+        const price = rc ? rc.calc.priceTTC : U.num(v.priceTTC);
         if (price <= 0) return;
-
-        let coeff = 0;
-        if (cat) {
-          const cv = v.catalogVariantId ? (cat.variants || []).find(x => x.id === v.catalogVariantId) : null;
-          if (cv) {
-            const base = Pricing.baseUnitCost(cat);
-            const calc = Pricing.variantCalc(cat, cv, 0, base);
-            coeff = calc.effCoeff || 0;
-          }
-        }
+        const coeff = rc ? (rc.calc.effCoeff || 0) : 0;
 
         lots.forEach(l => {
           const avail = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
@@ -1120,7 +1111,6 @@ const Paniers = {
     const out = [];
     Store.state.stockM.forEach(p => {
       p.variants.forEach(v => {
-        const cat = Store.state.catalogM.find(c => c.id === (v.catalogId || p.catalogId));
         // Déclinaison « sans stock propre » (Lot 5…) : pas de lots à elle, son stock = celui de la variante principale ÷ packQty → une seule ligne, sans lot ni DLUO
         const vq = Stock.isVirtual(p, v) ? Stock.virtualQty(p, v) : null;
         const lots = vq ? (vq.t > 0 ? [{ id: '', qtyGeneral: vq.g, qtyEvent: vq.e, dluo: '', lotNumber: '' }] : []) : v.lots.filter(l => {
@@ -1131,16 +1121,9 @@ const Paniers = {
           return true;
         });
         if (!lots.length) return;
-        const price = U.num(v.priceTTC);   // ajout manuel : même sans prix de vente renseigné (affiché 0,00 €)
-        let coeff = 0;
-        if (cat) {
-          const cv = v.catalogVariantId ? (cat.variants || []).find(x => x.id === v.catalogVariantId) : null;
-          if (cv) {
-            const base = Pricing.baseUnitCost(cat);
-            const calc = Pricing.variantCalc(cat, cv, 0, base);
-            coeff = calc.effCoeff || 0;
-          }
-        }
+        const rc = Stock.refCalc(p, v);   // prix = fiche Prix mastication (la référence), jamais la copie du Stock
+        const price = rc ? rc.calc.priceTTC : U.num(v.priceTTC);   // ajout manuel : même sans prix de vente renseigné (affiché 0,00 €)
+        const coeff = rc ? (rc.calc.effCoeff || 0) : 0;
         const tags = this._mergeTags(p.tags || {}, Stock.variantTags(p, v));
         lots.forEach(l => {
           const avail = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
@@ -1591,14 +1574,10 @@ const Paniers = {
     const rows = this.basket.map(b => {
       const sp = Store.state.stockM.find(x => x.id === b.pId);
       const sv = sp ? sp.variants.find(x => x.id === b.vId) : null;
-      const catId = sv ? (sv.catalogId || (sp && sp.catalogId)) : null;
-      const cat = catId ? Store.state.catalogM.find(c => c.id === catId) : null;
-      const cvId = sv ? sv.catalogVariantId : null;
-      const cv = cat && cvId ? (cat.variants || []).find(x => x.id === cvId) : null;
+      const rc = sp && sv ? Stock.refCalc(sp, sv) : null;   // fiche Prix mastication : même rang de palier que partout (avant : rang 0 pour tout)
       let cost = 0, priceHT = 0, priceTTC = 0, coeff = b.coeff;
-      if (cat && cv) {
-        const base = Pricing.baseUnitCost(cat);
-        const calc = Pricing.variantCalc(cat, cv, 0, base);
+      if (rc) {
+        const calc = rc.calc;
         cost = calc.cost; priceHT = calc.priceHT; priceTTC = calc.priceTTC; coeff = calc.effCoeff;
       } else {
         const vat = U.num(S.vatRate) / 100;

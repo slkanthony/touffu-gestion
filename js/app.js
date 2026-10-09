@@ -312,6 +312,8 @@ const App = {
     this._dashValCatOpen = false; this._dashCAOpen = false;
   },
   rerender() {
+    // Prix du Stock = copie de la fiche Prix mastication : remise à jour AUTOMATIQUEMENT à chaque affichage (jamais besoin du bouton 🔄).
+    try { Stock.refreshPrices(); } catch (e) { console.error(e); }
     document.getElementById('main').innerHTML = '';
     const r = this.renderers[this.current];
     if (r) r();

@@ -306,7 +306,7 @@ const Stock = {
             <th class="col-name var-cell" style="padding-left:52px;">Variante</th><th>SKU</th>
             <th class="num">Min gén.</th><th class="num">Min évén.</th>
             <th class="num">Stock gén.</th><th class="num">Stock évén.</th><th class="num">Total</th>
-            <th class="num">Prix achat</th><th class="num">Prix vente</th>
+            <th class="num" title="Fiche Prix mastication (port inclus) — indicatif">Prix achat</th><th class="num" title="Fiche Prix mastication — indicatif">Prix vente</th>
             <th class="num">Nb lots</th>
             <th></th>
           </tr></thead>
@@ -381,8 +381,8 @@ const Stock = {
       <td class="num" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
       <td class="num" title="Lots disponibles en stock événement (calculé)">${U.qty(vq.e)} <span class="muted" style="font-size:.72rem;">lots</span></td>
       <td class="num muted" title="Lots disponibles au total (calculé)"><b>${U.qty(vq.t)}</b></td>
-      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n}">${U.eur(U.num(vq.par.costUnit) * vq.n)}</td>
-      <td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="Prix de vente TTC du lot" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>
+      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n} (fiche Prix mastication, port inclus)">${U.eur((this.refCalc(p, vq.par) ? this.refCalc(p, vq.par).calc.cost : U.num(vq.par.costUnit)) * vq.n)}</td>
+      ${this._refPriceCell(p, v, 'Prix de vente TTC du lot')}
       <td class="num muted">—</td>
       <td class="right"><div class="act-grid"><span class="act-row">
         <button class="btn-icon" title="Monter" ${vi<=0?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',-1)">↑</button>
@@ -400,8 +400,8 @@ const Stock = {
       <td class="num ${lowCls}"><b>${U.qty(qg)}</b></td>
       <td class="num">${U.qty(qe)}${lowE>0&&qe<=lowE?` <span class="warn-txt" style="font-size:.75rem;">(min ${lowE})</span>`:''}</td>
       <td class="num muted" title="Stock gén. + Stock évén. — tout ce que tu possèdes physiquement pour cette variante"><b>${U.qty(qg+qe)}</b></td>
-      <td class="num sensitive"><input type="number" step="0.01" value="${U.num(v.costUnit).toFixed(2)}" style="width:78px;" title="Prix d'achat / coût unitaire de référence" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>
-      <td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="Prix de vente TTC" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>
+      ${this._refCostCell(p, v)}
+      ${this._refPriceCell(p, v, 'Prix de vente TTC')}
       <td class="num muted">${lots.length}</td>
       <td class="right"><div class="act-grid"><span class="act-row">
         <button class="btn-icon" title="Monter" ${vi<=0?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',-1)">↑</button>
@@ -449,6 +449,18 @@ const Stock = {
     const entry=Store.commitSnapshot(snap,'stock',`Seuil modifié — ${p.name} (${Pricing.labelVariant(v)})`);
     U.toast('Seuil mis à jour.', false, entry.id);
     Store.save('stockM');
+  },
+  /* Cellules prix d'une ligne variante : variante RELIÉE à une fiche → valeur de la fiche, en lecture seule (indicatif) ;
+     NON reliée (aucune fiche d'où la prendre) → champ modifiable comme avant. */
+  _refPriceCell(p, v, label) {
+    const rc = this.refCalc(p, v);
+    if (rc) return `<td class="num" title="${label} — vient de la fiche Prix mastication (non modifiable ici)">${U.eur(rc.calc.priceTTC)}</td>`;
+    return `<td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="${label} (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>`;
+  },
+  _refCostCell(p, v) {
+    const rc = this.refCalc(p, v);
+    if (rc) return `<td class="num sensitive" title="Coût de revient de la fiche Prix mastication (port estimé inclus) — non modifiable ici">${U.eur(rc.calc.cost)}</td>`;
+    return `<td class="num sensitive"><input type="number" step="0.01" value="${U.num(v.costUnit).toFixed(2)}" style="width:78px;" title="Prix d'achat / coût unitaire (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>`;
   },
   setVarPrice(pId, vId, val) {
     const p=Store.state.stockM.find(x=>x.id===pId); const v=p?.variants.find(x=>x.id===vId); if(!v) return;
@@ -775,6 +787,32 @@ const Stock = {
     if (v.sku) { if (cv.sku !== v.sku) { cv.sku = v.sku; catChanged = true; } }
     else if (cv.sku) v.sku = cv.sku;
     return catChanged;
+  },
+
+  /* PRIX DE RÉFÉRENCE (2026-10-09, décision d'Antho) : la fiche « Prix mastication » est la SEULE référence de prix et de coût ; le Stock n'en garde
+     qu'une copie INDICATIVE, non modifiable, qui se remet à jour toute seule (refreshPrices, à chaque affichage d'écran).
+     refCalc = calcul à la volée depuis la fiche reliée (même rang de palier que partout) ; null si la variante n'est reliée à aucune fiche.
+     Paniers & co lisent ceci, jamais la copie. calc.cost = coût de revient AVEC port estimé ; calc.costBase = sans (comptabilité du stock). */
+  refCalc(p, v) {
+    const catId = (v && v.catalogId) || (p && p.catalogId) || ''; if (!catId || !v.catalogVariantId) return null;
+    const cat = Store.state.catalogM.find(c => c.id === catId); if (!cat) return null;
+    const cv = (cat.variants || []).find(x => x.id === v.catalogVariantId); if (!cv) return null;
+    const enabledVars = (cat.variants || []).filter(x => x.enabled !== false);
+    const idx = enabledVars.findIndex(x => x.id === cv.id);
+    return { cat, cv, calc: Pricing.variantCalc(cat, cv, idx < 0 ? 0 : idx, Pricing.baseUnitCost(cat), enabledVars.length) };
+  },
+  /* Recopie sur le Stock les prix/coûts de TOUTES les fiches reliées (même chose que 🔄, mais automatique : appelée par App.rerender).
+     N'enregistre que si quelque chose a changé. Jamais en profil visite/équipe (ils ne gèrent pas les fiches prix). */
+  refreshPrices() {
+    if (typeof App !== 'undefined' && (App.isViewer || App.isTeam)) return false;
+    if (!Store.state || !Store.state.stockM || !Store.state.catalogM) return false;
+    const sig = () => Store.state.stockM.map(sp => (sp.variants || []).map(v => [v.priceTTC, v.costUnit, v.mode, v.value, v.label, v.sku, v.catalogVariantId, v.catalogId].join('~')).join('|')).join('||');
+    const before = sig(), ids = new Set();
+    Store.state.stockM.forEach(sp => { if (sp.catalogId) ids.add(sp.catalogId); (sp.variants || []).forEach(v => { if (v.catalogId) ids.add(v.catalogId); }); });
+    ids.forEach(id => { try { this.syncPricesFromCatalog(id); } catch (e) { console.error(e); } });
+    if (sig() === before) return false;
+    Store.save('stockM');
+    return true;
   },
 
   async delVariant(pId, vId) {
