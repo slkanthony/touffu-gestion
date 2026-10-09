@@ -6,7 +6,7 @@
    ============================================================ */
 const Catalogue = {
   /* Petite ligne « dont port » sous le coût de revient quand un taux de port à l'achat (Paramètres) est appliqué : le coût affiché l'inclut déjà. */
-  _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Port à l'achat estimé (Paramètres → Réglages financiers → Port à l'achat), déjà compris dans le coût de revient">dont port ${U.eur(c.portCost)}</div>` : ''; },
+  _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Frais de port d'achat estimés (Paramètres → Réglages financiers → Frais de port d'achat estimés), déjà compris dans le coût de revient">dont frais de port estimés ${U.eur(c.portCost)}</div>` : ''; },
   filters: { q: '', meat: 'all', sup: 'all', ctl: 'all', sort: 'meat', sortDir: 'asc' },
   mode: 'list',      // 'list' | 'new' | 'edit'
   editId: null,

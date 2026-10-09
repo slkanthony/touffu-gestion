@@ -659,9 +659,9 @@ const Params = {
         <td class="num" style="white-space:nowrap;"><input type="number" step="0.1" min="0" value="${cur || ''}" placeholder="0" style="width:72px;text-align:center;" onchange="Params.setPortRate('${k}',this.value)"> %</td>
         <td>${o.goods > 0 && Math.abs(sug - cur) > 0.04 ? `<button class="btn-ghost btn-sm" onclick="Params.setPortRate('${k}',${sug})">Appliquer ${U.qty(sug)} %</button>` : ''}</td></tr>`;
     }).join('');
-    return `<div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚚 Port à l'achat ${U.info("Le port payé à tes fournisseurs est compté comme une CHARGE dans la Compta (à la date de chaque facture) : il n'est jamais réparti dans le coût de tes produits ni de ton stock.<br><br>Pour que tes PRIX le couvrent quand même, tu fixes ici un taux par catégorie. Il s'ajoute au coût de revient dans le calcul des prix (fiches mastication, accessoires, emballages) et rien d'autre.<br><br>La colonne « calculé » est la moyenne de tes factures saisies dans Achats : port HT payé ÷ marchandises HT achetées. L'appli ne change jamais un taux toute seule : tu l'appliques quand tu revois tes prix. À 0 %, rien ne change.")}</div>
+    return `<div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚚 Frais de port d'achat estimés ${U.info("Deux choses à ne pas confondre.<br><br><b>Frais de livraison</b> = ce que tes fournisseurs te facturent vraiment (ligne « livraison » de tes factures dans Achats). C'est une CHARGE dans la Compta, à la date de chaque facture : elle n'est jamais répartie dans le coût de tes produits ni de ton stock.<br><br><b>Frais de port d'achat estimés</b> = un taux par catégorie que tu fixes ici. Il s'ajoute au coût de revient dans le calcul des prix (fiches mastication, accessoires, emballages) pour que tes PRIX couvrent ces frais de livraison, et rien d'autre.<br><br>La colonne « calculé » est la moyenne de tes factures saisies dans Achats : frais de livraison HT payés ÷ marchandises HT achetées. L'appli ne change jamais un taux toute seule : tu l'appliques quand tu revois tes prix. À 0 %, rien ne change.")}</div>
       <div class="frow" style="align-items:center;gap:10px;margin-bottom:8px;"><div class="fg" style="max-width:240px;margin:0;"><label>Calculer sur</label><select onchange="Params.setPortPeriod(this.value)">${opts.map(o => `<option value="${o[0]}" ${String(per) === String(o[0]) ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div></div>
-      <div class="table-wrap"><table><thead><tr><th style="text-align:left;">Catégorie</th><th class="num">Port payé (HT)</th><th class="num">Marchandises (HT)</th><th class="num">Taux calculé</th><th class="num">Taux appliqué</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th style="text-align:left;">Catégorie</th><th class="num">Frais de livraison payés (HT)</th><th class="num">Marchandises (HT)</th><th class="num">Taux calculé</th><th class="num">Taux appliqué</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="muted help" style="font-size:.82rem;margin-top:6px;">Changer un taux recalcule les prix des fiches concernées. Les anciennes factures se rentrent avec « 📚 Ancienne facture (statistiques) » dans Achats.</p>`;
   },
   async setPortRate(cat, val) {
@@ -669,12 +669,12 @@ const Params = {
     S.portRates = Object.assign({ mastication: 0, matiere: 0, conso: 0 }, S.portRates || {});
     const nv = Math.max(0, U.num(val)), old = U.num(S.portRates[cat]);
     if (nv === old) { App.rerender(); return; }
-    if (!await U.confirm(`Passer le port à l'achat « ${lab.replace(/^\S+\s/, '')} » de ${U.qty(old)} % à ${U.qty(nv)} % ?\n\nLes prix calculés des fiches concernées sont recalculés (prix de vente TTC du stock lié compris).`, { okLabel: 'Appliquer', title: '🚚 Changer le taux de port ?' })) { App.rerender(); return; }
+    if (!await U.confirm(`Passer les frais de port d'achat estimés « ${lab.replace(/^\S+\s/, '')} » de ${U.qty(old)} % à ${U.qty(nv)} % ?\n\nLes prix calculés des fiches concernées sont recalculés (prix de vente TTC du stock lié compris).`, { okLabel: 'Appliquer', title: "🚚 Changer les frais de port d'achat estimés ?" })) { App.rerender(); return; }
     S.portRates[cat] = nv;
     Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
-    Store.log('paramètres', `Port à l'achat « ${lab.replace(/^\S+\s/, '')} » : ${U.qty(old)} % → ${U.qty(nv)} %`);
+    Store.log('paramètres', `Frais de port d'achat estimés « ${lab.replace(/^\S+\s/, '')} » : ${U.qty(old)} % → ${U.qty(nv)} %`);
     Store.save('settings', 'stockM'); App.rerender();
-    U.toast('Taux de port enregistré : ' + U.qty(nv) + ' %. Prix recalculés.');
+    U.toast("Frais de port d'achat estimés enregistrés : " + U.qty(nv) + ' %. Prix recalculés.');
   },
 
   /* Réordonnancement des blocs de Réglages financiers (↑↓). L'ordre est stocké dans S.finOrder ; l'affichage suit via CSS flex `order`. */

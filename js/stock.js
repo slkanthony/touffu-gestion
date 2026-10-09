@@ -306,7 +306,7 @@ const Stock = {
             <th class="col-name var-cell" style="padding-left:52px;">Variante</th><th>SKU</th>
             <th class="num">Min gén.</th><th class="num">Min évén.</th>
             <th class="num">Stock gén.</th><th class="num">Stock évén.</th><th class="num">Total</th>
-            <th class="num" title="Fiche Prix mastication (port inclus) — indicatif">Prix achat</th><th class="num" title="Fiche Prix mastication — indicatif">Prix vente</th>
+            <th class="num" title="Fiche Prix mastication (frais de port d'achat estimés inclus) — indicatif">Prix achat</th><th class="num" title="Fiche Prix mastication — indicatif">Prix vente</th>
             <th class="num">Nb lots</th>
             <th></th>
           </tr></thead>
@@ -381,7 +381,7 @@ const Stock = {
       <td class="num" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
       <td class="num" title="Lots disponibles en stock événement (calculé)">${U.qty(vq.e)} <span class="muted" style="font-size:.72rem;">lots</span></td>
       <td class="num muted" title="Lots disponibles au total (calculé)"><b>${U.qty(vq.t)}</b></td>
-      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n} (fiche Prix mastication, port inclus)">${U.eur((this.refCalc(p, vq.par) ? this.refCalc(p, vq.par).calc.cost : U.num(vq.par.costUnit)) * vq.n)}</td>
+      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n} (fiche Prix mastication, frais de port d'achat estimés inclus)">${U.eur((this.refCalc(p, vq.par) ? this.refCalc(p, vq.par).calc.cost : U.num(vq.par.costUnit)) * vq.n)}</td>
       ${this._refPriceCell(p, v, 'Prix de vente TTC du lot')}
       <td class="num muted">—</td>
       <td class="right"><div class="act-grid"><span class="act-row">
@@ -459,7 +459,7 @@ const Stock = {
   },
   _refCostCell(p, v) {
     const rc = this.refCalc(p, v);
-    if (rc) return `<td class="num sensitive" title="Coût de revient de la fiche Prix mastication (port estimé inclus) — non modifiable ici">${U.eur(rc.calc.cost)}</td>`;
+    if (rc) return `<td class="num sensitive" title="Coût de revient de la fiche Prix mastication (frais de port d'achat estimés inclus) — non modifiable ici">${U.eur(rc.calc.cost)}</td>`;
     return `<td class="num sensitive"><input type="number" step="0.01" value="${U.num(v.costUnit).toFixed(2)}" style="width:78px;" title="Prix d'achat / coût unitaire (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>`;
   },
   setVarPrice(pId, vId, val) {

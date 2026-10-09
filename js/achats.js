@@ -248,7 +248,7 @@ const Achats = {
         </div>
         <div class="frow mt" style="align-items:center;gap:10px;">
           <button class="btn-cta" style="flex:0 0 auto;" onclick="Achats.create()">＋ Nouvelle facture</button>
-          <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.openHist()" title="Rentrer une vieille facture juste pour les statistiques (compta, port moyen) : rien n'est ajouté au stock ni aux prix">📚 Ancienne facture (statistiques)</button>
+          <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.openHist()" title="Rentrer une vieille facture juste pour les statistiques (compta, frais de livraison moyens) : rien n'est ajouté au stock ni aux prix">📚 Ancienne facture (statistiques)</button>
           <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.exportCsv()" title="Un fichier avec les factures affichées (une ligne par article) : registre des achats">⬇ Exporter (CSV)</button>
           ${f.refund ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.setF('refund',false)">✕ Afficher aussi les remboursées</button>` : ''}
         </div>
@@ -624,13 +624,13 @@ const Achats = {
   },
 
   /* ---------- Ancienne facture « statistique » (2026-10-04) ----------
-     Comme l'import historique d'un retour d'événement : on rentre les vieilles factures (2025…) juste pour la compta et le calcul du port moyen,
+     Comme l'import historique d'un retour d'événement : on rentre les vieilles factures (2025…) juste pour la compta et le calcul des frais de livraison moyens,
      SANS toucher au stock ni aux prix. Un montant par catégorie + le port, au lieu de détailler chaque produit. Marquée « 📚 » dans la liste. */
   openHist() {
     const sups = this.suppliers(), S = Store.state.settings;
     const row = (id, ico, lab) => `<div class="fg"><label>${ico} ${lab}</label><input id="oh_a_${id}" type="number" step="any" min="0" placeholder="0"></div>`;
     U.modal({ title: '📚 Ancienne facture (statistiques)', okLabel: 'Enregistrer', wide: true, body: `
-      <p class="muted help" style="font-size:.85rem;">Pour tes anciennes factures : rien n'est ajouté à ton stock ni à tes prix. Elles comptent dans la Compta (à leur date) et dans le calcul du port moyen. Après « Enregistrer », la fenêtre reste ouverte pour la facture suivante.</p>
+      <p class="muted help" style="font-size:.85rem;">Pour tes anciennes factures : rien n'est ajouté à ton stock ni à tes prix. Elles comptent dans la Compta (à leur date) et dans le calcul des frais de livraison moyens. Après « Enregistrer », la fenêtre reste ouverte pour la facture suivante.</p>
       <div class="frow"><div class="fg"><label>Date de la facture</label><input id="oh_date" type="date"></div>
         <div class="fg"><label>Fournisseur</label><select id="oh_sup" onchange="Achats._histSup(this.value)"><option value="">— choisir —</option>${sups.map(s => `<option value="${s.id}">${U.esc(s.name)}</option>`).join('')}</select></div>
         <div class="fg"><label>…ou nouveau fournisseur</label><input id="oh_newsup" placeholder="nom"></div></div>
@@ -639,9 +639,9 @@ const Achats = {
         <div class="fg"><label>Paiement</label><select id="oh_pay">${this.PAYS.map(p => `<option value="${p[0]}">${p[1]}</option>`).join('')}</select></div>
         <div class="fg"><label>N° facture (option)</label><input id="oh_no"></div></div>
       <div class="frow">${row('mastication', '🥩', 'Mastication (€)')}${row('matiere', '🧵', 'Matières premières (€)')}${row('conso', '📦', 'Consommables (€)')}${row('frais', '🧾', 'Autres dépenses (€)')}</div>
-      <div class="frow"><div class="fg" style="max-width:260px;"><label>Frais de port / livraison (€)</label><input id="oh_ship" type="number" step="any" min="0" placeholder="0"></div>
+      <div class="frow"><div class="fg" style="max-width:260px;"><label>Frais de livraison (€)</label><input id="oh_ship" type="number" step="any" min="0" placeholder="0"></div>
         <div class="fg" style="max-width:300px;"><label>Montant de TVA (€) <span class="muted help">option, en mode HT : si la facture indique la TVA en euros (ex. TVA sur les marchandises seulement, pas sur le port), saisis-la ici ; sinon elle est calculée avec le taux</span></label><input id="oh_vatamt" type="number" step="any" min="0" placeholder="auto"></div></div>
-      <p class="muted" style="font-size:.82rem;" id="oh_hint">Les montants et le port sont saisis en TTC.</p>`,
+      <p class="muted" style="font-size:.82rem;" id="oh_hint">Les montants et les frais de livraison sont saisis en TTC.</p>`,
       onOk: () => this._saveHist() });
   },
   _histSup(id) {
@@ -649,7 +649,7 @@ const Achats = {
     const sv = s ? (s.vatRate !== undefined && s.vatRate !== '' ? s.vatRate : s.purchaseVatRate) : undefined;
     if (sv !== undefined && sv !== '' && v && v.value === '') v.value = sv;
   },
-  _histMode() { const h = document.getElementById('oh_hint'); if (h) h.textContent = 'Les montants et le port sont saisis en ' + (U.val('oh_mode') === 'ht' ? 'HT (la TVA sera ajoutée au total).' : 'TTC.'); },
+  _histMode() { const h = document.getElementById('oh_hint'); if (h) h.textContent = 'Les montants et les frais de livraison sont saisis en ' + (U.val('oh_mode') === 'ht' ? 'HT (la TVA sera ajoutée au total).' : 'TTC.'); },
   _saveHist() {
     const date = U.val('oh_date'); if (!date) { U.toast('Indique la date de la facture.', true); return false; }
     const S = Store.state.settings, cats = [['mastication', 'Mastication'], ['matiere', 'Matières premières'], ['conso', 'Consommables'], ['frais', 'Autres dépenses']];
