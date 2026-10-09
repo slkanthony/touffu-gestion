@@ -750,8 +750,8 @@ const Paniers = {
   },
   _setBal(on) { this._balOn = !!on; this._shareRefresh(); this._draft(); },
   _modeBtns() {
-    const b = (m, label) => `<button class="btn-ghost btn-sm${this._shMode === m ? ' active' : ''}" onclick="Paniers._setMode('${m}')">${label}</button>`;
-    return b('cc', '🏬 Click & Collect') + b('liv', '📦 Livraison');
+    const b = (m, label) => ({ l: label, on: this._shMode === m, js: `Paniers._setMode('${m}')` });
+    return U.seg([b('cc', '🏬 Click & Collect'), b('liv', '📦 Livraison')], { sm: true });
   },
   _setMode(m) {   // re-clic = on décoche ; Click & Collect = pas de frais de livraison, Livraison = frais habituels si aucun frais n'est saisi
     this._shMode = this._shMode === m ? '' : m;
@@ -1397,10 +1397,9 @@ const Paniers = {
             <input type="number" id="pan_budget" step="0.5" min="0" value="${this.budget}" oninput="Paniers.setBudget(this.value)">
           </div>
           <div class="fg"><label>📦 Livraison</label>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <input type="number" id="pan_livr" step="0.1" min="0" value="${this.livraison}" oninput="Paniers.setLivraison(this.value)" style="flex:1;">
-              <button class="btn-ghost btn-sm${this.livraison===0?' active':''}" onclick="Paniers.setLivraisonQuick(0)">0 €</button>
-              <button class="btn-ghost btn-sm${this.livraison===(Store.state.settings.shippingCost??6.8)?' active':''}" onclick="Paniers.setLivraisonQuick(${Store.state.settings.shippingCost??6.8})">${U.eur(Store.state.settings.shippingCost??6.8)}</button>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <input type="number" id="pan_livr" step="0.1" min="0" value="${this.livraison}" oninput="Paniers.setLivraison(this.value)" style="flex:1 1 70px;min-width:70px;">
+              ${U.seg([{ l: '0 €', on: this.livraison === 0, js: 'Paniers.setLivraisonQuick(0)' }, { l: U.eur(Store.state.settings.shippingCost ?? 6.8), on: this.livraison === (Store.state.settings.shippingCost ?? 6.8), js: `Paniers.setLivraisonQuick(${Store.state.settings.shippingCost ?? 6.8})` }], { sm: true })}
             </div>
           </div>
           <div class="fg"><label>🏷️ Réduction (%)</label>
@@ -1413,17 +1412,13 @@ const Paniers = {
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💳 Paiement</label>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-ghost btn-sm${this.paymentMode==='sumup'?' active':''}" onclick="Paniers.setPayment('sumup')">SumUp (${U.pct(S.cardFeeRate)})</button>
-              <button class="btn-ghost btn-sm${this.paymentMode==='stripe'?' active':''}" onclick="Paniers.setPayment('stripe')">Stripe (${U.pct(S.stripeFeeRate || 0)})</button>
-              <button class="btn-ghost btn-sm${this.paymentMode==='virement'?' active':''}" onclick="Paniers.setPayment('virement')">Virement (0%)</button>
-            </div>
+            ${U.seg([{ l: `SumUp (${U.pct(S.cardFeeRate)})`, on: this.paymentMode === 'sumup', js: "Paniers.setPayment('sumup')" }, { l: `Stripe (${U.pct(S.stripeFeeRate || 0)})`, on: this.paymentMode === 'stripe', js: "Paniers.setPayment('stripe')" }, { l: 'Virement (0%)', on: this.paymentMode === 'virement', js: "Paniers.setPayment('virement')" }], { full: true, wrap: true })}
           </div>
         </div>
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>📬 Mode de remise ${U.info("Affiché sur le devis. Click & Collect = retrait, sans frais de livraison ; Livraison = frais habituels si aucun frais n'est saisi. Re-clique pour décocher.")}</label>
-            <div class="pan-mode" style="display:flex;gap:6px;flex-wrap:wrap;">${this._modeBtns()}</div>
+            <div class="pan-mode">${this._modeBtns()}</div>
           </div>
         </div>
 

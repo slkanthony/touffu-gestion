@@ -349,12 +349,17 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
    .full = toute la largeur ; .scroll = glisse au doigt quand le bloc est plus large que l'écran. */
 .seg { position: relative; display: inline-flex; gap: 2px; padding: 3px; max-width: 100%; background: var(--card-bg); border: 1.5px solid var(--caramel); border-radius: 12px; overflow: hidden; vertical-align: middle; box-sizing: border-box; }
 .seg > button, .seg > a { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: var(--texte); border: 0; border-radius: 8px; padding: 6px 16px; font: inherit; font-weight: 700; white-space: nowrap; text-decoration: none; cursor: pointer; box-shadow: none; filter: none; transform: none; }
-.seg > :hover:not(.on) { background: rgba(166, 113, 83, 0.16); filter: none; }
+.seg > :hover:not(.on):not(.ok):not(.danger) { background: rgba(166, 113, 83, 0.16); filter: none; }
+.seg > .ok { background: var(--ok); color: #fff; }
+.seg > .danger { background: var(--alerte); color: #fff; }
+.seg > .ok:hover, .seg > .danger:hover { filter: brightness(1.12); }
+.frow > .seg:not(.full), .toolbar > .seg:not(.full) { flex: 0 0 auto; min-width: 0; }
 .seg > .on { background: var(--caramel); color: #fff; }
 .seg.full { display: flex; width: 100%; }
 .seg.full > * { flex: 1 1 0; padding: 9px 16px; }
 .seg.scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; overscroll-behavior-x: contain; }
 .seg.scroll::-webkit-scrollbar { display: none; }
+.seg.wrap > * { white-space: normal; text-align: center; line-height: 1.2; }
 .seg.sm { border-radius: 10px; }
 .seg.sm > button, .seg.sm > a { padding: 4px 11px; font-size: 0.8rem; font-weight: 600; border-radius: 7px; }
 .seg-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }

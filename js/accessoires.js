@@ -391,13 +391,13 @@ const Accessoires = {
           </div>
         </div>
         ${notesHTML}
-        <div class="frow mt">
-          <button class="btn-ok" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button>
-          <button class="btn-ghost" onclick="Accessoires.editAcc('${a.id}')">Modifier</button>
-          <button class="btn-ghost" onclick="Accessoires.duplicateAcc('${a.id}')">📋 Dupliquer</button>
-          ${(a.bom||[]).some(l => this.bomLineUnit(l) === 'm') ? `<button class="btn-ghost" onclick="Accessoires.customLength('${a.id}')">📐 Sur mesure</button>` : ''}
-          <button class="btn-danger btn-sm" onclick="Accessoires.delAcc('${a.id}')">Supprimer</button>
-        </div>
+        <div class="mt">${U.seg([
+          { l: '🛠 Fabriquer', tone: 'ok', js: `Accessoires.fabricate('${a.id}')` },
+          { l: 'Modifier', js: `Accessoires.editAcc('${a.id}')` },
+          { l: '📋 Dupliquer', js: `Accessoires.duplicateAcc('${a.id}')` },
+          ...((a.bom||[]).some(l => this.bomLineUnit(l) === 'm') ? [{ l: '📐 Sur mesure', js: `Accessoires.customLength('${a.id}')` }] : []),
+          { l: 'Supprimer', tone: 'danger', js: `Accessoires.delAcc('${a.id}')` }
+        ], { full: true, scroll: true })}</div>
       </div></details>`;
   },
 
