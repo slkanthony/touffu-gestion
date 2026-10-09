@@ -527,15 +527,20 @@ const App = {
       });
       return m;
     };
-    const finish = (m, months) => {
+    // from / to = bornes de la période (timestamp ou 'AAAA-MM-JJ') : sert à lire les frais de livraison sur achats + frais généraux, comme la Compta (Compta.chargesPeriod)
+    const finish = (m, months, from, to) => {
       const vr = U.num(S.vatRate), tva = vr > 0 ? m.ca * vr / (100 + vr) : 0;
       const marge = m.ca - m.cogs, cotis = saleCotis(m.caAcc, m.ca - m.caAcc + m.shipFee), fixed = uvMaint * months;
-      const net = marge + m.shipFee - m.fee - m.shipping - m.boxCost - m.eventFee - cotis - fixed - (S.vatActive ? tva : 0);
-      return { ...m, tva, marge, cotis, fixed, net };
+      const ch = Compta.chargesPeriod(from, to), charges = ch.portBuy + ch.expensed;
+      const net = marge + m.shipFee - m.fee - m.shipping - m.boxCost - m.eventFee - cotis - fixed - charges - (S.vatActive ? tva : 0);
+      return { ...m, tva, marge, cotis, fixed, charges, net };
     };
     const monthIdx = ts => { const d = new Date(ts); return d.getFullYear() * 12 + d.getMonth(); };
     const nowIdx = monthIdx(Date.now());
-    const firstIdx = activeSales.length ? Math.min(...activeSales.map(x => monthIdx(x.ts))) : nowIdx;
+    // 1er mois = 1re vente OU 1re facture (comme la Compta : les charges d'un mois sans vente comptent aussi)
+    const buyIdxs = (Achats.list() || []).map(p => { const [y, mo] = String(p.date).slice(0, 7).split('-').map(Number); return y * 12 + mo - 1; }).filter(x => x > 0);
+    const allIdxs = activeSales.map(x => monthIdx(x.ts)).concat(buyIdxs);
+    const firstIdx = allIdxs.length ? Math.min(...allIdxs) : nowIdx;
     // Périodes du récapitulatif (+ période de comparaison)
     const DAY = 86400000, now = Date.now(), d0 = new Date();
     const yStart = new Date(d0.getFullYear(), 0, 1).getTime();
@@ -550,8 +555,8 @@ const App = {
     const rp = periods[this._recapPeriod] ? this._recapPeriod : 'year';
     const P = periods[rp];
     const inRange = (a, b) => activeSales.filter(x => x.ts >= a && x.ts <= b);
-    const R = finish(aggSales(inRange(P.from, P.to)), P.months);
-    const C = P.cmp ? finish(aggSales(inRange(P.cmp.from, P.cmp.to)), P.months) : null;
+    const R = finish(aggSales(inRange(P.from, P.to)), P.months, P.from, P.to);
+    const C = P.cmp ? finish(aggSales(inRange(P.cmp.from, P.cmp.to)), P.months, P.cmp.from, P.cmp.to) : null;
     const cmpTxt = (cur, prev, lowerIsGood) => {
       if (!C) return '';
       if (!prev) return cur ? '<span class="cmp muted">nouveau</span>' : '';
@@ -576,6 +581,7 @@ const App = {
           ${tile('Stand, repas & déplacement', R.eventFee, 'eventFee', { lowerIsGood: true })}
           ${tile('Cartons & conso.', R.boxCost, 'boxCost', { lowerIsGood: true })}
           ${uvMaint ? tile('Entretien / amortissement', R.fixed, 'fixed', { lowerIsGood: true }) : ''}
+          ${R.charges > 0.005 || (C && C.charges > 0.005) ? tile('Frais de livraison & frais généraux', R.charges, 'charges', { lowerIsGood: true }) : ''}
           ${tile('Cotisations URSSAF', R.cotis, 'cotis', { lowerIsGood: true })}
           ${tile('Bénéfice net', R.net, 'net', { cls: 'recap-net', vcls: R.net >= 0 ? 'pos' : 'neg' })}
         </div>
@@ -585,15 +591,17 @@ const App = {
     const caView = this._caView === 'year' ? 'year' : 'month';
     const groups = {};
     activeSales.forEach(x => { const d = new Date(x.ts); const k = caView === 'year' ? String(d.getFullYear()) : d.toISOString().slice(0, 7); (groups[k] = groups[k] || []).push(x); });
+    // un mois / une année sans vente mais avec une facture reste listé (sinon le total ne serait pas celui de la Compta)
+    Object.keys(Compta.chargesPeriod('0000-01-01', '9999-12-31').byMonth).forEach(mk => { const k = caView === 'year' ? mk.slice(0, 4) : mk; if (!groups[k]) groups[k] = []; });
     const monthsOf = k => {
       if (caView === 'month') return 1;
       const y = +k; const a = Math.max(y * 12, firstIdx), b = Math.min(y * 12 + 11, nowIdx);
       return Math.max(1, b - a + 1);
     };
-    const caRows = Object.keys(groups).sort().reverse().map(k => ({ k, r: finish(aggSales(groups[k]), monthsOf(k)) }));
-    const caTotal = finish(aggSales(activeSales), caRows.reduce((a, x) => a + (caView === 'month' ? 1 : monthsOf(x.k)), 0));
+    const caRows = Object.keys(groups).sort().reverse().map(k => ({ k, r: finish(aggSales(groups[k]), monthsOf(k), caView === 'year' ? k + '-01-01' : k + '-01', caView === 'year' ? k + '-12-31' : k + '-31') }));
+    const caTotal = finish(aggSales(activeSales), caRows.reduce((a, x) => a + (caView === 'month' ? 1 : monthsOf(x.k)), 0), '0000-01-01', '9999-12-31');
     const caRow = (label, r, bold) => `<tr${bold ? ' style="font-weight:700;border-top:2px solid var(--caramel);"' : ''}><td class="col-name"><b>${label}</b></td><td class="num">${r.n}</td><td class="num sensitive">${U.eur(r.ca)}</td>
-          <td class="num sensitive neg">${r.cogs ? '− ' + U.eur(r.cogs) : '—'}</td><td class="num sensitive ${r.marge >= 0 ? 'pos' : 'neg'}">${U.eur(r.marge)}</td><td class="num sensitive neg">${r.fee ? '− ' + U.eur(r.fee) : '—'}</td><td class="num sensitive pos">${r.shipFee ? '+ ' + U.eur(r.shipFee) : '—'}</td><td class="num sensitive neg">${r.shipping ? '− ' + U.eur(r.shipping) : '—'}</td><td class="num sensitive neg">${r.eventFee ? '− ' + U.eur(r.eventFee) : '—'}</td><td class="num sensitive neg">${r.boxCost ? '− ' + U.eur(r.boxCost) : '—'}</td>${uvMaint ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel, réparti par mois">− ${U.eur(r.fixed)}</td>` : ''}<td class="num sensitive neg">− ${U.eur(r.cotis)}</td>${S.vatActive ? `<td class="num sensitive neg" title="TVA reversée — déduite du bénéfice (assujetti)">${r.tva ? '− ' + U.eur(r.tva) : '—'}</td>` : `<td class="num sensitive pos" title="TVA contenue dans le CA — conservée dans ton bénéfice (non assujetti)">${r.tva ? U.eur(r.tva) : '—'}</td>`}<td class="num sensitive ${r.net >= 0 ? 'pos' : 'neg'}">${U.eur(r.net)}</td></tr>`;
+          <td class="num sensitive neg">${r.cogs ? '− ' + U.eur(r.cogs) : '—'}</td><td class="num sensitive ${r.marge >= 0 ? 'pos' : 'neg'}">${U.eur(r.marge)}</td><td class="num sensitive neg">${r.fee ? '− ' + U.eur(r.fee) : '—'}</td><td class="num sensitive pos">${r.shipFee ? '+ ' + U.eur(r.shipFee) : '—'}</td><td class="num sensitive neg">${r.shipping ? '− ' + U.eur(r.shipping) : '—'}</td><td class="num sensitive neg">${r.eventFee ? '− ' + U.eur(r.eventFee) : '—'}</td><td class="num sensitive neg">${r.boxCost ? '− ' + U.eur(r.boxCost) : '—'}</td>${uvMaint ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel, réparti par mois">− ${U.eur(r.fixed)}</td>` : ''}<td class="num sensitive neg" title="Frais de livraison facturés par tes fournisseurs + outillage, frais généraux et investissements non amortis (comme la Compta)">${r.charges ? '− ' + U.eur(r.charges) : '—'}</td><td class="num sensitive neg">− ${U.eur(r.cotis)}</td>${S.vatActive ? `<td class="num sensitive neg" title="TVA reversée — déduite du bénéfice (assujetti)">${r.tva ? '− ' + U.eur(r.tva) : '—'}</td>` : `<td class="num sensitive pos" title="TVA contenue dans le CA — conservée dans ton bénéfice (non assujetti)">${r.tva ? U.eur(r.tva) : '—'}</td>`}<td class="num sensitive ${r.net >= 0 ? 'pos' : 'neg'}">${U.eur(r.net)}</td></tr>`;
 
     this.mount(`
       <div class="view-title"><h1>Bonjour Antho</h1><span class="sub">${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
@@ -675,8 +683,8 @@ const App = {
           <button class="${caView === 'month' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App._caView='month';App.renderDashboard()">Par mois</button>
           <button class="${caView === 'year' ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="App._caView='year';App.renderDashboard()">Par an</button>
         </div>
-        <div class="table-wrap"><table><thead><tr><th class="col-name">${caView === 'year' ? 'Année' : 'Mois'}</th><th class="num">Ventes</th><th class="num">CA total</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Frais paiement</th><th class="num">Port encaissé</th><th class="num">Frais d'envoi réel</th><th class="num">Stand, repas & déplac.</th><th class="num">Coût cartons</th>${uvMaint ? '<th class="num">Entretien matériel</th>' : ''}<th class="num">Cotisations URSSAF (${U.pct(S.socialTaxRate)} / ${U.pct(Pricing.socialRateHandmade())})</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
-        <tbody>${caRows.map(x => caRow(caView === 'year' ? x.k : x.k.split('-').reverse().join('/'), x.r)).join('') || `<tr><td colspan="${uvMaint ? 14 : 13}" class="muted">Aucune vente enregistrée.</td></tr>`}${caRows.length > 1 ? caRow('Total', caTotal, true) : ''}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th class="col-name">${caView === 'year' ? 'Année' : 'Mois'}</th><th class="num">Ventes</th><th class="num">CA total</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Frais paiement</th><th class="num">Port encaissé</th><th class="num">Frais d'envoi réel</th><th class="num">Stand, repas & déplac.</th><th class="num">Coût cartons</th>${uvMaint ? '<th class="num">Entretien matériel</th>' : ''}<th class="num" title="Frais de livraison facturés par tes fournisseurs (factures Achats) + outillage, frais généraux et investissements non amortis : comme en Compta">Livraison &amp; frais généraux</th><th class="num">Cotisations URSSAF (${U.pct(S.socialTaxRate)} / ${U.pct(Pricing.socialRateHandmade())})</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
+        <tbody>${caRows.map(x => caRow(caView === 'year' ? x.k : x.k.split('-').reverse().join('/'), x.r)).join('') || `<tr><td colspan="${uvMaint ? 15 : 14}" class="muted">Aucune vente enregistrée.</td></tr>`}${caRows.length > 1 ? caRow('Total', caTotal, true) : ''}</tbody></table></div>
         <p class="muted help mt">"Coût revient" = coût d'achat/de fabrication des produits vendus (mastication : coût réel des lots ; accessoires : matières + main d'œuvre), figé à la vente ou estimé au coût actuel pour les ventes antérieures. "Marge brute" = CA − coût revient. "Frais paiement" = commission ${U.pct(S.cardFeeRate)} SumUp (ventes directes CB + marchés / retours d'événement) et ${U.pct(S.stripeFeeRate)} Stripe (ventes en ligne du site) ; virement et espèces = 0 frais. "Cotisations URSSAF" = ${U.pct(S.socialTaxRate)} sur la mastication (vente de marchandises) + ${U.pct(Pricing.socialRateHandmade())} sur les accessoires (fait main / artisanat), calculées ligne par ligne selon la nature du produit ; le port encaissé cotise au taux marchandises. Reste à déclarer/payer réellement à l'URSSAF, déjà déduit ici du bénéfice net. "TVA" = TVA contenue dans le CA (au taux ${U.pct(S.vatRate)}) : ${S.vatActive ? '<b>reversée</b> (assujetti) → déduite du bénéfice net.' : '<b>conservée</b> dans ton bénéfice (non assujetti) — elle sera déduite automatiquement le jour où tu coches « Je suis assujetti à la TVA » ci-dessus.'} "Port encaissé" = frais de livraison facturés au client (sous le seuil réglé en Paramètres) ; "Frais d'envoi réel" = ce que tu as payé au transporteur ; "Stand, repas & déplac." = coût de l'emplacement + repas de midi + trajet (km × carburant + péages) d'un marché/événement (saisis au retour d'événement, modifiables dans l'historique des ventes) ; "Coût cartons" = coût des consommables utilisés dans le ticket.${uvMaint ? ` "Entretien matériel" = entretien de l'imprimante UV (filtres + cartouches de nettoyage + main d'œuvre) + amortissement de tout le matériel de l'atelier (imprimante, extracteur, scelleuse… réglés en Paramètres → Réglages financiers), réparti par mois (${U.eur(uvMaint)}/mois) — charge fixe indépendante du volume vendu.` : ''}</p>
         </div>
       </details>
@@ -685,7 +693,7 @@ const App = {
         <summary><span>📊 Rentabilité par activité (tout l'historique)</span></summary>
         <div class="fold-body">
         <p class="muted help">Mastication (achat-revente) vs accessoires (fait main). Chaque article compte dans son activité ; frais et charges fixes communs répartis au prorata du CA (entretien/amortissement UV → accessoires). La somme des deux = le bénéfice net global.</p>
-        ${(() => { const as = st.sales.filter(x => !x.cancelled); const mc = new Set(as.map(x => new Date(x.ts).toISOString().slice(0, 7))).size || 1; return Stats._activityTable(Pricing.activityPnL(as, mc)); })()}
+        ${(() => { const as = st.sales.filter(x => !x.cancelled); const chg = Compta.chargesPeriod('0000-01-01', '9999-12-31'); const mc = new Set(as.map(x => new Date(x.ts).toISOString().slice(0, 7)).concat(Object.keys(chg.byMonth))).size || 1; return Stats._activityTable(Pricing.activityPnL(as, mc, chg)); })()}
         </div>
       </details>
 

@@ -236,13 +236,15 @@ const Pricing = {
      Règle : chaque article selon son type ; tout le commun (frais paiement, port, frais d'envoi, frais stand, cartons,
      TVA, charges fixes « commun ») réparti au PRORATA du CA. L'entretien UV → accessoires ; un équipement tagué →
      son activité, « commun » → prorata. La somme des 2 activités = le bénéfice net global (mêmes formules). */
-  activityPnL(sales, monthsCount) {
+  /* `charges` (optionnel) = Compta.chargesPeriod(...) de la même période : frais de livraison sur achats + frais généraux, ajoutés au bénéfice net comme en Compta.
+     Livraison mastication → mastication, livraison matières → accessoires, le reste (consommables, frais généraux) au prorata du CA. Sans `charges` : inchangé (ex. saleProfit d'une vente). */
+  activityPnL(sales, monthsCount, charges) {
     const S = Store.state.settings;
     const socStd = U.num(S.socialTaxRate) / 100;
     const socHM = (U.num(S.socialTaxRateHandmade) || U.num(S.socialTaxRate)) / 100;
     const vatRate = U.num(S.vatRate), vatActive = S.vatActive;
     const cardRate = U.num(S.cardFeeRate) / 100, stripeRate = U.num(S.stripeFeeRate) / 100;
-    const blank = () => ({ ca: 0, cogs: 0, fee: 0, shipFee: 0, shipping: 0, eventFee: 0, box: 0, cotis: 0, tva: 0, fixed: 0 });
+    const blank = () => ({ ca: 0, cogs: 0, fee: 0, shipFee: 0, shipping: 0, eventFee: 0, box: 0, cotis: 0, tva: 0, fixed: 0, charges: 0 });
     const M = blank(), A = blank();
     (sales || []).forEach(s => {
       if (s.cancelled) return;
@@ -281,9 +283,14 @@ const Pricing = {
       else if (cat === 'accessoires') A.fixed += monthly;
       else { M.fixed += monthly * mShT; A.fixed += monthly * aShT; }
     });
+    if (charges) {
+      const pb = charges.portBy || {}, pm = U.num(pb.mastication), pa = U.num(pb.matiere);
+      const common = U.num(charges.portBuy) - pm - pa + U.num(charges.expensed);   // consommables + frais généraux : au prorata du CA
+      M.charges = pm + common * mShT; A.charges = pa + common * aShT;
+    }
     [M, A].forEach(x => {
       x.marge = x.ca - x.cogs;
-      x.net = x.ca - x.cogs + x.shipFee - x.fee - x.shipping - x.box - x.eventFee - x.cotis - x.fixed - (vatActive ? x.tva : 0);
+      x.net = x.ca - x.cogs + x.shipFee - x.fee - x.shipping - x.box - x.eventFee - x.cotis - x.fixed - x.charges - (vatActive ? x.tva : 0);
     });
     return { masti: M, acc: A };
   },

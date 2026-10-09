@@ -119,6 +119,31 @@ const Compta = {
     });
     return t;
   },
+  /* CHARGES D'ACHATS qui entrent dans le bénéfice net (SOURCE UNIQUE : Compta, Tableau de bord, Statistiques, rentabilité par activité) :
+     · expensed = outillage + frais généraux + équipement sans durée d'amortissement (TTC de la ligne) ;
+     · portBuy  = frais de livraison de la facture, au prorata des lignes mastication / matière / consommable (il n'est jamais réparti dans le coût des lots). */
+  _lineCharges(p, l, ttcLine) {
+    let expensed = 0, portBuy = 0;
+    if (l.cat === 'outillage' || l.cat === 'frais' || (l.cat === 'equipement' && !(U.num(l.years) > 0))) expensed = ttcLine;
+    if (l.cat === 'mastication' || l.cat === 'matiere' || l.cat === 'conso') { const sub = Achats.subTotal(p); if (sub) portBuy = U.num(p.shipping) * Achats.lineTotal(l) / sub * Achats.ttcFactor(p); }
+    return { expensed, portBuy };
+  },
+  /* Charges d'achats sur une période : from / to = timestamp (ms) ou date 'AAAA-MM-JJ' (bornes incluses, sur la date de la facture).
+     → { portBuy, expensed, portBy: {mastication, matiere, conso}, byMonth: { 'AAAA-MM': {portBuy, expensed} } } */
+  chargesPeriod(from, to) {
+    const ds = x => { if (typeof x !== 'number') return String(x).slice(0, 10); const d = new Date(x); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };   // date LOCALE (comme la saisie d'une facture)
+    const a = ds(from), b = ds(to), out = { portBuy: 0, expensed: 0, portBy: { mastication: 0, matiere: 0, conso: 0 }, byMonth: {} };
+    (Achats.list() || []).forEach(p => {
+      const d = String(p.date).slice(0, 10); if (d < a || d > b) return;
+      const ttc = Achats.lineTTC(p), k = d.slice(0, 7);
+      (p.lines || []).forEach((l, i) => {
+        const c = this._lineCharges(p, l, ttc[i]); if (!c.expensed && !c.portBuy) return;
+        out.expensed += c.expensed; out.portBuy += c.portBuy; if (c.portBuy && out.portBy[l.cat] !== undefined) out.portBy[l.cat] += c.portBuy;
+        const m = out.byMonth[k] || (out.byMonth[k] = { portBuy: 0, expensed: 0 }); m.expensed += c.expensed; m.portBuy += c.portBuy;
+      });
+    });
+    return out;
+  },
   data() {
     const months = this._months(), M = {}, inSet = new Set(months);
     months.forEach(k => { M[k] = { inc: 0, incBy: {}, ca: 0, cogs: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, eventFee: 0, cotis: 0, tva: 0, buy: {}, buyPaid: 0, expensed: 0, portBuy: 0, amort: this._amortFor(k), uv: Pricing.uvMaintenanceMonthly(), n: 0 }; });
@@ -135,9 +160,7 @@ const Compta = {
       // répartition par catégorie + dépenses du mois (résultat) à la date de la facture
       if (inSet.has(k)) (p.lines || []).forEach((l, i) => {
         M[k].buy[l.cat] = (M[k].buy[l.cat] || 0) + ttc[i];
-        if (l.cat === 'outillage' || l.cat === 'frais' || (l.cat === 'equipement' && !(U.num(l.years) > 0))) M[k].expensed += ttc[i];
-        // port des achats de marchandises : charge du mois de la facture (il n'est plus réparti dans le coût des lots)
-        if (l.cat === 'mastication' || l.cat === 'matiere' || l.cat === 'conso') { const sub = Achats.subTotal(p); if (sub) M[k].portBuy += U.num(p.shipping) * Achats.lineTotal(l) / sub * Achats.ttcFactor(p); }
+        const ch = this._lineCharges(p, l, ttc[i]); M[k].expensed += ch.expensed; M[k].portBuy += ch.portBuy;   // mêmes charges que chargesPeriod (Tableau de bord, Stats…)
       });
       // trésorerie : à la date du paiement (carte perso → date du remboursement)
       const pk = p.paidBy === 'perso' ? (p.reimbursed ? String(p.reimbursed).slice(0, 7) : '') : k;
