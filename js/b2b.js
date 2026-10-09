@@ -80,7 +80,44 @@ const B2B = {
       <div class="view-title"><h1>Revente pro (B2B)</h1><span class="sub">remise & fiches par produit</span></div>
       ${controls}
       ${this._proPendingCard()}
+      ${tab === 'acc' ? '' : this._capBanner()}
       ${tab === 'acc' ? this.renderAcc() : this.renderMast()}`);
+  },
+
+  /* Bandeau d'alerte « remises plafonnées » (toute la mastication, pas seulement les fiches filtrées) : liste dépliable produit / variante / remise demandée → appliquée. */
+  _capOpen: false,
+  /* Phrase ajoutée aux messages « remise mise à jour » : combien de variantes sont plafonnées (du produit `p`, ou de toute la mastication). */
+  _capNote(p) {
+    const l = this._capList(), keep = o => !p || o.name === p.name, n = l.capped.filter(keep).length, b = l.blocked.filter(keep).length;
+    const thr = U.qty(U.num(Store.state.settings.b2bCoeffThreshold));
+    return (n ? ` 🔒 ${n} variante${n > 1 ? 's' : ''} plafonnée${n > 1 ? 's' : ''} (coeff ${thr} minimum).` : '') + (b ? ` ${b} sans remise possible (déjà sous ${thr}).` : '');
+  },
+  _capList() {
+    const out = [], blocked = [];
+    Store.state.catalogM.forEach(p => {
+      const it = this.productStats(p), vatP = Pricing.vatRate(p), view = x => this._pct1(this._discView(x, vatP, this._client()));
+      it.rows.forEach(r => {
+        const o = { name: p.name, variant: r.label, req: view(it.discPct), max: view(r.discMax), coeff: r.coeffB2B };
+        if (r.capped && r.discMax > 0) out.push(o); else if (r.capped) blocked.push(o);
+      });
+    });
+    const srt = (a, b) => U.sortFr(a.name, b.name) || U.sortFr(a.variant, b.variant);
+    return { capped: out.sort(srt), blocked: blocked.sort(srt) };
+  },
+  _capBanner() {
+    const { capped, blocked } = this._capList(), thr = U.qty(U.num(Store.state.settings.b2bCoeffThreshold));
+    if (!capped.length && !blocked.length) return '';
+    const tbl = (rows, withMax) => `<div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Remise demandée</th><th class="num">Remise appliquée</th></tr></thead><tbody>${rows.map(o => `<tr><td class="col-name">${U.esc(o.name)}</td><td>${U.esc(o.variant)}</td><td class="num">${o.req} %</td><td class="num"><b>${o.max} %</b></td></tr>`).join('')}</tbody></table></div>`;
+    const nProd = n => new Set(n.map(o => o.name)).size;
+    return `<details class="fold" ${this._capOpen ? 'open' : ''} ontoggle="B2B._capOpen=this.open" style="border-left:4px solid var(--warn);">
+      <summary>🔒 <b>Remises plafonnées</b> <span class="muted" style="font-weight:400;">· le coeff entreprise ne descend jamais sous ${thr}</span>
+        ${capped.length ? `<span class="badge warn">${capped.length} variante${capped.length > 1 ? 's' : ''} (${nProd(capped)} produit${nProd(capped) > 1 ? 's' : ''}) plafonnée${capped.length > 1 ? 's' : ''}</span>` : ''}
+        ${blocked.length ? `<span class="badge bad" title="Déjà sous le seuil au prix public : aucune remise possible">${blocked.length} sans remise possible</span>` : ''}</summary>
+      <div class="fold-body">
+        ${capped.length ? `<p class="muted" style="margin-top:0;">Ces variantes reçoivent moins que la remise demandée ; les autres gardent la remise demandée.</p>${tbl(capped, true)}` : ''}
+        ${blocked.length ? `<p class="muted" style="margin-bottom:4px;">Déjà sous ${thr} au <b>prix public</b> : aucune remise possible (le prix pro = le prix public HT). C'est le prix dans Prix mastication qu'il faut revoir.</p>${tbl(blocked, false)}` : ''}
+      </div>
+    </details>`;
   },
 
   renderMast() {
@@ -190,6 +227,17 @@ const B2B = {
     </details>`;
   },
 
+  /* PLAFOND DE REMISE (Antho 2026-10-10) : la remise pro demandée (globale ou propre au produit) est PLAFONNÉE, variante par variante, pour que le coeff entreprise
+     (prix pro HT ÷ coût de revient) ne passe jamais sous le seuil `b2bCoeffThreshold` ; les autres variantes gardent la remise demandée. Unité = celle de la remise stockée (`base`).
+     → { applied: remise réellement appliquée, max: remise maximale permise (0 si la variante est déjà sous le seuil au prix public), capped: demandée > max }.
+     ⚠️ Mastication seulement (les accessoires ont leur propre seuil et ne sont pas concernés pour l'instant). */
+  cappedDiscount(priceHT, cost, base) {
+    const req = U.num(base), thr = U.num(Store.state.settings.b2bCoeffThreshold);
+    if (!(thr > 0) || !(cost > 0) || !(priceHT > 0)) return { applied: req, max: 100, capped: false };
+    const max = Math.max(0, Math.floor((1 - thr * cost / priceHT) * 10000) / 100);   // arrondi vers le bas : le coeff reste ≥ seuil
+    return { applied: Math.min(req, max), max, capped: req > max + 1e-9 };
+  },
+
   /* Stats B2B par variante active d'un produit — coeff public repris de
      Pricing.variantCalc (effCoeff), coeff B2B recalculé par rapport au
      coût réel après application de la décote (pas juste le coeff public
@@ -211,17 +259,18 @@ const B2B = {
       const priceHT = cMain.priceHT;
       const priceTTC = cMain.priceTTC;
       const coeffPublic = cost > 0 ? priceHT / cost : 0;
-      const priceHTB2B = priceHT * (1 - discPct / 100);
+      const dv = this.cappedDiscount(priceHT, cost, discPct);   // plafond : le coeff entreprise ne descend pas sous le seuil
+      const priceHTB2B = priceHT * (1 - dv.applied / 100);
       const priceTTCB2B = priceHTB2B * (1 + vat);
       const coeffB2B = cost > 0 ? priceHTB2B / cost : 0;
       const marginB2B = priceHTB2B - cost;
       const socialB2B = priceHTB2B * U.num(S.socialTaxRate) / 100;
       const profitB2B = marginB2B - socialB2B;
       const critical = coeffB2B < U.num(S.b2bCoeffThreshold);
-      return { vid: v.id, label: Pricing.labelVariant(v), cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, coeffMicro: this.coeffMicro(coeffB2B, vat), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
+      return { vid: v.id, label: Pricing.labelVariant(v), discApplied: dv.applied, discMax: dv.max, capped: dv.capped, cost, coeffPublic, priceTTCPublic: priceTTC, priceHTB2B, coeffB2B, coeffMicro: this.coeffMicro(coeffB2B, vat), marginB2B, socialB2B, profitB2B, priceTTCB2B, ttcB2B: priceHTB2B * (1 + vat), critical };
     });
     const activeSup = preview || p.mainSupplierId;
-    return { p, rows, discPct, supplierName: activeSup ? Store.supplierName(activeSup) : '—', critical: rows.some(r => r.critical), preview };
+    return { p, rows, discPct, supplierName: activeSup ? Store.supplierName(activeSup) : '—', critical: rows.some(r => r.critical), nCapped: rows.filter(r => r.capped).length, preview };
   },
 
   /* Stats B2B d'un accessoire (un seul prix par fiche, pas de variantes).
@@ -325,6 +374,7 @@ const B2B = {
 
   card(it) {
     const { p, rows, discPct, supplierName, critical, preview } = it;
+    const S = Store.state.settings, vatP = Pricing.vatRate(p), shownDisc = x => this._pct1(this._discView(x, vatP, this._client()));
     const expChanged = rows.some(r => this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B));
     const open = this._prodOpen[p.id] || false;
     const activeSup = preview || p.mainSupplierId;
@@ -338,7 +388,7 @@ const B2B = {
     return `<details class="fold b2b-fold" id="b2b-${p.id}" ${open ? 'open' : ''} ontoggle="B2B.setProdOpen('${p.id}',this.open)">
       <summary>
         <span class="b2b-name"><b>${U.esc(p.name)}</b></span>
-        <span>${critical ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${expChanged ? ' <span class="badge warn" title="Un prix pro a changé depuis ton dernier export">💶 prix modifié</span>' : ''}</span>
+        <span>${critical ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${it.nCapped ? ` <span class="badge warn" title="Remise plafonnée pour garder le coeff entreprise au-dessus de ${U.qty(U.num(S.b2bCoeffThreshold))}">🔒 ${it.nCapped} plafonnée${it.nCapped > 1 ? 's' : ''}</span>` : ''}${expChanged ? ' <span class="badge warn" title="Un prix pro a changé depuis ton dernier export">💶 prix modifié</span>' : ''}</span>
         <span class="type-col">
           <span class="badge info">${U.esc(p.meatType || '—')}</span>
         </span>
@@ -358,7 +408,7 @@ const B2B = {
             <td class="num sensitive">${r.coeffPublic.toFixed(2)}</td>
             <td class="num muted">${U.eur(r.priceTTCPublic)}</td>
             <td class="num sensitive${B2B._hl('ent')}" style="border-left:2px solid var(--caramel);">${U.eur(r.priceHTB2B)}${B2B._lbl().ht}${this._expBadge(this._expDiff(this._expKeyM(p.id, r.label), r.priceHTB2B))}</td>
-            <td class="num sensitive${B2B._hl('ent')} ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(2)}${r.critical ? ' ⚠️' : ''}</td>
+            <td class="num sensitive${B2B._hl('ent')} ${r.critical ? 'neg' : ''}">${r.coeffB2B.toFixed(2)}${r.critical ? ' ⚠️' : ''}${r.capped ? ` <span class="badge warn" title="Remise demandée ${shownDisc(discPct)} % → plafonnée à ${shownDisc(r.discMax)} % pour garder le coeff entreprise à ${U.qty(U.num(S.b2bCoeffThreshold))} minimum">🔒 max ${shownDisc(r.discMax)} %</span>` : ''}</td>
             <td class="num sensitive ${r.marginB2B >= 0 ? 'pos' : 'neg'}">${U.eur(r.marginB2B)}</td>
             <td class="num sensitive neg">${U.eur(r.socialB2B)}</td>
             <td class="num sensitive ${r.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(r.profitB2B)}</b></td>
@@ -414,7 +464,7 @@ const B2B = {
     p.b2bDiscount = r ? r.base : '';
     const entry = Store.commitSnapshot(snap, 'b2b', 'Décote B2B modifiée — ' + p.name);
     Store.save('catalogM');
-    U.toast('Décote mise à jour.', false, entry.id);
+    U.toast('Décote mise à jour.' + this._capNote(p), false, entry.id);
     this.render();
     this._clampToast(r);
   },
@@ -447,7 +497,7 @@ const B2B = {
     this.render();
     if (before !== val) {
       const entry = Store.log('b2b', `Remise B2B ${acc ? 'accessoires' : 'mastication'} modifiée (${before}% → ${val}%)`, { type: 'b2bGlobalDiscount', data: { before, acc } });
-      U.toast('Remise globale mise à jour.', false, entry.id);
+      U.toast('Remise globale mise à jour.' + this._capNote(), false, entry.id);
     }
     this._clampToast(r);   // en dernier : le message de plancher ne doit pas être écrasé par le toast précédent
   },
@@ -478,7 +528,7 @@ const B2B = {
     const lines = [['Produit', 'Variante', 'Fournisseur', 'Decote_pct', 'Cout_revient', 'Coeff_public', 'Public_TTC', 'Prix_B2B_HT', 'Coeff_B2B', 'Marge_B2B', 'Cotisations_B2B', 'Benefice_B2B', 'Prix_B2B_TTC']];
     let nAll = 0, nKept = 0;
     (this._items || []).forEach(it => {
-      nAll += it.rows.length; this._keepRows(it.rows).forEach(r => { nKept++; lines.push([it.p.name, r.label, it.supplierName, it.discPct, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]); });
+      nAll += it.rows.length; this._keepRows(it.rows).forEach(r => { nKept++; lines.push([it.p.name, r.label, it.supplierName, r.discApplied, r.cost.toFixed(3), r.coeffPublic.toFixed(3), r.priceTTCPublic.toFixed(2), r.priceHTB2B.toFixed(2), r.coeffB2B.toFixed(3), r.marginB2B.toFixed(2), r.socialB2B.toFixed(2), r.profitB2B.toFixed(2), r.priceTTCB2B.toFixed(2)]); });
     });
     const csv = lines.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
     U.download(`tarif-pro-mastication-touffu-${U.today()}.csv`, '﻿' + csv, 'text/csv');

@@ -451,7 +451,7 @@ const Stats = {
       const c = Pricing.variantCalc(p, v, idx, base, na); idx++;
       let coeff = c.effCoeff, coeffMicro = c.effCoeff, profitB2B = 0;
       if (isB2B) {
-        const proHT = c.priceHT * (1 - discPct / 100);
+        const proHT = c.priceHT * (1 - B2B.cappedDiscount(c.priceHT, c.cost, discPct).applied / 100);   // remise plafonnée comme dans Revente pro
         coeff = c.cost > 0 ? proHT / c.cost : 0;
         coeffMicro = B2B.coeffMicro(coeff, vat);   // non assujetti : × (1 + TVA) ; assujetti : = coeff entreprise (recette nette)
         profitB2B = proHT - c.cost - proHT * U.num(S.socialTaxRate) / 100;   // même formule que « Bénéfice B2B » de Revente pro

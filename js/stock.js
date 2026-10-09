@@ -1525,7 +1525,7 @@ const Stock = {
     const disc = typeof B2B !== 'undefined' ? B2B.effectiveDiscount(info.cat) : 0;
     const soc = U.num(S.socialTaxRate) / 100;
     const mk = cost => {
-      const proHT = c.priceHT * (1 - disc / 100);
+      const proHT = c.priceHT * (1 - (typeof B2B !== 'undefined' ? B2B.cappedDiscount(c.priceHT, cost, disc).applied : disc) / 100);   // remise plafonnée comme dans Revente pro
       return {
         cost,
         coeff: cost > 0 ? c.priceHT / cost : 0,
