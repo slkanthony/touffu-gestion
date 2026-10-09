@@ -69,7 +69,6 @@
 :root[data-theme="dark"] .login-card { background: #1c3844; }
 :root[data-theme="dark"] .login-card .logo { color: #f2e6d8; }
 :root[data-theme="dark"] .kpi .v,
-:root[data-theme="dark"] .tab-btn,
 :root[data-theme="dark"] details.fold > summary { color: #eee3d3; }
 /* KPI colorées : redonner de la couleur aux chiffres, pas juste du beige uniforme */
 :root[data-theme="dark"] .kpi.good .v { color: #6fcf8e; }
@@ -89,7 +88,7 @@ body {
   line-height: 1.5;
 }
 h1, h2, h3 { color: var(--nuit); font-weight: 600; }
-th, .nav-item, button, label, .tab-btn { font-family: 'Questrial', sans-serif; }
+th, .nav-item, button, label { font-family: 'Questrial', sans-serif; }
 .num, td.num, .price { font-variant-numeric: tabular-nums; }
 
 /* ---------- Structure ---------- */
@@ -246,9 +245,6 @@ td:has(.sku-input) { min-width: 140px; }
 
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
 .toolbar .fg { margin: 0; flex: 1; min-width: 140px; }
-.tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-.tab-btn { background: var(--creme); color: var(--nuit); border: 1px solid var(--input-border); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; text-decoration: none; cursor: pointer; display: inline-block; }
-.tab-btn.active { background: var(--caramel); color: #fff; border-color: var(--caramel); font-weight: 600; }
 
 /* ---------- Détails repliables ---------- */
 details.fold { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; box-shadow: var(--ombre); }
@@ -349,10 +345,19 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .b2b-disc-lines { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; color: var(--gris); }
 .b2b-disc-lines > div.on { color: var(--caramel); font-weight: 700; }
 .b2b-disc-lines > div.muted { font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
-/* Sélecteur client Entreprise / Micro (Revente pro) */
-.b2b-seg { display: inline-flex; border: 1.5px solid var(--caramel); border-radius: 10px; overflow: hidden; }
-.b2b-seg button { background: transparent; color: var(--texte); border: 0; border-radius: 0; padding: 7px 14px; font: inherit; font-weight: 700; cursor: pointer; box-shadow: none; }
-.b2b-seg button.on { background: var(--caramel); color: #fff; }
+/* Bascule fusionnée « un seul choix actif » (U.seg) : modèle = sélecteur Entreprise / Micro de Revente pro.
+   .full = toute la largeur ; .scroll = glisse au doigt quand le bloc est plus large que l'écran. */
+.seg { display: inline-flex; max-width: 100%; border: 1.5px solid var(--caramel); border-radius: 10px; overflow: hidden; vertical-align: middle; box-sizing: border-box; }
+.seg > button, .seg > a { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: var(--texte); border: 0; border-radius: 0; padding: 8px 16px; font: inherit; font-weight: 700; white-space: nowrap; text-decoration: none; cursor: pointer; box-shadow: none; filter: none; transform: none; }
+.seg > * + * { border-left: 1px solid rgba(166, 113, 83, 0.35); }
+.seg > :hover:not(.on) { background: rgba(166, 113, 83, 0.16); filter: none; }
+.seg > .on { background: var(--caramel); color: #fff; }
+.seg.full { display: flex; width: 100%; }
+.seg.full > * { flex: 1 1 0; padding: 11px 16px; }
+.seg.scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; overscroll-behavior-x: contain; }
+.seg.scroll::-webkit-scrollbar { display: none; }
+.seg-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.seg-stack .seg { margin: 0; }
 /* Fenêtre « Tarif / devis pro » de Revente pro : 3 zones — haut fixe, tableau = seul défilement, bas fixe (boutons). Pas de barre horizontale :
    colonnes à largeur fixe et en-têtes qui peuvent se replier (la règle globale `th { white-space: nowrap }` forçait un tableau trop large). */
 .modal.wide.qt-xl { max-width: min(1040px, 96vw); display: flex; flex-direction: column; overflow: hidden; max-height: 94vh; padding: 16px 18px; }
@@ -592,7 +597,7 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media print {
-  .topnav, .toolbar, .tabs, button, #toast { display: none !important; }
+  .topnav, .toolbar, .seg, button, #toast { display: none !important; }
   .main { padding: 0; max-width: none; }
   .card { box-shadow: none; border: 1px solid #ccc; }
   tr.excluded-from-print, .no-print { display: none !important; }
@@ -872,8 +877,6 @@ td.var-cell .vc-badges .badge { white-space: nowrap; }
 .sumup-filters button { flex: 0 0 auto; white-space: nowrap; }
 
 /* Page Site : onglets Export / Comparer avec le site / Comparer avec SumUp */
-.woo-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
-.woo-tabs button { flex: 1 1 200px; padding: 12px 16px; font-size: 1rem; }
 
 /* Comparer avec SumUp : tableau compact, largeur fixe → jamais de défilement horizontal (la molette reste verticale) */
 table.sumup-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
@@ -1200,8 +1203,6 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .sku-cell { display: flex; gap: 4px; align-items: center; }
 .sku-cell .sku-input { flex: 1; min-width: 0; }
 .sku-cell .sku-gen { padding: 2px 4px; font-size: .95rem; }
-.woo-tabs.woo-sub { margin-top:-6px; }
-.woo-tabs.woo-sub button { flex:0 1 180px; padding:8px 14px; font-size:.92rem; }
 .opt-check { display:flex; gap:10px; align-items:center; text-transform:none; font-size:1rem; font-weight:600; color:var(--texte); cursor:pointer; padding:6px 12px; border:1px solid var(--card-border); border-radius:8px; }
 .opt-check input[type=checkbox] { width:20px; height:20px; accent-color:var(--caramel); flex:0 0 auto; }
 .opt-check:hover { border-color:var(--caramel); }
@@ -1382,3 +1383,4 @@ details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed
 
 /* Prix au kilo et pièces au kilo dans l'en-tête d'une fiche prix : un peu de marron pour ressortir (plus discret que Coeff / Décote) — 2026-10-07 */
 .kg-hl { color: var(--caramel); font-weight: 700; background: color-mix(in srgb, var(--caramel) 14%, transparent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.tabs-seg { margin-bottom: 16px; }

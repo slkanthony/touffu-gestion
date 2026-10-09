@@ -39,14 +39,14 @@ const Stock = {
     if (location.hash.replace(/^#\/?/, '') !== route) history.replaceState(null, '', '#/' + route);
     App.mount(`
       <div class="view-title"><h1>Stock</h1><span class="sub">général & événement · lots, DLUO, seuils</span></div>
-      <div class="tabs">
-        ${[
+      <div class="tabs-seg">
+        ${U.seg([
           ['mastication', '🥩', 'Mastication (' + Store.state.stockM.length + ')'],
           ['matieres', '🧵', 'Matières premières (' + Store.state.materials.length + ')'],
           ['conso', '📦', 'Consommables (' + Store.state.consumables.length + ')'],
           ['peremptions', '⏳', 'Péremptions'],
           ['faible', '📉', 'Faible stock']
-        ].map(([id, ico, label]) => `<a href="#/stock/${id}" class="tab-btn ${this.tab === id ? 'active' : ''}" onclick="if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&event.button!==1){event.preventDefault();Stock.tab='${id}';Stock.render();}">${ico} ${label}</a>`).join('')}
+        ].map(([id, ico, label]) => ({ l: `${ico} ${label}`, on: this.tab === id, href: `#/stock/${id}`, js: `if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&event.button!==1){event.preventDefault();Stock.tab='${id}';Stock.render();}` })), { full: true, scroll: true, label: 'Stock' })}
       </div>
       <div id="stockBody"></div>`);
     if (this.tab === 'mastication') this.renderM();
@@ -1857,11 +1857,7 @@ const Stock = {
     document.getElementById('stockBody').innerHTML = `
       <div class="card" style="padding:12px 16px;">
         <label style="display:block;margin-bottom:6px;">Stock à vérifier</label>
-        <div class="frow" style="margin-bottom:12px;">
-          <button class="${f.view==='general'?'btn-cta':'btn-ghost'}" onclick="Stock._setPeremView('general')">🏬 Stock Général</button>
-          <button class="${f.view==='event'?'btn-cta':'btn-ghost'}" onclick="Stock._setPeremView('event')">🎪 Stock Événement</button>
-          <button class="${f.view==='both'?'btn-cta':'btn-ghost'}" onclick="Stock._setPeremView('both')">🧺 Général + événement (total)</button>
-        </div>
+        <div style="margin-bottom:12px;">${U.seg([['general', '🏬 Stock Général'], ['event', '🎪 Stock Événement'], ['both', '🧺 Général + événement (total)']].map(([k, l]) => ({ l, on: f.view === k, js: `Stock._setPeremView('${k}')` })), { full: true, scroll: true, label: 'Stock à vérifier' })}</div>
         <div class="grid c3">
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_perem" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Stock.perem.q=this.value;Stock.renderPeremptions();U.refocus('stock_q_perem')"></div>
           <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ groups: varGroups, selected: f.variants, toggle: 'Stock.peremToggleVariant', setAll: 'Stock.peremSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.peremSetOpen' })}</div>
@@ -1980,7 +1976,7 @@ const Stock = {
     f.excluded = f.excluded.filter(k => rows.some(r => r.key === k)); // impression événement : opt-out
     const allEvtChecked = rows.every(r => !f.excluded.includes(r.key));
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Stock.setFaibleSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
-    const btn = (v, l) => `<button class="${view === v ? 'btn-cta' : 'btn-ghost'}" onclick="Stock._setFaibleView('${v}')">${l}</button>`;
+    const btn = (v, l) => ({ l, on: view === v, js: `Stock._setFaibleView('${v}')` });
 
     const filters = `
       <div class="grid ${eventView ? 'c2' : 'c3'}">
@@ -2027,11 +2023,7 @@ const Stock = {
     document.getElementById('stockBody').innerHTML = `
       <div class="card" style="padding:12px 16px;">
         <label style="display:block;margin-bottom:6px;">Stock à vérifier</label>
-        <div class="frow" style="margin-bottom:12px;">
-          ${btn('general', '🏬 Stock Général')}
-          ${btn('event', '🎪 Stock Événement')}
-          ${btn('total', '🧺 Général + événement (total)')}
-        </div>
+        <div style="margin-bottom:12px;">${U.seg([btn('general', '🏬 Stock Général'), btn('event', '🎪 Stock Événement'), btn('total', '🧺 Général + événement (total)')], { full: true, scroll: true, label: 'Stock à vérifier' })}</div>
         ${filters}
         ${hint}
         ${eventView ? `<div class="frow mt" style="gap:6px;align-items:center;">

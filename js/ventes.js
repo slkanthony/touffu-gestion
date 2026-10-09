@@ -161,13 +161,9 @@ const Ventes = {
         <button class="btn-cta" style="flex:0 0 auto;white-space:nowrap;" onclick="Ventes.toggleRetour()">${this.retourOpen ? '← Vente manuelle' : '📥 Retour d\'événement'}</button></div></div>
 
       ${this.retourOpen ? this.retourPanel() : `
-      <div class="frow" style="margin-bottom:10px;">
-        <button class="${this.kind === 'M' ? 'btn-cta' : 'btn-ghost'}" onclick="Ventes.setKind('M')">🥩 Mastication</button>
-        <button class="${this.kind === 'A' ? 'btn-cta' : 'btn-ghost'}" onclick="Ventes.setKind('A')">🦮 Accessoires</button>
-      </div>
-      <div class="frow" style="margin-bottom:16px;">
-        <button class="${this.source === 'general' ? 'btn-cta' : 'btn-ghost'}" onclick="Ventes.setSource('general')">🏬 Vente Général</button>
-        <button class="${this.source === 'event' ? 'btn-cta' : 'btn-ghost'}" onclick="Ventes.setSource('event')">🎪 Vente Événement</button>
+      <div class="seg-stack">
+        ${U.seg([{ l: '🥩 Mastication', on: this.kind === 'M', js: "Ventes.setKind('M')" }, { l: '🦮 Accessoires', on: this.kind === 'A', js: "Ventes.setKind('A')" }], { full: true, label: 'Type de produit' })}
+        ${U.seg([{ l: '🏬 Vente Général', on: this.source === 'general', js: "Ventes.setSource('general')" }, { l: '🎪 Vente Événement', on: this.source === 'event', js: "Ventes.setSource('event')" }], { full: true, label: 'Stock utilisé' })}
       </div>
 
       <div class="card">

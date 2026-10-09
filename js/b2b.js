@@ -53,10 +53,10 @@ const B2B = {
     const controls = `
       <div class="card">
         <div class="frow" style="gap:8px;margin-bottom:14px;align-items:center;">
-          <button class="${tab === 'mast' ? 'btn-cta' : 'btn-ghost'}" onclick="B2B.setTab('mast')">🥩 Mastication</button>
-          <button class="${tab === 'acc' ? 'btn-cta' : 'btn-ghost'}" onclick="B2B.setTab('acc')">🐕 Accessoires</button>
+          <span style="flex:0 0 auto;min-width:0;">${U.seg([{ l: '🥩 Mastication', on: tab === 'mast', js: "B2B.setTab('mast')" }, { l: '🐕 Accessoires', on: tab === 'acc', js: "B2B.setTab('acc')" }], { label: 'Catégorie' })}</span>
+
           <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;"><span class="muted" style="font-size:.85rem;">Client</span>
-            <span class="b2b-seg" role="group" aria-label="Client"><button class="${cl === 'ent' ? 'on' : ''}" onclick="B2B.setClient('ent')">🏢 Entreprise</button><button class="${cl === 'micro' ? 'on' : ''}" onclick="B2B.setClient('micro')">🧑‍💼 Micro</button></span></span>
+            ${U.seg([{ l: '🏢 Entreprise', on: cl === 'ent', js: "B2B.setClient('ent')" }, { l: '🧑‍💼 Micro', on: cl === 'micro', js: "B2B.setClient('micro')" }], { label: 'Client' })}</span>
         </div>
         <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
           <div class="b2b-global-disc">

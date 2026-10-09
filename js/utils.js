@@ -328,6 +328,15 @@ const U = {
     </details>`;
   },
 
+  /* Bascule « un seul choix actif » en bloc fusionné (même style que Entreprise / Micro de Revente pro).
+     items = [{ l: libellé HTML, on: actif ?, js: code du onclick, href?: lien (vrai <a>, clic molette) }]
+     opts.full : occupe toute la largeur (boutons de même taille) ; opts.scroll : se fait glisser au doigt si trop étroit (écran de téléphone). */
+  seg(items, { full, scroll, label } = {}) {
+    return `<div class="seg${full ? ' full' : ''}${scroll ? ' scroll' : ''}" role="group"${label ? ` aria-label="${U.esc(label)}"` : ''}>${items.map(it => it.href
+      ? `<a href="${it.href}" class="${it.on ? 'on' : ''}" onclick="${it.js}">${it.l}</a>`
+      : `<button type="button" class="${it.on ? 'on' : ''}" aria-pressed="${it.on ? 'true' : 'false'}" onclick="${it.js}">${it.l}</button>`).join('')}</div>`;
+  },
+
   customSelect({ value, options, onPick, cls }) {
     const cur = options.find(o => String(o.v) === String(value)) || options[0];
     const label = cur ? cur.l : '—';
@@ -931,3 +940,17 @@ U._cmpSmart = (a, b) => {
   const x = U._smartKey(a), y = U._smartKey(b);
   return U._coll.compare(x.pre, y.pre) || (x.has - y.has) || (x.has && (x.fam - y.fam || x.val - y.val)) || U._coll.compare(x.rest, y.rest) || U._coll.compare(String(a), String(b));
 };
+
+/* Bascules .seg.scroll (téléphone) : au rendu, le bouton actif est ramené au centre du bloc glissant. */
+(function () {
+  function center(el) {
+    if (el.dataset.sc) return; el.dataset.sc = '1';
+    const on = el.querySelector('.on'); if (!on || el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft = on.offsetLeft - (el.clientWidth - on.offsetWidth) / 2;
+  }
+  let busy = false;
+  function run() { busy = false; document.querySelectorAll('.seg.scroll').forEach(center); }
+  function sched() { if (!busy) { busy = true; requestAnimationFrame(run); } }
+  function start() { new MutationObserver(sched).observe(document.body, { childList: true, subtree: true }); sched(); }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();

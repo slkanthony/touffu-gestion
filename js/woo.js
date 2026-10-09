@@ -726,11 +726,9 @@ const Woo = {
       </div>
 
 
-      <div class="woo-tabs">
-        ${[['site', '🌐 Site (WooCommerce)'], ['sumup', '💳 SumUp']].map(([k, l]) => `<button class="${this._target() === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setTarget('${k}')">${l}</button>`).join('')}
-      </div>
-      <div class="woo-tabs woo-sub" style="justify-content:${this._target() === 'sumup' ? 'flex-end' : 'flex-start'};">
-        ${[['export', '📤 Exporter'], ['compare', '🔄 Comparer']].map(([k, l]) => `<button class="${this._mode() === k ? 'btn-cta' : 'btn-ghost'}" onclick="Woo.setMode('${k}')">${l}</button>`).join('')}
+      <div class="seg-stack">
+        ${U.seg([['site', '🌐 Site (WooCommerce)'], ['sumup', '💳 SumUp']].map(([k, l]) => ({ l, on: this._target() === k, js: `Woo.setTarget('${k}')` })), { full: true, label: 'Destination' })}
+        <div style="display:flex;justify-content:${this._target() === 'sumup' ? 'flex-end' : 'flex-start'};">${U.seg([['export', '📤 Exporter'], ['compare', '🔄 Comparer']].map(([k, l]) => ({ l, on: this._mode() === k, js: `Woo.setMode('${k}')` })), { label: 'Action' })}</div>
       </div>
 
       ${this.tab === 'export' ? `      <div class="card">

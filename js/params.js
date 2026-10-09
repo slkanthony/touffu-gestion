@@ -291,7 +291,7 @@ const Params = {
             </div>
           </div>
         </details>
-        <div id="sku_cat_btns" class="frow mt" style="gap:8px;flex-wrap:wrap;">${this._skuCatBtns()}</div>
+        <div id="sku_cat_btns" class="mt">${this._skuCatBtns()}</div>
         <div class="toolbar mt" style="margin-bottom:8px;">
           <div class="fg" style="min-width:180px;"><input id="sku_all_search" placeholder="Rechercher un produit ou SKU…" oninput="Params.renderSkuAll()" onchange="U.refocus('sku_all_search')"></div>
           <div class="fg" id="sku_group_box" style="min-width:160px;">${this._skuGroupSelect()}</div>
@@ -1897,7 +1897,7 @@ const Params = {
   _setSkuMeat(val) { this._skuMeat = val; this.renderSkuAll(); },
   _skuCatBtns() {
     const n = { mast: Store.state.stockM.reduce((a, p) => a + (p.variants || []).length, 0), mat: (Store.state.materials || []).length, conso: (Store.state.consumables || []).length };
-    return [['mast', '🥩 Mastication'], ['mat', '🧵 Matières premières'], ['conso', '📦 Consommables']].map(([k, l]) => `<button type="button" class="${this._skuCat === k ? 'btn-cta' : 'btn-ghost'}" style="flex:1 1 160px;" onclick="Params.setSkuCat('${k}')">${l} <span style="opacity:.75;font-weight:400;">(${n[k]})</span></button>`).join('');
+    return U.seg([['mast', '🥩 Mastication'], ['mat', '🧵 Matières premières'], ['conso', '📦 Consommables']].map(([k, l]) => ({ l: `${l} <span style="opacity:.75;font-weight:400;">(${n[k]})</span>`, on: this._skuCat === k, js: `Params.setSkuCat('${k}')` })), { full: true, scroll: true, label: 'Catégorie de stock' });
   },
   _skuGroupSelect() {
     const S = Store.state.settings, mast = this._skuCat === 'mast';

@@ -34,13 +34,9 @@ const Stats = {
 
   tabBar() {
     const t = this.tab || 'price';
-    return `<div class="card"><div class="frow" style="gap:8px;">
-      <button class="${t === 'price' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('price')">📊 Prix &amp; marges</button>
-      <button class="${t === 'sales' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('sales')">🛒 Ventes</button>
-      <button class="${t === 'pack' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('pack')">📦 Emballages</button>
-      <button class="${t === 'events' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('events')">🎪 Événements</button>
-      ${App.isViewer ? '' : `<button class="${t === 'clients' ? 'btn-cta' : 'btn-ghost'}" onclick="Stats.setTab('clients')">👤 Clients</button>`}
-    </div></div>`;
+    const tabs = [['price', '📊 Prix &amp; marges'], ['sales', '🛒 Ventes'], ['pack', '📦 Emballages'], ['events', '🎪 Événements']];
+    if (!App.isViewer) tabs.push(['clients', '👤 Clients']);
+    return `<div class="card">${U.seg(tabs.map(([k, l]) => ({ l, on: t === k, js: `Stats.setTab('${k}')` })), { full: true, scroll: true, label: 'Statistiques' })}</div>`;
   },
 
   render() {
