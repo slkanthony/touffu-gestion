@@ -222,8 +222,7 @@ const Stock = {
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="Stock.editProduct()">＋ Nouveau produit</button>
-          <button class="btn-ghost btn-sm" onclick="Stock.foldAll(false)">▼ Tout déplier</button>
-          <button class="btn-ghost btn-sm" onclick="Stock.foldAll(true)">▲ Tout réduire</button>
+          ${U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAll(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAll(true)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${list.length} produit(s) · ${list.reduce((a,p)=>a+p.variants.reduce((b,v)=>b+v.lots.reduce((c,l)=>c+U.num(l.qtyGeneral)+U.num(l.qtyEvent),0),0),0).toFixed(0)} unités en stock</span>
         </div>
       </div>
@@ -2490,8 +2489,7 @@ const Stock = {
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="Stock.editMat()">＋ Nouvelle matière</button>
-          <button class="btn-ghost btn-sm" onclick="Stock.foldAllMat(false)">▼ Tout déplier</button>
-          <button class="btn-ghost btn-sm" onclick="Stock.foldAllMat(true)">▲ Tout réduire</button>
+          ${U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAllMat(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAllMat(true)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${groupKeys.length} produit(s) · ${list.length} référence(s)</span>
         </div>
       </div>

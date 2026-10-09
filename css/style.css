@@ -355,6 +355,8 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .seg.full > * { flex: 1 1 0; padding: 9px 16px; }
 .seg.scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; overscroll-behavior-x: contain; }
 .seg.scroll::-webkit-scrollbar { display: none; }
+.seg.sm { border-radius: 10px; }
+.seg.sm > button, .seg.sm > a { padding: 4px 11px; font-size: 0.8rem; font-weight: 600; border-radius: 7px; }
 .seg-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .seg-stack .seg { margin: 0; }
 /* Fenêtre « Tarif / devis pro » de Revente pro : 3 zones — haut fixe, tableau = seul défilement, bas fixe (boutons). Pas de barre horizontale :

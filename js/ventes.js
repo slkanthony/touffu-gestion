@@ -1225,7 +1225,7 @@ const Ventes = {
       <div class="hist-tools">
         <label class="hist-selall"><input type="checkbox" ${allPageSel ? 'checked' : ''} onclick="Ventes.histSelectList(${U.esc(JSON.stringify(pageIds))},this.checked)"> Tout cocher (page)</label>
         ${all.length > pageList.length ? `<button class="btn-ghost btn-sm" onclick="Ventes.histSelectPeriod()">☑ Cocher les ${all.length} de la période</button>` : ''}
-        <button class="btn-ghost btn-sm" onclick="Ventes.histOpenAll(true)">📂 Tout déplier</button><button class="btn-ghost btn-sm" onclick="Ventes.histOpenAll(false)">📁 Tout replier</button>
+        ${U.seg([{ l: '📂 Tout déplier', js: 'Ventes.histOpenAll(true)' }, { l: '📁 Tout replier', js: 'Ventes.histOpenAll(false)' }], { sm: true })}
       </div>
       ${sel.length ? `<div class="hist-selbar"><b>${sel.length} vente(s) sélectionnée(s)</b>
         <span class="muted">Origine :</span><select onchange="if(this.value){Ventes.setSaleOrigin(Ventes._selIds(),this.value)}"><option value="">— changer —</option><option value="online">🌐 En ligne</option><option value="direct">🏪 Directe</option><option value="event">🎪 Événement</option></select>

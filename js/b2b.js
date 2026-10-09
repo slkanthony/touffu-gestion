@@ -70,8 +70,7 @@ const B2B = {
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button class="btn-cta" onclick="B2B.openQuote(B2B._client())" title="${cl === 'micro' ? 'Pour une micro-entreprise (ne récupère pas la TVA) : prix avec TVA après remise + prix de vente conseillé' : 'Pour une entreprise qui récupère la TVA : prix HT après remise + prix de vente conseillé TTC'} — à copier en image ou en texte">📋 Partager le devis ${cl === 'micro' ? 'micro' : 'entreprise'}</button>
             <button class="btn-ghost" onclick="B2B.exportQuote()" title="Fichier interne (coûts, marges) avec les deux prix">🧾 Exporter le tarif pro (CSV)</button>
-            <button class="btn-ghost btn-sm" onclick="B2B.expandAll()">📂 Tout développer</button>
-            <button class="btn-ghost btn-sm" onclick="B2B.collapseAll()">📁 Tout réduire</button>
+            ${U.seg([{ l: '📂 Tout développer', js: 'B2B.expandAll()' }, { l: '📁 Tout réduire', js: 'B2B.collapseAll()' }], { sm: true })}
           </div>
         </div>
         <p class="muted help" style="margin-top:10px;">Le prix pro applique la remise sur le prix HT public. Chaque fiche peut avoir sa propre décote (surcharge le champ ci-dessus) — utile pour les produits où tu marges moins ou plus que la moyenne. Les intitulés des colonnes de prix suivent la case « assujetti » des Paramètres : tant que tu ne factures pas de TVA, « Prix entreprise » (le prix de la remise) et « Prix micro » (ce prix + la TVA) ; une fois assujetti, « Prix B2B HT » et « Prix B2B TTC ». Les montants sont les mêmes dans les deux cas.${tab === 'acc' ? ` Cotisations accessoires au taux <b>fait main (${U.pct(Pricing.socialRateHandmade())})</b>.` : ''}</p>

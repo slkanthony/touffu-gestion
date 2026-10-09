@@ -135,8 +135,7 @@ const Catalogue = {
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
-        <button class="btn-ghost btn-sm" onclick="Catalogue.expandAll()">📂 Tout développer</button>
-        <button class="btn-ghost btn-sm" onclick="Catalogue.collapseAll()">📁 Tout réduire</button>
+        ${U.seg([{ l: '📂 Tout développer', js: 'Catalogue.expandAll()' }, { l: '📁 Tout réduire', js: 'Catalogue.collapseAll()' }], { sm: true })}
       </div>` : ''}
       ${list.length ? `<div class="prod-list-header cat-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
