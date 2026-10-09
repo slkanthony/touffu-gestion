@@ -1050,13 +1050,16 @@ const Accessoires = {
             resolved.push({ m, need });
           } else { U.toast(`Famille introuvable : ${b.label}`, true); return false; }
         }
-        const undo = { accId: a.id, n, mats: [] };
+        const undo = { accId: a.id, n, mats: [], fid: U.uid() };
         for (const { m, need } of resolved) {
           m.qty = U.num(m.qty) - need;
           undo.mats.push({ id: m.id, qty: need });
         }
         const entry = Store.log('fabrication', `Fabrication de ${n} × ${a.name}`, { type: 'fabricate', data: undo });
-        Store.save('materials');
+        // Historique PERMANENT des fabrications (le journal ne garde que 600 actions) : sert aux stats « sangles / couleurs les plus utilisées » (Statistiques → Prix & marges → Accessoires)
+        const S = Store.state.settings; (S.fabHistory = S.fabHistory || []).push({ id: undo.fid, ts: Date.now(), accId: a.id, n, mats: undo.mats.map(x => ({ ...x })) });
+        if (S.fabHistory.length > 5000) S.fabHistory.splice(0, S.fabHistory.length - 5000);
+        Store.save('materials', 'settings');
         U.closeModal(); App.rerender();
         U.toast(`${n} × ${a.name} — matières déduites du stock. 🛠`, false, entry.id);
       }

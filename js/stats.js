@@ -22,11 +22,19 @@ const Stats = {
   salesPeriod: 'all', // 'all' | 'year' | '12m'
   salesMetric: 'qty', // 'qty' | 'ca' — métrique des classements & du mensuel
   seasonProduct: '',  // clé produit pour la saisonnalité détaillée
+  priceKind: 'mast',  // 'mast' | 'acc' : catégorie affichée dans l'onglet Prix & marges
   _dormantOpen: false,
   _topOpen: false,
 
   toggleTop() { this._topOpen = !this._topOpen; this.render(); },
   setTab(t) { this.tab = t; this.detail = null; this.render(); },
+  setPriceKind(k) { this.priceKind = k === 'acc' ? 'acc' : 'mast'; this.detail = null; this.render(); },
+  _priceKindBar() {
+    const k = this.priceKind === 'acc' ? 'acc' : 'mast';
+    return `<div style="margin:12px 0 14px;">${U.seg([{ l: '🥩 Mastication', on: k === 'mast', js: "Stats.setPriceKind('mast')" }, { l: '🐕 Accessoires', on: k === 'acc', js: "Stats.setPriceKind('acc')" }], { label: 'Catégorie' })}</div>`;
+  },
+  /* Seuil de coeff critique de la catégorie affichée (mastication : b2bCoeffThreshold ; accessoires : accCoeffThreshold). */
+  _thr(acc) { const S = Store.state.settings; return U.num(acc ? (S.accCoeffThreshold || S.b2bCoeffThreshold) : S.b2bCoeffThreshold); },
   setSalesPeriod(v) { this.salesPeriod = v; this.seasonProduct = ''; this.render(); },
   setSalesMetric(m) { this.salesMetric = m; this.render(); },
   setSeasonProduct(v) { this.seasonProduct = v; this.render(); },
@@ -40,7 +48,7 @@ const Stats = {
   },
 
   render() {
-    U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesMetric', 'seasonProduct']);
+    U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesMetric', 'seasonProduct', 'priceKind']);
     if ((this.tab || 'price') === 'sales') return this.renderSales();
     if (this.tab === 'pack') return this.renderPack();
     if (this.tab === 'events') return this.renderEvents();
@@ -374,7 +382,9 @@ const Stats = {
   },
 
 
-  renderPrice() {
+  renderPrice() { return this.priceKind === 'acc' ? this.renderPriceAcc() : this.renderPriceMast(); },
+
+  renderPriceMast() {
     const S = Store.state.settings;
     const products = Store.state.catalogM;
     // même init paresseuse que B2B.render() : au cas où cette page est ouverte
@@ -406,7 +416,7 @@ const Stats = {
 
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">coefficients & marges — public et B2B</span></div>
-      ${this.tabBar()}
+      ${this.tabBar()}${this._priceKindBar()}
       <div class="grid c4">
         <div class="kpi"><div class="v">${products.length}</div><div class="l">Total produits</div></div>
         <div class="kpi sensitive"><div class="v">${(nPub ? sumCoeff / nPub : 0).toFixed(2)}</div><div class="l">Coeff moyen</div></div>
@@ -463,6 +473,143 @@ const Stats = {
     return { variants, coeffs, coeffsMicro: variants.map(v => v.coeffMicro), avg: coeffs.reduce((a, b) => a + b, 0) / coeffs.length, marginAvg: variants.reduce((a, v) => a + v.margin, 0) / variants.length };
   },
 
+  /* ───────── PRIX & MARGES — ACCESSOIRES (2026-10-10) ─────────
+     Même page que la mastication : tuiles, répartitions (catégorie, largeur de sangle), distribution des coeff public / B2B avec le seuil et la remise
+     globale des ACCESSOIRES (B2B.discountAcc, plafonnée comme dans Revente pro), + classements : accessoires les plus vendus, sangles et couleurs les plus utilisées. */
+  accVariantStats(a, isB2B) {
+    const S = Store.state.settings, thr = this._thr(true);
+    if (!(Pricing.accCalc(a).cost > 0)) return null;   // fiche sans coût (pas encore chiffrée) : ignorée comme une fiche sans variante
+    const w = B2B.accWidths(a), label = a.mainWidth || w[0] || 'Standard';
+    let coeff, coeffMicro, profitB2B = 0;
+    if (isB2B) { const it = B2B.accStats(a); coeff = it.coeffB2B; coeffMicro = it.coeffMicro; profitB2B = it.profitB2B; }
+    else { coeff = coeffMicro = Pricing.accCalc(a).effCoeff; }
+    const v = { label, coeff, coeffMicro, profitB2B, margin: coeff > 0 ? (1 - 1 / coeff) * 100 : 0, critical: coeff < thr };
+    return { variants: [v], coeffs: [coeff], coeffsMicro: [coeffMicro], avg: coeff, marginAvg: v.margin };
+  },
+  setB2BDiscountAcc(v) {
+    const r = B2B._discBase(v, Pricing.vatRate(), B2B._client());
+    B2B.discountAcc = r.base;
+    localStorage.setItem('touffu_b2bDiscountAcc', B2B.discountAcc);
+    this.detail = null;
+    this.render();
+    B2B._clampToast(r);
+  },
+  /* Fabrications réellement faites (🛠 Fabriquer) : historique permanent `settings.fabHistory` + entrées plus anciennes encore dans le journal (sans doublon). */
+  _fabEvents() {
+    const seen = new Set(), out = [];
+    (Store.state.settings.fabHistory || []).forEach(f => { seen.add(f.id); out.push(f); });
+    (Store.state.journal || []).forEach(j => {
+      const u = j.undo; if (j.action !== 'fabrication' || !u || u.type !== 'fabricate' || !u.data) return;
+      const id = u.data.fid || j.id; if (seen.has(id)) return; seen.add(id);
+      out.push({ id, ts: j.ts, accId: u.data.accId, n: u.data.n, mats: u.data.mats || [] });
+    });
+    return out;
+  },
+  /* Sangles utilisées : { source: 'fabrications' | 'ventes', refs: [{label, m, n}], colors: [{label, m, n}] } (m = mètres, n = fabrications / pièces). Mètres = unité des rouleaux.
+     Source 1 (fiable, donne la COULEUR) : les fabrications enregistrées. Sans fabrication : estimation ventes × nomenclature des fiches (couleur connue seulement si la fiche cite une sangle précise). */
+  _strapUsage() {
+    const refs = {}, colors = {}, add = (map, key, label, m, n) => { const g = map[key] || (map[key] = { label, m: 0, n: 0 }); g.m += m; g.n += n; };
+    const colorOf = m => String(m.product || m.name || '?').trim();
+    const widthOf = m => String(m.variant || '').trim();
+    const events = this._fabEvents();
+    let used = 0;
+    events.forEach(f => (f.mats || []).forEach(x => {
+      const m = Store.material(x.id); if (!m || !Store.isSangleKind(m.kind)) return;
+      const c = colorOf(m), lab = (c + ' ' + widthOf(m)).trim();
+      add(refs, m.id, lab, U.num(x.qty), 1); add(colors, c.toLowerCase(), c, U.num(x.qty), 1); used++;
+    }));
+    let source = 'fabrications';
+    if (!used) {   // aucune fabrication enregistrée : estimation d'après les accessoires vendus
+      source = 'ventes';
+      (Store.state.sales || []).filter(s => !s.cancelled).forEach(s => (s.items || []).forEach(i => {
+        if (i.kind !== 'A') return; const a = Store.state.catalogA.find(x => x.id === i.pId); if (!a) return;
+        (a.bom || []).forEach(l => {
+          if (Accessoires.bomLineUnit(l) !== 'm') return;
+          const metres = U.num(i.qty) * U.num(l.qty);
+          const m = l.materialId ? Store.material(l.materialId) : null;
+          if (m && Store.isSangleKind(m.kind)) { const c = colorOf(m); add(refs, m.id, (c + ' ' + widthOf(m)).trim(), metres, U.num(i.qty)); add(colors, c.toLowerCase(), c, metres, U.num(i.qty)); }
+          else if (l.familyKey) { const fam = Accessoires.families().find(f => f.key === l.familyKey); add(refs, 'f:' + l.familyKey, (fam ? fam.label : l.familyKey) + ' (moyenne)', metres, U.num(i.qty)); }
+        });
+      }));
+    }
+    const top = map => Object.values(map).sort((a, b) => b.m - a.m || b.n - a.n).slice(0, 10);
+    return { source, nEvents: events.length, refs: top(refs), colors: top(colors) };
+  },
+  _topAccessories() {
+    const g = {};
+    (Store.state.sales || []).filter(s => !s.cancelled).forEach(s => (s.items || []).forEach(i => {
+      if (i.kind !== 'A') return;
+      const key = i.pId || ('name:' + (i.name || '?')), r = g[key] || (g[key] = { pId: i.pId, name: i.name || '(sans nom)', qty: 0, ca: 0 });
+      r.qty += U.num(i.qty); r.ca += U.num(i.price) * U.num(i.qty);
+    }));
+    return Object.values(g).sort((a, b) => b.qty - a.qty || b.ca - a.ca).slice(0, 10);
+  },
+  /* Classement à barres (sans librairie) : rows = [{label, value, sub, href}]. */
+  _rankCard(title, rows, fmt, empty, note) {
+    const max = Math.max(1, ...rows.map(r => r.value));
+    return `<div class="card"><h2>${title}</h2>${rows.length ? rows.map((r, i) => `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+      <span style="flex:0 0 40%;overflow-wrap:anywhere;font-size:.88rem;">${i + 1}. ${r.href ? `<a href="${r.href}" style="color:inherit;">${U.esc(r.label)}</a>` : U.esc(r.label)}${r.sub ? ` <span class="muted" style="font-size:.74rem;">${U.esc(r.sub)}</span>` : ''}</span>
+      <div style="flex:1;background:var(--th-bg);border-radius:6px;height:16px;"><div style="width:${Math.max(3, r.value / max * 100)}%;height:100%;background:var(--caramel);border-radius:6px;"></div></div>
+      <b class="sensitive" style="flex:0 0 auto;min-width:70px;text-align:right;font-size:.85rem;">${fmt(r)}</b></div>`).join('') : `<p class="muted">${empty}</p>`}${note ? `<p class="muted" style="font-size:.78rem;margin:8px 0 0;">${note}</p>` : ''}</div>`;
+  },
+
+  renderPriceAcc() {
+    const items = Store.state.catalogA;
+    B2B._loadDiscounts();
+    const statsPublic = a => this.accVariantStats(a, false), statsB2B = a => this.accVariantStats(a, true);
+    let sumCoeff = 0, sumMargin = 0, nPub = 0, sumCoeffB2B = 0, sumMarginB2B = 0, nB2B = 0;
+    const catCount = {}, widthCount = {};
+    items.forEach(a => {
+      const sp = statsPublic(a); if (sp) { sumCoeff += sp.avg; sumMargin += sp.marginAvg; nPub++; }
+      const sb = statsB2B(a); if (sb) { sumCoeffB2B += sb.avg; sumMarginB2B += sb.marginAvg; nB2B++; }
+      const cat = a.category || 'Non spécifié'; catCount[cat] = (catCount[cat] || 0) + 1;
+      const ws = B2B.accWidths(a); (ws.length ? ws : ['Non spécifié']).forEach(w => { widthCount[w] = (widthCount[w] || 0) + 1; });
+    });
+    const bins = this._bins();
+    const binCounts = (fn, key) => bins.map(b => { let n = 0; items.forEach(a => { const s = fn(a); if (s) n += s[key || 'coeffs'].filter(c => c >= b.min && c < b.max).length; }); return n; });
+    const none = '<p class="muted">Aucun accessoire.</p>';
+    const top = this._topAccessories(), use = this._strapUsage();
+    const fabNote = use.source === 'fabrications'
+      ? `D'après tes ${use.nEvents} fabrication${use.nEvents > 1 ? 's' : ''} enregistrée${use.nEvents > 1 ? 's' : ''} (🛠 Fabriquer), en mètres de sangle.`
+      : `Aucune fabrication enregistrée : estimation = accessoires vendus × mètres de la fiche. La couleur n'est connue que si la fiche cite une sangle précise ; elle se remplit toute seule à chaque 🛠 Fabriquer.`;
+    App.mount(`
+      <div class="view-title"><h1>Statistiques</h1><span class="sub">coefficients & marges — public et B2B</span></div>
+      ${this.tabBar()}${this._priceKindBar()}
+      <div class="grid c4">
+        <div class="kpi"><div class="v">${items.length}</div><div class="l">Total accessoires</div></div>
+        <div class="kpi sensitive"><div class="v">${(nPub ? sumCoeff / nPub : 0).toFixed(2)}</div><div class="l">Coeff moyen</div></div>
+        <div class="kpi good sensitive"><div class="v">${(nPub ? sumMargin / nPub : 0).toFixed(1)}%</div><div class="l">Marge moyenne</div></div>
+        <div class="kpi info2 sensitive"><div class="v">${(nB2B ? sumCoeffB2B / nB2B : 0).toFixed(2)}</div><div class="l">Coeff moyen B2B</div></div>
+        <div class="kpi info2 sensitive"><div class="v">${(nB2B ? sumMarginB2B / nB2B : 0).toFixed(1)}%</div><div class="l">Marge moyenne B2B</div></div>
+        <div class="kpi"><div class="v">${Object.keys(catCount).length}</div><div class="l">Catégories</div></div>
+        <div class="kpi"><div class="v">${Object.keys(widthCount).filter(w => w !== 'Non spécifié').length}</div><div class="l">Largeurs de sangle</div></div>
+      </div>
+      <div class="grid c2 mt">
+        <div class="card"><h2>🐕 Répartition par catégorie</h2><div style="position:relative;height:260px;">${items.length ? '<canvas id="statsChartMeat"></canvas>' : none}</div></div>
+        <div class="card"><h2>📏 Répartition par largeur de sangle</h2><div style="position:relative;height:260px;">${items.length ? '<canvas id="statsChartSupplier"></canvas>' : none}</div>
+          <p class="muted" style="font-size:.78rem;margin:6px 0 0;">Un accessoire proposé en plusieurs largeurs est compté dans chacune.</p></div>
+      </div>
+      <div class="grid c2 mt">
+        <div class="card sensitive"><h2>📊 Distribution des coefficients (Public)</h2><div style="position:relative;height:260px;">${items.length ? '<canvas id="statsChartCoeff"></canvas>' : none}</div></div>
+        <div class="card sensitive" style="border-left:4px solid var(--caramel);">
+          <div class="frow" style="justify-content:space-between;align-items:center;">
+            <h2 style="margin:0;">🤝 Distribution des coefficients (B2B)</h2>
+            <div class="fg" style="max-width:150px;margin:0;"><label>Remise globale accessoires ${B2B._client() === 'ent' ? 'entreprise' : 'micro'} (%)</label><input type="number" step="0.1" value="${B2B._pct1(B2B._discView(B2B.discountAcc, Pricing.vatRate(), B2B._client()))}" onchange="Stats.setB2BDiscountAcc(this.value)"></div>
+          </div>
+          <div style="position:relative;height:230px;">${items.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : none}</div>
+        </div>
+      </div>
+      <div class="grid c3 mt">
+        ${this._rankCard('🏆 Accessoires les plus vendus', top.map(r => ({ label: r.name, value: r.qty, sub: U.eur(r.ca), href: r.pId ? '#/accessoires/' + r.pId : '' })), r => U.qty(r.value) + ' vendu' + (r.value > 1 ? 's' : ''), 'Aucun accessoire vendu pour le moment.', 'Toutes les ventes enregistrées (classement par quantité ; en petit : chiffre d\'affaires).')}
+        ${this._rankCard('📏 Sangles les plus utilisées', use.refs.map(r => ({ label: r.label, value: r.m })), r => U.qty(r.value) + ' m', 'Aucune sangle utilisée pour le moment.', fabNote)}
+        ${this._rankCard('🎨 Couleurs les plus utilisées', use.colors.map(r => ({ label: r.label, value: r.m })), r => U.qty(r.value) + ' m', 'Pas encore de couleur connue : elle est retenue à chaque 🛠 Fabriquer.', 'Toutes largeurs confondues. ' + fabNote)}
+      </div>
+      <div id="statsDetail"></div>`);
+
+    if (items.length) this.drawCharts(catCount, widthCount, bins, binCounts(statsPublic), { ent: binCounts(statsB2B), micro: binCounts(statsB2B, 'coeffsMicro') }, statsPublic, statsB2B, true);
+    if (this.detail) this.renderDetail();
+  },
+
   /* Remise B2B globale partagée avec la page Revente pro (même localStorage
      touffu_b2bDiscount) : la modifier ici la modifie aussi là-bas. */
   setB2BDiscount(v) {
@@ -474,7 +621,7 @@ const Stats = {
     B2B._clampToast(r);
   },
 
-  drawCharts(meatCount, supplierCount, bins, binsPublic, binsB2B, statsPublic, statsB2B) {
+  drawCharts(meatCount, supplierCount, bins, binsPublic, binsB2B, statsPublic, statsB2B, acc) {
     if (typeof Chart === 'undefined') return; // CDN indisponible (hors-ligne) : pas bloquant
     const dark = Theme.get() === 'dark';
     const textColor = dark ? '#eee3d3' : '#1c2b33';
@@ -497,14 +644,21 @@ const Stats = {
         }
       });
     };
-    buildPie('statsChartMeat', meatCount, 'doughnut', (label) =>
-      this.showDetail(p => (p.meatType || 'Non spécifié') === label, `Viande : ${label}`, statsPublic));
-    buildPie('statsChartSupplier', supplierCount, 'pie', (label) =>
-      this.showDetail(p => (p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : 'Non spécifié') === label, `Fournisseur : ${label}`, statsPublic));
+    if (acc) {   // accessoires : camembert 1 = catégorie, camembert 2 = largeur de sangle (stockés sous les mêmes ids de canvas)
+      buildPie('statsChartMeat', meatCount, 'doughnut', (label) =>
+        this.showAccDetail(a => (a.category || 'Non spécifié') === label, `Catégorie : ${label}`, statsPublic));
+      buildPie('statsChartSupplier', supplierCount, 'pie', (label) =>
+        this.showAccDetail(a => { const w = B2B.accWidths(a); return (w.length ? w : ['Non spécifié']).includes(label); }, `Largeur de sangle : ${label}`, statsPublic));
+    } else {
+      buildPie('statsChartMeat', meatCount, 'doughnut', (label) =>
+        this.showDetail(p => (p.meatType || 'Non spécifié') === label, `Viande : ${label}`, statsPublic));
+      buildPie('statsChartSupplier', supplierCount, 'pie', (label) =>
+        this.showDetail(p => (p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : 'Non spécifié') === label, `Fournisseur : ${label}`, statsPublic));
+    }
 
     // Seuil critique (S.b2bCoeffThreshold) : bande rouge à gauche + ligne pointillée « Seuil x,xx » (plugin maison, pas de librairie).
     // La position est interpolée dans la tranche de 0,25 qui contient le seuil (au-delà de la dernière tranche : à son bord gauche).
-    const thr = U.num(Store.state.settings.b2bCoeffThreshold);
+    const thr = this._thr(acc);
     const thrX = (chart) => {
       const sx = chart.scales.x, w = sx.getPixelForValue(1) - sx.getPixelForValue(0);
       const last = bins.length - 1, idx = Math.min(Math.floor(thr / this.BIN_STEP), last);
@@ -544,8 +698,9 @@ const Stats = {
           onClick: (evt, els) => {
             if (!els.length) return;
             const b = bins[els[0].index];
-            if (isB2B) { this.showCoeffDetail(els[0].datasetIndex, els[0].index); return; }
-            this.showDetail(p => { const s = statsFn(p); return s && s.coeffs.some(c => c >= b.min && c < b.max); },
+            if (isB2B) { if (acc) this.showAccCoeffDetail(els[0].datasetIndex, els[0].index); else this.showCoeffDetail(els[0].datasetIndex, els[0].index); return; }
+            if (acc) this.showAccDetail(a => { const s = statsFn(a); return s && s.coeffs.some(c => c >= b.min && c < b.max); }, `Accessoires Public — coeff ${b.label}`, statsFn, b.min, b.max);
+            else this.showDetail(p => { const s = statsFn(p); return s && s.coeffs.some(c => c >= b.min && c < b.max); },
               `Variantes Public — coeff ${b.label}`, statsFn, b.min, b.max);
           }
         }
@@ -572,7 +727,7 @@ const Stats = {
      Un 2e clic sur la même barre referme la liste. */
   showCoeffDetail(serie, binIdx) {
     const d = this.detail;
-    if (d && d.kind === 'coeff' && d.serie === serie && d.binIdx === binIdx) { this.closeDetail(); return; }
+    if (d && d.kind === 'coeff' && !d.acc && d.serie === serie && d.binIdx === binIdx) { this.closeDetail(); return; }
     const b = this._bins()[binIdx], rows = [];
     Store.state.catalogM.forEach(p => {
       const s = this.variantStats(p, true); if (!s) return;
@@ -596,19 +751,42 @@ const Stats = {
     setTimeout(() => document.getElementById('statsDetail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   },
 
+  /* Mêmes détails au clic pour les ACCESSOIRES (fiches catalogA, regroupées par catégorie ; lien vers la fiche Accessoires). */
+  showAccDetail(filterFn, title, statsFn, min, max) {
+    const items = Store.state.catalogA.filter(filterFn), groups = {};
+    items.forEach(a => { const c = a.category || 'Non spécifié'; (groups[c] = groups[c] || []).push(a); });
+    this.detail = { acc: true, title, meats: Object.keys(groups).sort(U.sortFr), groups, statsFn, min: min === undefined ? null : min, max: max === undefined ? null : max };
+    this.renderDetail();
+    setTimeout(() => document.getElementById('statsDetail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  },
+  showAccCoeffDetail(serie, binIdx) {
+    const d = this.detail;
+    if (d && d.kind === 'coeff' && d.acc && d.serie === serie && d.binIdx === binIdx) { this.closeDetail(); return; }
+    const b = this._bins()[binIdx], rows = [];
+    Store.state.catalogA.forEach(a => {
+      const s = this.accVariantStats(a, true); if (!s) return;
+      s.variants.forEach(v => { const c = serie === 0 ? v.coeff : v.coeffMicro; if (c >= b.min && c < b.max) rows.push({ p: a, v, key: c }); });
+    });
+    rows.sort((x, y) => x.key - y.key || U.sortFr(x.p.name, y.p.name));
+    this.detail = { kind: 'coeff', acc: true, serie, binIdx, title: `Accessoires B2B — ${serie === 0 ? 'prix entreprise' : 'prix micro'} — coeff ${b.label} (${rows.length})`, rows };
+    this.renderDetail();
+    setTimeout(() => document.getElementById('statsDetail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  },
+
   closeDetail() { this.detail = null; this.renderDetail(); },
 
   renderDetail() {
     const box = document.getElementById('statsDetail'); if (!box) return;
     if (!this.detail) { box.innerHTML = ''; return; }
+    const link = p => this.detail.acc ? '#/accessoires/' + p.id : '#/catalogue/edit/' + p.id;   // fiche accessoire ou fiche prix mastication
     if (this.detail.kind === 'coeff') {
-      const thr = U.num(Store.state.settings.b2bCoeffThreshold), { title, rows } = this.detail;
+      const thr = this._thr(this.detail.acc), { title, rows } = this.detail;
       box.innerHTML = `<div class="card mt">
         <div class="frow" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">${U.esc(title)}</h2><button class="btn-ghost btn-sm" onclick="Stats.closeDetail()">✕ Fermer</button></div>
         ${rows.length ? `<div class="table-wrap"><table>
           <thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Coeff entreprise</th><th class="num">Coeff micro</th><th class="num">Bénéfice B2B</th></tr></thead>
           <tbody>${rows.map(({ p, v }) => `<tr>
-            <td class="col-name"><a href="#/catalogue/edit/${p.id}" title="Ouvrir la fiche produit">${U.esc(p.name)}</a></td>
+            <td class="col-name"><a href="${link(p)}" title="Ouvrir la fiche produit">${U.esc(p.name)}</a></td>
             <td>${U.esc(v.label)}</td>
             <td class="num sensitive ${v.coeff < thr ? 'neg' : ''}">${v.coeff.toFixed(2)}${v.coeff < thr ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${v.coeffMicro < thr ? 'neg' : ''}">${v.coeffMicro.toFixed(2)}</td>
@@ -627,14 +805,14 @@ const Stats = {
           const shown = (min == null) ? s.variants : s.variants.filter(v => v.coeff >= min && v.coeff < max);
           if (!shown.length) return '';
           const anyCritical = shown.some(v => v.critical);
-          return `<a href="#/catalogue/edit/${p.id}" class="card" style="text-decoration:none;color:inherit;display:block;${anyCritical ? 'border-left:4px solid #c0564a;' : ''}" title="Ouvrir la fiche produit (clic molette : nouvel onglet)">
+          return `<a href="${link(p)}" class="card" style="text-decoration:none;color:inherit;display:block;${anyCritical ? 'border-left:4px solid #c0564a;' : ''}" title="Ouvrir la fiche produit (clic molette : nouvel onglet)">
             <b>${U.esc(p.name)}</b> ${anyCritical ? '<span class="badge bad">critique</span>' : ''}
             <div class="mt">${shown.map(v => `<div class="frow" style="justify-content:space-between;font-size:.8rem;padding:2px 0;">
               <span class="muted">${U.esc(v.label)}</span><span class="sensitive" style="font-weight:600;${v.critical ? 'color:#c0564a;' : 'color:#4a7c59;'}">coeff ${v.coeff.toFixed(2)} · ${v.margin.toFixed(1)}%</span></div>`).join('')}</div>
           </a>`;
         }).join('');
         if (!cards) return '';
-        return `<h3 style="margin:16px 0 8px;">🥩 ${U.esc(m.toUpperCase())}</h3><div class="grid c3">${cards}</div>`;
+        return `<h3 style="margin:16px 0 8px;">${this.detail.acc ? '🐕' : '🥩'} ${U.esc(m.toUpperCase())}</h3><div class="grid c3">${cards}</div>`;
       }).join('') || '<p class="muted mt">Aucun produit dans cette sélection.</p>'}
     </div>`;
   },
