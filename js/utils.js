@@ -954,3 +954,15 @@ U._cmpSmart = (a, b) => {
   function start() { new MutationObserver(sched).observe(document.body, { childList: true, subtree: true }); sched(); }
   if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 })();
+
+/* Touche Échap (2026-10-09, demande d'Antho) : ferme la fenêtre U.modal ouverte = clic sur « Fermer » (onCancel compris), sans scroller
+   jusqu'au bas. Priorité aux petits menus ouverts (liste déroulante, calendrier, multi-choix, suggestions) qui gèrent leur propre Échap,
+   et aux fenêtres de confirmation (U.ask/confirm/alert), posées au-dessus. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+  if (document.getElementById('askBg') || !document.getElementById('modalBg')) return;
+  if (document.querySelector('.nsel-panel, .dsel-panel, details.multiselect[open]')) return;
+  if (e.target && e.target.closest && e.target.closest('.autocomplete')) return;
+  const b = document.getElementById('modalCancel');
+  if (b) { e.preventDefault(); b.click(); }
+});
