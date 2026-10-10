@@ -602,7 +602,13 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   .cart { bottom: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.print-only { display: none; }
 @media print {
+  .print-only { display: block !important; }
+  /* Impression d'une seule carte (Stats → liste par coeff) : tout le reste de la page est masqué, texte noir sur blanc */
+  body.print-focus #main > :not(#coeffList) { display: none !important; }
+  body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }
+  body.print-focus a { text-decoration: none; }
   .topnav, .toolbar, .seg, button, #toast { display: none !important; }
   .main { padding: 0; max-width: none; }
   .card { box-shadow: none; border: 1px solid #ccc; }

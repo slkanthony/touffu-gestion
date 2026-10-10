@@ -382,6 +382,119 @@ const Stats = {
   },
 
 
+  /* ───────── LISTE PAR COEFF (Antho 2026-10-10) ─────────
+     Sortir la liste des produits (variantes) dont le coeff PUBLIC est dans une fourchette (ex. paniers offerts : à valeur affichée égale, un fort coeff coûte moins cher à offrir).
+     Même coeff/prix/coût que la fiche Prix mastication (Pricing.variantCalc, frais de port d'achat estimés compris) ; stock + DLUO la plus proche lus sur les variantes du Stock reliées à la fiche.
+     Cases à cocher (comme Stock → Péremptions) : on imprime / copie seulement les lignes cochées. Mastication ET accessoires (même onglet que le sélecteur). */
+  coeffList: { min: '2', max: '', stockOnly: true, sort: 'coeff', q: '', excluded: [] },
+  _coeffNum(s) { const t = String(s == null ? '' : s).trim().replace(',', '.'); if (t === '') return null; const n = parseFloat(t); return isFinite(n) ? n : null; },
+  _stockIndex() {   // 'idFiche|idLigneFiche' -> { qty, dluo } (somme des variantes du Stock reliées à cette ligne de fiche ; dluo = la plus proche)
+    const idx = {};
+    (Store.state.stockM || []).forEach(sp => (sp.variants || []).forEach(sv => {
+      const cid = sv.catalogId || sp.catalogId; if (!cid || !sv.catalogVariantId) return;
+      const e = idx[cid + '|' + sv.catalogVariantId] || (idx[cid + '|' + sv.catalogVariantId] = { qty: 0, dluo: '' });
+      if (Stock.isVirtual(sp, sv)) { e.qty += Stock.virtualQty(sp, sv).t; return; }
+      (sv.lots || []).forEach(l => { const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent); if (q <= 0) return; e.qty += q; if (l.dluo && (!e.dluo || l.dluo < e.dluo)) e.dluo = l.dluo; });
+    }));
+    return idx;
+  },
+  _coeffRows(kind) {
+    const cl = this.coeffList, min = this._coeffNum(cl.min), max = this._coeffNum(cl.max), all = [];
+    if (kind === 'acc') {
+      (Store.state.catalogA || []).forEach(a => {
+        const c = Pricing.accCalc(a); if (!(c.cost > 0)) return;
+        const w = B2B.accWidths(a);
+        all.push({ key: 'A|' + a.id, id: a.id, name: a.name, variant: a.mainWidth || w[0] || '', group: a.category || '', price: c.priceTTC, cost: c.cost, coeff: c.effCoeff, qty: U.num(a.stockGeneral) + U.num(a.stockEvent), dluo: '' });
+      });
+    } else {
+      const sidx = this._stockIndex();
+      (Store.state.catalogM || []).forEach(p => {
+        const base = Pricing.baseUnitCost(p), vs = (p.variants || []).filter(v => v.enabled !== false);
+        vs.forEach((v, i) => {
+          const c = Pricing.variantCalc(p, v, i, base, vs.length), s = sidx[p.id + '|' + v.id] || { qty: 0, dluo: '' };
+          all.push({ key: 'M|' + p.id + '|' + v.id, id: p.id, name: p.name, variant: Pricing.labelVariant(v), group: p.meatType || '', price: c.priceTTC, cost: c.cost, coeff: c.effCoeff, qty: s.qty, dluo: s.dluo });
+        });
+      });
+    }
+    const rows = all.filter(r => (min == null || r.coeff >= min - 1e-9) && (max == null || r.coeff <= max + 1e-9)
+      && (!cl.stockOnly || r.qty > 0) && U.has(r.name + ' ' + r.variant + ' ' + r.group, cl.q));
+    const by = cl.sort;
+    rows.sort((a, b) => by === 'dluo' ? ((a.dluo || '9999') < (b.dluo || '9999') ? -1 : (a.dluo || '9999') > (b.dluo || '9999') ? 1 : b.coeff - a.coeff)
+      : by === 'name' ? U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant) : b.coeff - a.coeff || U.sortFr(a.name, b.name));
+    return rows;
+  },
+  _coeffLabel() {
+    const cl = this.coeffList, f = x => String(x).replace('.', ',');
+    const min = this._coeffNum(cl.min), max = this._coeffNum(cl.max);
+    return min != null && max != null ? `coeff de ${f(min)} à ${f(max)}` : min != null ? `coeff ${f(min)} et plus` : max != null ? `coeff jusqu'à ${f(max)}` : 'tous les coeff';
+  },
+  _coeffListHTML(kind) {
+    const cl = this.coeffList, rows = this._coeffRows(kind), acc = kind === 'acc';
+    const min = this._coeffNum(cl.min), max = this._coeffNum(cl.max), on = (a, b) => min === a && max === b;
+    const sel = rows.filter(r => !cl.excluded.includes(r.key));
+    const presets = [['Tous', null, null], ['≥ 2', 2, null], ['≥ 2,5', 2.5, null], ['2 à 2,5', 2, 2.5]];
+    return `<div class="card sensitive" id="coeffListCard">
+      <h2 class="no-print">🎯 Liste par coefficient <span class="muted" style="font-weight:400;font-size:.85rem;">· ${acc ? 'accessoires' : 'mastication'}, coeff public</span></h2>
+      <div class="print-only"><h2 style="margin:0 0 4px;">${acc ? 'Accessoires' : 'Mastication'} — ${U.esc(this._coeffLabel())}</h2><p style="margin:0 0 8px;">Liste du ${new Date().toLocaleDateString('fr-FR')} · ${sel.length} ligne(s)</p></div>
+      <div class="no-print">
+        <p class="muted help mb0">Idée panier offert : à valeur affichée égale, un produit à fort coeff te coûte moins cher à offrir. Coche les lignes à garder, puis imprime ou copie la liste. Prix et coût = ceux de la fiche ${acc ? 'accessoire' : 'Prix mastication'} (frais de port d'achat estimés compris).</p>
+        <div class="frow mt" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          ${U.seg(presets.map(([l, a, b]) => ({ l, on: on(a, b), js: `Stats.setCoeffRange(${a === null ? 'null' : a},${b === null ? 'null' : b})` })), { wrap: true, sm: true })}
+          <div class="fg" style="max-width:96px;margin:0;"><label>Coeff de</label><input id="cl_min" type="text" inputmode="decimal" value="${U.esc(cl.min)}" placeholder="min" onchange="Stats.setCoeffFilter('min',this.value)"></div>
+          <div class="fg" style="max-width:96px;margin:0;"><label>à</label><input id="cl_max" type="text" inputmode="decimal" value="${U.esc(cl.max)}" placeholder="max" onchange="Stats.setCoeffFilter('max',this.value)"></div>
+          <div class="fg" style="max-width:220px;margin:0;"><label>Recherche</label><input id="cl_q" value="${U.esc(cl.q)}" placeholder="nom du produit…" oninput="Stats.setCoeffFilter('q',this.value);U.refocus('cl_q')"></div>
+        </div>
+        <div class="frow mt" style="gap:10px;align-items:center;flex-wrap:wrap;">
+          ${U.seg([{ l: '📦 En stock seulement', on: cl.stockOnly, js: 'Stats.setCoeffFilter(\'stockOnly\',true)' }, { l: 'Tout le catalogue', on: !cl.stockOnly, js: 'Stats.setCoeffFilter(\'stockOnly\',false)' }], { wrap: true, sm: true })}
+          ${U.seg([['coeff', 'Tri : coeff ↓'], ['dluo', 'Tri : DLUO'], ['name', 'Tri : nom']].map(([k, l]) => ({ l, on: cl.sort === k, js: `Stats.setCoeffFilter('sort','${k}')` })), { wrap: true, sm: true })}
+        </div>
+        <div class="frow mt" style="gap:6px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-cta btn-sm" onclick="Stats.coeffPrint()">🖨 Imprimer la sélection</button>
+          <button class="btn-ghost btn-sm" onclick="Stats.coeffCopy()">📋 Copier la liste</button>
+          <button class="btn-ghost btn-sm" onclick="Stats.coeffAll(true)">☑ Tout cocher</button>
+          <button class="btn-ghost btn-sm" onclick="Stats.coeffAll(false)">☐ Tout décocher</button>
+          <span class="muted" style="margin-left:auto;">${sel.length} / ${rows.length} ligne(s) · ${U.esc(this._coeffLabel())}</span>
+        </div>
+      </div>
+      ${rows.length ? `<div class="table-wrap mt"><table>
+        <thead><tr><th class="no-print"><input type="checkbox" ${sel.length === rows.length ? 'checked' : ''} onchange="Stats.coeffAll(this.checked)"></th><th class="col-name">Produit</th><th>${acc ? 'Largeur' : 'Variante'}</th><th>${acc ? 'Catégorie' : 'Viande'}</th><th class="num">Prix TTC</th><th class="num">Coût de revient</th><th class="num">Coeff</th><th class="num">En stock</th>${acc ? '' : '<th>DLUO</th>'}</tr></thead>
+        <tbody>${rows.map(r => `<tr class="${cl.excluded.includes(r.key) ? 'excluded-from-print' : ''}">
+          <td class="no-print"><input type="checkbox" ${cl.excluded.includes(r.key) ? '' : 'checked'} onchange="Stats.coeffToggle('${r.key}')"></td>
+          <td class="col-name"><a href="${acc ? '#/accessoires/' + r.id : '#/catalogue/edit/' + r.id}" title="Ouvrir la fiche">${U.esc(r.name)}</a></td>
+          <td>${U.esc(r.variant)}</td><td>${U.esc(r.group)}</td>
+          <td class="num">${U.eur(r.price)}</td><td class="num sensitive">${U.eur(r.cost)}</td><td class="num sensitive"><b>${r.coeff.toFixed(2)}</b></td>
+          <td class="num">${r.qty > 0 ? U.qty(r.qty) : '<span class="muted">0</span>'}</td>${acc ? '' : `<td>${r.dluo ? U.frDate(r.dluo) : '<span class="muted">—</span>'}</td>`}</tr>`).join('')}</tbody></table></div>`
+        : `<p class="muted mt">Aucune ligne dans cette fourchette${cl.stockOnly ? ' (essaie « Tout le catalogue » si tu veux aussi les produits sans stock)' : ''}.</p>`}
+    </div>`;
+  },
+  renderCoeffList() { const box = document.getElementById('coeffList'); if (box) box.innerHTML = this._coeffListHTML(this.priceKind === 'acc' ? 'acc' : 'mast'); },
+  setCoeffFilter(k, v) { this.coeffList[k] = v; this.renderCoeffList(); },
+  setCoeffRange(a, b) { this.coeffList.min = a === null ? '' : String(a); this.coeffList.max = b === null ? '' : String(b); this.renderCoeffList(); },
+  coeffToggle(key) { const ex = this.coeffList.excluded, i = ex.indexOf(key); if (i >= 0) ex.splice(i, 1); else ex.push(key); this.renderCoeffList(); },
+  coeffAll(checked) {
+    const keys = this._coeffRows(this.priceKind === 'acc' ? 'acc' : 'mast').map(r => r.key), ex = this.coeffList.excluded;
+    this.coeffList.excluded = checked ? ex.filter(k => !keys.includes(k)) : [...new Set(ex.concat(keys))];
+    this.renderCoeffList();
+  },
+  /* Impression : la page entière sauf cette carte (classe `print-focus`, retirée après l'impression). */
+  coeffPrint() {
+    document.body.classList.add('print-focus');
+    const done = () => { document.body.classList.remove('print-focus'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+    setTimeout(done, 1500);
+  },
+  coeffCopy() {
+    const acc = this.priceKind === 'acc', rows = this._coeffRows(acc ? 'acc' : 'mast').filter(r => !this.coeffList.excluded.includes(r.key));
+    if (!rows.length) { U.toast('Aucune ligne cochée à copier.'); return; }
+    const f = n => U.eur(n).replace(/[  ]/g, ' ');
+    const text = (acc ? 'Accessoires' : 'Mastication') + ' — ' + this._coeffLabel() + ' (' + rows.length + ')\n' + rows.map(r =>
+      '• ' + r.name + (r.variant ? ' — ' + r.variant : '') + ' : ' + f(r.price) + ' · coeff ' + r.coeff.toFixed(2).replace('.', ',') + ' · stock ' + U.qty(r.qty) + (r.dluo ? ' · DLUO ' + U.frDate(r.dluo) : '')).join('\n');
+    const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); U.toast('Liste copiée (' + rows.length + ' lignes).'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Liste copiée (' + rows.length + ' lignes).')).catch(fallback);
+    else fallback();
+  },
+
   renderPrice() { return this.priceKind === 'acc' ? this.renderPriceAcc() : this.renderPriceMast(); },
 
   renderPriceMast() {
@@ -440,6 +553,7 @@ const Stats = {
           <div style="position:relative;height:230px;">${products.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div>
         </div>
       </div>
+      <div id="coeffList" class="mt">${this._coeffListHTML('mast')}</div>
       <div id="statsDetail"></div>`);
 
     if (products.length) this.drawCharts(meatCount, supplierCount, bins, binCounts(statsPublic), { ent: binCounts(statsB2B), micro: binCounts(statsB2B, 'coeffsMicro') }, statsPublic, statsB2B);
@@ -604,6 +718,7 @@ const Stats = {
         ${this._rankCard('📏 Sangles les plus utilisées', use.refs.map(r => ({ label: r.label, value: r.m })), r => U.qty(r.value) + ' m', 'Aucune sangle utilisée pour le moment.', fabNote)}
         ${this._rankCard('🎨 Couleurs les plus utilisées', use.colors.map(r => ({ label: r.label, value: r.m })), r => U.qty(r.value) + ' m', 'Pas encore de couleur connue : elle est retenue à chaque 🛠 Fabriquer.', 'Toutes largeurs confondues. ' + fabNote)}
       </div>
+      <div id="coeffList" class="mt">${this._coeffListHTML('acc')}</div>
       <div id="statsDetail"></div>`);
 
     if (items.length) this.drawCharts(catCount, widthCount, bins, binCounts(statsPublic), { ent: binCounts(statsB2B), micro: binCounts(statsB2B, 'coeffsMicro') }, statsPublic, statsB2B, true);

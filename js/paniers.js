@@ -1555,7 +1555,7 @@ const Paniers = {
               <input id="pan_add_q" type="text" autocomplete="off" placeholder="Chercher un produit…"
                 value="${U.esc(this.addQ)}" oninput="Paniers.setAddQ(this.value)" onfocus="Paniers.openAddMenu()">
             ${this.addOpen && addResults.length ? `<div class="ac-list" style="max-height:250px;overflow:auto;">${addResults.map(c =>
-              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
+              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}${c.coeff > 0 ? ` · <span class="sensitive">coeff ${c.coeff.toFixed(2)}</span>` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
             ).join('')}</div>` : ''}
             </div>
           </div>
@@ -1594,7 +1594,8 @@ const Paniers = {
       return { ...b, cost, priceHT, margin, social, profit, profitActuel, coeff };
     });
 
-    const totVente = rows.reduce((a, r) => a + r.price * r.qty, 0) * fd;
+    const valeur = rows.reduce((a, r) => a + r.price * r.qty, 0);   // valeur affichée au prix public (avant réduction client)
+    const totVente = valeur * fd;
     const totCost = rows.reduce((a, r) => a + r.cost * r.qty, 0);
     const totMargin = rows.reduce((a, r) => a + r.margin * r.qty, 0);
     const totSocial = rows.reduce((a, r) => a + r.social * r.qty, 0);
@@ -1610,6 +1611,7 @@ const Paniers = {
     return `<div style="margin-top:12px;padding:12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--card-border);">
       <b>Récapitulatif :</b> ${nbArticles} article(s) · ${nViandes} viande(s) · ${nProduits} produit(s) différent(s)
       ${avgCoeff > 0 ? ` · <span class="sensitive"><b>Coeff moyen : ${avgCoeff.toFixed(2)}</b></span>` : ''}
+      ${totCost > 0 && valeur > 0 ? ` · <span class="sensitive" title="Panier offert : la valeur affichée est celle au prix public ; le coût réel est le coût de revient des produits (fiche Prix mastication, frais de port d'achat estimés compris)">🎁 <b>Coût réel ${U.eur(totCost)}</b> pour ${U.eur(valeur)} de valeur affichée (${Math.round(totCost / valeur * 100)} %)</span>` : ''}
       ${this.nbChiens > 1 ? ` · × ${this.nbChiens} chiens` : ''}
       ${hasLocked ? ` · 🔒 ${this.basket.filter(b => b.locked).length} verrouillé(s)` : ''}
       ${this.basket.some(b => b.daysLeft <= 30) ? ` · <span class="badge warn">contient des DLUO proches</span>` : ''}
