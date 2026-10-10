@@ -20,7 +20,7 @@ const Stats = {
   _charts: {},
   tab: 'price',       // 'price' (coeff/marges) | 'sales' (performance des ventes)
   salesPeriod: 'all', // 'all' | 'year' | '12m'
-  salesMetric: 'qty', // 'qty' | 'ca' — métrique des classements & du mensuel
+  salesKind: 'all',   // 'all' | 'mast' | 'acc' — filtre de l'onglet Ventes (volumes) ; l'onglet Chiffre d'affaires est toujours global
   seasonProduct: '',  // clé produit pour la saisonnalité détaillée
   priceKind: 'mast',  // 'mast' | 'acc' : catégorie affichée dans l'onglet Prix & marges
   _dormantOpen: false,
@@ -36,20 +36,21 @@ const Stats = {
   /* Seuil de coeff critique de la catégorie affichée (mastication : b2bCoeffThreshold ; accessoires : accCoeffThreshold). */
   _thr(acc) { const S = Store.state.settings; return U.num(acc ? (S.accCoeffThreshold || S.b2bCoeffThreshold) : S.b2bCoeffThreshold); },
   setSalesPeriod(v) { this.salesPeriod = v; this.seasonProduct = ''; this.render(); },
-  setSalesMetric(m) { this.salesMetric = m; this.render(); },
+  setSalesKind(k) { this.salesKind = k; this.seasonProduct = ''; this.render(); },
+  _metric() { return this.tab === 'ca' ? 'ca' : 'qty'; },   // onglet Chiffre d'affaires = euros ; onglet Ventes = quantités
   setSeasonProduct(v) { this.seasonProduct = v; this.render(); },
   toggleDormant() { this._dormantOpen = !this._dormantOpen; this.render(); },
 
   tabBar() {
     const t = this.tab || 'price';
-    const tabs = [['price', '📊 Prix &amp; marges'], ['sales', '🛒 Ventes'], ['pack', '📦 Emballages'], ['events', '🎪 Événements']];
+    const tabs = [['price', '📊 Prix &amp; marges'], ['sales', '🛒 Ventes'], ['ca', '💶 Chiffre d&#39;affaires'], ['pack', '📦 Emballages'], ['events', '🎪 Événements']];
     if (!App.isViewer) tabs.push(['clients', '👤 Clients']);
     return `<div class="card">${U.seg(tabs.map(([k, l]) => ({ l, on: t === k, js: `Stats.setTab('${k}')` })), { full: true, scroll: true, label: 'Statistiques' })}</div>`;
   },
 
   render() {
-    U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesMetric', 'seasonProduct', 'priceKind']);
-    if ((this.tab || 'price') === 'sales') return this.renderSales();
+    U.syncFilters('stats', this, ['tab', 'salesPeriod', 'salesKind', 'seasonProduct', 'priceKind']);
+    if (this.tab === 'sales' || this.tab === 'ca') return this.renderSales();
     if (this.tab === 'pack') return this.renderPack();
     if (this.tab === 'events') return this.renderEvents();
     if (this.tab === 'clients' && !App.isViewer) return this.renderClients();
@@ -963,7 +964,9 @@ const Stats = {
     const cut = now - 365 * 86400000;
     const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime();
     const inPeriod = (ts) => period === 'all' ? true : period === '12m' ? ts >= cut : ts >= yearStart;
-    const metric = this.salesMetric === 'ca' ? 'ca' : 'qty';
+    const metric = this._metric();
+    const kind = this.tab === 'sales' ? (this.salesKind || 'all') : 'all';   // filtre Mastication / Accessoires (onglet Ventes seulement)
+    const keep = i => kind === 'all' || (kind === 'acc') === (i.kind === 'A');
     // Taux & frais — mêmes formules que le Tableau de bord (CA par mois), pour une compta cohérente.
     const S = Store.state.settings;
     const socStd = U.num(S.socialTaxRate) / 100;
@@ -990,6 +993,7 @@ const Stats = {
       my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += Pricing.eventCost(s);
       (s.items || []).forEach(i => {
         if (i.kind === 'C') { my.boxCost += Pricing.saleItemCost(i); return; } // consommables (carton…) : coût compté à part, pas en produit vendu
+        if (!keep(i)) return;
         const qty = U.num(i.qty), rev = U.num(i.price) * qty;
         articles += qty; my.articles += qty; my.cogs += Pricing.saleItemCost(i);
         if (i.kind === 'A') {
@@ -1017,8 +1021,8 @@ const Stats = {
     const lastSold = {};
     allSales.forEach(s => (s.items || []).forEach(i => { if (i.pId) lastSold[i.pId] = Math.max(lastSold[i.pId] || 0, s.ts); }));
     const dormant = [];
-    Store.state.catalogM.forEach(p => { if (!soldPids.has(p.id)) dormant.push({ name: p.name, cat: p.meatType || '—', last: lastSold[p.id] || null }); });
-    Store.state.catalogA.forEach(a => { if (!soldPids.has(a.id)) dormant.push({ name: a.name, cat: 'Accessoire', last: lastSold[a.id] || null }); });
+    if (kind !== 'acc') Store.state.catalogM.forEach(p => { if (!soldPids.has(p.id)) dormant.push({ name: p.name, cat: p.meatType || '—', last: lastSold[p.id] || null }); });
+    if (kind !== 'mast') Store.state.catalogA.forEach(a => { if (!soldPids.has(a.id)) dormant.push({ name: a.name, cat: 'Accessoire', last: lastSold[a.id] || null }); });
     dormant.sort((a, b) => (a.last || 0) - (b.last || 0));
     // Frais de livraison sur achats + frais généraux : les MÊMES charges que la Compta (Compta.chargesPeriod), sur la période choisie.
     // Un mois sans vente mais avec une facture reste affiché, pour que le total soit celui de la Compta.
@@ -1037,7 +1041,8 @@ const Stats = {
       const mc = charges.byMonth[m.key]; m.charges = mc ? mc.portBuy + mc.expensed : 0;   // frais de livraison sur achats + frais généraux du mois (comme la Compta)
       m.net = m.ca - m.cogs + m.shipFee - m.fee - m.shipping - m.boxCost - m.eventFee - m.cotis - m.uvMaint - m.charges - (S.vatActive ? m.tva : 0);
     });
-    return { charges, nSales: sales.length, articles, ca, products, byChannelCA, byCatCA, byMeatCA, accType, accWidth, byMonthQty, byMonthCA, months, dormant, sales };
+    const nSales = kind === 'all' ? sales.length : sales.filter(s => (s.items || []).some(i => i.kind !== 'C' && keep(i))).length;
+    return { charges, nSales, articles, ca, products, byChannelCA, byCatCA, byMeatCA, accType, accWidth, byMonthQty, byMonthCA, months, dormant, sales };
   },
 
   _monthKeyLabel(key) { const [y, mo] = String(key).split('-'); return (this._monthLabels[+mo - 1] || mo) + ' ' + y; },
@@ -1076,7 +1081,7 @@ const Stats = {
 
   renderSales() {
     const agg = this._salesAgg();
-    const metric = this.salesMetric === 'ca' ? 'ca' : 'qty';
+    const metric = this._metric();
     const mLabel = metric === 'ca' ? 'CA' : 'Quantité';
     const periodOpts = [{ v: 'all', l: 'Tout l’historique' }, { v: 'year', l: 'Cette année' }, { v: '12m', l: '12 derniers mois' }];
     const top = agg.products.slice().sort((a, b) => metric === 'ca' ? b.ca - a.ca : b.qty - a.qty).slice(0, 20);
@@ -1092,19 +1097,16 @@ const Stats = {
     const hasMeat = Object.keys(agg.byMeatCA || {}).length > 0;
 
     App.mount(`
-      <div class="view-title"><h1>Statistiques</h1><span class="sub">performance des ventes</span></div>
+      <div class="view-title"><h1>Statistiques</h1><span class="sub">${metric === 'ca' ? 'chiffre d\'affaires & rentabilité' : 'performance des ventes'}</span></div>
       ${this.tabBar()}
       <div class="card">
         <div class="frow" style="gap:16px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:220px;margin:0;"><label>Période</label>${U.customSelect({ value: this.salesPeriod, options: periodOpts, onPick: 'Stats.setSalesPeriod' })}</div>
-          <div class="fg" style="margin:0;"><label>Vue</label><div class="frow" style="gap:6px;">
-            <button class="btn-ghost btn-sm ${metric === 'qty' ? 'active' : ''}" onclick="Stats.setSalesMetric('qty')">Quantité</button>
-            <button class="btn-ghost btn-sm ${metric === 'ca' ? 'active' : ''}" onclick="Stats.setSalesMetric('ca')">Chiffre d'affaires</button>
-          </div></div>
+          ${metric === 'ca' ? '' : `<div class="fg" style="margin:0;"><label>Catégorie</label>${U.seg([['all', 'Tout'], ['mast', '🥩 Mastication'], ['acc', '🐕 Accessoires']].map(([k, l]) => ({ l, on: (this.salesKind || 'all') === k, js: `Stats.setSalesKind('${k}')` })), { wrap: true })}</div>`}
         </div>
         <p class="muted help" style="margin-top:8px;">Basé sur tes ventes enregistrées. ⚠️ Les ventes de marché <b>sans SKU</b> (non importées) n'apparaissent pas ici — le classement devient précis à mesure que tu remplis les SKU côté SumUp.</p>
       </div>
-      ${!hasSales ? '<div class="card empty"><span class="big">🛒</span>Aucune vente sur cette période.</div>' : `
+      ${!hasSales ? `<div class="card empty"><span class="big">🛒</span>Aucune vente ${metric === 'qty' && this.salesKind !== 'all' ? 'de cette catégorie ' : ''}sur cette période.</div>` : `
       <div class="grid c4">
         <div class="kpi"><div class="v">${agg.nSales}</div><div class="l">Ventes</div></div>
         ${metric === 'ca' ? `<div class="kpi sensitive"><div class="v">${U.eur(agg.ca)}</div><div class="l">Chiffre d'affaires</div></div>
@@ -1126,9 +1128,9 @@ const Stats = {
         ${hasChannel && metric === 'ca' ? `<div class="card"><h2>🛍️ Répartition par canal (CA)</h2><div style="position:relative;height:230px;"><canvas id="salesChannelChart"></canvas></div></div>` : ''}
       </div>
 
-      <div class="card mt"><h2>${this.salesMetric === 'ca' ? '📈 Évolution — CA, coûts, marge & bénéfice' : '📊 Quantité vendue par mois'}</h2>
-        <p class="muted help">${this.salesMetric === 'ca' ? 'Une courbe par poste, mois par mois (chronologique, années distinctes) : clique un nom dans la légende pour masquer / afficher sa courbe. « Frais » = paiement, envoi, stand/repas/déplacement, entretien matériel, livraison & frais généraux (sans les cartons, qui ont leur courbe).' : 'Nombre d\'articles vendus mois par mois (chronologique, années distinctes).'}</p>
-        <div style="position:relative;height:${this.salesMetric === 'ca' ? 300 : 190}px;"><canvas id="salesTimelineChart"></canvas></div>
+      <div class="card mt"><h2>${metric === 'ca' ? '📈 Évolution — CA, coûts, marge & bénéfice' : '📊 Quantité vendue par mois'}</h2>
+        <p class="muted help">${metric === 'ca' ? 'Une courbe par poste, mois par mois (chronologique, années distinctes) : clique un nom dans la légende pour masquer / afficher sa courbe. « Frais » = paiement, envoi, stand/repas/déplacement, entretien matériel, livraison & frais généraux (sans les cartons, qui ont leur courbe).' : 'Nombre d\'articles vendus mois par mois (chronologique, années distinctes).'}</p>
+        <div style="position:relative;height:${metric === 'ca' ? 300 : 190}px;"><canvas id="salesTimelineChart"></canvas></div>
       </div>
 
       ${metric !== 'ca' ? '' : `<div class="card mt"><h2>🧾 Détail par mois — frais, marge & bénéfice</h2>
@@ -1174,7 +1176,7 @@ const Stats = {
         ${hasMeat ? '<div class="card"><h2>🍖 CA par type de viande</h2><div style="position:relative;height:200px;"><canvas id="salesMeatChart"></canvas></div></div>' : ''}
       </div>` : ''}
 
-      ${hasAcc ? `<div class="card mt"><h2>🦮 Accessoires — performance</h2>
+      ${hasAcc && !(metric === 'qty' && this.salesKind === 'mast') ? `<div class="card mt"><h2>🦮 Accessoires — performance</h2>
         <p class="muted help">Répartition de tes ventes d'accessoires par type et par largeur (${mLabel}). ℹ️ La couleur n'est pas encore suivie par vente (un seul SKU par modèle) — on pourra l'ajouter plus tard si tu veux le détail par couleur.</p>
         <div class="grid c2">
           <div><h3 style="font-size:.9rem;">Par type</h3><div style="position:relative;height:200px;"><canvas id="salesAccTypeChart"></canvas></div></div>
@@ -1203,7 +1205,7 @@ const Stats = {
     const palette = U.CHART_COLORS;
     Object.values(this._charts).forEach(c => c?.destroy());
     this._charts = {};
-    const metric = this.salesMetric === 'ca' ? 'ca' : 'qty';
+    const metric = this._metric();
     const mLabel = metric === 'ca' ? 'CA' : 'Quantité';
     const fmtV = (v) => metric === 'ca' ? U.eur(v) : U.qty(v);
 
