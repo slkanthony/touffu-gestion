@@ -619,6 +619,7 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 .fold-box.open { max-height: none; overflow: visible; }
 .fold-box:not(.open)::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 64px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
 .fold-more { display: block; width: 100%; margin-top: 8px; }
+@page { size: A4 portrait; margin: 9mm 10mm; }
 @media print {
   .fold-box { max-height: none !important; overflow: visible !important; }
   .fold-box::after { display: none !important; }
@@ -628,8 +629,11 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   body.print-focus #main > :not(.print-target) { display: none !important; }
   .print-col { display: table-cell !important; width: 28px; text-align: center; }
   .sheet-grp td { font-weight: 700; border-top: 2px solid #999 !important; }
-  #ctlSheet table { font-size: 9.5pt; }
-  .sheet-prod td { padding: 2px 6px !important; }
+  #ctlSheet table { font-size: 8.5pt; line-height: 1.15; }
+  #ctlSheet th { padding: 3px 5px !important; font-size: 8pt; }
+  #ctlSheet .card, #ctlSheet.card { padding: 0 !important; border: 0 !important; }
+  #ctlSheet .table-wrap { margin-top: 4px !important; overflow: visible !important; }
+  .sheet-prod td { padding: 1px 5px !important; }
   .sheet-prod { break-inside: avoid; }
   .sheet-gh { break-after: avoid; }
   .sheet-prod > tr:first-child > td { border-top: 1.5px solid #888 !important; }

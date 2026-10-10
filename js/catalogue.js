@@ -158,8 +158,8 @@ const Catalogue = {
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;flex-wrap:wrap;">
           <button class="btn-cta btn-sm" onclick="Catalogue.sheetPrint()">🖨 Imprimer</button>
-          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('copy')">🖼️ Copier l'image</button>
-          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('save')">⬇ Image (PNG)</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('copy')" title="Pages A4 : une page = une image">🖼️ Copier l'image</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('save')" title="Une image PNG au format A4 par page">⬇ Images A4 (PNG)</button>
           <button class="btn-ghost btn-sm" onclick="Catalogue.sheetExcel()">📊 Excel (.xlsx)</button>
           <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
         </div>
@@ -178,29 +178,46 @@ const Catalogue = {
     window.print();
     setTimeout(done, 1500);
   },
-  /* Image : fond blanc, mêmes lignes que la fiche (sans la case ✔) — hauteur selon le nombre de lignes. */
-  _sheetCanvas() {
-    const rows = this._sheetRows(), grp = this._sheetGroups(rows), W = 1240, pad = 36, rowH = 30;
+  /* Image : PAGES A4 portrait (1240 × 1754 px = 150 dpi), fond blanc, mêmes lignes que la fiche (sans la case ✔).
+     Un produit n'est jamais coupé entre deux pages, l'en-tête de colonnes est répété, un groupe qui continue sur la page suivante est repris « (suite) », chaque page est numérotée (Antho 2026-10-10 : une seule image géante n'était pas imprimable). */
+  _sheetPages() {
+    const rows = this._sheetRows(), grp = this._sheetGroups(rows), W = 1240, H = 1754, padX = 44, padT = 44, padB = 70, rowH = 25, headH = 30, top1 = 84;
     const prodsOf = g => { const out = []; g.rows.forEach(r => { const l = out[out.length - 1]; if (l && l.id === r.id) l.rows.push(r); else out.push({ id: r.id, name: r.name, rows: [r] }); }); return out; };
-    const lines = grp.reduce((a, g) => a + g.rows.length + (g.label ? 1 : 0), 0), H = pad + 96 + 44 + Math.max(1, lines) * rowH + pad;
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    const x = cv.getContext('2d'), font = (w, s) => `${w} ${s}px Quicksand, "Segoe UI", Arial, sans-serif`;
-    const fit = (t, max) => { t = String(t || ''); if (x.measureText(t).width <= max) return t; while (t.length > 1 && x.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
-    x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H); x.textBaseline = 'middle';
-    x.fillStyle = '#1c2b33'; x.font = font(800, 26); x.fillText('Fiche de contrôle des prix — mastication', pad, pad + 14);
-    x.fillStyle = '#5c6a78'; x.font = font(500, 15); x.fillText(fit(new Date().toLocaleDateString('fr-FR') + ' · ' + rows.length + ' ligne(s) · ' + this._sheetSummary(), W - 2 * pad), pad, pad + 48);
-    const C = { name: pad + 10, variant: 430, sku: 560, pack: 780, coeff: 1060, price: W - pad - 10 };
-    let y = pad + 84;
-    x.fillStyle = '#efe6dc'; x.fillRect(pad, y, W - 2 * pad, 40); x.fillStyle = '#6b4a36'; x.font = font(800, 14);
-    x.textAlign = 'left'; [['PRODUIT', C.name], ['VARIANTE', C.variant], ['SKU', C.sku], ['SACHET', C.pack]].forEach(([t, px]) => x.fillText(t, px, y + 20));
-    x.textAlign = 'right'; x.fillText('COEFF', C.coeff, y + 20); x.fillText('PRIX TTC', C.price, y + 20);
-    y += 44;
+    const pl = n => n > 1 ? 's' : '';
+    const pages = []; let cur = null, y = 0;
+    const newPage = () => { cur = { items: [] }; pages.push(cur); y = padT + (pages.length === 1 ? top1 : 0) + headH; };
+    newPage();
     grp.forEach(g => {
       const prods = prodsOf(g);
-      if (g.label) { x.fillStyle = '#f1e7dc'; x.fillRect(pad, y, W - 2 * pad, rowH); x.fillStyle = '#a67153'; x.font = font(800, 16); x.textAlign = 'left'; x.fillText(`${g.label} (${prods.length} produit${prods.length > 1 ? 's' : ''} · ${g.rows.length} ligne${g.rows.length > 1 ? 's' : ''})`, C.name, y + rowH / 2); y += rowH; }
       prods.forEach((pr, i) => {
-        const top = y;
-        if (i % 2) { x.fillStyle = '#faf7f3'; x.fillRect(pad, y, W - 2 * pad, pr.rows.length * rowH); }
+        const h = pr.rows.length * rowH;
+        let head = g.label && i === 0 ? `${g.label} (${prods.length} produit${pl(prods.length)} · ${g.rows.length} ligne${pl(g.rows.length)})` : null;
+        if (y + h + (head ? rowH : 0) > H - padB && cur.items.length) { newPage(); if (g.label && !head) head = g.label + ' (suite)'; }
+        if (head) { cur.items.push({ t: 'g', label: head, y }); y += rowH; }
+        cur.items.push({ t: 'p', pr, alt: i % 2, y }); y += h;
+      });
+    });
+    const date = new Date().toLocaleDateString('fr-FR'), summary = this._sheetSummary();
+    return pages.map((pg, n) => {
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const x = cv.getContext('2d'), font = (w, s) => `${w} ${s}px Quicksand, "Segoe UI", Arial, sans-serif`;
+      const fit = (t, max) => { t = String(t || ''); if (x.measureText(t).width <= max) return t; while (t.length > 1 && x.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
+      x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H); x.textBaseline = 'middle';
+      let hy = padT;
+      if (n === 0) {
+        x.fillStyle = '#1c2b33'; x.font = font(800, 26); x.textAlign = 'left'; x.fillText('Fiche de contrôle des prix — mastication', padX, padT + 14);
+        x.fillStyle = '#5c6a78'; x.font = font(500, 15); x.fillText(fit(date + ' · ' + rows.length + ' ligne(s) · ' + summary, W - 2 * padX), padX, padT + 48);
+        hy = padT + top1;
+      }
+      const C = { name: padX + 10, variant: 430, sku: 570, pack: 800, coeff: 1075, price: W - padX - 10 };
+      x.fillStyle = '#efe6dc'; x.fillRect(padX, hy, W - 2 * padX, headH - 4); x.fillStyle = '#6b4a36'; x.font = font(800, 13);
+      x.textAlign = 'left'; [['PRODUIT', C.name], ['VARIANTE', C.variant], ['SKU', C.sku], ['SACHET', C.pack]].forEach(([t, px]) => x.fillText(t, px, hy + 13));
+      x.textAlign = 'right'; x.fillText('COEFF', C.coeff, hy + 13); x.fillText('PRIX TTC', C.price, hy + 13);
+      pg.items.forEach(it => {
+        let y = it.y;
+        if (it.t === 'g') { x.fillStyle = '#f1e7dc'; x.fillRect(padX, y, W - 2 * padX, rowH); x.fillStyle = '#a67153'; x.font = font(800, 15); x.textAlign = 'left'; x.fillText(it.label, C.name, y + rowH / 2); return; }
+        const pr = it.pr, topY = y;
+        if (it.alt) { x.fillStyle = '#faf7f3'; x.fillRect(padX, y, W - 2 * padX, pr.rows.length * rowH); }
         pr.rows.forEach((r, j) => {
           x.textAlign = 'left';
           if (j === 0) { x.fillStyle = '#1c2b33'; x.font = font(800, 16); x.fillText(fit(pr.name, C.variant - C.name - 14), C.name, y + rowH / 2); }
@@ -211,26 +228,44 @@ const Catalogue = {
           x.font = font(800, 16); x.fillText(U.eur(r.price), C.price, y + rowH / 2);
           y += rowH;
         });
-        x.strokeStyle = '#cdbfae'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(pad, top); x.lineTo(W - pad, top); x.stroke();   // trait entre deux produits
+        x.strokeStyle = '#cdbfae'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(padX, topY); x.lineTo(W - padX, topY); x.stroke();   // trait entre deux produits
       });
+      x.fillStyle = '#7a8794'; x.font = font(500, 14); x.textAlign = 'left'; x.fillText('Fiche de contrôle des prix — mastication · ' + date, padX, H - 34);
+      x.textAlign = 'right'; x.fillText(`Page ${n + 1} / ${pages.length}`, W - padX, H - 34);
+      return cv;
     });
-    return cv;
   },
+  /* « Copier » : une seule page → copie directe ; plusieurs pages → fenêtre avec un bouton Copier par page (le presse-papiers ne garde qu'une image). « Enregistrer » : un PNG par page. */
   async sheetImage(mode) {
     try {
       if (!this._sheetRows().length) { U.toast('Aucune ligne à mettre en image.', true); return; }
-      const cv = this._sheetCanvas(), blob = await new Promise(r => cv.toBlob(r, 'image/png'));
-      if (!blob) throw new Error('image');
+      const pages = this._sheetPages(), n = pages.length;
+      const blobs = await Promise.all(pages.map(cv => new Promise(r => cv.toBlob(r, 'image/png'))));
+      if (blobs.some(b => !b)) throw new Error('image');
+      this._sheetImgs = pages.map((cv, i) => ({ blob: blobs[i], url: cv.toDataURL('image/png') }));
       if (mode === 'copy') {
-        if (await U.copyImage(blob, cv.toDataURL('image/png'))) { U.toast('Image copiée — colle-la où tu veux.'); return; }
-        U.modal({ title: '🖼️ Fiche de contrôle', hideOk: true, wide: true, body: `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Fiche de contrôle">` });
+        if (n === 1) {
+          if (await U.copyImage(blobs[0], this._sheetImgs[0].url)) { U.toast('Image copiée — colle-la où tu veux.'); return; }
+          U.modal({ title: '🖼️ Fiche de contrôle', hideOk: true, wide: true, body: `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${this._sheetImgs[0].url}" style="width:100%;border-radius:8px;display:block;" alt="Fiche de contrôle">` });
+          return;
+        }
+        U.modal({ title: `🖼️ Fiche de contrôle — ${n} pages A4`, hideOk: true, wide: true, body: `<p class="muted" style="margin:0 0 10px;">Le presse-papiers ne garde qu'une image à la fois : copie la page voulue, ou utilise « ⬇ Images A4 » pour tout enregistrer.</p>` + this._sheetImgs.map((im, i) => `<div style="margin-bottom:14px;"><div class="frow" style="justify-content:space-between;align-items:center;margin-bottom:4px;"><b>Page ${i + 1} / ${n}</b><button class="btn-ghost btn-sm" onclick="Catalogue.sheetCopyPage(${i})">🖼️ Copier cette page</button></div><img src="${im.url}" style="width:100%;border:1px solid var(--card-border);border-radius:6px;display:block;" alt="Page ${i + 1}"></div>`).join('') });
         return;
       }
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = `controle-prix-mastication-${U.today()}.png`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      for (let i = 0; i < n; i++) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blobs[i]); a.download = `controle-prix-mastication-${U.today()}${n > 1 ? `-page-${i + 1}-sur-${n}` : ''}.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        if (i < n - 1) await new Promise(r => setTimeout(r, 250));
+      }
+      if (n > 1) U.toast(`${n} images A4 téléchargées (une par page).`);
     } catch (e) { U.toast('Impossible de créer l’image.', true); }
+  },
+  async sheetCopyPage(i) {
+    const im = (this._sheetImgs || [])[i]; if (!im) return;
+    if (await U.copyImage(im.blob, im.url)) U.toast(`Page ${i + 1} copiée.`);
+    else U.toast('Copie impossible ici : clic droit sur l’image → « Copier l’image ».', true);
   },
   _loadXlsx() {
     return new Promise((ok, ko) => {
