@@ -753,10 +753,10 @@ const Stats = {
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
         plugins: [U.donutCenter(textColor, null, ctr.label, ctr.parts)],
-        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2, borderRadius: labels.length > 6 || labels.length < 2 ? 0 : 6, hoverOffset: 6 }] },
+        data: { labels, datasets: [{ data: U.donutShown(data), real: data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: {
           maintainAspectRatio: false, cutout: '58%',
-          plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } }, onClick: (e, item, legend) => onPick(legend.chart.data.labels[item.index]) } },
+          plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } }, onClick: (e, item, legend) => onPick(legend.chart.data.labels[item.index]) }, tooltip: { callbacks: { label: (c) => ` ${c.label} : ${U.qty(c.dataset.real[c.dataIndex])}` } } },
           onClick: (evt, els) => { if (els.length) onPick(labels[els[0].index]); }
         }
       });
@@ -1225,8 +1225,8 @@ const Stats = {
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
         plugins: [U.donutCenter(textColor, fmt || U.eur, fmt ? mLabel : 'CA')],
-        data: { labels, datasets: [{ data: labels.map(l => counts[l]), backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2, borderRadius: labels.length > 6 || labels.length < 2 ? 0 : 6, hoverOffset: 6 }] },
-        options: { maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label} : ${(fmt || U.eur)(c.parsed)}` } } } }
+        data: { labels, datasets: [{ data: U.donutShown(labels.map(l => counts[l])), real: labels.map(l => counts[l]), backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
+        options: { maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label} : ${(fmt || U.eur)(c.dataset.real[c.dataIndex])}` } } } }
       });
     };
     buildPie('salesChannelChart', agg.byChannelCA);

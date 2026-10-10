@@ -719,14 +719,15 @@ const App = {
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
         plugins: [U.donutCenter(textColor, null, scopeCat === 'Mastication' ? 'produits' : 'accessoires')],
-        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2, borderRadius: labels.length > 6 || labels.length < 2 ? 0 : 6, hoverOffset: 6 }] },
+        data: { labels, datasets: [{ data: U.donutShown(data), real: data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: {
           maintainAspectRatio: false, cutout: '58%',
           plugins: {
             legend: {
               position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } },
               onClick: (evt, item, legend) => this.filterDashboard(legend.chart.data.labels[item.index], scopeCat)
-            }
+            },
+            tooltip: { callbacks: { label: (c) => ` ${c.label} : ${U.qty(c.dataset.real[c.dataIndex])}` } }
           },
           onClick: (evt, elements) => { if (elements.length) this.filterDashboard(labels[elements[0].index], scopeCat); }
         }
