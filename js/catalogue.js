@@ -139,7 +139,13 @@ const Catalogue = {
   _sheetHTML() {
     const sh = this.sheet, rows = this._sheetRows(), grp = this._sheetGroups(rows), o = this._sheetOptions(), hide = Store.hideSupplierInfo();
     const ms = (k, label, opts) => `<div class="fg" style="margin:0;min-width:170px;flex:1 1 170px;"><label>${label}</label>${U.multiSelect({ options: opts, selected: sh[k], toggle: 'Catalogue.sheetTog_' + k, setAll: 'Catalogue.sheetAll_' + k, open: sh[k + 'Open'], onOpen: 'Catalogue.sheetOp_' + k })}</div>`;
-    const body = grp.map(g => (g.label ? `<tr class="sheet-grp"><td class="print-col"></td><td colspan="6"><b>${U.esc(g.label)}</b> <span class="muted">(${g.rows.length})</span></td></tr>` : '') + g.rows.map(r => `<tr><td class="print-col">☐</td><td class="col-name"><a href="#/catalogue/edit/${r.id}" title="Ouvrir la fiche">${U.esc(r.name)}</a></td><td>${U.esc(r.variant)}</td><td>${r.sku ? U.esc(r.sku) : '<span class="muted">—</span>'}</td><td>${r.pack ? U.esc(r.pack) : '<span class="muted">—</span>'}</td><td class="num sensitive">${r.coeff.toFixed(2)}</td><td class="num"><b>${U.eur(r.price)}</b></td></tr>`).join('')).join('');
+    const prodsOf = g => { const out = []; g.rows.forEach(r => { const l = out[out.length - 1]; if (l && l.id === r.id) l.rows.push(r); else out.push({ id: r.id, name: r.name, rows: [r] }); }); return out; };
+    const pl = n => n > 1 ? 's' : '';
+    const body = grp.map(g => {
+      const prods = prodsOf(g);
+      const head = g.label ? `<tbody class="sheet-gh"><tr class="sheet-grp"><td colspan="6"><b>${U.esc(g.label)}</b> <span class="muted">(${prods.length} produit${pl(prods.length)} · ${g.rows.length} ligne${pl(g.rows.length)})</span></td><td class="print-col"></td></tr></tbody>` : '';
+      return head + prods.map((pr, i) => `<tbody class="sheet-prod${i % 2 ? ' alt' : ''}">` + pr.rows.map((r, j) => `<tr>${j === 0 ? `<td class="col-name sheet-name" rowspan="${pr.rows.length}"><a href="#/catalogue/edit/${r.id}" title="Ouvrir la fiche">${U.esc(pr.name)}</a></td>` : ''}<td>${U.esc(r.variant)}</td><td>${r.sku ? U.esc(r.sku) : '<span class="muted">—</span>'}</td><td>${r.pack ? U.esc(r.pack) : '<span class="muted">—</span>'}</td><td class="num sensitive">${r.coeff.toFixed(2)}</td><td class="num"><b>${U.eur(r.price)}</b></td><td class="print-col">☐</td></tr>`).join('') + '</tbody>').join('');
+    }).join('');
     return `<div class="card print-target" id="ctlSheet">
       <div class="frow no-print" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">🖨 Fiche de contrôle des prix</h2><button class="btn-ghost btn-sm" onclick="Catalogue.sheetShow()">✕ Fermer</button></div>
       <div class="print-only"><h2 style="margin:0 0 4px;">Fiche de contrôle des prix — mastication</h2><p style="margin:0 0 8px;">${new Date().toLocaleDateString('fr-FR')} · ${rows.length} ligne(s) · ${U.esc(this._sheetSummary())}</p></div>
@@ -158,8 +164,7 @@ const Catalogue = {
         </div>
       </div>
       ${rows.length ? U.fold('sheet', rows.length + grp.length, `<div class="table-wrap mt"><table>
-        <thead><tr><th class="print-col">✔</th><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th>Sachet</th><th class="num">Coeff</th><th class="num">Prix TTC</th></tr></thead>
-        <tbody>${body}</tbody></table></div>`, { h: 380, unit: 'lignes' }) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
+        <thead><tr><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Sachet</th><th class="num">Coeff</th><th class="num">Prix TTC</th><th class="print-col">✔</th></tr></thead>${body}</table></div>`, { h: 560, unit: 'lignes' }) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
     </div>`;
   },
   sheetPrint() {
@@ -171,7 +176,8 @@ const Catalogue = {
   },
   /* Image : fond blanc, mêmes lignes que la fiche (sans la case ✔) — hauteur selon le nombre de lignes. */
   _sheetCanvas() {
-    const rows = this._sheetRows(), grp = this._sheetGroups(rows), W = 1240, pad = 36, rowH = 34;
+    const rows = this._sheetRows(), grp = this._sheetGroups(rows), W = 1240, pad = 36, rowH = 30;
+    const prodsOf = g => { const out = []; g.rows.forEach(r => { const l = out[out.length - 1]; if (l && l.id === r.id) l.rows.push(r); else out.push({ id: r.id, name: r.name, rows: [r] }); }); return out; };
     const lines = grp.reduce((a, g) => a + g.rows.length + (g.label ? 1 : 0), 0), H = pad + 96 + 44 + Math.max(1, lines) * rowH + pad;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const x = cv.getContext('2d'), font = (w, s) => `${w} ${s}px Quicksand, "Segoe UI", Arial, sans-serif`;
@@ -179,23 +185,29 @@ const Catalogue = {
     x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H); x.textBaseline = 'middle';
     x.fillStyle = '#1c2b33'; x.font = font(800, 26); x.fillText('Fiche de contrôle des prix — mastication', pad, pad + 14);
     x.fillStyle = '#5c6a78'; x.font = font(500, 15); x.fillText(fit(new Date().toLocaleDateString('fr-FR') + ' · ' + rows.length + ' ligne(s) · ' + this._sheetSummary(), W - 2 * pad), pad, pad + 48);
-    const C = { name: pad + 10, variant: 400, sku: 540, pack: 760, coeff: 1050, price: W - pad - 10 };
+    const C = { name: pad + 10, variant: 430, sku: 560, pack: 780, coeff: 1060, price: W - pad - 10 };
     let y = pad + 84;
     x.fillStyle = '#efe6dc'; x.fillRect(pad, y, W - 2 * pad, 40); x.fillStyle = '#6b4a36'; x.font = font(800, 14);
     x.textAlign = 'left'; [['PRODUIT', C.name], ['VARIANTE', C.variant], ['SKU', C.sku], ['SACHET', C.pack]].forEach(([t, px]) => x.fillText(t, px, y + 20));
     x.textAlign = 'right'; x.fillText('COEFF', C.coeff, y + 20); x.fillText('PRIX TTC', C.price, y + 20);
-    y += 44; let n = 0;
+    y += 44;
     grp.forEach(g => {
-      if (g.label) { x.fillStyle = '#f7f1ea'; x.fillRect(pad, y, W - 2 * pad, rowH); x.fillStyle = '#a67153'; x.font = font(800, 16); x.textAlign = 'left'; x.fillText(`${g.label} (${g.rows.length})`, C.name, y + rowH / 2); y += rowH; }
-      g.rows.forEach(r => {
-        if (n++ % 2) { x.fillStyle = '#faf7f3'; x.fillRect(pad, y, W - 2 * pad, rowH); }
-        x.fillStyle = '#1c2b33'; x.font = font(600, 16); x.textAlign = 'left'; x.fillText(fit(r.name, C.variant - C.name - 14), C.name, y + rowH / 2);
-        x.font = font(500, 16); x.fillText(fit(r.variant, C.sku - C.variant - 14), C.variant, y + rowH / 2);
-        x.fillStyle = r.sku ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.sku || '—', C.pack - C.sku - 14), C.sku, y + rowH / 2);
-        x.fillStyle = r.pack ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.pack || '—', C.coeff - 80 - C.pack), C.pack, y + rowH / 2);
-        x.fillStyle = '#1c2b33'; x.textAlign = 'right'; x.fillText(r.coeff.toFixed(2).replace('.', ','), C.coeff, y + rowH / 2);
-        x.font = font(800, 16); x.fillText(U.eur(r.price), C.price, y + rowH / 2);
-        y += rowH;
+      const prods = prodsOf(g);
+      if (g.label) { x.fillStyle = '#f1e7dc'; x.fillRect(pad, y, W - 2 * pad, rowH); x.fillStyle = '#a67153'; x.font = font(800, 16); x.textAlign = 'left'; x.fillText(`${g.label} (${prods.length} produit${prods.length > 1 ? 's' : ''} · ${g.rows.length} ligne${g.rows.length > 1 ? 's' : ''})`, C.name, y + rowH / 2); y += rowH; }
+      prods.forEach((pr, i) => {
+        const top = y;
+        if (i % 2) { x.fillStyle = '#faf7f3'; x.fillRect(pad, y, W - 2 * pad, pr.rows.length * rowH); }
+        pr.rows.forEach((r, j) => {
+          x.textAlign = 'left';
+          if (j === 0) { x.fillStyle = '#1c2b33'; x.font = font(800, 16); x.fillText(fit(pr.name, C.variant - C.name - 14), C.name, y + rowH / 2); }
+          x.font = font(500, 16); x.fillStyle = '#1c2b33'; x.fillText(fit(r.variant, C.sku - C.variant - 14), C.variant, y + rowH / 2);
+          x.fillStyle = r.sku ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.sku || '—', C.pack - C.sku - 14), C.sku, y + rowH / 2);
+          x.fillStyle = r.pack ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.pack || '—', C.coeff - 90 - C.pack), C.pack, y + rowH / 2);
+          x.fillStyle = '#1c2b33'; x.textAlign = 'right'; x.fillText(r.coeff.toFixed(2).replace('.', ','), C.coeff, y + rowH / 2);
+          x.font = font(800, 16); x.fillText(U.eur(r.price), C.price, y + rowH / 2);
+          y += rowH;
+        });
+        x.strokeStyle = '#cdbfae'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(pad, top); x.lineTo(W - pad, top); x.stroke();   // trait entre deux produits
       });
     });
     return cv;

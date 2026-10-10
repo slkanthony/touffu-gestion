@@ -605,6 +605,11 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 .print-only { display: none; }
 .print-col { display: none; }
 .sheet-grp td { background: rgba(166, 113, 83, .12); }
+/* Fiche de contrôle : un bloc par produit (nom en cellule fusionnée), lignes serrées */
+.sheet-prod td { padding: 4px 10px; }
+.sheet-prod .sheet-name { text-align: left !important; vertical-align: top; font-weight: 700; padding-top: 6px; }
+.sheet-prod.alt { background: rgba(255, 255, 255, .035); }
+.sheet-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
 /* Listes repliées (U.fold) */
 .fold-box { max-height: var(--fold-h, 340px); overflow: hidden; position: relative; }
 .fold-box.open { max-height: none; overflow: visible; }
@@ -619,6 +624,11 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   body.print-focus #main > :not(.print-target) { display: none !important; }
   .print-col { display: table-cell !important; width: 28px; text-align: center; }
   .sheet-grp td { font-weight: 700; border-top: 2px solid #999 !important; }
+  #ctlSheet table { font-size: 9.5pt; }
+  .sheet-prod td { padding: 2px 6px !important; }
+  .sheet-prod { break-inside: avoid; }
+  .sheet-gh { break-after: avoid; }
+  .sheet-prod > tr:first-child > td { border-top: 1.5px solid #888 !important; }
   body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }
   body.print-focus a { text-decoration: none; }
   .topnav, .toolbar, .seg, button, #toast { display: none !important; }

@@ -387,7 +387,7 @@ const Stats = {
      Sortir la liste des produits (variantes) dont le coeff PUBLIC est dans une fourchette (ex. paniers offerts : à valeur affichée égale, un fort coeff coûte moins cher à offrir).
      Même coeff/prix/coût que la fiche Prix mastication (Pricing.variantCalc, frais de port d'achat estimés compris) ; stock + DLUO la plus proche lus sur les variantes du Stock reliées à la fiche.
      Cases à cocher (comme Stock → Péremptions) : on imprime / copie seulement les lignes cochées. Mastication ET accessoires (même onglet que le sélecteur). */
-  coeffList: { min: '2', max: '', stockOnly: true, sort: 'coeff', q: '', excluded: [] },
+  coeffList: { min: '2', max: '', stockOnly: false, sort: 'coeff', q: '', excluded: [] },
   _coeffNum(s) { const t = String(s == null ? '' : s).trim().replace(',', '.'); if (t === '') return null; const n = parseFloat(t); return isFinite(n) ? n : null; },
   _stockIndex() {   // 'idFiche|idLigneFiche' -> { qty, dluo } (somme des variantes du Stock reliées à cette ligne de fiche ; dluo = la plus proche)
     const idx = {};
@@ -446,7 +446,7 @@ const Stats = {
           <div class="fg" style="max-width:220px;margin:0;"><label>Recherche</label><input id="cl_q" value="${U.esc(cl.q)}" placeholder="nom du produit…" oninput="Stats.setCoeffFilter('q',this.value);U.refocus('cl_q')"></div>
         </div>
         <div class="frow mt" style="gap:10px;align-items:center;flex-wrap:wrap;">
-          ${U.seg([{ l: '📦 En stock seulement', on: cl.stockOnly, js: 'Stats.setCoeffFilter(\'stockOnly\',true)' }, { l: 'Tout le catalogue', on: !cl.stockOnly, js: 'Stats.setCoeffFilter(\'stockOnly\',false)' }], { wrap: true, sm: true })}
+          ${U.seg([{ l: 'Tout le catalogue', on: !cl.stockOnly, js: 'Stats.setCoeffFilter(\'stockOnly\',false)' }, { l: '📦 En stock seulement', on: cl.stockOnly, js: 'Stats.setCoeffFilter(\'stockOnly\',true)' }], { wrap: true, sm: true })}
           ${U.seg([['coeff', 'Tri : coeff ↓'], ['dluo', 'Tri : DLUO'], ['name', 'Tri : nom']].map(([k, l]) => ({ l, on: cl.sort === k, js: `Stats.setCoeffFilter('sort','${k}')` })), { wrap: true, sm: true })}
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;flex-wrap:wrap;">
