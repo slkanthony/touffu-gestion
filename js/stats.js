@@ -452,8 +452,7 @@ const Stats = {
         <div class="frow mt" style="gap:6px;align-items:center;flex-wrap:wrap;">
           <button class="btn-cta btn-sm" onclick="Stats.coeffPrint()">🖨 Imprimer la sélection</button>
           <button class="btn-ghost btn-sm" onclick="Stats.coeffCopy()">📋 Copier la liste</button>
-          <button class="btn-ghost btn-sm" onclick="Stats.coeffAll(true)">☑ Tout cocher</button>
-          <button class="btn-ghost btn-sm" onclick="Stats.coeffAll(false)">☐ Tout décocher</button>
+          ${U.seg([{ l: '☑ Tout cocher', js: 'Stats.coeffAll(true)' }, { l: '☐ Tout décocher', js: 'Stats.coeffAll(false)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${sel.length} / ${rows.length} ligne(s) · ${U.esc(this._coeffLabel())}</span>
         </div>
       </div>

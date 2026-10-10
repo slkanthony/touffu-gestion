@@ -1905,8 +1905,7 @@ const Stock = {
           : `<p class="muted mb0">Coche les lignes à inclure dans l'impression — toutes sont cochées par défaut.</p>`}
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="window.print()">🖨 Imprimer la sélection</button>
-          <button class="btn-ghost btn-sm" onclick="Stock.peremSetAllSel(true)">☑ Tout cocher</button>
-          <button class="btn-ghost btn-sm" onclick="Stock.peremSetAllSel(false)">☐ Tout décocher</button>
+          ${U.seg([{ l: '☑ Tout cocher', js: 'Stock.peremSetAllSel(true)' }, { l: '☐ Tout décocher', js: 'Stock.peremSetAllSel(false)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${rows.length} lot(s)</span>
         </div>
       </div>
@@ -2065,8 +2064,7 @@ const Stock = {
         ${hint}
         ${eventView ? `<div class="frow mt" style="gap:6px;align-items:center;">
             <button class="btn-cta btn-sm" onclick="window.print()">🖨 Imprimer la sélection</button>
-            <button class="btn-ghost btn-sm" onclick="Stock.faibleSetAllExcluded(true)">☑ Tout cocher</button>
-            <button class="btn-ghost btn-sm" onclick="Stock.faibleSetAllExcluded(false)">☐ Tout décocher</button>
+            ${U.seg([{ l: '☑ Tout cocher', js: 'Stock.faibleSetAllExcluded(true)' }, { l: '☐ Tout décocher', js: 'Stock.faibleSetAllExcluded(false)' }], { sm: true })}
             <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
           </div>`
           : `<div class="frow mt" style="gap:6px;align-items:center;">

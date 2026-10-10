@@ -416,10 +416,7 @@ const U = {
     return `<details class="multiselect" ${open ? 'open' : ''} ontoggle="${onOpen}(this.open)">
       <summary>${U.esc(label)}</summary>
       <div class="multiselect-panel">
-        <div class="frow" style="gap:6px;">
-          <button type="button" class="btn-ghost btn-sm" onclick="${setAll}(true)">Tout cocher</button>
-          <button type="button" class="btn-ghost btn-sm" onclick="${setAll}(false)">Tout décocher</button>
-        </div>
+        ${U.seg([{ l: 'Tout cocher', js: `${setAll}(true)` }, { l: 'Tout décocher', js: `${setAll}(false)` }], { sm: true })}
         <hr class="sep">
         ${body}
       </div>
