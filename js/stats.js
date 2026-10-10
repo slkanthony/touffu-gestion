@@ -1097,7 +1097,7 @@ const Stats = {
       <div class="card">
         <div class="frow" style="gap:16px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:220px;margin:0;"><label>Période</label>${U.customSelect({ value: this.salesPeriod, options: periodOpts, onPick: 'Stats.setSalesPeriod' })}</div>
-          <div class="fg" style="margin:0;"><label>Classer par</label><div class="frow" style="gap:6px;">
+          <div class="fg" style="margin:0;"><label>Vue</label><div class="frow" style="gap:6px;">
             <button class="btn-ghost btn-sm ${metric === 'qty' ? 'active' : ''}" onclick="Stats.setSalesMetric('qty')">Quantité</button>
             <button class="btn-ghost btn-sm ${metric === 'ca' ? 'active' : ''}" onclick="Stats.setSalesMetric('ca')">Chiffre d'affaires</button>
           </div></div>
@@ -1107,23 +1107,23 @@ const Stats = {
       ${!hasSales ? '<div class="card empty"><span class="big">🛒</span>Aucune vente sur cette période.</div>' : `
       <div class="grid c4">
         <div class="kpi"><div class="v">${agg.nSales}</div><div class="l">Ventes</div></div>
-        <div class="kpi"><div class="v">${U.qty(agg.articles)}</div><div class="l">Articles vendus</div></div>
-        <div class="kpi sensitive"><div class="v">${U.eur(agg.ca)}</div><div class="l">Chiffre d'affaires</div></div>
+        ${metric === 'ca' ? `<div class="kpi sensitive"><div class="v">${U.eur(agg.ca)}</div><div class="l">Chiffre d'affaires</div></div>
         <div class="kpi sensitive"><div class="v">${U.eur(agg.nSales ? agg.ca / agg.nSales : 0)}</div><div class="l">Panier moyen</div></div>
         <div class="kpi good sensitive"><div class="v">${U.eur(totMarge)}</div><div class="l">Marge brute</div></div>
-        <div class="kpi ${totNet >= 0 ? 'good' : 'bad'} sensitive"><div class="v">${U.eur(totNet)}</div><div class="l">Bénéfice net</div></div>
+        <div class="kpi ${totNet >= 0 ? 'good' : 'bad'} sensitive"><div class="v">${U.eur(totNet)}</div><div class="l">Bénéfice net</div></div>`
+        : `<div class="kpi"><div class="v">${U.qty(agg.articles)}</div><div class="l">Articles vendus</div></div>
         <div class="kpi"><div class="v">${(agg.nSales ? agg.articles / agg.nSales : 0).toFixed(1)}</div><div class="l">Articles / vente</div></div>
-        <div class="kpi"><div class="v">${agg.products.length}</div><div class="l">Produits vendus</div></div>
+        <div class="kpi"><div class="v">${agg.products.length}</div><div class="l">Produits vendus</div></div>`}
       </div>
 
-      <div class="grid ${hasChannel ? 'c2' : ''} mt">
+      <div class="grid ${hasChannel && metric === 'ca' ? 'c2' : ''} mt">
         <div class="card"><h2>🏆 Top produits (${mLabel})</h2>
           <div style="position:relative;height:230px;"><canvas id="salesTopChart"></canvas></div>
           <button class="btn-ghost btn-sm mt" onclick="Stats.toggleTop()">${this._topOpen ? 'Masquer le classement' : `Voir le classement complet (Top ${top.length})`}</button>
           ${this._topOpen ? `<div class="table-wrap mt"><table><thead><tr><th>#</th><th class="col-name">Produit</th><th class="num">Quantité</th><th class="num sensitive">CA</th><th class="num">Ventes</th></tr></thead>
           <tbody>${top.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b>${p.kind === 'A' ? ' <span class="badge info">accessoire</span>' : ''}${Object.keys(p.lots || {}).length ? `<div class="muted" style="font-size:.8rem;">${[p.singles ? `${U.qty(p.singles)} à l'unité` : ''].concat(Object.keys(p.lots).sort((a, b) => a - b).map(n => `${U.qty(p.lots[n])} lot${p.lots[n] > 1 ? 's' : ''} de ${n}`)).filter(Boolean).join(' · ')}</div>` : ''}</td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('')}</tbody></table></div>` : ''}
         </div>
-        ${hasChannel ? `<div class="card"><h2>🛍️ Répartition par canal (CA)</h2><div style="position:relative;height:230px;"><canvas id="salesChannelChart"></canvas></div></div>` : ''}
+        ${hasChannel && metric === 'ca' ? `<div class="card"><h2>🛍️ Répartition par canal (CA)</h2><div style="position:relative;height:230px;"><canvas id="salesChannelChart"></canvas></div></div>` : ''}
       </div>
 
       <div class="card mt"><h2>${this.salesMetric === 'ca' ? '📈 Évolution — CA, coûts, marge & bénéfice' : '📊 Quantité vendue par mois'}</h2>
@@ -1131,7 +1131,7 @@ const Stats = {
         <div style="position:relative;height:${this.salesMetric === 'ca' ? 300 : 190}px;"><canvas id="salesTimelineChart"></canvas></div>
       </div>
 
-      <div class="card mt"><h2>🧾 Détail par mois — frais, marge & bénéfice</h2>
+      ${metric !== 'ca' ? '' : `<div class="card mt"><h2>🧾 Détail par mois — frais, marge & bénéfice</h2>
         <p class="muted help">Le même détail en chiffres, avec la même compta que le Tableau de bord.</p>
         ${(() => {
           const va = Store.state.settings.vatActive;
@@ -1158,7 +1158,7 @@ const Stats = {
       <div class="card mt"><h2>📊 Rentabilité par activité</h2>
         <p class="muted help">Mastication (achat-revente) vs accessoires (fait main), sur la période choisie. Chaque article compte dans son activité ; les frais et charges fixes communs sont répartis au prorata du CA (l'entretien/amortissement UV va aux accessoires). La somme des deux = le bénéfice net global.</p>
         ${this._activityTable(Pricing.activityPnL(agg.sales, Math.max(1, agg.months.length), agg.charges))}
-      </div>
+      </div>`}
 
       <div class="card mt"><h2>📅 Saisonnalité — ${mLabel} par mois</h2>
         <p class="muted help">Toutes années confondues sur la période : à quelle période de l'année ça se vend le plus.</p>
@@ -1169,7 +1169,7 @@ const Stats = {
         ${this.seasonProduct ? '<div style="position:relative;height:190px;margin-top:10px;"><canvas id="salesSeasonChart"></canvas></div>' : ''}
       </div>
 
-      ${(hasCat || hasMeat) ? `<div class="grid ${hasCat && hasMeat ? 'c2' : ''} mt">
+      ${metric === 'ca' && (hasCat || hasMeat) ? `<div class="grid ${hasCat && hasMeat ? 'c2' : ''} mt">
         ${hasCat ? '<div class="card"><h2>🐕 CA par catégorie</h2><div style="position:relative;height:200px;"><canvas id="salesCatChart"></canvas></div></div>' : ''}
         ${hasMeat ? '<div class="card"><h2>🍖 CA par type de viande</h2><div style="position:relative;height:200px;"><canvas id="salesMeatChart"></canvas></div></div>' : ''}
       </div>` : ''}
@@ -1184,12 +1184,12 @@ const Stats = {
         <tbody>${topAcc.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b></td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucune vente d\'accessoire.</td></tr>'}</tbody></table></div>`)}
       </div>` : ''}
 
-      <div class="card mt"><h2>💤 Produits dormants <span class="muted">(${agg.dormant.length})</span></h2>
+      ${metric === 'ca' ? '' : `<div class="card mt"><h2>💤 Produits dormants <span class="muted">(${agg.dormant.length})</span></h2>
         <p class="muted help">Produits du catalogue jamais vendus sur cette période — candidats au déstockage / à ne pas racheter.</p>
         ${agg.dormant.length ? `<button class="btn-ghost btn-sm" onclick="Stats.toggleDormant()">${this._dormantOpen ? 'Masquer' : 'Afficher la liste'}</button>
         ${this._dormantOpen ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Catégorie</th><th>Dernière vente</th></tr></thead>
           <tbody>${agg.dormant.map(d => `<tr><td class="col-name">${U.esc(d.name)}</td><td>${U.esc(d.cat)}</td><td>${d.last ? U.frDate(new Date(d.last).toISOString().slice(0, 10)) : '<span class="muted">jamais</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}` : '<p class="muted">Aucun — tous tes produits se sont vendus au moins une fois. 🎉</p>'}
-      </div>
+      </div>`}
       `}`);
 
     if (hasSales) this.drawSalesCharts(agg);
