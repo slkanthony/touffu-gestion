@@ -313,7 +313,7 @@ const Catalogue = {
     return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
       <summary onclick="Catalogue.summaryNav(event,'${p.id}')" onauxclick="Catalogue.summaryNav(event,'${p.id}')">
         <b>${U.esc(p.name)}</b>${(() => { const t = this._ageTxt(this.priceDateOf(p, activeSup)); return t ? `<span class="px-date" title="Prix d'achat mis à jour le ${t}">${t}</span>` : ''; })()}
-        <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${ch ? ` <span class="badge warn" title="${U.esc(ch.name)} est moins cher que le principal (${U.esc(ch.mainName)}) : −${U.pct(ch.pct)}">💡 moins cher : ${U.esc(ch.name)}</span>` : ''}</span>
+        <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${ch ? ` <span class="badge warn" title="${U.esc(ch.name)} est moins cher que le principal (${U.esc(ch.mainName)}) : −${U.pct(ch.pct)}">💡 moins cher ailleurs</span>` : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
