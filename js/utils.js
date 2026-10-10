@@ -337,6 +337,22 @@ const U = {
       : `<button type="button" class="${it.on ? 'on' : ''}${it.tone ? ' ' + it.tone : ''}"${it.on === undefined ? '' : ` aria-pressed="${it.on}"`} onclick="${it.js}">${it.l}</button>`).join('')}</div>`;
   },
 
+  /* LISTE REPLIÉE (Antho 2026-10-10) : un long tableau / une longue liste ne montre que ses premières lignes (hauteur `h` px, fondu en bas) + un bouton « Afficher toute la liste ».
+     `n` = nombre de lignes (≤ `limit`, défaut 8 : pas de repli). L'état ouvert/fermé est mémorisé par `id` (survit aux re-rendus : cocher une ligne ne referme pas la liste).
+     À l'impression la liste est toujours dépliée en entier. */
+  _foldOpen: {},
+  fold(id, n, html, o = {}) {
+    if (n <= (o.limit || 8)) return html;
+    const key = 'fb_' + String(id).replace(/\W/g, '_'), open = !!this._foldOpen[key], unit = o.unit || 'lignes';
+    return `<div id="${key}" class="fold-box${open ? ' open' : ''}" style="--fold-h:${o.h || 340}px"><div>${html}</div></div><button type="button" id="${key}_b" class="btn-ghost btn-sm fold-more" data-n="${n}" data-unit="${unit}" onclick="U.foldToggle('${key}')">${open ? '▴ Réduire la liste' : `▾ Afficher toute la liste (${n} ${unit})`}</button>`;
+  },
+  foldToggle(key) {
+    const box = document.getElementById(key), btn = document.getElementById(key + '_b'); if (!box || !btn) return;
+    const open = box.classList.toggle('open'); this._foldOpen[key] = open;
+    btn.textContent = open ? '▴ Réduire la liste' : `▾ Afficher toute la liste (${btn.dataset.n} ${btn.dataset.unit})`;
+    if (!open) box.scrollIntoView({ block: 'nearest' });
+  },
+
   customSelect({ value, options, onPick, cls }) {
     const cur = options.find(o => String(o.v) === String(value)) || options[0];
     const label = cur ? cur.l : '—';

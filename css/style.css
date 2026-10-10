@@ -603,7 +603,15 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .print-only { display: none; }
+/* Listes repliées (U.fold) */
+.fold-box { max-height: var(--fold-h, 340px); overflow: hidden; position: relative; }
+.fold-box.open { max-height: none; overflow: visible; }
+.fold-box:not(.open)::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 64px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
+.fold-more { display: block; width: 100%; margin-top: 8px; }
 @media print {
+  .fold-box { max-height: none !important; overflow: visible !important; }
+  .fold-box::after { display: none !important; }
+  .fold-more { display: none !important; }
   .print-only { display: block !important; }
   /* Impression d'une seule carte (Stats → liste par coeff) : tout le reste de la page est masqué, texte noir sur blanc */
   body.print-focus #main > :not(#coeffList) { display: none !important; }

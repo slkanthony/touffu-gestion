@@ -456,14 +456,14 @@ const Stats = {
           <span class="muted" style="margin-left:auto;">${sel.length} / ${rows.length} ligne(s) · ${U.esc(this._coeffLabel())}</span>
         </div>
       </div>
-      ${rows.length ? `<div class="table-wrap mt"><table>
+      ${rows.length ? U.fold('coeff', rows.length, `<div class="table-wrap mt"><table>
         <thead><tr><th class="no-print"><input type="checkbox" ${sel.length === rows.length ? 'checked' : ''} onchange="Stats.coeffAll(this.checked)"></th><th class="col-name">Produit</th><th>${acc ? 'Largeur' : 'Variante'}</th><th>${acc ? 'Catégorie' : 'Viande'}</th><th class="num">Prix TTC</th><th class="num">Coût de revient</th><th class="num">Coeff</th><th class="num">En stock</th>${acc ? '' : '<th>DLUO</th>'}</tr></thead>
         <tbody>${rows.map(r => `<tr class="${cl.excluded.includes(r.key) ? 'excluded-from-print' : ''}">
           <td class="no-print"><input type="checkbox" ${cl.excluded.includes(r.key) ? '' : 'checked'} onchange="Stats.coeffToggle('${r.key}')"></td>
           <td class="col-name"><a href="${acc ? '#/accessoires/' + r.id : '#/catalogue/edit/' + r.id}" title="Ouvrir la fiche">${U.esc(r.name)}</a></td>
           <td>${U.esc(r.variant)}</td><td>${U.esc(r.group)}</td>
           <td class="num">${U.eur(r.price)}</td><td class="num sensitive">${U.eur(r.cost)}</td><td class="num sensitive"><b>${r.coeff.toFixed(2)}</b></td>
-          <td class="num">${r.qty > 0 ? U.qty(r.qty) : '<span class="muted">0</span>'}</td>${acc ? '' : `<td>${r.dluo ? U.frDate(r.dluo) : '<span class="muted">—</span>'}</td>`}</tr>`).join('')}</tbody></table></div>`
+          <td class="num">${r.qty > 0 ? U.qty(r.qty) : '<span class="muted">0</span>'}</td>${acc ? '' : `<td>${r.dluo ? U.frDate(r.dluo) : '<span class="muted">—</span>'}</td>`}</tr>`).join('')}</tbody></table></div>`)
         : `<p class="muted mt">Aucune ligne dans cette fourchette${cl.stockOnly ? ' (essaie « Tout le catalogue » si tu veux aussi les produits sans stock)' : ''}.</p>`}
     </div>`;
   },
@@ -898,21 +898,21 @@ const Stats = {
       const thr = this._thr(this.detail.acc), { title, rows } = this.detail;
       box.innerHTML = `<div class="card mt">
         <div class="frow" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">${U.esc(title)}</h2><button class="btn-ghost btn-sm" onclick="Stats.closeDetail()">✕ Fermer</button></div>
-        ${rows.length ? `<div class="table-wrap"><table>
+        ${rows.length ? U.fold('det:' + title, rows.length, `<div class="table-wrap"><table>
           <thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Coeff entreprise</th><th class="num">Coeff micro</th><th class="num">Bénéfice B2B</th></tr></thead>
           <tbody>${rows.map(({ p, v }) => `<tr>
             <td class="col-name"><a href="${link(p)}" title="Ouvrir la fiche produit">${U.esc(p.name)}</a></td>
             <td>${U.esc(v.label)}</td>
             <td class="num sensitive ${v.coeff < thr ? 'neg' : ''}">${v.coeff.toFixed(2)}${v.coeff < thr ? ' ⚠️' : ''}</td>
             <td class="num sensitive ${v.coeffMicro < thr ? 'neg' : ''}">${v.coeffMicro.toFixed(2)}</td>
-            <td class="num sensitive ${v.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(v.profitB2B)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted mt">Aucune variante dans cette tranche.</p>'}
+            <td class="num sensitive ${v.profitB2B >= 0 ? 'pos' : 'neg'}"><b>${U.eur(v.profitB2B)}</b></td></tr>`).join('')}</tbody></table></div>`) : '<p class="muted mt">Aucune variante dans cette tranche.</p>'}
       </div>`;
       return;
     }
     const { title, meats, groups, statsFn, min, max } = this.detail;
     box.innerHTML = `<div class="card mt">
       <div class="frow" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">${U.esc(title)}</h2><button class="btn-ghost btn-sm" onclick="Stats.closeDetail()">✕ Fermer</button></div>
-      ${meats.map(m => {
+      ${U.fold('det:' + title, meats.reduce((a, m) => a + groups[m].length, 0), `${meats.map(m => {
         const items = groups[m];
         const cards = items.map(p => {
           const s = statsFn(p);
@@ -928,7 +928,7 @@ const Stats = {
         }).join('');
         if (!cards) return '';
         return `<h3 style="margin:16px 0 8px;">${this.detail.acc ? '🐕' : '🥩'} ${U.esc(m.toUpperCase())}</h3><div class="grid c3">${cards}</div>`;
-      }).join('') || '<p class="muted mt">Aucun produit dans cette sélection.</p>'}
+      }).join('') || '<p class="muted mt">Aucun produit dans cette sélection.</p>'}`, { limit: 6, h: 380, unit: 'produits' })}
     </div>`;
   },
 
@@ -1141,11 +1141,11 @@ const Stats = {
           const chCell = (v) => `<td class="num sensitive neg" title="Frais de livraison sur achats + frais généraux (mêmes que la Compta)">${v ? '− ' + U.eur(v) : '—'}</td>`;
           const uvCell = (v) => uvM ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel (imprimante, extracteur, scelleuse…) réparti par mois">− ${U.eur(v)}</td>` : '';
           const row = (label, m) => `<tr><td class="col-name"><b>${label}</b></td><td class="num">${m.nSales}</td><td class="num sensitive">${U.eur(m.ca)}</td>${cell(m.cogs, 'neg')}${margeCell(m.marge)}${cell(m.shipFee, 'pos')}${cell(m.fee, 'neg')}${cell(m.shipping, 'neg')}${cell(m.eventFee, 'neg')}${cell(m.boxCost, 'neg')}${uvCell(m.uvMaint)}${chCell(m.charges)}<td class="num sensitive neg">− ${U.eur(m.cotis)}</td>${tvaCell(m.tva)}<td class="num sensitive ${m.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(m.net)}</b></td></tr>`;
-          return `<div class="table-wrap mt"><table>
+          return U.fold('months', agg.months.length, `<div class="table-wrap mt"><table>
             <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Stand, repas & déplac.</th><th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num" title="Frais de livraison facturés par tes fournisseurs (factures Achats) + outillage, frais généraux et investissements non amortis : comme en Compta">Livraison &amp; frais généraux</th><th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
             <tbody>${agg.months.slice().reverse().map(m => row(this._monthKeyLabel(m.key), m)).join('') || `<tr><td colspan="${uvM ? 15 : 14}" class="muted">Aucune vente.</td></tr>`}</tbody>
             <tfoot><tr><td class="col-name"><b>Total</b></td><td class="num">${T.n}</td><td class="num sensitive">${U.eur(T.ca)}</td>${cell(T.cogs, 'neg')}${margeCell(T.marge)}${cell(T.shipFee, 'pos')}${cell(T.fee, 'neg')}${cell(T.shipping, 'neg')}${cell(T.ev, 'neg')}${cell(T.box, 'neg')}${uvCell(T.uv)}${chCell(T.ch)}<td class="num sensitive neg">− ${U.eur(T.cotis)}</td>${tvaCell(T.tva)}<td class="num sensitive ${T.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(T.net)}</b></td></tr></tfoot>
-          </table></div>
+          </table></div>`, { h: 440, unit: 'mois' }) + `
           <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand/repas/déplacement − coût cartons − entretien/amortissement matériel − frais de livraison sur achats & frais généraux (outillage…) − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
         })()}
       </div>
@@ -1175,8 +1175,8 @@ const Stats = {
           <div><h3 style="font-size:.9rem;">Par type</h3><div style="position:relative;height:200px;"><canvas id="salesAccTypeChart"></canvas></div></div>
           <div><h3 style="font-size:.9rem;">Par largeur</h3><div style="position:relative;height:200px;"><canvas id="salesAccWidthChart"></canvas></div></div>
         </div>
-        <div class="table-wrap mt"><table><thead><tr><th>#</th><th class="col-name">Accessoire</th><th class="num">Quantité</th><th class="num sensitive">CA</th><th class="num">Ventes</th></tr></thead>
-        <tbody>${topAcc.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b></td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucune vente d\'accessoire.</td></tr>'}</tbody></table></div>
+        ${U.fold('accperf', topAcc.length, `<div class="table-wrap mt"><table><thead><tr><th>#</th><th class="col-name">Accessoire</th><th class="num">Quantité</th><th class="num sensitive">CA</th><th class="num">Ventes</th></tr></thead>
+        <tbody>${topAcc.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b></td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucune vente d\'accessoire.</td></tr>'}</tbody></table></div>`)}
       </div>` : ''}
 
       <div class="card mt"><h2>💤 Produits dormants <span class="muted">(${agg.dormant.length})</span></h2>
