@@ -726,6 +726,13 @@ const Paniers = {
       ${x.msg ? `<p style="margin:10px 10px 0;white-space:pre-wrap;">${U.esc(x.msg)}</p>` : ''}
       ${x.vatMention ? `<p style="margin:10px 10px 0;font-size:.85rem;color:var(--gris);">${U.esc(x.vatMention)}</p>` : ''}`;
   },
+  /* L'aperçu de la fenêtre Partager prend les couleurs de l'image (jour / nuit) : ce que tu vois = ce que tu copies */
+  _shareBoxStyle() { const p = U.imgPalette('quote'); return `padding:12px 8px;border-radius:10px;background:${p.bg};color:${p.fg};--caramel:${p.car};--gris:${p.muted};--card-border:${p.sep};`; },
+  shareTheme(btn) {
+    U.toggleImgTheme('quote', null, true);
+    btn.innerHTML = U.imgThemeLabel('quote') + ' <span class="muted">· changer</span>';
+    const box = document.getElementById('pan_share'); if (box) box.style.cssText = this._shareBoxStyle();
+  },
   _shareRefresh() {
     const box = document.getElementById('pan_share');
     if (box) box.innerHTML = this._shareInner(this._shareData());
@@ -764,11 +771,11 @@ const Paniers = {
     const hasPay = this._payList().length > 0, hasIban = !!String(S.payIban || '').trim();
     const chk = (k, label, on = true) => `<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ${on ? 'checked' : ''} onchange="Paniers._shToggle('${k}',this.checked)"> ${label}</label>`;
     const fld = (label, inner) => `<div class="fg" style="margin:0;"><label>${label}</label>${inner}</div>`;
-    const body = `<div id="pan_share" style="padding:4px 2px;">${this._shareInner(this._shareData())}</div>
+    const body = `<div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><button class="btn-ghost btn-sm" onclick="Paniers.shareTheme(this)" title="Change les couleurs de l'aperçu ET de l'image copiée/enregistrée : jour = fond blanc, nuit = couleurs de l'appli">${U.imgThemeLabel('quote')} <span class="muted">· changer</span></button></div>
+      <div id="pan_share" style="${this._shareBoxStyle()}">${this._shareInner(this._shareData())}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')">🖼️ Copier l'image</button>
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
-        <button class="btn-ghost btn-sm" onclick="U.toggleImgTheme('quote',this)" title="Clique pour passer l'image en mode jour (fond blanc) ou nuit (couleurs de l'appli)">${U.imgThemeLabel('quote')}</button>
       </div>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div class="pan-bal">${this._balBox()}</div>

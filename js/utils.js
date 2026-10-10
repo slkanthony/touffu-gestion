@@ -451,10 +451,10 @@ const U = {
   },
   imgPalette(key) { return this.IMG_THEMES[this.imgTheme(key)]; },
   imgThemeLabel(key) { return this.imgTheme(key) === 'night' ? '🌙 Images : nuit' : '☀️ Images : jour'; },
-  toggleImgTheme(key, btn) {
+  toggleImgTheme(key, btn, quiet) {
     try { localStorage.setItem('touffu_imgTheme_' + key, this.imgTheme(key) === 'night' ? 'day' : 'night'); } catch (e) {}
     if (btn) btn.textContent = this.imgThemeLabel(key);
-    this.toast(this.imgTheme(key) === 'night' ? 'Les prochaines images seront en mode nuit.' : 'Les prochaines images seront en mode jour (fond blanc).');
+    if (!quiet) this.toast(this.imgTheme(key) === 'night' ? 'Les prochaines images seront en mode nuit.' : 'Les prochaines images seront en mode jour (fond blanc).');
   },
   /* Copie une image (blob PNG + son data-URL) dans le presse-papiers.
      1) API moderne (HTTPS / localhost) ; 2) sinon l'astuce « image sélectionnée dans une zone éditable + copy »,

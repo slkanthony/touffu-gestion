@@ -158,9 +158,7 @@ const Catalogue = {
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;flex-wrap:wrap;">
           <button class="btn-cta btn-sm" onclick="Catalogue.sheetPrint()">🖨 Imprimer</button>
-          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('copy')" title="Pages A4 : une page = une image">🖼️ Copier l'image</button>
-          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('save')" title="Une image PNG au format A4 par page">⬇ Images A4 (PNG)</button>
-          <button class="btn-ghost btn-sm" onclick="U.toggleImgTheme('sheet',this)" title="Couleurs des images A4 : jour = fond blanc (économise l'encre), nuit = couleurs de l'appli">${U.imgThemeLabel('sheet')}</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImages()" title="Aperçu des pages A4 : copier ou enregistrer chaque page, en mode jour (fond blanc) ou nuit">🖼️ Images A4 (copier / enregistrer)</button>
           <button class="btn-ghost btn-sm" onclick="Catalogue.sheetExcel()">📊 Excel (.xlsx)</button>
           <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
         </div>
@@ -236,37 +234,51 @@ const Catalogue = {
       return cv;
     });
   },
-  /* « Copier » : une seule page → copie directe ; plusieurs pages → fenêtre avec un bouton Copier par page (le presse-papiers ne garde qu'une image). « Enregistrer » : un PNG par page. */
-  async sheetImage(mode) {
+  /* Aperçu des images A4 : UNE fenêtre pour copier / enregistrer, avec le bouton jour ↔ nuit EN HAUT (l'aperçu se redessine tout de suite). Le presse-papiers ne garde qu'une image → un bouton Copier par page. */
+  async _sheetMake() {
+    const pages = this._sheetPages();
+    const blobs = await Promise.all(pages.map(cv => new Promise(r => cv.toBlob(r, 'image/png'))));
+    if (blobs.some(b => !b)) throw new Error('image');
+    this._sheetImgs = pages.map((cv, i) => ({ blob: blobs[i], url: cv.toDataURL('image/png') }));
+  },
+  _sheetImgsHTML() {
+    const imgs = this._sheetImgs || [], n = imgs.length;
+    return `<div class="frow" style="gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;position:sticky;top:-1px;z-index:3;background:var(--card-bg);padding:8px 0;margin-bottom:6px;border-bottom:1px solid var(--card-border);">
+        <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImgTheme()" title="Change les couleurs de toutes les pages : jour = fond blanc (économise l'encre), nuit = couleurs de l'appli">${U.imgThemeLabel('sheet')} <span class="muted">· changer</span></button>
+        <span class="muted" style="font-size:.85rem;">${n} page${n > 1 ? 's' : ''} A4</span>
+        ${n > 1 ? `<button class="btn-ghost btn-sm" onclick="Catalogue.sheetSave(-1)">⬇ Tout enregistrer (${n} images)</button>` : ''}
+      </div>` + imgs.map((im, i) => `<div style="margin-bottom:14px;"><div class="frow" style="justify-content:space-between;align-items:center;margin-bottom:4px;"><b>Page ${i + 1} / ${n}</b><span><button class="btn-ghost btn-sm" onclick="Catalogue.sheetCopyPage(${i})">🖼️ Copier</button> <button class="btn-ghost btn-sm" onclick="Catalogue.sheetSave(${i})">⬇ Enregistrer</button></span></div><img src="${im.url}" style="width:100%;border:1px solid var(--card-border);border-radius:6px;display:block;" alt="Page ${i + 1}"></div>`).join('')
+      + `<p class="muted" style="margin:6px 0 0;font-size:.82rem;">Si « Copier » ne marche pas sur cette adresse, fais un clic droit sur l'image → « Copier l'image ».</p>`;
+  },
+  async sheetImages() {
     try {
       if (!this._sheetRows().length) { U.toast('Aucune ligne à mettre en image.', true); return; }
-      const pages = this._sheetPages(), n = pages.length;
-      const blobs = await Promise.all(pages.map(cv => new Promise(r => cv.toBlob(r, 'image/png'))));
-      if (blobs.some(b => !b)) throw new Error('image');
-      this._sheetImgs = pages.map((cv, i) => ({ blob: blobs[i], url: cv.toDataURL('image/png') }));
-      if (mode === 'copy') {
-        if (n === 1) {
-          if (await U.copyImage(blobs[0], this._sheetImgs[0].url)) { U.toast('Image copiée — colle-la où tu veux.'); return; }
-          U.modal({ title: '🖼️ Fiche de contrôle', hideOk: true, wide: true, body: `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${this._sheetImgs[0].url}" style="width:100%;border-radius:8px;display:block;" alt="Fiche de contrôle">` });
-          return;
-        }
-        U.modal({ title: `🖼️ Fiche de contrôle — ${n} pages A4`, hideOk: true, wide: true, body: `<p class="muted" style="margin:0 0 10px;">Le presse-papiers ne garde qu'une image à la fois : copie la page voulue, ou utilise « ⬇ Images A4 » pour tout enregistrer.</p>` + this._sheetImgs.map((im, i) => `<div style="margin-bottom:14px;"><div class="frow" style="justify-content:space-between;align-items:center;margin-bottom:4px;"><b>Page ${i + 1} / ${n}</b><button class="btn-ghost btn-sm" onclick="Catalogue.sheetCopyPage(${i})">🖼️ Copier cette page</button></div><img src="${im.url}" style="width:100%;border:1px solid var(--card-border);border-radius:6px;display:block;" alt="Page ${i + 1}"></div>`).join('') });
-        return;
-      }
-      for (let i = 0; i < n; i++) {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blobs[i]); a.download = `controle-prix-mastication-${U.today()}${n > 1 ? `-page-${i + 1}-sur-${n}` : ''}.png`;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-        if (i < n - 1) await new Promise(r => setTimeout(r, 250));
-      }
-      if (n > 1) U.toast(`${n} images A4 téléchargées (une par page).`);
+      await this._sheetMake();
+      U.modal({ title: '🖼️ Fiche de contrôle — images A4', hideOk: true, wide: true, body: `<div id="sheet_imgs">${this._sheetImgsHTML()}</div>` });
+    } catch (e) { U.toast('Impossible de créer l’image.', true); }
+  },
+  async sheetImgTheme() {
+    try {
+      U.toggleImgTheme('sheet', null, true);
+      await this._sheetMake();
+      const box = document.getElementById('sheet_imgs'); if (box) box.innerHTML = this._sheetImgsHTML();
     } catch (e) { U.toast('Impossible de créer l’image.', true); }
   },
   async sheetCopyPage(i) {
     const im = (this._sheetImgs || [])[i]; if (!im) return;
-    if (await U.copyImage(im.blob, im.url)) U.toast(`Page ${i + 1} copiée.`);
+    if (await U.copyImage(im.blob, im.url)) U.toast(`Page ${i + 1} copiée — colle-la où tu veux.`);
     else U.toast('Copie impossible ici : clic droit sur l’image → « Copier l’image ».', true);
+  },
+  async sheetSave(i) {
+    const imgs = this._sheetImgs || [], n = imgs.length, list = i < 0 ? imgs.map((im, k) => [im, k]) : (imgs[i] ? [[imgs[i], i]] : []);
+    for (const [im, k] of list) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(im.blob); a.download = `controle-prix-mastication-${U.today()}${n > 1 ? `-page-${k + 1}-sur-${n}` : ''}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      if (list.length > 1) await new Promise(r => setTimeout(r, 250));
+    }
+    if (list.length > 1) U.toast(`${list.length} images A4 téléchargées (une par page).`);
   },
   _loadXlsx() {
     return new Promise((ok, ko) => {

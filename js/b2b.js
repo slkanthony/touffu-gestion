@@ -722,7 +722,6 @@ const B2B = {
     // Boutons d'action dans le pied FIXE de la fenêtre (toujours visibles), avec « Fermer » et « Copier le texte ».
     bg.querySelector('.actions').insertAdjacentHTML('afterbegin', `<label class="muted qt-per">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" onchange="B2B._qt.per=this.value"></label>
       <button class="btn-ghost btn-sm" onclick="B2B.quotePending()" title="Garde ce devis (numéro attribué) pour le retrouver plus bas, le modifier ou le passer en vente quand le client accepte">💾 Mettre en attente</button>
-      <button class="btn-ghost btn-sm" onclick="U.toggleImgTheme('quote',this)" title="Clique pour passer les images en mode jour (fond blanc) ou nuit (couleurs de l'appli)">${U.imgThemeLabel('quote')}</button>
       <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>`);
   },
   _qtTitle() { const w = String(this._qt.who || '').trim(); return 'Tarif Touffu' + (w ? ' — ' + w : ''); },
@@ -798,11 +797,11 @@ const B2B = {
     return cv;
   },
   /* Images à partager : une image par page, chacune avec ses boutons (copier / enregistrer) + « tout enregistrer » */
-  async quoteImages() {
+  async quoteImages(regen) {
     try {
       const pages = this._qtPages(), n = pages.length;
       if (!n) { U.toast('Aucune ligne cochée.', true); return; }
-      this._dvCommit();   // le devis sort : numéro définitif (lettre suivante si modifié)
+      if (!regen) this._dvCommit();   // le devis sort : numéro définitif (lettre suivante si modifié)
       this._qtImgs = [];
       for (let i = 0; i < n; i++) {
         const cv = await this._qtCanvas(pages[i], i + 1, n);
@@ -810,7 +809,7 @@ const B2B = {
         if (!blob) throw new Error('image');
         this._qtImgs.push({ blob, url: cv.toDataURL('image/png') });
       }
-      this._recordExport(this._qtRows().keys);
+      if (!regen) this._recordExport(this._qtRows().keys);
       this._qtShowImages();
     } catch (e) { U.toast('Impossible de créer les images.', true); }
   },
@@ -819,6 +818,7 @@ const B2B = {
     const imgs = this._qtImgs || [], n = imgs.length;
     box.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <button class="btn-ghost btn-sm" onclick="B2B._qtRefresh()">← Revenir au tableau</button>
+        <button class="btn-ghost btn-sm" onclick="B2B.qtTheme()" title="Change les couleurs de toutes les images : jour = fond blanc (économise l'encre), nuit = couleurs de l'appli">${U.imgThemeLabel('quote')} <span class="muted">· changer</span></button>
         <span class="muted" style="font-size:.85rem;">${n} image${n > 1 ? 's' : ''}${n > 1 ? ` · ${U.qty(this._qt.per || 20)} lignes max. par image` : ''}</span>
         ${n > 1 ? `<button class="btn-ghost btn-sm" onclick="B2B.qtSave(-1)">⬇ Tout enregistrer (${n} images)</button>` : ''}
       </div>
@@ -828,6 +828,7 @@ const B2B = {
         <img src="${im.url}" style="width:100%;border-radius:8px;display:block;" alt="Tarif Touffu ${i + 1}"></div>`).join('')}</div>
       <p class="muted" style="margin:6px 0 0;font-size:.82rem;">Si « Copier » ne marche pas sur cette adresse, fais un clic droit sur l'image → « Copier l'image ».</p>`;
   },
+  async qtTheme() { U.toggleImgTheme('quote', null, true); await this.quoteImages(true); },   // redessine l'aperçu sans renuméroter le devis
   async qtCopy(i) {
     const im = (this._qtImgs || [])[i]; if (!im) return;
     if (await U.copyImage(im.blob, im.url)) { U.toast(`Image ${i + 1} copiée — colle-la dans ta conversation.`); return; }
