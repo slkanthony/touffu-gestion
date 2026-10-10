@@ -768,6 +768,7 @@ const Paniers = {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('copy')">🖼️ Copier l'image</button>
         <button class="btn-ghost btn-sm" onclick="Paniers.shareImage('save')">⬇ Enregistrer l'image</button>
+        <button class="btn-ghost btn-sm" onclick="U.toggleImgTheme('quote',this)" title="Clique pour passer l'image en mode jour (fond blanc) ou nuit (couleurs de l'appli)">${U.imgThemeLabel('quote')}</button>
       </div>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div class="pan-bal">${this._balBox()}</div>
@@ -980,9 +981,7 @@ const Paniers = {
   async _shareCanvas() {
     const d = this._shareData();
     if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
-    const cs = getComputedStyle(document.documentElement);
-    const col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
-    const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), line = col('--card-border', '#3a5266'), th = col('--th-bg', '#1c2b38');
+    const pal = U.imgPalette('quote'), bg = pal.bg, fg = pal.fg, car = pal.car, th = pal.th;   // jour / nuit au choix (bouton « Image en mode… »)
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
     const W = 860, pad = 32, rowH = 46, inner = W - 2 * pad;
     const cVar = pad + inner * 0.50, cQty = pad + inner * 0.645, rUnit = pad + inner * 0.82, rTot = W - pad - 12;   // colonnes : variante · quantité · prix unitaire · sous-total
@@ -1490,6 +1489,7 @@ const Paniers = {
               <div id="pan_sharemenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;z-index:60;min-width:220px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
                 <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('shareImage','copy')" title="Copie l'image du devis (avec son n°)">🖼️ Copier l'image</button>
                 <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('shareImage','save')">⬇ Enregistrer l'image</button>
+                <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="U.toggleImgTheme('quote',this)" title="Clique pour passer l'image en mode jour (fond blanc) ou nuit (couleurs de l'appli)">${U.imgThemeLabel('quote')}</button>
                 <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('copyShare')">📋 Copier le texte</button>
                 <button class="btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:2px 0;" onclick="Paniers.menuDo('share')" title="Fenêtre propre à montrer au client : produit, variante et prix TTC, avec les options d'affichage">⚙️ Aperçu et options…</button>
               </div>

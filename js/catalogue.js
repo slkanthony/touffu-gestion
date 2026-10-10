@@ -160,6 +160,7 @@ const Catalogue = {
           <button class="btn-cta btn-sm" onclick="Catalogue.sheetPrint()">🖨 Imprimer</button>
           <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('copy')" title="Pages A4 : une page = une image">🖼️ Copier l'image</button>
           <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('save')" title="Une image PNG au format A4 par page">⬇ Images A4 (PNG)</button>
+          <button class="btn-ghost btn-sm" onclick="U.toggleImgTheme('sheet',this)" title="Couleurs des images A4 : jour = fond blanc (économise l'encre), nuit = couleurs de l'appli">${U.imgThemeLabel('sheet')}</button>
           <button class="btn-ghost btn-sm" onclick="Catalogue.sheetExcel()">📊 Excel (.xlsx)</button>
           <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
         </div>
@@ -197,40 +198,40 @@ const Catalogue = {
         cur.items.push({ t: 'p', pr, alt: i % 2, y }); y += h;
       });
     });
-    const date = new Date().toLocaleDateString('fr-FR'), summary = this._sheetSummary();
+    const date = new Date().toLocaleDateString('fr-FR'), summary = this._sheetSummary(), P = U.imgPalette('sheet');   // jour (défaut) ou nuit
     return pages.map((pg, n) => {
       const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
       const x = cv.getContext('2d'), font = (w, s) => `${w} ${s}px Quicksand, "Segoe UI", Arial, sans-serif`;
       const fit = (t, max) => { t = String(t || ''); if (x.measureText(t).width <= max) return t; while (t.length > 1 && x.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
-      x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H); x.textBaseline = 'middle';
+      x.fillStyle = P.bg; x.fillRect(0, 0, W, H); x.textBaseline = 'middle';
       let hy = padT;
       if (n === 0) {
-        x.fillStyle = '#1c2b33'; x.font = font(800, 26); x.textAlign = 'left'; x.fillText('Fiche de contrôle des prix — mastication', padX, padT + 14);
-        x.fillStyle = '#5c6a78'; x.font = font(500, 15); x.fillText(fit(date + ' · ' + rows.length + ' ligne(s) · ' + summary, W - 2 * padX), padX, padT + 48);
+        x.fillStyle = P.fg; x.font = font(800, 26); x.textAlign = 'left'; x.fillText('Fiche de contrôle des prix — mastication', padX, padT + 14);
+        x.fillStyle = P.muted; x.font = font(500, 15); x.fillText(fit(date + ' · ' + rows.length + ' ligne(s) · ' + summary, W - 2 * padX), padX, padT + 48);
         hy = padT + top1;
       }
       const C = { name: padX + 10, variant: 430, sku: 570, pack: 800, coeff: 1075, price: W - padX - 10 };
-      x.fillStyle = '#efe6dc'; x.fillRect(padX, hy, W - 2 * padX, headH - 4); x.fillStyle = '#6b4a36'; x.font = font(800, 13);
+      x.fillStyle = P.th; x.fillRect(padX, hy, W - 2 * padX, headH - 4); x.fillStyle = P.headFg; x.font = font(800, 13);
       x.textAlign = 'left'; [['PRODUIT', C.name], ['VARIANTE', C.variant], ['SKU', C.sku], ['SACHET', C.pack]].forEach(([t, px]) => x.fillText(t, px, hy + 13));
       x.textAlign = 'right'; x.fillText('COEFF', C.coeff, hy + 13); x.fillText('PRIX TTC', C.price, hy + 13);
       pg.items.forEach(it => {
         let y = it.y;
-        if (it.t === 'g') { x.fillStyle = '#f1e7dc'; x.fillRect(padX, y, W - 2 * padX, rowH); x.fillStyle = '#a67153'; x.font = font(800, 15); x.textAlign = 'left'; x.fillText(it.label, C.name, y + rowH / 2); return; }
+        if (it.t === 'g') { x.fillStyle = P.grpBg; x.fillRect(padX, y, W - 2 * padX, rowH); x.fillStyle = P.grpFg; x.font = font(800, 15); x.textAlign = 'left'; x.fillText(it.label, C.name, y + rowH / 2); return; }
         const pr = it.pr, topY = y;
-        if (it.alt) { x.fillStyle = '#faf7f3'; x.fillRect(padX, y, W - 2 * padX, pr.rows.length * rowH); }
+        if (it.alt) { x.fillStyle = P.alt; x.fillRect(padX, y, W - 2 * padX, pr.rows.length * rowH); }
         pr.rows.forEach((r, j) => {
           x.textAlign = 'left';
-          if (j === 0) { x.fillStyle = '#1c2b33'; x.font = font(800, 16); x.fillText(fit(pr.name, C.variant - C.name - 14), C.name, y + rowH / 2); }
-          x.font = font(500, 16); x.fillStyle = '#1c2b33'; x.fillText(fit(r.variant, C.sku - C.variant - 14), C.variant, y + rowH / 2);
-          x.fillStyle = r.sku ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.sku || '—', C.pack - C.sku - 14), C.sku, y + rowH / 2);
-          x.fillStyle = r.pack ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.pack || '—', C.coeff - 90 - C.pack), C.pack, y + rowH / 2);
-          x.fillStyle = '#1c2b33'; x.textAlign = 'right'; x.fillText(r.coeff.toFixed(2).replace('.', ','), C.coeff, y + rowH / 2);
+          if (j === 0) { x.fillStyle = P.fg; x.font = font(800, 16); x.fillText(fit(pr.name, C.variant - C.name - 14), C.name, y + rowH / 2); }
+          x.font = font(500, 16); x.fillStyle = P.fg; x.fillText(fit(r.variant, C.sku - C.variant - 14), C.variant, y + rowH / 2);
+          x.fillStyle = r.sku ? P.fg : P.dim; x.fillText(fit(r.sku || '—', C.pack - C.sku - 14), C.sku, y + rowH / 2);
+          x.fillStyle = r.pack ? P.fg : P.dim; x.fillText(fit(r.pack || '—', C.coeff - 90 - C.pack), C.pack, y + rowH / 2);
+          x.fillStyle = P.fg; x.textAlign = 'right'; x.fillText(r.coeff.toFixed(2).replace('.', ','), C.coeff, y + rowH / 2);
           x.font = font(800, 16); x.fillText(U.eur(r.price), C.price, y + rowH / 2);
           y += rowH;
         });
-        x.strokeStyle = '#cdbfae'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(padX, topY); x.lineTo(W - padX, topY); x.stroke();   // trait entre deux produits
+        x.strokeStyle = P.sep; x.lineWidth = 1.5; x.beginPath(); x.moveTo(padX, topY); x.lineTo(W - padX, topY); x.stroke();   // trait entre deux produits
       });
-      x.fillStyle = '#7a8794'; x.font = font(500, 14); x.textAlign = 'left'; x.fillText('Fiche de contrôle des prix — mastication · ' + date, padX, H - 34);
+      x.fillStyle = P.foot; x.font = font(500, 14); x.textAlign = 'left'; x.fillText('Fiche de contrôle des prix — mastication · ' + date, padX, H - 34);
       x.textAlign = 'right'; x.fillText(`Page ${n + 1} / ${pages.length}`, W - padX, H - 34);
       return cv;
     });

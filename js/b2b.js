@@ -722,6 +722,7 @@ const B2B = {
     // Boutons d'action dans le pied FIXE de la fenêtre (toujours visibles), avec « Fermer » et « Copier le texte ».
     bg.querySelector('.actions').insertAdjacentHTML('afterbegin', `<label class="muted qt-per">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" onchange="B2B._qt.per=this.value"></label>
       <button class="btn-ghost btn-sm" onclick="B2B.quotePending()" title="Garde ce devis (numéro attribué) pour le retrouver plus bas, le modifier ou le passer en vente quand le client accepte">💾 Mettre en attente</button>
+      <button class="btn-ghost btn-sm" onclick="U.toggleImgTheme('quote',this)" title="Clique pour passer les images en mode jour (fond blanc) ou nuit (couleurs de l'appli)">${U.imgThemeLabel('quote')}</button>
       <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>`);
   },
   _qtTitle() { const w = String(this._qt.who || '').trim(); return 'Tarif Touffu' + (w ? ' — ' + w : ''); },
@@ -741,8 +742,7 @@ const B2B = {
   async _qtCanvas(pageRows, pageNo, pageCount) {
     const c = this._qtCols(), x = this._qtExtras(), last = pageNo === pageCount, { devis, total, totalReco } = this._qtRows();
     if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
-    const cs = getComputedStyle(document.documentElement), col = (v, f) => (cs.getPropertyValue(v) || '').trim() || f;
-    const bg = col('--card-bg', '#243746'), fg = col('--texte', '#f3ead9'), car = col('--caramel', '#a67153'), th = col('--th-bg', '#1c2b38');
+    const pal = U.imgPalette('quote'), bg = pal.bg, fg = pal.fg, car = pal.car, th = pal.th;   // jour / nuit au choix (bouton « Image en mode… »)
     const font = (w, px) => `${w} ${px}px Quicksand, "Segoe UI", sans-serif`;
     const W = devis ? 1000 : 820, pad = 32, rowH = 40, innerW = W - 2 * pad;
     const tmp = document.createElement('canvas').getContext('2d');

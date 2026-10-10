@@ -637,7 +637,7 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   .sheet-prod { break-inside: avoid; }
   .sheet-gh { break-after: avoid; }
   .sheet-prod > tr:first-child > td { border-top: 1.5px solid #888 !important; }
-  body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }
+  body.print-light, body.print-light *, body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }
   body.print-focus a { text-decoration: none; }
   .topnav, .toolbar, .seg, button, #toast { display: none !important; }
   .main { padding: 0; max-width: none; }

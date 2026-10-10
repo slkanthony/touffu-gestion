@@ -431,6 +431,31 @@ const U = {
   /* Petite icône ⓘ + bulle d'explication (2026-09-27) : survol = affiche, souris qui part = efface ;
      sur tactile, toucher = ouvre / toucher ailleurs = ferme. Une seule bulle globale (#tipBubble),
      positionnée en fixed et gardée dans l'écran (jamais coupée par un bloc qui défile). */
+  /* Images exportées (fiche de contrôle, tarif pro, devis panier) : mode JOUR (fond blanc, économise l'encre) ou NUIT (couleurs de l'appli sombre).
+     Choix mémorisé par type d'image (Antho 2026-10-10) : 'sheet' = jour par défaut, 'quote' (tarif pro + devis panier) = nuit par défaut. */
+  IMG_THEMES: {
+    day: { bg: '#ffffff', fg: '#1c2b33', car: '#a67153', th: '#efe6dc', muted: '#5c6a78', dim: '#9aa5ae', headFg: '#6b4a36', grpBg: '#f1e7dc', grpFg: '#a67153', alt: '#faf7f3', sep: '#cdbfae', foot: '#7a8794' },
+    night: { bg: '#1c3844', fg: '#eee3d3', car: '#a67153', th: 'rgba(0,0,0,0.18)', muted: '#93a7b2', dim: '#6f8592', headFg: '#d99a78', grpBg: 'rgba(166,113,83,0.22)', grpFg: '#d99a78', alt: 'rgba(255,255,255,0.04)', sep: '#3a5c6a', foot: '#6f8592' }
+  },
+  /* Impression sur fond blanc, texte noir, même en thème sombre (Péremptions, Faible stock : Antho imprime ces feuilles) */
+  printLight() {
+    document.body.classList.add('print-light');
+    const done = () => { document.body.classList.remove('print-light'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+    setTimeout(done, 1500);
+  },
+  imgTheme(key) {
+    let v = null; try { v = localStorage.getItem('touffu_imgTheme_' + key); } catch (e) {}
+    return v === 'day' || v === 'night' ? v : (key === 'sheet' ? 'day' : 'night');
+  },
+  imgPalette(key) { return this.IMG_THEMES[this.imgTheme(key)]; },
+  imgThemeLabel(key) { return this.imgTheme(key) === 'night' ? '🌙 Images : nuit' : '☀️ Images : jour'; },
+  toggleImgTheme(key, btn) {
+    try { localStorage.setItem('touffu_imgTheme_' + key, this.imgTheme(key) === 'night' ? 'day' : 'night'); } catch (e) {}
+    if (btn) btn.textContent = this.imgThemeLabel(key);
+    this.toast(this.imgTheme(key) === 'night' ? 'Les prochaines images seront en mode nuit.' : 'Les prochaines images seront en mode jour (fond blanc).');
+  },
   /* Copie une image (blob PNG + son data-URL) dans le presse-papiers.
      1) API moderne (HTTPS / localhost) ; 2) sinon l'astuce « image sélectionnée dans une zone éditable + copy »,
      qui marche aussi sur une adresse http:// (ex. http://192.168…). Renvoie true/false. */

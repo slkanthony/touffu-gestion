@@ -1904,7 +1904,7 @@ const Stock = {
           ? `<p class="muted mb0" style="border-left:3px solid var(--warn);padding-left:8px;">🔀 <b>Produits à plusieurs numéros de lot</b> dans le ${f.view==='event'?'stock ÉVÉNEMENT':f.view==='both'?'stock TOTAL (général + événement)':'stock général'} — pense à vendre la <b>DLUO la plus courte en premier</b>. Coche puis imprime pour ta feuille de marché.</p>`
           : `<p class="muted mb0">Coche les lignes à inclure dans l'impression — toutes sont cochées par défaut.</p>`}
         <div class="frow mt" style="gap:6px;align-items:center;">
-          <button class="btn-cta btn-sm" onclick="window.print()">🖨 Imprimer la sélection</button>
+          <button class="btn-cta btn-sm" onclick="U.printLight()">🖨 Imprimer la sélection</button>
           ${U.seg([{ l: '☑ Tout cocher', js: 'Stock.peremSetAllSel(true)' }, { l: '☐ Tout décocher', js: 'Stock.peremSetAllSel(false)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${rows.length} lot(s)</span>
         </div>
@@ -2063,7 +2063,7 @@ const Stock = {
         ${filters}
         ${hint}
         ${eventView ? `<div class="frow mt" style="gap:6px;align-items:center;">
-            <button class="btn-cta btn-sm" onclick="window.print()">🖨 Imprimer la sélection</button>
+            <button class="btn-cta btn-sm" onclick="U.printLight()">🖨 Imprimer la sélection</button>
             ${U.seg([{ l: '☑ Tout cocher', js: 'Stock.faibleSetAllExcluded(true)' }, { l: '☐ Tout décocher', js: 'Stock.faibleSetAllExcluded(false)' }], { sm: true })}
             <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
           </div>`
