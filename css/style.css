@@ -603,6 +603,8 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .print-only { display: none; }
+.print-col { display: none; }
+.sheet-grp td { background: rgba(166, 113, 83, .12); }
 /* Listes repliées (U.fold) */
 .fold-box { max-height: var(--fold-h, 340px); overflow: hidden; position: relative; }
 .fold-box.open { max-height: none; overflow: visible; }
@@ -614,7 +616,9 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   .fold-more { display: none !important; }
   .print-only { display: block !important; }
   /* Impression d'une seule carte (Stats → liste par coeff) : tout le reste de la page est masqué, texte noir sur blanc */
-  body.print-focus #main > :not(#coeffList) { display: none !important; }
+  body.print-focus #main > :not(.print-target) { display: none !important; }
+  .print-col { display: table-cell !important; width: 28px; text-align: center; }
+  .sheet-grp td { font-weight: 700; border-top: 2px solid #999 !important; }
   body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }
   body.print-focus a { text-decoration: none; }
   .topnav, .toolbar, .seg, button, #toast { display: none !important; }

@@ -91,6 +91,153 @@ const Catalogue = {
     return true;
   },
 
+  /* ═══════════ FICHE DE CONTRÔLE DES PRIX (Antho 2026-10-10) ═══════════
+     Liste imprimable / téléchargeable des variantes vendues : produit, variante, SKU, sachet, coeff, prix TTC — pour pointer au stylo, vérifier les cohérences et comparer avec d'autres outils
+     (autre appli, prix d'événements). Filtres COMBINABLES : fournisseur principal, viande, grammage/format (vide = tous). Même coeff et même prix que la fiche (Pricing.variantCalc).
+     Sorties : 🖨 impression (classe print-target : seule cette carte s'imprime), image PNG (copier / enregistrer, comme les devis), Excel .xlsx (bibliothèque SheetJS chargée au premier clic). */
+  sheet: { open: false, sup: [], meat: [], size: [], group: 'meat', supOpen: false, meatOpen: false, sizeOpen: false },
+  sheetShow() { this.sheet.open = !this.sheet.open; this.render(); },
+  setSheetGroup(g) { this.sheet.group = g; this.render(); },
+  _sheetOptions() {
+    const cat = Store.state.catalogM || [];
+    return {
+      sup: [...new Set(cat.map(p => p.mainSupplierId).filter(Boolean).map(id => Store.supplierName(id)))].sort(U.sortFr),
+      meat: [...new Set(cat.map(p => p.meatType || 'Non spécifié'))].sort(U.sortFr),
+      size: [...new Set(cat.flatMap(p => (p.variants || []).filter(v => v.enabled !== false).map(v => Pricing.labelVariant(v)).filter(Boolean)))].sort(U.sortFr)
+    };
+  },
+  _sheetRows() {
+    const sh = this.sheet, rows = [], hide = Store.hideSupplierInfo();
+    (Store.state.catalogM || []).forEach(p => {
+      const meat = p.meatType || 'Non spécifié', sup = p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : '—';
+      if (sh.meat.length && !sh.meat.includes(meat)) return;
+      if (!hide && sh.sup.length && !sh.sup.includes(sup)) return;
+      const base = Pricing.baseUnitCost(p), vs = (p.variants || []).filter(v => v.enabled !== false);
+      vs.forEach((v, i) => {
+        const label = Pricing.labelVariant(v); if (sh.size.length && !sh.size.includes(label)) return;
+        const c = Pricing.variantCalc(p, v, i, base, vs.length), pk = Store.sachet(v.sachetId);
+        rows.push({ id: p.id, name: p.name, meat, sup: hide ? '' : sup, variant: label, sku: v.sku || '', pack: pk ? pk.name : '', coeff: c.effCoeff, price: c.priceTTC });
+      });
+    });
+    const key = r => sh.group === 'sup' ? r.sup : sh.group === 'meat' ? r.meat : '';
+    rows.sort((a, b) => U.sortFr(key(a), key(b)) || U.sortFr(a.name, b.name));   // tri stable : les variantes gardent l'ordre de la fiche
+    return rows;
+  },
+  _sheetGroups(rows) {
+    const sh = this.sheet, out = [];
+    rows.forEach(r => {
+      const label = sh.group === 'sup' ? (r.sup || '—') : sh.group === 'meat' ? r.meat : '';
+      let g = out[out.length - 1]; if (!g || g.label !== label) { g = { label, rows: [] }; out.push(g); }
+      g.rows.push(r);
+    });
+    return out;
+  },
+  _sheetSummary() {
+    const sh = this.sheet, hide = Store.hideSupplierInfo();
+    return [sh.meat.length ? 'Viandes : ' + sh.meat.join(', ') : '', !hide && sh.sup.length ? 'Fournisseurs : ' + sh.sup.join(', ') : '', sh.size.length ? 'Formats : ' + sh.size.join(', ') : ''].filter(Boolean).join(' · ') || 'Tous les produits';
+  },
+  _sheetHTML() {
+    const sh = this.sheet, rows = this._sheetRows(), grp = this._sheetGroups(rows), o = this._sheetOptions(), hide = Store.hideSupplierInfo();
+    const ms = (k, label, opts) => `<div class="fg" style="margin:0;min-width:170px;flex:1 1 170px;"><label>${label}</label>${U.multiSelect({ options: opts, selected: sh[k], toggle: 'Catalogue.sheetTog_' + k, setAll: 'Catalogue.sheetAll_' + k, open: sh[k + 'Open'], onOpen: 'Catalogue.sheetOp_' + k })}</div>`;
+    const body = grp.map(g => (g.label ? `<tr class="sheet-grp"><td class="print-col"></td><td colspan="6"><b>${U.esc(g.label)}</b> <span class="muted">(${g.rows.length})</span></td></tr>` : '') + g.rows.map(r => `<tr><td class="print-col">☐</td><td class="col-name"><a href="#/catalogue/edit/${r.id}" title="Ouvrir la fiche">${U.esc(r.name)}</a></td><td>${U.esc(r.variant)}</td><td>${r.sku ? U.esc(r.sku) : '<span class="muted">—</span>'}</td><td>${r.pack ? U.esc(r.pack) : '<span class="muted">—</span>'}</td><td class="num sensitive">${r.coeff.toFixed(2)}</td><td class="num"><b>${U.eur(r.price)}</b></td></tr>`).join('')).join('');
+    return `<div class="card print-target" id="ctlSheet">
+      <div class="frow no-print" style="justify-content:space-between;align-items:center;"><h2 style="margin:0;">🖨 Fiche de contrôle des prix</h2><button class="btn-ghost btn-sm" onclick="Catalogue.sheetShow()">✕ Fermer</button></div>
+      <div class="print-only"><h2 style="margin:0 0 4px;">Fiche de contrôle des prix — mastication</h2><p style="margin:0 0 8px;">${new Date().toLocaleDateString('fr-FR')} · ${rows.length} ligne(s) · ${U.esc(this._sheetSummary())}</p></div>
+      <div class="no-print">
+        <p class="muted help mb0">Coche des fournisseurs, des viandes et/ou des formats pour cibler la liste (rien de coché = tout). Prix et coeff = ceux de la fiche Prix mastication ; le fournisseur pris en compte est le principal de chaque fiche.</p>
+        <div class="frow mt" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
+          ${hide ? '' : ms('sup', 'Fournisseur', o.sup)}${ms('meat', 'Viande', o.meat)}${ms('size', 'Format / grammage', o.size)}
+          <div class="fg" style="margin:0;flex:0 0 auto;"><label>Regrouper par</label>${U.seg([['meat', 'Viande'], ...(hide ? [] : [['sup', 'Fournisseur']]), ['none', 'Rien']].map(([k, l]) => ({ l, on: sh.group === k, js: `Catalogue.setSheetGroup('${k}')` })), { sm: true, wrap: true })}</div>
+        </div>
+        <div class="frow mt" style="gap:6px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-cta btn-sm" onclick="Catalogue.sheetPrint()">🖨 Imprimer</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('copy')">🖼️ Copier l'image</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetImage('save')">⬇ Image (PNG)</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.sheetExcel()">📊 Excel (.xlsx)</button>
+          <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
+        </div>
+      </div>
+      ${rows.length ? U.fold('sheet', rows.length + grp.length, `<div class="table-wrap mt"><table>
+        <thead><tr><th class="print-col">✔</th><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th>Sachet</th><th class="num">Coeff</th><th class="num">Prix TTC</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`, { h: 380, unit: 'lignes' }) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
+    </div>`;
+  },
+  sheetPrint() {
+    document.body.classList.add('print-focus');
+    const done = () => { document.body.classList.remove('print-focus'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+    setTimeout(done, 1500);
+  },
+  /* Image : fond blanc, mêmes lignes que la fiche (sans la case ✔) — hauteur selon le nombre de lignes. */
+  _sheetCanvas() {
+    const rows = this._sheetRows(), grp = this._sheetGroups(rows), W = 1240, pad = 36, rowH = 34;
+    const lines = grp.reduce((a, g) => a + g.rows.length + (g.label ? 1 : 0), 0), H = pad + 96 + 44 + Math.max(1, lines) * rowH + pad;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const x = cv.getContext('2d'), font = (w, s) => `${w} ${s}px Quicksand, "Segoe UI", Arial, sans-serif`;
+    const fit = (t, max) => { t = String(t || ''); if (x.measureText(t).width <= max) return t; while (t.length > 1 && x.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H); x.textBaseline = 'middle';
+    x.fillStyle = '#1c2b33'; x.font = font(800, 26); x.fillText('Fiche de contrôle des prix — mastication', pad, pad + 14);
+    x.fillStyle = '#5c6a78'; x.font = font(500, 15); x.fillText(fit(new Date().toLocaleDateString('fr-FR') + ' · ' + rows.length + ' ligne(s) · ' + this._sheetSummary(), W - 2 * pad), pad, pad + 48);
+    const C = { name: pad + 10, variant: 400, sku: 540, pack: 760, coeff: 1050, price: W - pad - 10 };
+    let y = pad + 84;
+    x.fillStyle = '#efe6dc'; x.fillRect(pad, y, W - 2 * pad, 40); x.fillStyle = '#6b4a36'; x.font = font(800, 14);
+    x.textAlign = 'left'; [['PRODUIT', C.name], ['VARIANTE', C.variant], ['SKU', C.sku], ['SACHET', C.pack]].forEach(([t, px]) => x.fillText(t, px, y + 20));
+    x.textAlign = 'right'; x.fillText('COEFF', C.coeff, y + 20); x.fillText('PRIX TTC', C.price, y + 20);
+    y += 44; let n = 0;
+    grp.forEach(g => {
+      if (g.label) { x.fillStyle = '#f7f1ea'; x.fillRect(pad, y, W - 2 * pad, rowH); x.fillStyle = '#a67153'; x.font = font(800, 16); x.textAlign = 'left'; x.fillText(`${g.label} (${g.rows.length})`, C.name, y + rowH / 2); y += rowH; }
+      g.rows.forEach(r => {
+        if (n++ % 2) { x.fillStyle = '#faf7f3'; x.fillRect(pad, y, W - 2 * pad, rowH); }
+        x.fillStyle = '#1c2b33'; x.font = font(600, 16); x.textAlign = 'left'; x.fillText(fit(r.name, C.variant - C.name - 14), C.name, y + rowH / 2);
+        x.font = font(500, 16); x.fillText(fit(r.variant, C.sku - C.variant - 14), C.variant, y + rowH / 2);
+        x.fillStyle = r.sku ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.sku || '—', C.pack - C.sku - 14), C.sku, y + rowH / 2);
+        x.fillStyle = r.pack ? '#1c2b33' : '#9aa5ae'; x.fillText(fit(r.pack || '—', C.coeff - 80 - C.pack), C.pack, y + rowH / 2);
+        x.fillStyle = '#1c2b33'; x.textAlign = 'right'; x.fillText(r.coeff.toFixed(2).replace('.', ','), C.coeff, y + rowH / 2);
+        x.font = font(800, 16); x.fillText(U.eur(r.price), C.price, y + rowH / 2);
+        y += rowH;
+      });
+    });
+    return cv;
+  },
+  async sheetImage(mode) {
+    try {
+      if (!this._sheetRows().length) { U.toast('Aucune ligne à mettre en image.', true); return; }
+      const cv = this._sheetCanvas(), blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (!blob) throw new Error('image');
+      if (mode === 'copy') {
+        if (await U.copyImage(blob, cv.toDataURL('image/png'))) { U.toast('Image copiée — colle-la où tu veux.'); return; }
+        U.modal({ title: '🖼️ Fiche de contrôle', hideOk: true, wide: true, body: `<p class="muted" style="text-align:center;margin:0 0 8px;">Clic droit sur l'image → « Copier l'image »</p><img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:8px;display:block;" alt="Fiche de contrôle">` });
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `controle-prix-mastication-${U.today()}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) { U.toast('Impossible de créer l’image.', true); }
+  },
+  _loadXlsx() {
+    return new Promise((ok, ko) => {
+      if (window.XLSX) return ok();
+      const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = () => (window.XLSX ? ok() : ko(new Error('xlsx'))); s.onerror = () => ko(new Error('xlsx')); document.head.appendChild(s);
+    });
+  },
+  async sheetExcel() {
+    const rows = this._sheetRows(); if (!rows.length) { U.toast('Aucune ligne à exporter.', true); return; }
+    try { await this._loadXlsx(); } catch (e) { U.toast('Impossible de charger la bibliothèque Excel (connexion internet nécessaire). Utilise l’image ou l’impression.', true); return; }
+    const hide = Store.hideSupplierInfo();
+    const head = ['Viande', 'Produit', 'Variante', 'SKU', 'Sachet', 'Coeff', 'Prix TTC (€)'].concat(hide ? [] : ['Fournisseur']);
+    const data = [head].concat(rows.map(r => [r.meat, r.name, r.variant, r.sku, r.pack, Math.round(r.coeff * 100) / 100, Math.round(r.price * 100) / 100].concat(hide ? [] : [r.sup])));
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{ wch: 14 }, { wch: 34 }, { wch: 16 }, { wch: 24 }, { wch: 26 }, { wch: 8 }, { wch: 13 }, { wch: 18 }];
+    for (let i = 1; i < data.length; i++) { ['F', 'G'].forEach(c => { const cell = ws[c + (i + 1)]; if (cell) cell.z = '0.00'; }); }
+    ws['!autofilter'] = { ref: ws['!ref'] };
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Prix mastication');
+    XLSX.writeFile(wb, `controle-prix-mastication-${U.today()}.xlsx`);
+    U.toast('Fichier Excel téléchargé (' + rows.length + ' lignes).');
+  },
+
   /* ALERTE « le principal n'est pas le moins cher » (Antho 2026-10-10) : compare le COÛT RÉEL d'achat (Pricing.baseUnitCost : TVA d'achat comprise tant que non assujetti, comme tout le reste)
      du fournisseur principal aux autres fournisseurs de la fiche, à même unité (kg ou pièce) ; écart < 1 % ignoré ; fournisseurs sans prix ignorés.
      « Garder ce principal » (keepMain) mémorise la paire + les deux coûts dans p.mainOkSig : l'alerte revient toute seule si un prix change. Rien d'automatique : c'est Antho qui change le principal. */
@@ -166,8 +313,10 @@ const Catalogue = {
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
         <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
         <div class="fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._CTL.map(([v, l]) => ({ v, l })), onPick: 'Catalogue._setCtlFilter' })}</div>
+        <button class="btn ${this.sheet.open ? 'btn-cta' : 'btn-ghost'}" onclick="Catalogue.sheetShow()" title="Liste imprimable / téléchargeable : produit, variante, SKU, sachet, coeff, prix">🖨 Fiche de contrôle</button>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
+      ${this.sheet.open ? this._sheetHTML() : ''}
       ${(() => { const n = (f.ctl || 'all') === 'cheaper' ? 0 : Store.state.catalogM.filter(p => this._cheaper(p)).length; return n ? `<div class="card" style="border-left:4px solid var(--warn);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;"><span>💡 <b>${n} produit${n > 1 ? 's' : ''}</b> : le fournisseur principal n'est pas le moins cher.</span><button class="btn-ghost btn-sm" onclick="Catalogue._setCtlFilter('cheaper')">Les voir</button></div>` : ''; })()}
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
         ${U.seg([{ l: '📂 Tout développer', js: 'Catalogue.expandAll()' }, { l: '📁 Tout réduire', js: 'Catalogue.collapseAll()' }], { sm: true })}
@@ -1235,4 +1384,11 @@ _saveTeam() {
     try { return fn.apply(this, a); }
     catch (e) { console.error('Catalogue.' + name, e); U.toast('⚠️ Enregistrement impossible : ' + (e && e.message ? e.message : e), true); App.rerender(); }
   };
+});
+
+/* Menus à cases de la fiche de contrôle : un trio de méthodes par filtre (U.multiSelect appelle des fonctions globales par leur nom). */
+['sup', 'meat', 'size'].forEach(k => {
+  Catalogue['sheetTog_' + k] = function (v) { const a = this.sheet[k], i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); this.render(); };
+  Catalogue['sheetAll_' + k] = function (all) { this.sheet[k] = all ? this._sheetOptions()[k].slice() : []; this.render(); };
+  Catalogue['sheetOp_' + k] = function (open) { this.sheet[k + 'Open'] = open; };
 });

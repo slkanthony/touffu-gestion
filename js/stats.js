@@ -553,7 +553,7 @@ const Stats = {
           <div style="position:relative;height:230px;">${products.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div>
         </div>
       </div>
-      <div id="coeffList" class="mt">${this._coeffListHTML('mast')}</div>
+      <div id="coeffList" class="mt print-target">${this._coeffListHTML('mast')}</div>
       <div id="statsDetail"></div>`);
 
     if (products.length) this.drawCharts(meatCount, supplierCount, bins, binCounts(statsPublic), { ent: binCounts(statsB2B), micro: binCounts(statsB2B, 'coeffsMicro') }, statsPublic, statsB2B);
@@ -718,7 +718,7 @@ const Stats = {
         ${this._rankCard('📏 Sangles les plus utilisées', use.refs.map(r => ({ label: r.label, value: r.m })), r => U.qty(r.value) + ' m', 'Aucune sangle utilisée pour le moment.', fabNote)}
         ${this._rankCard('🎨 Couleurs les plus utilisées', use.colors.map(r => ({ label: r.label, value: r.m })), r => U.qty(r.value) + ' m', 'Pas encore de couleur connue : elle est retenue à chaque 🛠 Fabriquer.', 'Toutes largeurs confondues. ' + fabNote)}
       </div>
-      <div id="coeffList" class="mt">${this._coeffListHTML('acc')}</div>
+      <div id="coeffList" class="mt print-target">${this._coeffListHTML('acc')}</div>
       <div id="statsDetail"></div>`);
 
     if (items.length) this.drawCharts(catCount, widthCount, bins, binCounts(statsPublic), { ent: binCounts(statsB2B), micro: binCounts(statsB2B, 'coeffsMicro') }, statsPublic, statsB2B, true);
