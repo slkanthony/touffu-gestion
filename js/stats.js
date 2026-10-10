@@ -137,7 +137,7 @@ const Stats = {
       ${unnamed ? `<div class="card" style="border-left:4px solid #f5b041;"><p class="mb0">⚠️ <b>${unnamed}</b> vente(s) d'événement sans nom ne sont pas comptées ici. Nomme-les via <b>Ventes → historique → 🎪 Modifier</b>.</p></div>` : ''}
       <div class="card">
         <h2>🎪 Rentabilité par événement</h2>
-        ${list.length ? `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('meal', 'Repas')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${list.length ? U.fold('events', list.length, `<div class="table-wrap"><table class="pack-tbl"><thead><tr><th class="col-name" style="text-align:left;">${sh('name', 'Événement')}</th><th class="num">${sh('editions', 'Éditions')}</th><th class="num">${sh('days', 'Jours')}</th><th class="num">${sh('ca', 'CA')}</th><th class="num">${sh('cogs', 'Coût revient')}</th><th class="num">${sh('stand', 'Stand')}</th><th class="num">${sh('meal', 'Repas')}</th><th class="num">${sh('travel', 'Déplacement')}</th><th class="num">${sh('fee', 'Frais paiement')}</th><th class="num">${sh('conso', 'Conso.')}</th><th class="num">${sh('cotis', 'Cotisations')}</th><th class="num">${sh('net', 'Bénéfice net')}</th><th class="num">${sh('perDay', 'Bénéfice / jour')}</th><th class="num">${sh('basket', 'Panier moyen')}</th></tr></thead><tbody>${rows}</tbody></table></div>`, { unit: 'événements' }) + `
         <p class="muted help" style="font-size:.82rem;">Clique un événement pour voir ses éditions année par année (▲▼ = évolution du bénéfice net par rapport à l'édition précédente). <b>Couleurs :</b> les colonnes de coûts (précédées d'un « − ») sont simplement déduites du CA ; seul le <b>bénéfice net</b> est coloré — 🟢 vert = gagné, 🔴 rouge = perdu.</p>`
         : '<p class="muted">Aucun événement nommé pour l\'instant. Donne un nom à tes journées au moment du <b>Retour d\'événement</b>, ou via <b>🎪 Modifier</b> dans l\'historique des ventes.</p>'}
       </div>
@@ -304,7 +304,7 @@ const Stats = {
     const total = rows.reduce((a, r) => a + r.qty, 0) || 1;
     const sixMonths = new Date(Date.now() - 182 * 86400000).toISOString().slice(0, 10);
     const lbl = r => U.esc(r.name) + (r.dims ? ` <span class="muted">${U.esc(r.dims)}</span>` : '');
-    return `<div class="table-wrap"><table class="pack-tbl">
+    return U.fold('pack:' + unitWord, rows.length, `<div class="table-wrap"><table class="pack-tbl">
       <thead><tr><th class="col-name">Emballage</th><th class="num">Coût / u.</th><th class="num">En stock</th>${withFiches ? '<th class="num" title="Nombre de variantes de fiches prix (Prix mastication) qui utilisent cet emballage — survole pour la liste">Fiches prix</th>' : ''}<th class="num">${unitWord}</th><th class="num">Part</th><th class="num">Coût total</th><th>Dernier usage</th><th>${prodWord}</th><th>Statut</th></tr></thead>
       <tbody>${rows.map(r => {
         const top = Object.entries(r.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, q]) => `${U.esc(n)} <span class="muted">(${U.qty(q)})</span>`).join(', ') || '<span class="muted">—</span>';
@@ -317,7 +317,7 @@ const Stats = {
         if (cObj && cObj.toReplace) st += typeof Stock !== 'undefined' ? Stock.replaceBadge(cObj) : ' 🚩';
         const dim = !r.qty && !nF;
         return `<tr class="${dim ? 'dim' : ''}"><td class="col-name">${lbl(r)}</td><td class="num sensitive">${U.eur(r.unitCost)}</td><td class="num">${U.qty(r.stock)}</td>${withFiches ? this._fichesCell(r.fiches || []) : ''}<td class="num"><b>${U.qty(r.qty)}</b></td><td class="num">${Math.round(r.qty / total * 100)} %</td><td class="num sensitive">${U.eur(r.cost)}</td><td>${r.last ? U.frDate(r.last) : '<span class="muted">—</span>'}</td><td style="font-size:.85rem;">${top}</td><td>${st}</td></tr>`;
-      }).join('')}</tbody></table></div>`;
+      }).join('')}</tbody></table></div>`, { unit: 'emballages' });
   },
 
   _blisterHTML(bl) {
