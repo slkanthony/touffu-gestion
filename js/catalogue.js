@@ -43,7 +43,8 @@ const Catalogue = {
     ['t_gram', '⚖ Vendu au poids'],
     ['t_piece', '🔢 Vendu à la pièce'],
     ['t_size', '📏 Vendu par taille'],
-    ['inactive', '🙈 Avec variantes désactivées']
+    ['inactive', '🙈 Avec variantes désactivées'],
+    ['cheaper', '💡 Principal pas le moins cher']
   ],
   /* Calculs de toutes les variantes ACTIVES d'une fiche (même position/décote que dans la liste) */
   _activeCalcs(p) {
@@ -85,8 +86,41 @@ const Catalogue = {
       case 't_piece': return act.some(v => v.mode === 'piece');
       case 't_size': return act.some(v => v.mode === 'size');
       case 'inactive': return (p.variants || []).some(v => v.enabled === false);
+      case 'cheaper': return !!this._cheaper(p);
     }
     return true;
+  },
+
+  /* ALERTE « le principal n'est pas le moins cher » (Antho 2026-10-10) : compare le COÛT RÉEL d'achat (Pricing.baseUnitCost : TVA d'achat comprise tant que non assujetti, comme tout le reste)
+     du fournisseur principal aux autres fournisseurs de la fiche, à même unité (kg ou pièce) ; écart < 1 % ignoré ; fournisseurs sans prix ignorés.
+     « Garder ce principal » (keepMain) mémorise la paire + les deux coûts dans p.mainOkSig : l'alerte revient toute seule si un prix change. Rien d'automatique : c'est Antho qui change le principal. */
+  _cheaper(p, ignoreOk) {
+    if (Store.hideSupplierInfo()) return null;
+    const list = p.suppliers || []; if (list.length < 2) return null;
+    const main = Pricing.mainEntry(p); if (!main) return null;
+    const bm = Pricing.baseUnitCost(p, main.supplierId); if (!(bm.unitCost > 0)) return null;
+    let best = null;
+    list.forEach(s => {
+      if (s.supplierId === main.supplierId || !(U.num(s.price) > 0)) return;
+      const b = Pricing.baseUnitCost(p, s.supplierId);
+      if (b.unit !== bm.unit || !(b.unitCost > 0) || b.unitCost >= bm.unitCost * 0.99) return;
+      if (!best || b.unitCost < best.unitCost) best = { supplierId: s.supplierId, unitCost: b.unitCost, unit: b.unit };
+    });
+    if (!best) return null;
+    const gap = bm.unitCost - best.unitCost;
+    const sig = [main.supplierId, best.supplierId, bm.unitCost.toFixed(4), best.unitCost.toFixed(4)].join('|');
+    if (!ignoreOk && p.mainOkSig === sig) return null;
+    return { ...best, name: Store.supplierName(best.supplierId), mainName: Store.supplierName(main.supplierId), gap, pct: gap / bm.unitCost * 100, sig };
+  },
+  keepMain(prodId) {
+    const p = Store.state.catalogM.find(x => String(x.id) === String(prodId)); if (!p) return;
+    const ch = this._cheaper(p, true); if (!ch) return;
+    const snap = Store.snapshot('catalogM', p);
+    p.mainOkSig = ch.sig;
+    const entry = Store.commitSnapshot(snap, 'catalogue', 'Principal gardé malgré un fournisseur moins cher — ' + p.name);
+    Store.save('catalogM');
+    U.toast('Principal gardé : plus d\'alerte tant que les prix ne changent pas.', false, entry.id);
+    App.rerender();
   },
 
   render() {
@@ -134,6 +168,7 @@ const Catalogue = {
         <div class="fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._CTL.map(([v, l]) => ({ v, l })), onPick: 'Catalogue._setCtlFilter' })}</div>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
+      ${(() => { const n = (f.ctl || 'all') === 'cheaper' ? 0 : Store.state.catalogM.filter(p => this._cheaper(p)).length; return n ? `<div class="card" style="border-left:4px solid var(--warn);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;"><span>💡 <b>${n} produit${n > 1 ? 's' : ''}</b> : le fournisseur principal n'est pas le moins cher.</span><button class="btn-ghost btn-sm" onclick="Catalogue._setCtlFilter('cheaper')">Les voir</button></div>` : ''; })()}
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
         ${U.seg([{ l: '📂 Tout développer', js: 'Catalogue.expandAll()' }, { l: '📁 Tout réduire', js: 'Catalogue.collapseAll()' }], { sm: true })}
       </div>` : ''}
@@ -211,6 +246,7 @@ const Catalogue = {
       sizeMeta = `<span style="white-space:nowrap;">${na} taille(s) · <span class="sensitive">coût ${rng(costs, x => U.eur(x))}</span></span>`;
       sizeCoeff = `<span class="b2b-disc-badge sensitive" style="width:auto;" title="Chaque taille a son propre prix d'achat et son propre coefficient (voir le tableau)"><label>Coeff</label><span style="padding:0 8px;font-weight:700;">${rng(cfs, x => x.toFixed(2))}</span></span>`;
     }
+    const ch = this._cheaper(p);   // fournisseur moins cher que le principal (ou null)
     let critCount = 0;
     let idx = 0;
     const varRow = (v, on) => {
@@ -261,7 +297,7 @@ const Catalogue = {
       const vatNote = (vatOwn || vatSup) ? ` <span class="muted">(TVA achat ${Pricing.purchaseVatOf(s.supplierId, s.vatRate)}%)</span>` : '';
       const link = (s.url && !Store.hideSupplierInfo()) ? ` <button class="btn-icon" title="Ouvrir la page fournisseur" onclick="window.open('${U.esc(s.url)}','_blank','noopener')">🔗</button>` : '';
       return `<tr class="${isMain ? '' : 'dim'}">
-        <td class="col-name">${isMain ? '★ ' : ''}${U.esc(Store.supplierName(s.supplierId))}${vatNote}${link}</td>
+        <td class="col-name">${isMain ? '★ ' : ''}${U.esc(Store.supplierName(s.supplierId))}${vatNote}${link}${ch && ch.supplierId === s.supplierId ? ` <span class="badge ok" title="Coût d'achat réel plus bas que le principal">💡 −${U.pct(ch.pct)}</span>` : ''}</td>
         <td class="num sensitive">${U.eur(this.supUnitHT(s))}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</td>
         <td class="muted" style="white-space:nowrap;">${this._ageTxt(U.num(s.priceDate) || 0)}</td>
         <td>${isMain ? '<span class="badge main-sup">principal</span>' : `<button class="btn-ghost btn-sm" onclick="Catalogue.setMain('${p.id}','${s.supplierId}')">Passer principal</button>`}</td>
@@ -277,7 +313,7 @@ const Catalogue = {
     return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
       <summary onclick="Catalogue.summaryNav(event,'${p.id}')" onauxclick="Catalogue.summaryNav(event,'${p.id}')">
         <b>${U.esc(p.name)}</b>${(() => { const t = this._ageTxt(this.priceDateOf(p, activeSup)); return t ? `<span class="px-date" title="Prix d'achat mis à jour le ${t}">${t}</span>` : ''; })()}
-        <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}</span>
+        <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${ch ? ` <span class="badge warn" title="${U.esc(ch.name)} est moins cher que le principal (${U.esc(ch.mainName)}) : −${U.pct(ch.pct)}">💡 moins cher : ${U.esc(ch.name)}</span>` : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
@@ -289,6 +325,11 @@ const Catalogue = {
         <span onclick="event.stopPropagation();Catalogue.toggleSel('${p.id}')"><button class="btn btn-sm ${selected?'cat-sel-active':'btn-ghost'}">${selected?'✓ Sélectionné':'Sélectionner'}</button></span>
       </summary>
       <div class="fold-body">
+        ${ch ? `<div style="border-left:4px solid var(--warn);padding:8px 12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <span>💡 <b>${U.esc(ch.name)}</b> est moins cher que ton principal <b>${U.esc(ch.mainName)}</b> : <b class="sensitive">−${U.eur(ch.gap)}/${ch.unit === 'kilo' ? 'kg' : 'pc'}</b> (−${U.pct(ch.pct)}) <span class="muted">· coût d'achat réel${base.k > 1 ? ", TVA d'achat comprise" : ""}</span></span>
+          <button class="btn-cta btn-sm" onclick="Catalogue.setMain('${p.id}','${ch.supplierId}')">Passer ${U.esc(ch.name)} principal</button>
+          <button class="btn-ghost btn-sm" onclick="Catalogue.keepMain('${p.id}')" title="Tu gardes ce principal exprès (qualité, délai…) : l'alerte disparaît jusqu'au prochain changement de prix">Garder ${U.esc(ch.mainName)}</button>
+        </div>` : ''}
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — les prix ci-dessous sont temporaires, cliquer à nouveau pour revenir au principal</div>' : ''}
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="ctr">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num th-benef" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
