@@ -294,7 +294,15 @@ details.fold.prod-fold > summary .type-col { text-align: center; }
 
 details.fold.prod-fold.cat-fold > summary,
 .prod-list-header.cat-header {
-  grid-template-columns: minmax(170px, 2fr) 120px 100px minmax(150px, 1.5fr) 1fr 300px 115px;
+  grid-template-columns: minmax(170px, 2fr) 120px 100px minmax(150px, 1.5fr) 1fr 312px 118px;
+}
+/* Fenêtre moins large : plus de défilement horizontal (Antho 2026-10-10) → coeff/décote passent sur une 2e ligne, « Sélectionner » reste à droite */
+@media (max-width: 1240px) {
+  details.fold.prod-fold.cat-fold > summary,
+  .prod-list-header.cat-header { grid-template-columns: minmax(160px, 2fr) 110px 90px minmax(130px, 1.5fr) minmax(100px, 1fr); }
+  .prod-list-header.cat-header > :nth-child(n+6) { display: none; }
+  details.fold.prod-fold.cat-fold > summary > .cat-head-inputs { grid-column: 1 / span 4; justify-content: flex-start; }
+  details.fold.prod-fold.cat-fold > summary > :last-child { grid-column: 5; justify-self: end; }
 }
 .prod-list-header.acc-header,
 details.fold.prod-fold.acc-fold > summary {
@@ -1249,9 +1257,9 @@ tr.virt-row > td { background: rgba(166,113,83,.05); }
 .opt-check input[type=checkbox] { width:20px; height:20px; accent-color:var(--caramel); flex:0 0 auto; }
 .opt-check:hover { border-color:var(--caramel); }
 .ac-list, .multiselect-panel, .nsel-panel { overflow-x: hidden; }
-.cat-head-inputs .b2b-disc-badge > input { width: 64px; -moz-appearance: textfield; appearance: textfield; }
+.cat-head-inputs .b2b-disc-badge > input { width: 52px; -moz-appearance: textfield; appearance: textfield; }
 .cat-head-inputs .b2b-disc-badge > input::-webkit-outer-spin-button, .cat-head-inputs .b2b-disc-badge > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.cat-head-inputs .b2b-disc-badge:first-child > input { width: 72px; }
+.cat-head-inputs .b2b-disc-badge:first-child > input { width: 60px; }
 
 /* Toutes les lignes de produits repliables ont la même hauteur (celle de Stock) */
 @media (min-width: 861px) {
