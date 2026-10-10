@@ -141,9 +141,10 @@ const Catalogue = {
     const ms = (k, label, opts) => `<div class="fg" style="margin:0;min-width:170px;flex:1 1 170px;"><label>${label}</label>${U.multiSelect({ options: opts, selected: sh[k], toggle: 'Catalogue.sheetTog_' + k, setAll: 'Catalogue.sheetAll_' + k, open: sh[k + 'Open'], onOpen: 'Catalogue.sheetOp_' + k })}</div>`;
     const prodsOf = g => { const out = []; g.rows.forEach(r => { const l = out[out.length - 1]; if (l && l.id === r.id) l.rows.push(r); else out.push({ id: r.id, name: r.name, rows: [r] }); }); return out; };
     const pl = n => n > 1 ? 's' : '';
-    const body = grp.map(g => {
+    const fold = html => grp.length > 1 ? html : U.fold('sheet', rows.length, html, { h: 560, unit: 'lignes' });   // plusieurs groupes : pas de repli, on navigue de groupe en groupe (▲ ▼ / « Aller à »)
+    const body = grp.map((g, gi) => {
       const prods = prodsOf(g);
-      const head = g.label ? `<tbody class="sheet-gh"><tr class="sheet-grp"><td colspan="6"><b>${U.esc(g.label)}</b> <span class="muted">(${prods.length} produit${pl(prods.length)} · ${g.rows.length} ligne${pl(g.rows.length)})</span></td><td class="print-col"></td></tr></tbody>` : '';
+      const head = g.label ? `<tbody class="sheet-gh" id="sg_${gi}"><tr class="sheet-grp"><td colspan="6"><b>${U.esc(g.label)}</b> <span class="muted">(${prods.length} produit${pl(prods.length)} · ${g.rows.length} ligne${pl(g.rows.length)})</span><span class="no-print sheet-nav"><button type="button" class="btn-icon" title="${gi ? 'Groupe précédent' : 'Haut de la fiche'}" onclick="Catalogue.sheetGo(${gi - 1})">▲</button><button type="button" class="btn-icon" title="Groupe suivant" ${gi < grp.length - 1 ? '' : 'disabled'} onclick="Catalogue.sheetGo(${gi + 1})">▼</button></span></td><td class="print-col"></td></tr></tbody>` : '';
       return head + prods.map((pr, i) => `<tbody class="sheet-prod${i % 2 ? ' alt' : ''}">` + pr.rows.map((r, j) => `<tr>${j === 0 ? `<td class="col-name sheet-name" rowspan="${pr.rows.length}"><a href="#/catalogue/edit/${r.id}" title="Ouvrir la fiche">${U.esc(pr.name)}</a></td>` : ''}<td>${U.esc(r.variant)}</td><td>${r.sku ? U.esc(r.sku) : '<span class="muted">—</span>'}</td><td>${r.pack ? U.esc(r.pack) : '<span class="muted">—</span>'}</td><td class="num sensitive">${r.coeff.toFixed(2)}</td><td class="num"><b>${U.eur(r.price)}</b></td><td class="print-col">☐</td></tr>`).join('') + '</tbody>').join('');
     }).join('');
     return `<div class="card print-target" id="ctlSheet">
@@ -162,11 +163,14 @@ const Catalogue = {
           <button class="btn-ghost btn-sm" onclick="Catalogue.sheetExcel()">📊 Excel (.xlsx)</button>
           <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
         </div>
+        ${grp.length > 1 ? `<div class="frow mt" style="gap:6px;flex-wrap:wrap;align-items:center;"><span class="muted" style="font-size:.8rem;">Aller à :</span>${grp.map((g, gi) => `<button type="button" class="btn-ghost btn-sm" onclick="Catalogue.sheetGo(${gi})">${U.esc(g.label)} <span class="muted">(${prodsOf(g).length})</span></button>`).join('')}</div>` : ''}
       </div>
-      ${rows.length ? U.fold('sheet', rows.length + grp.length, `<div class="table-wrap mt"><table>
-        <thead><tr><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Sachet</th><th class="num">Coeff</th><th class="num">Prix TTC</th><th class="print-col">✔</th></tr></thead>${body}</table></div>`, { h: 560, unit: 'lignes' }) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
+      ${rows.length ? fold(`<div class="table-wrap mt"><table>
+        <thead><tr><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Sachet</th><th class="num">Coeff</th><th class="num">Prix TTC</th><th class="print-col">✔</th></tr></thead>${body}</table></div>`) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
     </div>`;
   },
+  /* Groupe précédent / suivant de la fiche (i = -1 : haut de la fiche) */
+  sheetGo(i) { const el = document.getElementById(i < 0 ? 'ctlSheet' : 'sg_' + i); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
   sheetPrint() {
     document.body.classList.add('print-focus');
     const done = () => { document.body.classList.remove('print-focus'); window.removeEventListener('afterprint', done); };

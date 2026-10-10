@@ -607,6 +607,10 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 .sheet-grp td { background: rgba(166, 113, 83, .12); }
 /* Fiche de contrôle : un bloc par produit (nom en cellule fusionnée), lignes serrées */
 .sheet-prod td { padding: 4px 10px; }
+#ctlSheet, .sheet-gh { scroll-margin-top: 72px; }
+.sheet-nav { float: right; white-space: nowrap; }
+.sheet-nav .btn-icon { padding: 0 8px; font-size: .8rem; }
+.sheet-nav .btn-icon:disabled { opacity: .3; cursor: default; }
 .sheet-prod .sheet-name { text-align: left !important; vertical-align: top; font-weight: 700; padding-top: 6px; }
 .sheet-prod.alt { background: rgba(255, 255, 255, .035); }
 .sheet-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
