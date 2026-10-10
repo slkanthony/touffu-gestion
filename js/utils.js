@@ -354,6 +354,22 @@ const U = {
   },
 
   /* Couleurs des graphiques en anneau (Antho 2026-10-10 : camemberts ternes) : vives, lisibles sur fond sombre comme sur fond clair. TOUS les camemberts de l'appli sont des anneaux (cutout 58 %), légendes en pastilles rondes. */
+  /* Total au centre d'un anneau (somme des parts visibles : masquer une part dans la légende met le total à jour). Police réduite si le texte dépasse le trou. */
+  donutCenter(color, fmt, label) {
+    return {
+      id: 'donutCenter',
+      afterDraw(chart) {
+        const meta = chart.getDatasetMeta(0), arc = meta && meta.data && meta.data[0]; if (!arc) return;
+        const data = chart.data.datasets[0].data, tot = data.reduce((a, v, i) => a + (chart.getDataVisibility(i) ? U.num(v) : 0), 0);
+        const txt = fmt ? fmt(tot) : String(Math.round(tot * 100) / 100).replace('.', ','), ctx = chart.ctx, inner = arc.innerRadius * 2 * 0.86;
+        let size = 22; ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
+        do { ctx.font = `700 ${size}px Quicksand, "Segoe UI", sans-serif`; size -= 1; } while (ctx.measureText(txt).width > inner && size > 9);
+        ctx.fillText(txt, arc.x, arc.y - (label ? 7 : 0));
+        if (label) { ctx.globalAlpha = .65; ctx.font = '600 11px Quicksand, "Segoe UI", sans-serif'; ctx.fillText(label, arc.x, arc.y + 12); }
+        ctx.restore();
+      }
+    };
+  },
   CHART_COLORS: ['#e8955a', '#4fbf8b', '#ef6f6c', '#f5c04e', '#5aa9e6', '#b78cf0', '#f28ab8', '#46cfc4', '#a3d65c', '#f59e6c', '#7b8cf0', '#e3d26f', '#6dc8f0', '#d98cd0', '#8fe3a6', '#f0a0a0', '#c9a36b', '#5fb3a0', '#cf7a4a', '#9aa7ff'],
 
   customSelect({ value, options, onPick, cls }) {

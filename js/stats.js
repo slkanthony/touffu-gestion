@@ -751,6 +751,7 @@ const Stats = {
       const data = labels.map(l => counts[l]);
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
+        plugins: [U.donutCenter(textColor, null, acc ? 'accessoires' : 'produits')],
         data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: {
           maintainAspectRatio: false, cutout: '58%',
@@ -1125,9 +1126,13 @@ const Stats = {
         ${hasChannel ? `<div class="card"><h2>🛍️ Répartition par canal (CA)</h2><div style="position:relative;height:230px;"><canvas id="salesChannelChart"></canvas></div></div>` : ''}
       </div>
 
-      <div class="card mt"><h2>📈 Détail par mois — CA & rentabilité</h2>
-        <p class="muted help">Évolution réelle mois par mois (chronologique, années distinctes) — avec la même compta que le Tableau de bord.</p>
-        <div style="position:relative;height:190px;"><canvas id="salesTimelineChart"></canvas></div>
+      <div class="card mt"><h2>${this.salesMetric === 'ca' ? '📈 Évolution — CA, coûts, marge & bénéfice' : '📊 Quantité vendue par mois'}</h2>
+        <p class="muted help">${this.salesMetric === 'ca' ? 'Une courbe par poste, mois par mois (chronologique, années distinctes) : clique un nom dans la légende pour masquer / afficher sa courbe. « Frais » = paiement, envoi, stand/repas/déplacement, entretien matériel, livraison & frais généraux (sans les cartons, qui ont leur courbe).' : 'Nombre d\'articles vendus mois par mois (chronologique, années distinctes).'}</p>
+        <div style="position:relative;height:${this.salesMetric === 'ca' ? 300 : 190}px;"><canvas id="salesTimelineChart"></canvas></div>
+      </div>
+
+      <div class="card mt"><h2>🧾 Détail par mois — frais, marge & bénéfice</h2>
+        <p class="muted help">Le même détail en chiffres, avec la même compta que le Tableau de bord.</p>
         ${(() => {
           const va = Store.state.settings.vatActive;
           const uvM = Pricing.fixedOverheadMonthly(); // entretien UV + amortissement matériel / mois (0 si non renseigné)
@@ -1217,6 +1222,7 @@ const Stats = {
       if (!labels.length) return;
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
+        plugins: [U.donutCenter(textColor, fmt || U.eur, fmt ? mLabel : 'CA')],
         data: { labels, datasets: [{ data: labels.map(l => counts[l]), backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: { maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label} : ${(fmt || U.eur)(c.parsed)}` } } } }
       });
@@ -1234,7 +1240,23 @@ const Stats = {
     // Évolution chronologique mois par mois (vrais mois, années distinctes)
     const tl = agg.months || [];
     const tlC = document.getElementById('salesTimelineChart');
-    if (tlC && tl.length) this._charts.timeline = new Chart(tlC, {
+    if (tlC && tl.length && metric === 'ca') {   // CA : courbes € (une par poste) ; Quantité : barres du nombre d'articles
+      const line = (label, color, f, o = {}) => ({ label, data: tl.map(f), borderColor: color, backgroundColor: color, pointBackgroundColor: color, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, tension: .3, ...o });
+      const C = U.CHART_COLORS;
+      this._charts.timeline = new Chart(tlC, {
+        type: 'line',
+        data: { labels: tl.map(m => this._monthKeyLabel(m.key)), datasets: [
+          line('CA', C[4], m => m.ca), line('Coût de revient', C[2], m => m.cogs), line('Marge brute', C[1], m => m.marge),
+          line('Frais', C[3], m => m.fee + m.shipping + m.eventFee + m.uvMaint + m.charges), line('Coût cartons', C[5], m => m.boxCost),
+          line('Cotisations URSSAF', C[7], m => m.cotis, { hidden: true }), line('Bénéfice net', C[0], m => m.net, { borderWidth: 4, pointRadius: 4 })
+        ] },
+        options: {
+          maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 14, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.dataset.label} : ${U.eur(c.parsed.y)}` } } },
+          scales: { y: { ticks: { color: textColor, callback: v => v + ' €' } }, x: { ticks: { color: textColor, maxRotation: 60, font: { size: 10 } } } }
+        }
+      });
+    } else if (tlC && tl.length) this._charts.timeline = new Chart(tlC, {
       type: 'bar',
       data: { labels: tl.map(m => this._monthKeyLabel(m.key)), datasets: [{ label: mLabel, data: tl.map(m => metric === 'ca' ? m.ca : m.articles), backgroundColor: '#5c6a78', borderRadius: 5 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ' ' + fmtV(c.parsed.y) } } }, scales: { y: { beginAtZero: true, ticks: { color: textColor } }, x: { ticks: { color: textColor, maxRotation: 60, font: { size: 10 } } } } }
