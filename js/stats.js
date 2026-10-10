@@ -741,33 +741,33 @@ const Stats = {
     const dark = Theme.get() === 'dark';
     const textColor = dark ? '#eee3d3' : '#1c2b33';
     const borderColor = dark ? '#1c3844' : '#ffffff';
-    const palette = ['#a67153', '#4a7c59', '#c0564a', '#b97a24', '#5c6a78', '#7fc4e8', '#d99a78', '#8fd6a4', '#f29d92', '#f0b667', '#c9a8e0', '#6fb1c9', '#e0a1c4', '#9fb98a', '#e8c76a', '#8a9bd6', '#d6866a', '#6fd6c1', '#c98acb', '#a3d66a'];
+    const palette = U.CHART_COLORS;
     Object.values(this._charts).forEach(c => c?.destroy());
     this._charts = {};
 
-    const buildPie = (id, counts, type, onPick) => {
+    const buildPie = (id, counts, onPick) => {
       const canvas = document.getElementById(id); if (!canvas) return;
       const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
       const data = labels.map(l => counts[l]);
       this._charts[id] = new Chart(canvas, {
-        type,
-        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2 }] },
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: {
-          maintainAspectRatio: false,
-          plugins: { legend: { position: 'right', labels: { color: textColor, boxWidth: 12, font: { family: 'Quicksand', size: 11 } }, onClick: (e, item, legend) => onPick(legend.chart.data.labels[item.index]) } },
+          maintainAspectRatio: false, cutout: '58%',
+          plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } }, onClick: (e, item, legend) => onPick(legend.chart.data.labels[item.index]) } },
           onClick: (evt, els) => { if (els.length) onPick(labels[els[0].index]); }
         }
       });
     };
     if (acc) {   // accessoires : camembert 1 = catégorie, camembert 2 = largeur de sangle (stockés sous les mêmes ids de canvas)
-      buildPie('statsChartMeat', meatCount, 'doughnut', (label) =>
+      buildPie('statsChartMeat', meatCount, (label) =>
         this.showAccDetail(a => (a.category || 'Non spécifié') === label, `Catégorie : ${label}`, statsPublic));
-      buildPie('statsChartSupplier', supplierCount, 'pie', (label) =>
+      buildPie('statsChartSupplier', supplierCount, (label) =>
         this.showAccDetail(a => { const w = B2B.accWidths(a); return (w.length ? w : ['Non spécifié']).includes(label); }, `Largeur de sangle : ${label}`, statsPublic));
     } else {
-      buildPie('statsChartMeat', meatCount, 'doughnut', (label) =>
+      buildPie('statsChartMeat', meatCount, (label) =>
         this.showDetail(p => (p.meatType || 'Non spécifié') === label, `Viande : ${label}`, statsPublic));
-      buildPie('statsChartSupplier', supplierCount, 'pie', (label) =>
+      buildPie('statsChartSupplier', supplierCount, (label) =>
         this.showDetail(p => (p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : 'Non spécifié') === label, `Fournisseur : ${label}`, statsPublic));
     }
 
@@ -1195,7 +1195,7 @@ const Stats = {
     const dark = Theme.get() === 'dark';
     const textColor = dark ? '#eee3d3' : '#1c2b33';
     const borderColor = dark ? '#1c3844' : '#ffffff';
-    const palette = ['#a67153', '#4a7c59', '#c0564a', '#b97a24', '#5c6a78', '#7fc4e8', '#d99a78', '#8fd6a4', '#f29d92', '#f0b667', '#c9a8e0', '#6fb1c9', '#e0a1c4', '#9fb98a', '#e8c76a', '#8a9bd6', '#d6866a', '#6fd6c1', '#c98acb', '#a3d66a'];
+    const palette = U.CHART_COLORS;
     Object.values(this._charts).forEach(c => c?.destroy());
     this._charts = {};
     const metric = this.salesMetric === 'ca' ? 'ca' : 'qty';
@@ -1211,25 +1211,25 @@ const Stats = {
       options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ' ' + fmtV(c.parsed.x) } } }, scales: { x: { beginAtZero: true, ticks: { color: textColor } }, y: { ticks: { color: textColor, font: { size: 10 } } } } }
     });
 
-    const buildPie = (id, counts, type, fmt) => {
+    const buildPie = (id, counts, fmt) => {
       const canvas = document.getElementById(id); if (!canvas) return;
       const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
       if (!labels.length) return;
       this._charts[id] = new Chart(canvas, {
-        type,
-        data: { labels, datasets: [{ data: labels.map(l => counts[l]), backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2 }] },
-        options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: textColor, boxWidth: 12, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label} : ${(fmt || U.eur)(c.parsed)}` } } } }
+        type: 'doughnut',
+        data: { labels, datasets: [{ data: labels.map(l => counts[l]), backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
+        options: { maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label} : ${(fmt || U.eur)(c.parsed)}` } } } }
       });
     };
-    buildPie('salesChannelChart', agg.byChannelCA, 'doughnut');
-    buildPie('salesCatChart', agg.byCatCA, 'doughnut');
-    buildPie('salesMeatChart', agg.byMeatCA, 'pie');
+    buildPie('salesChannelChart', agg.byChannelCA);
+    buildPie('salesCatChart', agg.byCatCA);
+    buildPie('salesMeatChart', agg.byMeatCA);
     // Accessoires : par type + par largeur, selon la métrique choisie (qté / CA)
     const accTypeCounts = {}, accWidthCounts = {};
     Object.entries(agg.accType || {}).forEach(([k, v]) => accTypeCounts[k] = metric === 'ca' ? v.ca : v.qty);
     Object.entries(agg.accWidth || {}).forEach(([k, v]) => accWidthCounts[k] = metric === 'ca' ? v.ca : v.qty);
-    buildPie('salesAccTypeChart', accTypeCounts, 'doughnut', fmtV);
-    buildPie('salesAccWidthChart', accWidthCounts, 'doughnut', fmtV);
+    buildPie('salesAccTypeChart', accTypeCounts, fmtV);
+    buildPie('salesAccWidthChart', accWidthCounts, fmtV);
 
     // Évolution chronologique mois par mois (vrais mois, années distinctes)
     const tl = agg.months || [];

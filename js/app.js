@@ -709,7 +709,7 @@ const App = {
     const dark = Theme.get() === 'dark';
     const textColor = dark ? '#eee3d3' : '#1c2b33';
     const borderColor = dark ? '#1c3844' : '#ffffff';
-    const palette = ['#a67153', '#4a7c59', '#c0564a', '#b97a24', '#5c6a78', '#7fc4e8', '#d99a78', '#8fd6a4', '#f29d92', '#f0b667', '#c9a8e0', '#6fb1c9', '#e0a1c4', '#9fb98a', '#e8c76a', '#8a9bd6', '#d6866a', '#6fd6c1', '#c98acb', '#a3d66a'];
+    const palette = U.CHART_COLORS;
 
     const build = (id, counts, scopeCat) => {
       const canvas = document.getElementById(id); if (!canvas) return;
@@ -718,12 +718,12 @@ const App = {
       const data = labels.map(l => counts[l]);
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
-        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2 }] },
+        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: {
-          maintainAspectRatio: false,
+          maintainAspectRatio: false, cutout: '58%',
           plugins: {
             legend: {
-              position: 'right', labels: { color: textColor, boxWidth: 14, font: { family: 'Quicksand', size: 11 } },
+              position: 'right', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } },
               onClick: (evt, item, legend) => this.filterDashboard(legend.chart.data.labels[item.index], scopeCat)
             }
           },

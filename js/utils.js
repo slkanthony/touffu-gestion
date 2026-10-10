@@ -353,6 +353,9 @@ const U = {
     if (!open) box.scrollIntoView({ block: 'nearest' });
   },
 
+  /* Couleurs des graphiques en anneau (Antho 2026-10-10 : camemberts ternes) : vives, lisibles sur fond sombre comme sur fond clair. TOUS les camemberts de l'appli sont des anneaux (cutout 58 %), légendes en pastilles rondes. */
+  CHART_COLORS: ['#e8955a', '#4fbf8b', '#ef6f6c', '#f5c04e', '#5aa9e6', '#b78cf0', '#f28ab8', '#46cfc4', '#a3d65c', '#f59e6c', '#7b8cf0', '#e3d26f', '#6dc8f0', '#d98cd0', '#8fe3a6', '#f0a0a0', '#c9a36b', '#5fb3a0', '#cf7a4a', '#9aa7ff'],
+
   customSelect({ value, options, onPick, cls }) {
     const cur = options.find(o => String(o.v) === String(value)) || options[0];
     const label = cur ? cur.l : '—';
