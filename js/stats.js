@@ -1102,7 +1102,7 @@ const Stats = {
       <div class="card">
         <div class="frow" style="gap:16px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:220px;margin:0;"><label>Période</label>${U.customSelect({ value: this.salesPeriod, options: periodOpts, onPick: 'Stats.setSalesPeriod' })}</div>
-          ${metric === 'ca' ? '' : `<div class="fg" style="margin:0;"><label>Catégorie</label>${U.seg([['all', 'Tout'], ['mast', '🥩 Mastication'], ['acc', '🐕 Accessoires']].map(([k, l]) => ({ l, on: (this.salesKind || 'all') === k, js: `Stats.setSalesKind('${k}')` })), { wrap: true })}</div>`}
+          ${metric === 'ca' ? '' : `<div class="fg" style="margin:0;flex:0 0 auto;"><label>Catégorie</label>${U.seg([['all', 'Tout'], ['mast', '🥩 Mastication'], ['acc', '🐕 Accessoires']].map(([k, l]) => ({ l, on: (this.salesKind || 'all') === k, js: `Stats.setSalesKind('${k}')` })), { wrap: true })}</div>`}
         </div>
         <p class="muted help" style="margin-top:8px;">Basé sur tes ventes enregistrées. ⚠️ Les ventes de marché <b>sans SKU</b> (non importées) n'apparaissent pas ici — le classement devient précis à mesure que tu remplis les SKU côté SumUp.</p>
       </div>
