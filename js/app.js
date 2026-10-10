@@ -719,7 +719,7 @@ const App = {
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
         plugins: [U.donutCenter(textColor, null, scopeCat === 'Mastication' ? 'produits' : 'accessoires')],
-        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
+        data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 2, borderRadius: 3, hoverOffset: 6 }] },
         options: {
           maintainAspectRatio: false, cutout: '58%',
           plugins: {
