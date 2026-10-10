@@ -355,12 +355,12 @@ const U = {
 
   /* Couleurs des graphiques en anneau (Antho 2026-10-10 : camemberts ternes) : vives, lisibles sur fond sombre comme sur fond clair. TOUS les camemberts de l'appli sont des anneaux (cutout 58 %), légendes en pastilles rondes. */
   /* Total au centre d'un anneau (somme des parts visibles : masquer une part dans la légende met le total à jour). Police réduite si le texte dépasse le trou. */
-  donutCenter(color, fmt, label) {
+  donutCenter(color, fmt, label, parts) {   // parts = true : affiche le NOMBRE de parts visibles (ex. 4 fournisseurs) au lieu de leur somme
     return {
       id: 'donutCenter',
       afterDraw(chart) {
         const meta = chart.getDatasetMeta(0), arc = meta && meta.data && meta.data[0]; if (!arc) return;
-        const data = chart.data.datasets[0].data, tot = data.reduce((a, v, i) => a + (chart.getDataVisibility(i) ? U.num(v) : 0), 0);
+        const data = chart.data.datasets[0].data, tot = data.reduce((a, v, i) => a + (chart.getDataVisibility(i) ? (parts ? 1 : U.num(v)) : 0), 0);
         const txt = fmt ? fmt(tot) : String(Math.round(tot * 100) / 100).replace('.', ','), ctx = chart.ctx, inner = arc.innerRadius * 2 * 0.86;
         let size = 22; ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
         do { ctx.font = `700 ${size}px Quicksand, "Segoe UI", sans-serif`; size -= 1; } while (ctx.measureText(txt).width > inner && size > 9);

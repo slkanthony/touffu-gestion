@@ -745,13 +745,13 @@ const Stats = {
     Object.values(this._charts).forEach(c => c?.destroy());
     this._charts = {};
 
-    const buildPie = (id, counts, onPick) => {
+    const buildPie = (id, counts, onPick, ctr) => {
       const canvas = document.getElementById(id); if (!canvas) return;
       const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
       const data = labels.map(l => counts[l]);
       this._charts[id] = new Chart(canvas, {
         type: 'doughnut',
-        plugins: [U.donutCenter(textColor, null, acc ? 'accessoires' : 'produits')],
+        plugins: [U.donutCenter(textColor, null, ctr.label, ctr.parts)],
         data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => palette[i % palette.length]), borderColor, borderWidth: 3, borderRadius: 7, hoverOffset: 6 }] },
         options: {
           maintainAspectRatio: false, cutout: '58%',
@@ -762,14 +762,14 @@ const Stats = {
     };
     if (acc) {   // accessoires : camembert 1 = catégorie, camembert 2 = largeur de sangle (stockés sous les mêmes ids de canvas)
       buildPie('statsChartMeat', meatCount, (label) =>
-        this.showAccDetail(a => (a.category || 'Non spécifié') === label, `Catégorie : ${label}`, statsPublic));
+        this.showAccDetail(a => (a.category || 'Non spécifié') === label, `Catégorie : ${label}`, statsPublic), { label: 'accessoires' });
       buildPie('statsChartSupplier', supplierCount, (label) =>
-        this.showAccDetail(a => { const w = B2B.accWidths(a); return (w.length ? w : ['Non spécifié']).includes(label); }, `Largeur de sangle : ${label}`, statsPublic));
+        this.showAccDetail(a => { const w = B2B.accWidths(a); return (w.length ? w : ['Non spécifié']).includes(label); }, `Largeur de sangle : ${label}`, statsPublic), { label: 'largeurs', parts: true });
     } else {
       buildPie('statsChartMeat', meatCount, (label) =>
-        this.showDetail(p => (p.meatType || 'Non spécifié') === label, `Viande : ${label}`, statsPublic));
+        this.showDetail(p => (p.meatType || 'Non spécifié') === label, `Viande : ${label}`, statsPublic), { label: 'produits' });
       buildPie('statsChartSupplier', supplierCount, (label) =>
-        this.showDetail(p => (p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : 'Non spécifié') === label, `Fournisseur : ${label}`, statsPublic));
+        this.showDetail(p => (p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : 'Non spécifié') === label, `Fournisseur : ${label}`, statsPublic), { label: 'fournisseurs', parts: true });
     }
 
     // Seuil critique (S.b2bCoeffThreshold) : bande rouge à gauche + ligne pointillée « Seuil x,xx » (plugin maison, pas de librairie).
@@ -810,7 +810,7 @@ const Stats = {
         options: {
           maintainAspectRatio: false,
           scales: { y: { beginAtZero: true, ticks: { color: textColor, precision: 0 } }, x: { ticks: { color: textColor, autoSkip: false, maxRotation: 60, font: { size: 10 } } } },
-          plugins: { legend: { labels: { color: textColor } } },
+          plugins: { legend: { labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } } },
           onClick: (evt, els) => {
             if (!els.length) return;
             const b = bins[els[0].index];
@@ -1278,7 +1278,7 @@ const Stats = {
       if (g && seasonC) this._charts.season = new Chart(seasonC, {
         type: 'bar',
         data: { labels: this._monthLabels, datasets: [{ label: g.name, data: g.month, backgroundColor: '#b97a24', borderRadius: 5 }] },
-        options: { maintainAspectRatio: false, plugins: { legend: { labels: { color: textColor } }, tooltip: { callbacks: { label: (c) => ' ' + fmtV(c.parsed.y) } } }, scales: { y: { beginAtZero: true, ticks: { color: textColor } }, x: { ticks: { color: textColor } } } }
+        options: { maintainAspectRatio: false, plugins: { legend: { labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => ' ' + fmtV(c.parsed.y) } } }, scales: { y: { beginAtZero: true, ticks: { color: textColor } }, x: { ticks: { color: textColor } } } }
       });
     }
   }
