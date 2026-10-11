@@ -496,25 +496,39 @@ const Woo = {
       </div></details>` : ''}
     `;
   },
+  /* « Je compare : Tout | SKU | Prix | Stock » (Antho 2026-10-11) : une seule chose à la fois (colonnes + pastilles de statut adaptées) ; les lignes sont regroupées par produit (nom écrit une fois, formats dessous). */
+  sumupWhat: 'all',
+  cmpWhat: 'all',
+  _setSumupWhat(v) { this.sumupWhat = v; this.sumupFilter = 'issues'; this.render(); },
+  _setCmpWhat(v) { this.cmpWhat = v; this.cmpFilter = 'issues'; this.render(); },
+  _whatSeg(cur, setter) {
+    return `<div class="frow mt" style="gap:8px;align-items:center;flex-wrap:wrap;"><span class="muted">Je compare :</span>${U.seg([['all', 'Tout'], ['sku', '🏷️ SKU'], ['price', '💶 Prix'], ['stock', '📦 Stock']].map(([k, l]) => ({ l, on: cur === k, js: `${setter}('${k}')` })), { sm: true, wrap: true })}</div>`;
+  },
   _renderSumup() {
-    const r = this._sumupReport();
+    const r = this._sumupReport(), W = ['sku', 'price', 'stock'].includes(this.sumupWhat) ? this.sumupWhat : 'all';
     // Toutes les lignes SumUp dans un seul tableau : reliées, SKU inconnu, sans SKU.
     const all = [
       ...r.matched.map(m => ({ ...m, st: 'matched', dPrice: m.price != null ? +(m.appPrice - m.price).toFixed(2) : null, dQty: m.qtyOk === null || m.qty == null ? null : m.appQty - m.qty })),
       ...r.unknown.map(l => ({ ...l, st: 'unknown', appName: '', appPrice: null, appQty: null, priceOk: null, qtyOk: null, dPrice: null, dQty: null })),
       ...r.noSku.map(l => ({ ...l, st: 'nosku', appName: '', appPrice: null, appQty: null, priceOk: null, qtyOk: null, dPrice: null, dQty: null }))
     ];
-    const isOk = m => m.st === 'matched' && m.priceOk && m.qtyOk !== false;
-    const F = {
-      issues: { l: '⚠️ À corriger', f: m => !isOk(m) },
-      all: { l: 'Tout', f: () => true },
-      ok: { l: '✅ Identiques', f: isOk },
-      price: { l: '💶 Prix différent', f: m => m.st === 'matched' && !m.priceOk },
-      qty: { l: '📦 Quantité différente', f: m => m.qtyOk === false },
-      unknown: { l: '❓ SKU inconnu dans l\'appli', f: m => m.st === 'unknown' },
-      nosku: { l: '🏷️ Sans SKU dans SumUp', f: m => m.st === 'nosku' }
+    const matched = m => m.st === 'matched';
+    const isOk = m => matched(m) && m.priceOk && m.qtyOk !== false;
+    const bad = '⚠️ À corriger', unk = { l: '❓ SKU inconnu dans l\'appli', f: m => m.st === 'unknown' }, nos = { l: '🏷️ Sans SKU dans SumUp', f: m => m.st === 'nosku' };
+    const FS = {
+      all: {
+        issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk },
+        price: { l: '💶 Prix différent', f: m => matched(m) && !m.priceOk }, qty: { l: '📦 Quantité différente', f: m => m.qtyOk === false }, unknown: unk, nosku: nos
+      },
+      sku: { issues: { l: bad, f: m => !matched(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: matched }, unknown: unk, nosku: nos },
+      price: { issues: { l: bad, f: m => matched(m) && !m.priceOk }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => matched(m) && !!m.priceOk } },
+      stock: { issues: { l: bad, f: m => m.qtyOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.qtyOk === true }, untracked: { l: '🚫 Suivi désactivé dans SumUp', f: m => matched(m) && !m.track } }
     };
+    const F = FS[W];
     const cur = F[this.sumupFilter] ? this.sumupFilter : 'issues';
+    const cols = { all: ['sku', 'price', 'stock'], sku: ['sku'], price: ['price'], stock: ['stock'] }[W], has = c => cols.includes(c);
+    const sortOk = ['name', 'meat', 'fmt'].concat(has('sku') ? ['sku'] : [], has('price') ? ['dPrice'] : [], has('stock') ? ['dQty'] : []);
+    const sortK = sortOk.includes(this.sumupSort) ? this.sumupSort : 'name';
     all.forEach(m => { m.meat = m.appType || this._sumupCatOf(m); m.fmt = this._fmtKey(m.variant); });
     const meatK = v => this._sumupGroupKey(v);
     const q = U.normSearch(this.sumupQ || '').trim();
@@ -528,25 +542,50 @@ const Woo = {
       meat: m => m.meat || '', fmt: m => m.fmt,
       name: m => m.name + ' ' + m.variant, sku: m => m.sku || '', price: m => m.price, appPrice: m => m.appPrice,
       dPrice: m => m.dPrice, qty: m => m.track ? m.qty : null, appQty: m => m.appQty, dQty: m => m.dQty
-    }[this.sumupSort] || (m => m.name);
+    }[sortK] || (m => m.name);
     const dir = this.sumupSortDir === 'desc' ? -1 : 1;
-    const rows = base
+    const sorted = base
       .filter(m => this.sumupMeat === 'all' || meatK(m.meat) === this.sumupMeat)
       .filter(m => this.sumupFmt === 'all' || m.fmt === this.sumupFmt)
       .filter(m => !q || U.has(m.name + ' ' + m.variant + ' ' + (m.sku || '') + ' ' + (m.appName || ''), q))
       .sort((a, b) => {
         const x = key(a), y = key(b);
         if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
-        const c = this.sumupSort === 'fmt' ? this._fmtCmp(x, y) : (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y)));
+        const c = sortK === 'fmt' ? this._fmtCmp(x, y) : (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y)));
         return c * dir || U.sortFr(a.name, b.name) || this._fmtCmp(a.fmt, b.fmt);
       });
+    // Un bloc par produit : il prend la place de sa 1re ligne dans l'ordre du tri, ses autres lignes le suivent.
+    const gmap = new Map();
+    sorted.forEach(m => { const k = U.normSearch(m.name) + '|' + meatK(m.meat); let g = gmap.get(k); if (!g) gmap.set(k, g = { m, rows: [] }); g.rows.push(m); });
+    const groups = [...gmap.values()], rows = groups.flatMap(g => g.rows);
     const yes = '<span class="pos">✅</span>', no = '<span class="neg">❌</span>';
     const selN = this._sumupSelCount();
     const visKeys = rows.filter(m => m.st === 'matched').map(m => m.sku.toUpperCase());
     this._sumupVisible = visKeys;
-    const th = (k, l, num) => `<th class="sortable${this.sumupSort === k ? ' active' : ''}${num ? ' num' : ''}" style="cursor:pointer;" onclick="Woo._setSumupSort('${k}')">${l} ${this.sumupSort === k ? (this.sumupSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
+    const th = (k, l, num) => `<th class="sortable${sortK === k ? ' active' : ''}${num ? ' num' : ''}" style="cursor:pointer;" onclick="Woo._setSumupSort('${k}')">${l} ${sortK === k ? (this.sumupSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
     const sgn = v => (v > 0 ? '+' : '') ;
+    const widths = { all: [28, 13, 10, 17, 16, 16], sku: [36, 20, 16, 28], price: [36, 20, 16, 28], stock: [36, 20, 16, 28] }[W];
+    const nCols = 3 + cols.length;
+    const body = groups.map((g, gi) => `<tbody class="sumup-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((m, i) => {
+      const same = m.appName && U.normSearch(m.appName) === U.normSearch(m.name + (m.variant ? ' — ' + m.variant : ''));
+      const price = m.priceOk === null
+        ? `<span class="muted">SumUp ${m.price != null ? U.eur(m.price) : '—'}</span>`
+        : m.priceOk ? `${yes} ${U.eur(m.price)}`
+        : `<span class="neg">❌ ${m.dPrice != null ? sgn(m.dPrice) + U.eur(m.dPrice) : ''}</span><div class="sub">SumUp ${m.price != null ? U.eur(m.price) : '—'} · appli ${U.eur(m.appPrice)}</div>`;
+      const qty = !m.track ? '<span class="muted">non suivi</span>'
+        : m.qtyOk === null ? `<span class="muted">SumUp ${m.qty != null ? U.qty(m.qty) : '—'}</span>`
+        : m.qtyOk ? `${yes} ${U.qty(m.qty)}`
+        : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
+      return `<tr>${i === 0 ? `<td rowspan="${g.rows.length}"><b>${U.esc(g.m.name)}</b></td><td rowspan="${g.rows.length}"><span class="muted">${U.esc(g.m.meat || '—')}</span></td>` : ''}
+          <td><b>${U.esc(m.fmt)}</b>${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
+          ${has('sku') ? `<td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>` : ''}
+          ${has('price') ? `<td>${price}</td>` : ''}
+          ${has('stock') ? `<td>${qty}</td>` : ''}
+        </tr>`;
+    }).join('') + '</tbody>').join('') || `<tbody><tr><td colspan="${nCols}" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr></tbody>`;
+    const help = [has('price') ? 'Prix : ✅ = identique ; ❌ = écart (« + » = l\'appli est plus chère que SumUp), avec les deux prix en dessous.' : '', has('stock') ? 'Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l\'appli a plus que SumUp).' : '', has('price') || has('stock') ? 'Clique « Prix TTC » ou « Quantité » pour trier par écart.' : 'Ici, seuls les SKU sont comparés : un article est « reconnu » quand son SKU existe dans l\'appli.'].filter(Boolean).join(' ');
     return `
+      ${this._whatSeg(W, 'Woo._setSumupWhat')}
       <div class="sumup-filters mt">
         ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setSumupFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
       </div>
@@ -555,89 +594,83 @@ const Woo = {
         <div style="flex:0 1 220px;min-width:170px;">${U.customSelect({ value: this.sumupMeat, options: meatOpts, onPick: 'Woo._setSumupMeat' })}</div>
         <div style="flex:0 1 180px;min-width:150px;">${U.customSelect({ value: this.sumupFmt, options: fmtOpts, onPick: 'Woo._setSumupFmt' })}</div>
         <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
-        <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()">⬇ Liste à corriger (CSV)</button>
+        <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.exportSumupIssues()" title="Toutes les différences (SKU, prix et quantité), quel que soit le choix « Je compare »">⬇ Liste à corriger (CSV)</button>
       </div>
       <table class="sumup-table mt">
-        <colgroup><col style="width:28%"><col style="width:13%"><col style="width:10%"><col style="width:17%"><col style="width:16%"><col style="width:16%"></colgroup>
-        <thead><tr>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dQty', 'Quantité')}</tr></thead>
-        <tbody>${rows.map(m => {
-          const same = m.appName && U.normSearch(m.appName) === U.normSearch(m.name + (m.variant ? ' — ' + m.variant : ''));
-          const price = m.priceOk === null
-            ? `<span class="muted">SumUp ${m.price != null ? U.eur(m.price) : '—'}</span>`
-            : m.priceOk ? `${yes} ${U.eur(m.price)}`
-            : `<span class="neg">❌ ${m.dPrice != null ? sgn(m.dPrice) + U.eur(m.dPrice) : ''}</span><div class="sub">SumUp ${m.price != null ? U.eur(m.price) : '—'} · appli ${U.eur(m.appPrice)}</div>`;
-          const qty = !m.track ? '<span class="muted">non suivi</span>'
-            : m.qtyOk === null ? `<span class="muted">SumUp ${m.qty != null ? U.qty(m.qty) : '—'}</span>`
-            : m.qtyOk ? `${yes} ${U.qty(m.qty)}`
-            : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
-          return `<tr>
-          <td><b>${U.esc(m.name)}</b>${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
-          <td><span class="muted">${U.esc(m.meat || '—')}</span></td>
-          <td><b>${U.esc(m.fmt)}</b></td>
-          <td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>
-          <td>${price}</td>
-          <td>${qty}</td>
-        </tr>`; }).join('') || `<tr><td colspan="6" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+        <colgroup>${widths.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
+        <thead><tr>${th('name', 'Article')}${th('meat', 'Viande')}${th('fmt', 'Format')}${has('sku') ? th('sku', 'SKU') : ''}${has('price') ? th('dPrice', 'Prix TTC') : ''}${has('stock') ? th('dQty', 'Quantité') : ''}</tr></thead>
+        ${body}
       </table>
-      <p class="muted help">Prix : ✅ = identique ; ❌ = écart (« + » = l'appli est plus chère que SumUp), avec les deux prix en dessous. Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l'appli a plus que SumUp). Clique « Prix TTC » ou « Quantité » pour trier par écart.</p>
-      ${this._renderSumupPairs(r)}`;
+      <p class="muted help">${help}</p>
+      ${W === 'all' || W === 'sku' ? this._renderSumupPairs(r) : ''}`;
   },
   _renderCompare() {
-    const c = this._cmp;
+    const c = this._cmp, W = ['sku', 'price', 'stock'].includes(this.cmpWhat) ? this.cmpWhat : 'all';
     const all = [
       ...c.matched.map(m => ({ ...m, st: 'matched', priceOk: m.priceDiff == null ? null : Math.abs(m.priceDiff) < 0.01, stockOk: m.stockDiff == null ? null : m.stockDiff === 0 })),
       ...c.appOnly.map(m => ({ ...m, st: 'appOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null })),
       ...c.siteOnly.map(m => ({ ...m, st: 'siteOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null }))
     ];
-    const isOk = m => m.st === 'matched' && m.priceOk !== false && m.stockOk !== false;
-    const F = {
-      issues: { l: '⚠️ À corriger', f: m => !isOk(m) },
-      all: { l: 'Tout', f: () => true },
-      ok: { l: '✅ Identiques', f: isOk },
-      price: { l: '💶 Prix différent', f: m => m.priceOk === false },
-      stock: { l: '📦 Stock différent', f: m => m.stockOk === false },
-      appOnly: { l: '⚠️ Absent du site', f: m => m.st === 'appOnly' },
-      siteOnly: { l: 'ℹ️ Absent de l\'appli', f: m => m.st === 'siteOnly' }
+    const matched = m => m.st === 'matched';
+    const isOk = m => matched(m) && m.priceOk !== false && m.stockOk !== false;
+    const bad = '⚠️ À corriger', app = { l: '⚠️ Absent du site', f: m => m.st === 'appOnly' }, site = { l: 'ℹ️ Absent de l\'appli', f: m => m.st === 'siteOnly' };
+    const FS = {
+      all: { issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk }, price: { l: '💶 Prix différent', f: m => m.priceOk === false }, stock: { l: '📦 Stock différent', f: m => m.stockOk === false }, appOnly: app, siteOnly: site },
+      sku: { issues: { l: bad, f: m => !matched(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: matched }, appOnly: app, siteOnly: site },
+      price: { issues: { l: bad, f: m => m.priceOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.priceOk === true } },
+      stock: { issues: { l: bad, f: m => m.stockOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.stockOk === true } }
     };
+    const F = FS[W];
     const cur = F[this.cmpFilter] ? this.cmpFilter : 'issues';
+    const cols = { all: ['sku', 'price', 'stock'], sku: ['sku'], price: ['price'], stock: ['stock'] }[W], has = k => cols.includes(k);
+    const sortOk = ['name'].concat(has('sku') ? ['sku'] : [], has('price') ? ['dPrice'] : [], has('stock') ? ['dStock'] : []);
+    const sortK = sortOk.includes(this.cmpSort) ? this.cmpSort : 'name';
     const q = U.normSearch(this.cmpQ || '').trim();
-    const key = { name: m => m.name || '', sku: m => m.sku || '', dPrice: m => m.priceDiff, dStock: m => m.stockDiff }[this.cmpSort] || (m => m.name || '');
+    const key = { name: m => m.name || '', sku: m => m.sku || '', dPrice: m => m.priceDiff, dStock: m => m.stockDiff }[sortK] || (m => m.name || '');
     const dir = this.cmpSortDir === 'desc' ? -1 : 1;
-    const rows = all.filter(F[cur].f)
+    const split = n => { const s = String(n || '—'), i = s.lastIndexOf(' — '); return i < 0 ? { p: s, v: '' } : { p: s.slice(0, i), v: s.slice(i + 3) }; };
+    const sorted = all.filter(F[cur].f)
       .filter(m => !q || U.has((m.name || '') + ' ' + (m.sku || ''), q))
       .sort((a, b) => {
         const x = key(a), y = key(b);
         if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
         return (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y))) * dir || U.sortFr(a.name || '', b.name || '');
       });
+    // Un bloc par produit (nom écrit une fois, formats dessous) : il prend la place de sa 1re ligne dans l'ordre du tri.
+    const shown = sorted.slice(0, 400), gmap = new Map();
+    shown.forEach(m => { const sp = split(m.name); m._sp = sp; const k = U.normSearch(sp.p); let g = gmap.get(k); if (!g) gmap.set(k, g = { p: sp.p, rows: [] }); g.rows.push(m); });
+    const groups = [...gmap.values()];
     const yes = '<span class="pos">✅</span>';
     const sgn = v => (v > 0 ? '+' : '');
-    const th = (k, l) => `<th class="sortable${this.cmpSort === k ? ' active' : ''}" style="cursor:pointer;" onclick="Woo._setCmpSort('${k}')">${l} ${this.cmpSort === k ? (this.cmpSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
+    const th = (k, l) => `<th class="sortable${sortK === k ? ' active' : ''}" style="cursor:pointer;" onclick="Woo._setCmpSort('${k}')">${l} ${sortK === k ? (this.cmpSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
     const cell = (ok, d, a, b, fmt, lb) => ok === null ? '<span class="muted">—</span>'
       : ok ? `${yes} ${fmt(a)}`
       : `<span class="neg">❌ ${d != null ? sgn(d) + fmt(d) : ''}</span><div class="sub">site ${b != null ? fmt(b) : '—'} · ${lb} ${fmt(a)}</div>`;
+    const widths = { all: [32, 14, 22, 16, 16], sku: [40, 20, 40], price: [44, 20, 36], stock: [44, 20, 36] }[W];
+    const body = groups.map((g, gi) => `<tbody class="sumup-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((m, i) => `<tr>${i === 0 ? `<td rowspan="${g.rows.length}"><b>${U.esc(g.p)}</b></td>` : ''}
+          <td>${m._sp.v ? `<b>${U.esc(m._sp.v)}</b>` : '<span class="muted">—</span>'}${m.st === 'appOnly' ? '<div class="sub">⚠️ absent du site — créerait un doublon à l\'export</div>' : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}</td>
+          ${has('sku') ? `<td><span class="sku-txt">${U.esc(m.sku)}</span></td>` : ''}
+          ${has('price') ? `<td>${cell(m.priceOk, m.priceDiff, m.appPrice, m.sitePrice, U.eur, 'appli')}</td>` : ''}
+          ${has('stock') ? `<td>${cell(m.stockOk, m.stockDiff, m.appStock, m.siteStock, U.qty, 'appli')}</td>` : ''}
+        </tr>`).join('') + '</tbody>').join('') || `<tbody><tr><td colspan="${2 + cols.length}" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr></tbody>`;
     return `
       ${c.siteRows === 0 ? '<p class="warn-txt mt">Aucune ligne du site n\'a de SKU (UGS) rempli — impossible de comparer tant que tu n\'as pas mis les SKU sur ton site.</p>' : ''}
+      ${this._whatSeg(W, 'Woo._setCmpWhat')}
       <div class="sumup-filters mt">
         ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
         ${c.siteNoSku ? `<span class="muted" style="align-self:center;font-size:.82rem;">· ${c.siteNoSku} ligne(s) du site sans SKU (non comparables)</span>` : ''}
       </div>
       <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
         <input id="woo_cmp_q" style="flex:1 1 240px;" placeholder="Rechercher un produit, un SKU…" value="${U.esc(this.cmpQ || '')}" oninput="Woo._setCmpQ(this.value)">
-        <span class="muted" style="flex:0 0 auto;">${rows.length} ligne(s)</span>
+        <span class="muted" style="flex:0 0 auto;">${sorted.length} ligne(s)</span>
       </div>
       <table class="sumup-table mt">
-        <colgroup><col style="width:38%"><col style="width:24%"><col style="width:19%"><col style="width:19%"></colgroup>
-        <thead><tr>${th('name', 'Produit')}${th('sku', 'SKU')}${th('dPrice', 'Prix TTC')}${th('dStock', 'Stock')}</tr></thead>
-        <tbody>${rows.slice(0, 400).map(m => `<tr>
-          <td><b>${U.esc(m.name || '—')}</b>${m.st === 'appOnly' ? '<div class="sub">⚠️ absent du site — créerait un doublon à l\'export</div>' : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}</td>
-          <td><span class="sku-txt">${U.esc(m.sku)}</span></td>
-          <td>${cell(m.priceOk, m.priceDiff, m.appPrice, m.sitePrice, U.eur, 'appli')}</td>
-          <td>${cell(m.stockOk, m.stockDiff, m.appStock, m.siteStock, U.qty, 'appli')}</td>
-        </tr>`).join('') || `<tr><td colspan="4" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr>`}</tbody>
+        <colgroup>${widths.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
+        <thead><tr>${th('name', 'Produit')}<th>Format</th>${has('sku') ? th('sku', 'SKU') : ''}${has('price') ? th('dPrice', 'Prix TTC') : ''}${has('stock') ? th('dStock', 'Stock') : ''}</tr></thead>
+        ${body}
       </table>
-      ${rows.length > 400 ? `<p class="muted">… et ${rows.length - 400} autres (affine avec la recherche).</p>` : ''}
-      <p class="muted help">Prix / Stock : ✅ = identique ; ❌ = écart (« + » = l'appli a plus que le site : prix plus cher / plus de stock), avec les deux valeurs en dessous. Clique « Prix TTC » ou « Stock » pour trier par écart.</p>`;
+      ${sorted.length > 400 ? `<p class="muted">… et ${sorted.length - 400} autres (affine avec la recherche).</p>` : ''}
+      <p class="muted help">${has('price') || has('stock') ? 'Prix / Stock : ✅ = identique ; ❌ = écart (« + » = l\'appli a plus que le site : prix plus cher / plus de stock), avec les deux valeurs en dessous. Clique « Prix TTC » ou « Stock » pour trier par écart.' : 'Ici, seuls les SKU sont comparés : un produit est « reconnu » quand son SKU existe à la fois dans l\'appli et sur le site.'}</p>`;
   },
   /* Met à jour le compteur + le libellé du bouton d'export SANS re-render
      (snappy quand on coche/décoche plein de cases). */

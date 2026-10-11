@@ -623,8 +623,8 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 /* Péremptions : un bloc par produit (nom + viande une seule fois) */
 .perem-prod .perem-name { vertical-align: top; padding-top: 10px; }
 /* Blocs par produit (Fiche de contrôle, Péremptions) : l'alternance de teinte se fait PAR BLOC (un produit = une teinte), jamais par ligne — sinon cases à cocher et nom fusionné sont teintés à moitié */
-.sheet-prod.alt, .perem-prod.alt { background: rgba(166, 113, 83, .07); }
-:root[data-theme="dark"] .sheet-prod.alt, :root[data-theme="dark"] .perem-prod.alt { background: rgba(255, 255, 255, .045); }
+.sheet-prod.alt, .perem-prod.alt, .sumup-prod.alt { background: rgba(166, 113, 83, .07); }
+:root[data-theme="dark"] .sheet-prod.alt, :root[data-theme="dark"] .perem-prod.alt, :root[data-theme="dark"] .sumup-prod.alt { background: rgba(255, 255, 255, .045); }
 tbody.sheet-prod tr:nth-child(even) td, tbody.perem-prod tr:nth-child(even) td,
 :root[data-theme="dark"] tbody.sheet-prod tr:nth-child(even) td, :root[data-theme="dark"] tbody.perem-prod tr:nth-child(even) td { background: transparent; }
 .perem-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
@@ -943,6 +943,8 @@ table.sumup-table th, table.sumup-table td { text-align: left; padding: 7px 10px
 table.sumup-table th { white-space: nowrap; font-size: .75rem; }
 table.sumup-table td { font-size: .88rem; line-height: 1.35; }
 table.sumup-table tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
+table.sumup-table tbody.sumup-prod tr:nth-child(even) td { background: transparent; }
+table.sumup-table tbody.sumup-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
 table.sumup-table .sub { font-size: .74rem; color: var(--gris); margin-top: 2px; }
 table.sumup-table .sku-txt { font-family: monospace; font-size: .78rem; color: var(--caramel); }
 
