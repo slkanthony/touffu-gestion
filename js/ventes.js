@@ -805,19 +805,29 @@ const Ventes = {
   /* Frais d'envoi réels : stockés TTC (tu ne récupères pas la TVA). Le bouton TTC ⇄ HT (par vente, TTC par défaut, comme les consommables) sert à saisir un montant HT
      (ex. depuis un relevé de transporteur) : il est converti en TTC avec le taux de TVA des réglages. */
   _shipHT: {},
-  toggleShipTax(id) { this._shipHT[id] = !this._shipHT[id]; this.render(); },
+  /* Le bouton ne prend PAS le focus (mousedown annulé) : la valeur tapée n'est donc pas « validée » au milieu du clic (ce qui redessinait la page et perdait le clic) ;
+     on l'enregistre ici, dans le mode COURANT (TTC ou HT), puis on bascule. */
+  toggleShipTax(id, btn) {
+    const inp = btn && btn.closest('.tax-in') ? btn.closest('.tax-in').querySelector('input') : null;
+    if (inp) this.setShippingCost(id, inp.value, !!this._shipHT[id], true);
+    this._shipHT[id] = !this._shipHT[id]; this.render();
+  },
+  _shipHint(s) { const v = U.num(s.shippingCost); return this._shipHT[s.id] && v ? `= ${U.eur(v)} TTC` : ''; },
   _shipField(s, style) {
     const ht = !!this._shipHT[s.id], k = 1 + U.num(Store.state.settings.vatRate ?? 20) / 100, v = U.num(s.shippingCost), shown = ht ? Math.round(v / k * 100) / 100 : v;
-    return `<div class="tax-in" ${style ? `style="${style}"` : ''}><input type="number" step="0.01" min="0" placeholder="0" value="${shown || ''}" onchange="Ventes.setShippingCost('${s.id}',this.value,${ht})"><button type="button" class="tax-tag" data-tax="${ht ? 'HT' : 'TTC'}" title="Clique pour basculer TTC ⇄ HT (le montant est toujours enregistré en TTC)" onclick="event.stopPropagation();Ventes.toggleShipTax('${s.id}')">${ht ? 'HT' : 'TTC'}</button></div>${ht && v ? `<div class="muted" style="font-size:.74rem;margin-top:2px;">= ${U.eur(v)} TTC</div>` : ''}`;
+    return `<div class="tax-in" ${style ? `style="${style}"` : ''}><input type="number" step="0.01" min="0" placeholder="0" value="${shown || ''}" onchange="Ventes.setShippingCost('${s.id}',this.value,${ht})"><button type="button" class="tax-tag" data-tax="${ht ? 'HT' : 'TTC'}" title="Clique pour basculer TTC ⇄ HT (le montant est toujours enregistré en TTC)" onmousedown="event.preventDefault()" onclick="event.stopPropagation();Ventes.toggleShipTax('${s.id}',this)">${ht ? 'HT' : 'TTC'}</button></div><div class="muted ship-hint" data-sid="${s.id}" style="font-size:.74rem;margin-top:2px;">${this._shipHint(s)}</div>`;
   },
-  setShippingCost(id, val, ht) {
+  setShippingCost(id, val, ht, quiet) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
+    const nw = ht ? Math.round(U.num(val) * (1 + U.num(Store.state.settings.vatRate ?? 20) / 100) * 100) / 100 : U.num(val);
+    if (Math.abs(nw - U.num(s.shippingCost)) < 0.005) return;   // rien de changé (ex. valeur déjà enregistrée juste avant)
     const snap = Store.snapshot('sales', s);
-    s.shippingCost = ht ? Math.round(U.num(val) * (1 + U.num(Store.state.settings.vatRate ?? 20) / 100) * 100) / 100 : U.num(val);
+    s.shippingCost = nw;
     const entry = Store.commitSnapshot(snap, 'vente', `Frais d'envoi — ${U.frDateTime(s.ts)} : ${U.eur(s.shippingCost)}`);
     U.toast('Frais d\'envoi mis à jour.', false, entry.id);
     Store.save('sales');
-    if (this.editTicketId) this.render();
+    document.querySelectorAll(`.ship-hint[data-sid="${id}"]`).forEach(h => { h.textContent = this._shipHint(s); });   // le « = x € TTC » suit la nouvelle valeur sans redessiner
+    if (this.editTicketId && !quiet) this.render();
   },
 
   /* Frais de stand (coût de l'emplacement d'un marché) — saisi au retour d'événement,
