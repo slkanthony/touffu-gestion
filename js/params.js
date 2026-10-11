@@ -1896,8 +1896,8 @@ const Params = {
   _skuCat: 'mast',   // catégorie de stock affichée : 'mast' (mastication) | 'mat' (matières premières) | 'conso' (consommables)
   _setSkuMeat(val) { this._skuMeat = val; this.renderSkuAll(); },
   _skuCatBtns() {
-    const n = { mast: Store.state.stockM.reduce((a, p) => a + (p.variants || []).length, 0), mat: (Store.state.materials || []).length, conso: (Store.state.consumables || []).length };
-    return U.seg([['mast', '🥩 Mastication'], ['mat', '🧵 Matières premières'], ['conso', '📦 Consommables']].map(([k, l]) => ({ l: `${l} <span style="opacity:.75;font-weight:400;">(${n[k]})</span>`, on: this._skuCat === k, js: `Params.setSkuCat('${k}')` })), { full: true, scroll: true, label: 'Catégorie de stock' });
+    const n = { mast: Store.state.stockM.reduce((a, p) => a + (p.variants || []).length, 0), mat: (Store.state.materials || []).length, conso: (Store.state.consumables || []).length, acc: (Store.state.catalogA || []).length };
+    return U.seg([['mast', '🥩 Mastication'], ['acc', '🐕 Accessoires'], ['mat', '🧵 Matières premières'], ['conso', '📦 Consommables']].map(([k, l]) => ({ l: `${l} <span style="opacity:.75;font-weight:400;">(${n[k]})</span>`, on: this._skuCat === k, js: `Params.setSkuCat('${k}')` })), { full: true, scroll: true, label: 'Catégorie de stock' });
   },
   _skuGroupSelect() {
     const S = Store.state.settings, mast = this._skuCat === 'mast';
@@ -1929,6 +1929,8 @@ const Params = {
     if (cat === 'mat') {
       const kl = Stock.matKindLabel;
       (Store.state.materials || []).forEach(m => rows.push({ pId: m.id, vId: '', name: m.product || m.name, meat: kl[m.kind] || m.kind || '', variant: m.variant || '', sku: m.sku || '', suggested: Pricing.autoSkuMat(m.product || m.name, m.kind, m.variant), legacy: Pricing.autoSkuMat(m.product || m.name, m.kind, m.variant, true) }));
+    } else if (cat === 'acc') {   // accessoires : TYPE-LARGEUR-NOM (largeur principale), 1 SKU par modèle / variation
+      (Store.state.catalogA || []).forEach(a => rows.push({ pId: a.id, vId: '', name: a.name, meat: a.category || '', variant: a.mainWidth || (a.strapWidths || [])[0] || '', sku: a.sku || '', suggested: Pricing.autoSkuAcc(a) }));
     } else if (cat === 'conso') {
       (Store.state.consumables || []).forEach(c => { const dims = (Stock.consoDims(c) || '').toString(); rows.push({ pId: c.id, vId: '', name: c.name, meat: c.category || '', variant: dims, sku: c.sku || '', suggested: Pricing.autoSkuConso(c.name, c.category || '', dims) }); });
     } else Store.state.stockM.forEach(p => {
@@ -2031,7 +2033,7 @@ const Params = {
         ${tabBtn('all', 'Tous', rows.length, '')} · ${tabBtn('diff', 'À mettre à jour', allDiff.length, '')}${dupeSkus.length ? ` · ${tabBtn('dupes', '⚠ Doublons', allDupeRows.length, 'var(--warn)')}` : ''}
       </div>
       ${!display.length ? `<p class="muted mt">${view === 'diff' ? 'Tous les SKU sont déjà à jour ✓' : 'Aucun doublon.'}</p>` : `<div class="table-wrap mt" style="max-height:500px;overflow:auto;">
-      <table><thead><tr>${sortHead('name', this._skuCat === 'conso' ? 'Consommable' : 'Produit')}${sortHead('meat', this._skuCat === 'mast' ? 'Viande' : 'Catégorie')}${sortHead('variant', this._skuCat === 'conso' ? 'Dimensions' : 'Variante')}${sortHead('sku','SKU','text-align:center;')}<th>Suggestion</th></tr></thead>
+      <table><thead><tr>${sortHead('name', this._skuCat === 'conso' ? 'Consommable' : 'Produit')}${sortHead('meat', this._skuCat === 'mast' ? 'Viande' : 'Catégorie')}${sortHead('variant', this._skuCat === 'conso' ? 'Dimensions' : this._skuCat === 'acc' ? 'Largeur' : 'Variante')}${sortHead('sku','SKU','text-align:center;')}<th>Suggestion</th></tr></thead>
       <tbody>${display.map(r => {
         const isDupe = dupes[skuKey(r)] > 1;
         const propose = (!r.sku || redundant1pc(r) || this._legacyParen(r)) && !isDupe; // afficher la suggestion (vide ou -1PC redondant)
@@ -2056,7 +2058,7 @@ const Params = {
 
   setSkuDirect(pId, vId, val) {
     if (this._skuCat !== 'mast') {   // matières premières / consommables : le SKU est porté par la fiche elle-même
-      const dom = this._skuCat === 'mat' ? 'materials' : 'consumables', it = (Store.state[dom] || []).find(x => x.id === pId); if (!it) return;
+      const dom = { mat: 'materials', acc: 'catalogA' }[this._skuCat] || 'consumables', it = (Store.state[dom] || []).find(x => x.id === pId); if (!it) return;
       const snap = Store.snapshot(dom, it);
       it.sku = String(val || '').trim().toUpperCase();
       const entry = Store.commitSnapshot(snap, 'editSku', `SKU ${it.name} → ${it.sku || '(vide)'}`);
@@ -2095,9 +2097,9 @@ const Params = {
     const meatLabel = meat !== 'all' ? ` pour ${meat}` : '';
     if (!await U.confirm(`Attribuer/corriger ${diffRows.length} SKU${meatLabel} (manquants ou en doublon) ? Tes SKU déjà personnalisés (uniques) ne sont pas touchés.`)) return;
     if (this._skuCat !== 'mast') {   // matières premières / consommables
-      const dom = this._skuCat === 'mat' ? 'materials' : 'consumables', arr = Store.state[dom] || [], snapsO = [];
+      const dom = { mat: 'materials', acc: 'catalogA' }[this._skuCat] || 'consumables', arr = Store.state[dom] || [], snapsO = [];
       diffRows.forEach(r => { const it = arr.find(x => x.id === r.pId); if (!it) return; snapsO.push(Store.snapshot(dom, it)); it.sku = r.suggested; });
-      const entryO = Store.log('paramètres', `SKU attribués/corrigés (${this._skuCat === 'mat' ? 'matières premières' : 'consommables'}${meatLabel}) : ${snapsO.length}`, { type: 'restoreBatch', data: snapsO });
+      const entryO = Store.log('paramètres', `SKU attribués/corrigés (${{ mat: 'matières premières', acc: 'accessoires' }[this._skuCat] || 'consommables'}${meatLabel}) : ${snapsO.length}`, { type: 'restoreBatch', data: snapsO });
       Store.save(dom); U.toast(`${snapsO.length} SKU attribués/corrigés${meatLabel}.`, false, entryO?.id);
       this.renderSkuAll(); return;
     }

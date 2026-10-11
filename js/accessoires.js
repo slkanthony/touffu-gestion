@@ -529,6 +529,23 @@ const Accessoires = {
     if (el) el.innerHTML = this._widthsSelectHTML();
   },
   onWidthsOpen(open) { this._widthsOpen = open; },
+  /* SKU TYPE-LARGEUR-NOM proposé d'après le formulaire (type, largeur principale, nom) ; en cas de collision avec un autre SKU : suffixe -2, -3… */
+  _takenSkus(exceptId) {
+    const s = new Set(), add = v => { v = String(v || '').trim().toUpperCase(); if (v) s.add(v); };
+    Store.state.catalogA.forEach(x => { if (x.id !== exceptId) add(x.sku); });
+    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => add(v.sku)));
+    Store.state.catalogM.forEach(p => (p.variants || []).forEach(v => add(v.sku)));
+    return s;
+  },
+  genSku() {
+    const a = this._a, ws = a.strapWidths || [];
+    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '' });
+    if (!base) { U.toast('Choisis un type et un nom pour générer le SKU.', true); return; }
+    const taken = this._takenSkus(a.id); let sku = base, n = 1;
+    while (taken.has(sku)) { n++; sku = base + '-' + n; }
+    document.getElementById('a_sku').value = sku;
+    U.toast(`SKU proposé : ${sku}${n > 1 ? ' (le SKU de base existait déjà)' : ''}`);
+  },
   _widthsSelectHTML() {
     const widths = this._availableWidths();
     const sel = this._a.strapWidths || [];
@@ -540,7 +557,7 @@ const Accessoires = {
       placeholder: '— Toutes —'
     });
     if (sel.length >= 2) {
-      html += `<div style="margin-top:6px;font-size:.82rem;"><span class="muted">Principale :</span> ${sel.map(w =>
+      html += `<div style="margin-top:6px;font-size:.82rem;"><span class="muted">Largeur principale (sert au SKU) :</span> ${sel.map(w =>
         `<button class="btn-sm ${w === main ? 'btn-ok' : 'btn-ghost'}" style="margin:2px;" onclick="Accessoires.setMainWidth('${U.esc(w)}')">${w === main ? '★ ' : ''}${U.esc(w)}</button>`
       ).join('')}</div>`;
     }
@@ -669,7 +686,7 @@ const Accessoires = {
         <div class="fg"><label>Prix TTC forcé (option)</label><input id="a_pttc" type="number" step="0.10" value="${a.priceTTCManual}" placeholder="laisser vide = coeff"></div>
       </div>
       <div class="frow">
-        <div class="fg"><label>SKU (option)</label><input id="a_sku" value="${U.esc(a.sku || '')}" placeholder="optionnel"></div>
+        <div class="fg"><label>SKU (option)</label><div style="display:flex;gap:6px;"><input id="a_sku" style="flex:1;min-width:0;" value="${U.esc(a.sku || '')}" placeholder="TYPE-LARGEUR-NOM"><button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Accessoires.genSku()" title="Génère le SKU : type - largeur principale - nom (ex. LONGE-20MM-5M). La couleur n'y entre jamais.">✨ Générer</button></div></div>
         <div class="fg"><label>🖨️ Impression UV — ml d'encre</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="0 = pas de perso"></div>
       </div>
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>

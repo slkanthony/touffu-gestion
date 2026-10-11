@@ -391,6 +391,19 @@ const Pricing = {
     return this.autoSkuGeneric(name, category, dims, this.consoAbbrevMap());
   },
 
+  /* SKU d'un ACCESSOIRE (Antho 2026-10-11) : TYPE-LARGEUR-NOM, ex. « Longe — 5m » (type Longe, sangle 20mm) → LONGE-20MM-5M.
+     Largeur = la largeur PRINCIPALE de la fiche (mainWidth, sinon la 1re). Le type et la largeur déjà écrits dans le nom ne sont pas répétés ; le texte entre parenthèses est ignoré.
+     1 SKU par modèle ET par variation (taille, longueur, largeur, UV = fiche à part) : la COULEUR n'entre jamais dans le SKU. */
+  autoSkuAcc(a) {
+    const noise = new Set(['DE', 'D', 'DU', 'DES', 'LE', 'LA', 'LES', 'AU', 'AUX', 'AVEC', 'ET', 'EN']);
+    const type = this.slugify(a.category), w = this.slugify(a.mainWidth || (a.strapWidths || [])[0] || '');
+    let parts = this.slugify(String(a.name || '').replace(/\([^)]*\)/g, ' ')).split('-').filter(x => x && !noise.has(x));
+    const tp = type.split('-').filter(Boolean);
+    while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
+    parts = parts.filter(x => x !== w);
+    return [type, w, parts.join('-')].filter(Boolean).join('-');
+  },
+
   autoSku(productName, meatType, variantLabel) {
     let slug = this.slugify(productName);
     const abbrevMap = this.meatAbbrevMap();
