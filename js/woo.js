@@ -272,7 +272,8 @@ const Woo = {
     if (!chosen.length) { U.toast('Aucun article sélectionné à exporter.', true); return; }
     const untracked = this.sumupExpQty ? chosen.filter(m => !m.track).length : 0;
     const changes = chosen.filter(m => (this.sumupExpQty && m.track && !m.qtyOk) || (this.sumupExpPrice && !m.priceOk)).length;
-    if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${this.sumupExpQty ? ' (quantités' + (this.sumupExpPrice ? ' + prix' : '') + ')' : ' (prix)'}.\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
+    const catTxt = this.cat === 'A' ? ' (accessoires)' : this.cat === 'M' ? ' (mastication)' : '';
+    if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${catTxt}${this.sumupExpQty ? ' (quantités' + (this.sumupExpPrice ? ' + prix' : '') + ')' : ' (prix)'}.\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
     const raw = this._sumup.raw.map(row => row.slice());
     const lines = this._sumup.rawText.slice();
     const sameCount = lines.length === raw.length;
@@ -326,6 +327,23 @@ const Woo = {
     };
     reader.readAsText(file);
   },
+  /* Catégorie (Antho 2026-10-11) : Tous | Mastication | Accessoires, PARTAGÉE par Comparer et Exporter SumUp (mémorisée). Elle borne aussi le « tout est exporté » quand rien n'est coché :
+     les accessoires (qui reçoivent leurs SKU un par un) ne partent jamais dans SumUp sans l'avoir choisi. Côté SumUp, un article est « accessoire » si sa catégorie SumUp contient « accessoire » ;
+     sans catégorie du tout → alerte (visible seulement sous « Tous »). Côté appli : kind 'A' = accessoire, le reste = mastication. */
+  cat: (() => { try { const v = localStorage.getItem('touffu_wooCat'); return v === 'M' || v === 'A' ? v : 'all'; } catch (e) { return 'all'; } })(),
+  setCat(v) { this.cat = v === 'M' || v === 'A' ? v : 'all'; try { localStorage.setItem('touffu_wooCat', this.cat); } catch (e) {} this.render(); },
+  _inCat(kind) { return this.cat === 'all' || (this.cat === 'A' ? kind === 'A' : kind !== 'A'); },
+  _catSeg() {
+    return `<div class="frow mt" style="gap:8px;align-items:center;flex-wrap:wrap;"><span class="muted">Catégorie :</span>${U.seg([['all', 'Tous'], ['M', '🥩 Mastication'], ['A', '🐕 Accessoires']].map(([k, l]) => ({ l, on: this.cat === k, js: `Woo.setCat('${k}')` })), { sm: true, wrap: true })}</div>`;
+  },
+  _uncatAppCount() { return Store.state.stockM.reduce((n, p) => n + (String(p.meatType || '').trim() ? 0 : p.variants.filter(v => v.sku).length), 0); },   // produits mastication SANS type de viande (Ventes.units() les range sous « Autre »)
+  _uncatAlert(n) {
+    const na = this._uncatAppCount(); if (!n && !na) return '';
+    const parts = [];
+    if (n) parts.push(`<b>${n} article${n > 1 ? 's' : ''} SumUp sans catégorie</b> (ni viande, ni « Accessoire »)`);
+    if (na) parts.push(`<b>${na} produit${na > 1 ? 's' : ''} de l'appli sans type de viande</b>`);
+    return `<div class="card" style="border-left:4px solid var(--warn);margin:10px 0 0;padding:10px 14px;">⚠️ ${parts.join(' · ')} — à classer pour être comptés dans la bonne catégorie.${n ? ' <span class="muted">Les articles SumUp sans catégorie n\'apparaissent que sous « Tous ».</span>' : ''}</div>`;
+  },
   _sumupReport() {
     const units = Ventes.units();
     const bySku = new Map();
@@ -343,10 +361,14 @@ const Woo = {
       const qtyOk = !l.track ? null : (l.qty != null && Math.abs(l.qty - appQty) < 0.0005);
       matched.push({ ...l, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind, appType: u.kind === 'A' ? 'Accessoires' : (u.type || '') });
     });
+    // Catégorie des lignes SumUp SANS équivalent dans l'appli : d'après leur catégorie SumUp (« Accessoires » ou une viande ; vide = non classée)
+    const lineKind = l => { const c = this._sumupCatOf(l); return /accessoire/i.test(c) ? 'A' : c === 'Sans catégorie' ? '?' : 'M'; };
+    const uncat = unknown.filter(l => lineKind(l) === '?').length + noSku.filter(l => lineKind(l) === '?').length;
+    const inCat = l => this.cat === 'all' || lineKind(l) === this.cat;
     // 500 g et plus : réservés aux ventes en ligne, jamais emmenés sur les marchés (Antho, 2026-09-28) → normal qu'ils manquent dans SumUp.
     const bigBag = u => u.kind === 'M' && u.mode === 'gram' && U.num(u.value) >= 500;
-    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()) && !bigBag(u));
-    return { matched, unknown, noSku, appOnly };
+    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()) && !bigBag(u) && this._inCat(u.kind));
+    return { matched: matched.filter(m => this._inCat(m.kind)), unknown: unknown.filter(inCat), noSku: noSku.filter(inCat), appOnly, uncat };
   },
   /* Groupe « à relier » par viande : à gauche les articles SumUp sans SKU ou avec un SKU inconnu,
      à droite les produits de l'appli (avec SKU) absents de SumUp — même viande côte à côte, triés par nom,
@@ -424,7 +446,7 @@ const Woo = {
     // générer (identifiants cachés des articles → mise à jour sans doublons).
     const r = this._sumup ? this._sumupReport() : null;
     const inSumup = new Map(); if (r) r.matched.forEach(m => inSumup.set(m.sku.toUpperCase(), m));
-    const units = Ventes.units().filter(u => u.sku).map(u => ({
+    const units = Ventes.units().filter(u => u.sku && this._inCat(u.kind)).map(u => ({
       sku: u.sku.trim(), name: u.name, variant: u.label || '', appType: u.kind === 'A' ? 'Accessoires' : (u.type || ''),
       appPrice: u.price, appQty: u.availE, mode: u.mode, value: u.value, kind: u.kind, fmt: this._fmtKey(u.label)
     }));
@@ -458,7 +480,8 @@ const Woo = {
             <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Charger</button>
           </div></div>`;
     return `
-      <div class="frow" style="gap:18px;flex-wrap:wrap;margin:0 0 4px;">
+      ${this._catSeg()}${this._uncatAlert(r ? r.uncat : 0)}
+      <div class="frow mt" style="gap:18px;flex-wrap:wrap;margin:0 0 4px;">
         <label class="opt-check"><input type="checkbox" ${this.sumupExpPrice ? 'checked' : ''} onchange="Woo.sumupExpPrice=this.checked"> Envoyer les prix (TTC public)</label>
         <label class="opt-check"><input type="checkbox" ${this.sumupExpQty ? 'checked' : ''} onchange="Woo.sumupExpQty=this.checked"> Envoyer les quantités (stock événement)</label>
       </div>
@@ -585,6 +608,7 @@ const Woo = {
     }).join('') + '</tbody>').join('') || `<tbody><tr><td colspan="${nCols}" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr></tbody>`;
     const help = [has('price') ? 'Prix : ✅ = identique ; ❌ = écart (« + » = l\'appli est plus chère que SumUp), avec les deux prix en dessous.' : '', has('stock') ? 'Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l\'appli a plus que SumUp).' : '', has('price') || has('stock') ? 'Clique « Prix TTC » ou « Quantité » pour trier par écart.' : 'Ici, seuls les SKU sont comparés : un article est « reconnu » quand son SKU existe dans l\'appli.'].filter(Boolean).join(' ');
     return `
+      ${this._catSeg()}${this._uncatAlert(r.uncat)}
       ${this._whatSeg(W, 'Woo._setSumupWhat')}
       <div class="sumup-filters mt">
         ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setSumupFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
