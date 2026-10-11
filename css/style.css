@@ -621,6 +621,11 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 .sheet-nav .btn-icon:disabled { opacity: .3; cursor: default; }
 .sheet-prod .sheet-name { text-align: left !important; vertical-align: top; font-weight: 700; padding-top: 6px; }
 .sheet-prod.alt { background: rgba(255, 255, 255, .035); }
+/* Péremptions : un bloc par produit (nom + viande une seule fois) */
+.perem-prod .perem-name { vertical-align: top; padding-top: 10px; }
+.perem-prod.alt { background: rgba(255, 255, 255, .035); }
+.perem-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
+th .sortable { white-space: nowrap; }
 .sheet-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
 /* Listes repliées (U.fold) */
 .fold-box { max-height: var(--fold-h, 340px); overflow: hidden; position: relative; }
@@ -642,7 +647,8 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   #ctlSheet .card, #ctlSheet.card { padding: 0 !important; border: 0 !important; }
   #ctlSheet .table-wrap { margin-top: 4px !important; overflow: visible !important; }
   .sheet-prod td { padding: 1px 5px !important; }
-  .sheet-prod { break-inside: avoid; }
+  .sheet-prod, .perem-prod { break-inside: avoid; }
+  .perem-prod > tr:first-child > td { border-top: 1.5px solid #888 !important; }
   .sheet-gh { break-after: avoid; }
   .sheet-prod > tr:first-child > td { border-top: 1.5px solid #888 !important; }
   body.print-light, body.print-light *, body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }

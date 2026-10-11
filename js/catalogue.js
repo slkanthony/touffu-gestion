@@ -95,9 +95,15 @@ const Catalogue = {
      Liste imprimable / téléchargeable des variantes vendues : produit, variante, SKU, sachet, coeff, prix TTC — pour pointer au stylo, vérifier les cohérences et comparer avec d'autres outils
      (autre appli, prix d'événements). Filtres COMBINABLES : fournisseur principal, viande, grammage/format (vide = tous). Même coeff et même prix que la fiche (Pricing.variantCalc).
      Sorties : 🖨 impression (classe print-target : seule cette carte s'imprime), image PNG (copier / enregistrer, comme les devis), Excel .xlsx (bibliothèque SheetJS chargée au premier clic). */
-  sheet: { open: false, sup: [], meat: [], size: [], group: 'meat', supOpen: false, meatOpen: false, sizeOpen: false },
+  sheet: { open: false, sup: [], meat: [], size: [], group: 'meat', sort: 'name', sortDir: 'asc', supOpen: false, meatOpen: false, sizeOpen: false },
   sheetShow() { this.sheet.open = !this.sheet.open; this.render(); },
   setSheetGroup(g) { this.sheet.group = g; this.render(); },
+  /* Tri par colonne (flèches ⇕ ▲ ▼ comme ailleurs) : le regroupement viande / fournisseur reste prioritaire, le tri s'applique DANS chaque groupe. */
+  setSheetSort(k) {
+    const sh = this.sheet;
+    if (sh.sort === k) sh.sortDir = sh.sortDir === 'asc' ? 'desc' : 'asc'; else { sh.sort = k; sh.sortDir = 'asc'; }
+    this.render();
+  },
   _sheetOptions() {
     const cat = Store.state.catalogM || [];
     return {
@@ -120,7 +126,9 @@ const Catalogue = {
       });
     });
     const key = r => sh.group === 'sup' ? r.sup : sh.group === 'meat' ? r.meat : '';
-    rows.sort((a, b) => U.sortFr(key(a), key(b)) || U.sortFr(a.name, b.name));   // tri stable : les variantes gardent l'ordre de la fiche
+    const dir = sh.sortDir === 'desc' ? -1 : 1;
+    const col = (a, b) => { switch (sh.sort) { case 'variant': return U.sortFr(a.variant, b.variant); case 'sku': return U.sortFr(a.sku, b.sku); case 'pack': return U.sortFr(a.pack, b.pack); case 'coeff': return a.coeff - b.coeff; case 'price': return a.price - b.price; default: return U.sortFr(a.name, b.name); } };
+    rows.sort((a, b) => U.sortFr(key(a), key(b)) || dir * col(a, b) || U.sortFr(a.name, b.name));   // tri stable : à égalité, les variantes gardent l'ordre de la fiche
     return rows;
   },
   _sheetGroups(rows) {
@@ -141,6 +149,7 @@ const Catalogue = {
     const ms = (k, label, opts) => `<div class="fg" style="margin:0;min-width:170px;flex:1 1 170px;"><label>${label}</label>${U.multiSelect({ options: opts, selected: sh[k], toggle: 'Catalogue.sheetTog_' + k, setAll: 'Catalogue.sheetAll_' + k, open: sh[k + 'Open'], onOpen: 'Catalogue.sheetOp_' + k })}</div>`;
     const prodsOf = g => { const out = []; g.rows.forEach(r => { const l = out[out.length - 1]; if (l && l.id === r.id) l.rows.push(r); else out.push({ id: r.id, name: r.name, rows: [r] }); }); return out; };
     const pl = n => n > 1 ? 's' : '';
+    const sortHead = (k, label) => `<span class="sortable ${sh.sort === k ? 'active' : ''}" onclick="Catalogue.setSheetSort('${k}')">${label}<span class="no-print"> ${sh.sort === k ? (sh.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span></span>`;
     const fold = html => grp.length > 1 ? html : U.fold('sheet', rows.length, html, { h: 560, unit: 'lignes' });   // plusieurs groupes : pas de repli, on navigue de groupe en groupe (▲ ▼ / « Aller à »)
     const body = grp.map((g, gi) => {
       const prods = prodsOf(g);
@@ -165,7 +174,7 @@ const Catalogue = {
         ${grp.length > 1 ? `<div class="frow mt" style="gap:6px;flex-wrap:wrap;align-items:center;"><span class="muted" style="font-size:.8rem;">Aller à :</span>${grp.map((g, gi) => `<button type="button" class="btn-ghost btn-sm" onclick="Catalogue.sheetGo(${gi})">${U.esc(g.label)} <span class="muted">(${prodsOf(g).length})</span></button>`).join('')}</div>` : ''}
       </div>
       ${rows.length ? fold(`<div class="table-wrap mt"><table>
-        <thead><tr><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Sachet</th><th class="num">Coeff</th><th class="num">Prix TTC</th><th class="print-col">✔</th></tr></thead>${body}</table></div>`) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
+        <thead><tr><th class="col-name" style="text-align:left;">${sortHead('name', 'Produit')}</th><th>${sortHead('variant', 'Variante')}</th><th>${sortHead('sku', 'SKU')}</th><th>${sortHead('pack', 'Sachet')}</th><th class="num">${sortHead('coeff', 'Coeff')}</th><th class="num">${sortHead('price', 'Prix TTC')}</th><th class="print-col">✔</th></tr></thead>${body}</table></div>`) : '<p class="muted mt">Aucune ligne avec ces filtres.</p>'}
     </div>`;
   },
   /* Groupe précédent / suivant de la fiche (i = -1 : haut de la fiche) */

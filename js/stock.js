@@ -19,7 +19,7 @@ const Stock = {
   _prodOpen: {},   // pId -> true/false, mémorise les fiches produit dépliées entre deux re-rendus
   _matGroupOpen: {}, // clé produit matière -> true/false, idem pour les groupes de l'onglet Matières
 
-  perem: { q: '', variants: [], variantsOpen: false, view: 'general', horizon: '3', excluded: [], sort: 'days', sortDir: 'asc' },
+  perem: { q: '', meat: 'all', variants: [], variantsOpen: false, view: 'general', horizon: '3', excluded: [], sort: 'days', sortDir: 'asc' },
   _peremVariantsCache: [],
 
   // Onglet unifié « Faible stock » : view = 'general' | 'event' | 'total' (3 gros boutons).
@@ -89,6 +89,8 @@ const Stock = {
   _dluoFilterOpen: false,
   _meatFilterOpen: false,
   _setMeatFilter(val) { this.filters.meat = val; this._meatFilterOpen = false; this.renderM(); },
+  _peremMeatOpen: false,
+  _setPeremMeat(val) { this.perem.meat = val; this._peremMeatOpen = false; this.renderPeremptions(); },
   _setPeremView(val) { this.perem.view = val; this.renderPeremptions(); },
   _setPeremHorizon(val) {
     this.perem.horizon = val;
@@ -1868,6 +1870,7 @@ const Stock = {
       if (viewQty(r) <= 0) return false;
       if (hideExpired && r.days < 0) return false;
       if (f.q && !U.has(r.p.name, f.q)) return false;
+      if (f.meat && f.meat !== 'all' && (r.p.meatType || '').toLowerCase() !== f.meat.toLowerCase()) return false;
       if (f.variants.length && !f.variants.includes(r.label)) return false;
       if (f.horizon === 'multi') return multiSet.has(r.p.id + '|' + r.v.id);
       if (f.horizon === 'expired') return r.days < 0;
@@ -1876,17 +1879,26 @@ const Stock = {
       if (f.horizon === '6') return r.days <= 180;
       if (f.horizon === '9') return r.days <= 270;
       return true; // 'all'
-    }).sort((a, b) => {
-      const dir = f.sortDir === 'desc' ? -1 : 1;
-      // Tri « Produit » : regroupe les lots d'un même produit, DLUO la plus courte en tête
-      // (idéal pour la feuille de marché « plusieurs lots »).
-      if (f.sort === 'name') return dir * (U.sortFr(a.p.name, b.p.name) || (a.days - b.days));
-      if (f.sort === 'meat') return dir * U.sortFr(a.p.meatType || '', b.p.meatType || '');
-      if (f.sort === 'variant') return dir * U.sortFr(a.label, b.label);
-      if (f.sort === 'stock') return dir * (viewQty(a) - viewQty(b));
-      if (f.sort === 'status') return dir * (a.days - b.days); // le statut suit strictement la DLUO restante
-      return dir * (a.days - b.days); // 'days' (défaut : les plus proches de la péremption d'abord)
     });
+    // UN BLOC PAR PRODUIT (Antho 2026-10-11) : le nom et la viande ne s'écrivent qu'une fois, les lots/variantes en dessous.
+    // Le tri choisi ordonne les blocs (date : produit dont le lot expire le plus tôt en tête ; stock : total du produit…) et les lignes dans chaque bloc.
+    const dir = f.sortDir === 'desc' ? -1 : 1;
+    const byProd = new Map();
+    rows.forEach(r => { let g = byProd.get(r.p.id); if (!g) byProd.set(r.p.id, g = { p: r.p, rows: [] }); g.rows.push(r); });
+    const inner = (a, b) => f.sort === 'variant' ? dir * U.sortFr(a.label, b.label)
+      : f.sort === 'stock' ? dir * (viewQty(a) - viewQty(b))
+      : (f.sort === 'days' || f.sort === 'status') ? dir * (a.days - b.days)   // le statut suit strictement la DLUO restante
+      : (U.sortFr(a.label, b.label) || (a.days - b.days));   // tri Produit / Type viande : variantes dans l'ordre, DLUO la plus courte en tête
+    const groups = [...byProd.values()];
+    groups.forEach(g => { g.rows.sort(inner); g.minDays = Math.min(...g.rows.map(r => r.days)); g.qty = g.rows.reduce((s, r) => s + viewQty(r), 0); });
+    groups.sort((a, b) => {
+      if (f.sort === 'meat') return dir * U.sortFr(a.p.meatType || '', b.p.meatType || '') || U.sortFr(a.p.name, b.p.name);
+      if (f.sort === 'stock') return dir * (a.qty - b.qty);
+      if (f.sort === 'days' || f.sort === 'status') return dir * (a.minDays - b.minDays) || U.sortFr(a.p.name, b.p.name);
+      if (f.sort === 'variant') return dir * U.sortFr(a.rows[0].label, b.rows[0].label) || U.sortFr(a.p.name, b.p.name);
+      return dir * U.sortFr(a.p.name, b.p.name);
+    });
+    rows = groups.flatMap(g => g.rows);
     this._peremRowsCache = rows;
     const allChecked = rows.every(r => !f.excluded.includes(this.peremKey(r)));
     const sortHead = (key, label) => `<span class="sortable ${f.sort===key?'active':''}" onclick="Stock.setPeremSort('${key}')">${label} ${f.sort===key?(f.sortDir==='asc'?'▲':'▼'):'⇕'}</span>`;
@@ -1895,8 +1907,9 @@ const Stock = {
       <div class="card" style="padding:12px 16px;">
         <label style="display:block;margin-bottom:6px;">Stock à vérifier</label>
         <div style="margin-bottom:12px;">${U.seg([['general', '🏬 Stock Général'], ['event', '🎪 Stock Événement'], ['both', '🧺 Général + événement (total)']].map(([k, l]) => ({ l, on: f.view === k, js: `Stock._setPeremView('${k}')` })), { full: true, scroll: true, label: 'Stock à vérifier' })}</div>
-        <div class="grid c3">
+        <div class="grid c4">
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_perem" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Stock.perem.q=this.value;Stock.renderPeremptions();U.refocus('stock_q_perem')"></div>
+          <div class="fg mb0"><label>Type de viande</label>${U.meatFilter({ current: f.meat || 'all', meats: Store.state.settings.meatTypes || [], count: Store.state.stockM.length, setter: 'Stock._setPeremMeat', openState: this._peremMeatOpen, openSetter: 'Stock._peremMeatOpen' })}</div>
           <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ groups: varGroups, selected: f.variants, toggle: 'Stock.peremToggleVariant', setAll: 'Stock.peremSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.peremSetOpen' })}</div>
           <div class="fg mb0"><label>Horizon</label>${U.customSelect({ value: f.horizon, options: [...((window.App && App.isViewer) ? [] : [{v:'expired',l:'Lots expirés'}]),{v:'1',l:'Expire dans 1 mois'},{v:'3',l:'Expire dans 3 mois'},{v:'6',l:'Expire dans 6 mois'},{v:'9',l:'Expire dans 9 mois'},{v:'all',l:'Afficher tout (avec date)'},{v:'multi',l:'🔀 Plusieurs lots (même variante)'}], onPick: 'Stock._setPeremHorizon' })}</div>
         </div>
@@ -1912,16 +1925,20 @@ const Stock = {
       <div class="card">
         <div class="table-wrap"><table>
           <thead><tr><th class="no-print"><input type="checkbox" ${allChecked?'checked':''} onchange="Stock.peremSetAllSel(this.checked)"></th><th class="col-name">${sortHead('name','Produit')}</th><th>${sortHead('meat','Type viande')}</th><th>${sortHead('variant','Variante')}</th><th>N° lot</th><th>${sortHead('days','Date péremption')}</th><th class="num">${sortHead('stock','Stock ('+viewLabel+')')}</th><th>${sortHead('status','Statut')}</th></tr></thead>
-          <tbody>${rows.map(r => { const key = this.peremKey(r); const checked = !f.excluded.includes(key); return `<tr class="${checked?'':'excluded-from-print'}">
-            <td class="no-print"><input type="checkbox" ${checked?'checked':''} onchange="Stock.peremToggleSel('${key}')"></td>
-            <td class="col-name"><b>${U.esc(r.p.name)}</b></td>
-            <td><span class="badge info">${U.esc(r.p.meatType||'—')}</span></td>
-            <td>${U.esc(r.label)}</td>
-            <td><span class="tag">${U.esc(r.l.lotNumber||'sans n°')}</span></td>
-            <td>${U.frDate(r.l.dluo)}</td>
-            <td class="num">${U.qty(viewQty(r))}</td>
-            <td>${this.dluoStatusBadge(r.days)}</td>
-          </tr>`; }).join('') || '<tr><td colspan="8" class="muted">Aucun lot pour ces filtres.</td></tr>'}</tbody>
+          ${groups.map((g, gi) => {
+            const rs = g.rows.map(r => { const key = this.peremKey(r); return { r, key, on: !f.excluded.includes(key) }; });
+            let first = rs.findIndex(x => x.on); if (first < 0) first = 0;   // le nom fusionné est porté par la 1re ligne COCHÉE (les lignes décochées ne s'impriment pas)
+            return `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + rs.map((x, i) => `<tr class="${x.on ? '' : 'excluded-from-print'}">
+            <td class="no-print"><input type="checkbox" ${x.on ? 'checked' : ''} onchange="Stock.peremToggleSel('${x.key}')"></td>
+            ${i <= first ? `<td class="col-name perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}><b>${U.esc(g.p.name)}</b></td>
+            <td class="perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}><span class="badge info">${U.esc(g.p.meatType || '—')}</span></td>` : ''}
+            <td>${U.esc(x.r.label)}</td>
+            <td><span class="tag">${U.esc(x.r.l.lotNumber || 'sans n°')}</span></td>
+            <td>${U.frDate(x.r.l.dluo)}</td>
+            <td class="num">${U.qty(viewQty(x.r))}</td>
+            <td>${this.dluoStatusBadge(x.r.days)}</td>
+          </tr>`).join('') + '</tbody>';
+          }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun lot pour ces filtres.</td></tr></tbody>'}
         </table></div>
       </div>`;
   },
