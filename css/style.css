@@ -945,6 +945,9 @@ table.sumup-table td { font-size: .88rem; line-height: 1.35; }
 table.sumup-table tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
 table.sumup-table tbody.sumup-prod tr:nth-child(even) td { background: transparent; }
 table.sumup-table tbody.sumup-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
+/* Survol d'un bloc produit (Fiche de contrôle, Péremptions, Synchro) : tout le bloc s'allume d'un coup, pas seulement la ligne survolée */
+tbody.sheet-prod tr:hover td, tbody.perem-prod tr:hover td, tbody.sumup-prod tr:hover td { background: transparent !important; }
+tbody.sheet-prod:hover, tbody.perem-prod:hover, tbody.sumup-prod:hover { background: rgba(166, 113, 83, .16) !important; }
 table.sumup-table .sub { font-size: .74rem; color: var(--gris); margin-top: 2px; }
 table.sumup-table .sku-txt { font-family: monospace; font-size: .78rem; color: var(--caramel); }
 
