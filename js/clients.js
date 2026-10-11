@@ -67,6 +67,21 @@ const Clients = {
       ${log.length ? `<table class="pack-tbl" style="margin-top:8px;"><tbody>${log.map(l => `<tr><td class="muted" style="white-space:nowrap;">${l.ts ? new Date(l.ts).toLocaleDateString('fr-FR') : '—'}</td><td style="width:110px;"><input type="number" step="0.01" value="${U.num(l.amount)}" onchange="Clients.editBalEntry('${c.id}','${l.id}','amount',this.value)"></td><td><input value="${U.esc(l.note || '')}" onchange="Clients.editBalEntry('${c.id}','${l.id}','note',this.value)"></td><td><button class="btn-icon" title="Supprimer cette ligne" onclick="Clients.delBalEntry('${c.id}','${l.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>` : ''}
     </div></details>`;
   },
+  /* Réduction HABITUELLE d'un client (partenaire d'élevage…, Antho 2026-10-11) : c.discOn + c.discPct (%) + c.discCode (texte libre). Elle se remplit toute seule dans Paniers et Ventes quand on choisit ce client (modifiable par ticket). */
+  discountOf(name) {
+    const c = this.find(name); if (!c || !c.discOn) return null;
+    const pct = Math.min(99, Math.max(0, U.num(c.discPct)));
+    return pct > 0 ? { pct, code: String(c.discCode || '').trim() } : null;
+  },
+  setDisc(cid, f, v) {
+    if (this.ro()) return;
+    const c = this.list().find(x => x.id === cid); if (!c) return;
+    if (f === 'discOn') c.discOn = !!v;
+    else if (f === 'discPct') c.discPct = Math.min(99, Math.max(0, Math.round(U.num(v) * 100) / 100));
+    else c.discCode = String(v || '').trim();
+    Store.save('clients'); Stats.render();
+  },
+  discBadge(c) { const d = this.discountOf(c.name); return d ? ` <span class="badge ok" title="Réduction habituelle${d.code ? ' — code ' + U.esc(d.code) : ''}">🏷️ −${U.qty(d.pct)} %</span>` : ''; },
   balBadge(c) { const b = this.balanceOf(c.name); return !b ? '' : b > 0 ? ` <span class="badge info" title="Je lui dois cet avoir">💶 Avoir ${U.eur(b)}</span>` : ` <span class="badge warn" title="Il me doit cette somme">💶 Dette ${U.eur(-b)}</span>`; },
   _new(name) { const p = this.split(name); return { id: U.uid(), name: String(name).trim(), firstName: p.first, lastName: p.last, phone: '', email: '', note: '', dogs: [] }; },
   ensure(name) {
@@ -231,7 +246,11 @@ const Clients = {
       <div class="cl-id mt">
         <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
         ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
-      </div>`}
+      </div>
+      <div class="cl-id mt"><div class="fg" style="grid-column:span 3;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${c.discOn ? 'checked' : ''} onchange="Clients.setDisc('${c.id}','discOn',this.checked)"> 🏷️ Réduction habituelle (partenaire d'élevage, code personnel…)</label>
+        ${c.discOn ? `<div class="frow" style="align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;"><input type="number" step="0.5" min="0" max="99" value="${c.discPct || ''}" placeholder="0" style="width:90px;" onchange="Clients.setDisc('${c.id}','discPct',this.value)"> <span>%</span><input type="text" value="${U.esc(c.discCode || '')}" placeholder="code (ex : ELEVAGE10)" style="width:190px;" onchange="Clients.setDisc('${c.id}','discCode',this.value)"><span class="muted help">Se remplit tout seul dans Paniers et Ventes quand tu choisis ce client ; tu peux la changer ou la retirer sur un ticket.</span></div>` : ''}
+      </div></div>`}
       ${this.ro() ? '' : this._balUI(c)}
       <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><textarea class="note-area" rows="1" ${this.ro() ? 'disabled' : ''} placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)">${U.esc(c.pets || '')}</textarea></div></div>
       <h3 class="mt">🐕 Chiens (${c.dogs.length})</h3>
@@ -256,7 +275,7 @@ const Clients = {
     const sh = (k, l) => `<span class="sortable ${so.k === k ? 'active' : ''}" onclick="Clients.setSort('${k}')">${l} ${so.k === k ? (so.dir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const rows = rowsData.map(({ c, a }) => {
       const open = !!this._open[c.id];
-      return `<tr style="cursor:pointer;" onclick="Clients.toggle('${c.id}')"><td class="col-name" style="text-align:left;"><b>${open ? '▾' : '▸'} 👤 ${U.esc(this.show(c.name))}</b>${this.balBadge(c)}</td><td style="text-align:left;">${c.dogs.length ? c.dogs.map(d => '🐕 ' + U.esc(d.name || '?')).join(' · ') : '<span class="muted">—</span>'}</td><td class="num">${a.n}</td><td class="num sensitive">${U.eur(a.ca)}</td><td class="num sensitive ${a.net >= 0 ? 'pos' : 'neg'}">${a.n ? U.eur(a.net) : '—'}</td><td class="num">${a.last ? new Date(a.last).toLocaleDateString('fr-FR') : '—'}</td></tr>${open ? this._fiche(c, a.n ? a : null) : ''}`;
+      return `<tr style="cursor:pointer;" onclick="Clients.toggle('${c.id}')"><td class="col-name" style="text-align:left;"><b>${open ? '▾' : '▸'} 👤 ${U.esc(this.show(c.name))}</b>${this.balBadge(c)}${this.discBadge(c)}</td><td style="text-align:left;">${c.dogs.length ? c.dogs.map(d => '🐕 ' + U.esc(d.name || '?')).join(' · ') : '<span class="muted">—</span>'}</td><td class="num">${a.n}</td><td class="num sensitive">${U.eur(a.ca)}</td><td class="num sensitive ${a.net >= 0 ? 'pos' : 'neg'}">${a.n ? U.eur(a.net) : '—'}</td><td class="num">${a.last ? new Date(a.last).toLocaleDateString('fr-FR') : '—'}</td></tr>${open ? this._fiche(c, a.n ? a : null) : ''}`;
     }).join('');
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">clients &amp; chiens</span></div>

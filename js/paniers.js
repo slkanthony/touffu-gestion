@@ -13,6 +13,8 @@ const Paniers = {
   budget: 30,
   livraison: 0,
   reduction: 0,   // code de réduction du client (%), appliqué sur les produits (pas sur la livraison)
+  reductionCode: '',   // texte du code (info : devis en attente, ticket, historique) — jamais affiché sur le devis du client
+  _redAuto: false,   // la réduction vient de la fiche du client (retirée si on change de client) et non d'une saisie à la main
   nbChiens: 1,
   priority: 'mix',    // 'dluo' | 'coeff' | 'mix'
   excludeMeats: [],
@@ -121,11 +123,15 @@ const Paniers = {
     v = String(v || '').trim();
     const c = Clients.find(v);
     this.client = c ? c.name : v;
+    const dc = c ? Clients.discountOf(c.name) : null;   // réduction habituelle de la fiche → remplie toute seule
+    if (dc) { this.reduction = dc.pct; this.reductionCode = dc.code; this._redAuto = true; }
+    else if (this._redAuto) { this.reduction = 0; this.reductionCode = ''; this._redAuto = false; }
     if (c && (c.dogs || []).length) this.nbChiens = c.dogs.length;
     const sens = c && !Clients.ro() && (c.dogs || []).some(d => d.sensitive) && !this._perDog();
     if (sens) this.hypoOnly = true;
     this.render();
     if (sens) U.toast('Chien sensible : « Hypoallergénique uniquement » est coché — décoche-le dans les filtres si besoin.');
+    if (dc) U.toast(`🏷️ Réduction habituelle de ${U.qty(dc.pct)} %${dc.code ? ' (code ' + dc.code + ')' : ''} appliquée.`);
   },
 
   /* ---------- Données disponibles ---------- */
@@ -803,7 +809,7 @@ const Paniers = {
   /* Contenu du panier en cours tel qu'il est rangé dans « en attente » (dv = état du numéro de devis à lui donner) */
   _pendingData(dv, name, now) {
     return { dv: { ...dv }, name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
-      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, nbChiens: this.nbChiens, updated: now };
+      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, reductionCode: this.reductionCode || '', nbChiens: this.nbChiens, updated: now };
   },
   /* Range le panier en cours dans la liste « en attente » (le devis « sort » : numéro attribué, lettre suivante si le contenu a changé). Renvoie { rec, no } ou null. */
   _storePending() {
@@ -877,7 +883,7 @@ const Paniers = {
   },
   _loadRec(rec) {
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
-    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
+    this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.reductionCode = rec.reductionCode || ''; this._redAuto = false; this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
     this._pendId = rec.id; this._pendUpd = rec.updated || rec.ts || 0;
     this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || ''; this._balOn = rec.balOn !== false; this._dv = rec.dv ? { ...rec.dv } : Devis.blank();
     this.proposals = null;
@@ -925,7 +931,7 @@ const Paniers = {
      tant qu'on ne le vide pas ; s'il venait d'un panier en attente, celui-ci est retiré à la validation de la vente (comme avant). */
   sendCurrentToSale() {
     if (!this.basket.length) return;
-    this._sendRecToSale({ id: this._pendId || null, name: String(this.client || this._shClient || '').trim(), items: JSON.parse(JSON.stringify(this.basket)), reduction: this.reduction, livraison: this.livraison, balOn: this._balOn !== false, dv: this._pendId ? this._dv : null, fromComposer: true });
+    this._sendRecToSale({ id: this._pendId || null, name: String(this.client || this._shClient || '').trim(), items: JSON.parse(JSON.stringify(this.basket)), reduction: this.reduction, reductionCode: this.reductionCode || '', livraison: this.livraison, balOn: this._balOn !== false, dv: this._pendId ? this._dv : null, fromComposer: true });
   },
   async _sendRecToSale(rec) {
     const units = Ventes.units(), merged = new Map(), warns = [], general = [];
@@ -1223,7 +1229,8 @@ const Paniers = {
   },
   _disc() { return Math.min(99, Math.max(0, U.num(this.reduction))) / 100; },
   _avail() { return (this.budget - this.livraison) / (1 - this._disc()); },   // budget utilisable, exprimé en prix publics (avant réduction)
-  setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._updateKPI(); },
+  setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._redAuto = false; this._updateKPI(); },
+  setReductionCode(v) { this.reductionCode = String(v || '').trim(); },
   setBudget(v) { this.budget = U.num(v); this._updateKPI(); },
   setLivraison(v) { this.livraison = U.num(v); this._updateKPI(); },
   setNbChiens(v) { this.nbChiens = Math.max(1, U.num(v)); this._updateKPI(); },
@@ -1343,7 +1350,7 @@ const Paniers = {
   render() {
     // Préférences/filtres persistés (pas `basket` : un panier en cours ne doit jamais
     // réapparaître tout seul après un F5, contrairement à un simple filtre de recherche).
-    U.syncFilters('paniers', this, ['budget', 'livraison', 'reduction', 'nbChiens', 'priority', 'excludeMeats',
+    U.syncFilters('paniers', this, ['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats',
       'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
       'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct']);
     this._draft();
@@ -1391,8 +1398,8 @@ const Paniers = {
               ${U.seg([{ l: '0 €', on: this.livraison === 0, js: 'Paniers.setLivraisonQuick(0)' }, { l: U.eur(Store.state.settings.shippingCost ?? 6.8), on: this.livraison === (Store.state.settings.shippingCost ?? 6.8), js: `Paniers.setLivraisonQuick(${Store.state.settings.shippingCost ?? 6.8})` }], { sm: true })}
             </div>
           </div>
-          <div class="fg"><label>🏷️ Réduction (%)</label>
-            <input type="number" id="pan_red" step="0.5" min="0" max="99" value="${this.reduction || ''}" placeholder="0" oninput="Paniers.setReduction(this.value)" title="Code de réduction du client : le budget restant et la génération en tiennent compte">
+          <div class="fg"><label>🏷️ Réduction (%) · code</label>
+            <div style="display:flex;gap:6px;"><input type="number" id="pan_red" step="0.5" min="0" max="99" value="${this.reduction || ''}" placeholder="0" style="flex:0 0 76px;min-width:0;" oninput="Paniers.setReduction(this.value)" title="Réduction du client : le budget restant et la génération en tiennent compte (remplie toute seule si la fiche du client a une réduction habituelle)"><input type="text" id="pan_redcode" value="${U.esc(this.reductionCode || '')}" placeholder="code" style="flex:1 1 70px;min-width:0;" onchange="Paniers.setReductionCode(this.value)" title="Code utilisé (information pour toi : il n'apparaît pas sur le devis du client)"></div>
           </div>
           <div class="fg"><label>🐕 Chiens</label>
             <input type="number" id="pan_chiens" min="1" max="10" value="${this.nbChiens}" oninput="Paniers.setNbChiens(this.value)">
@@ -1672,4 +1679,4 @@ const Paniers = {
 };
 
 /* Valeurs d'origine de la configuration (avant toute valeur mémorisée) : sert à « repartir comme pour un nouveau panier » */
-Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
+Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
