@@ -1232,11 +1232,14 @@ table.sales-hist tr.sale-head:nth-of-type(even) td { background: rgba(255, 255, 
 table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .sales-hist tr.sale-head.is-sel > td { background: rgba(166, 113, 83, 0.22); }
 .sales-hist tr.hist-fold-foot > td { border-bottom: 1px solid var(--card-border); }
-/* Une vente DÉPLIÉE forme un bloc lisible (Antho 2026-10-11) : barre caramel à gauche sur toutes ses lignes, bandeau de titre renforcé avec un gros trait au-dessus, gros trait sous « Replier cette vente », espace avant la vente suivante */
-table.sales-hist tr.sale-open > td:first-child, table.sales-hist tr.sale-open > th:first-child { box-shadow: inset 5px 0 0 var(--caramel); }
-table.sales-hist tr.sale-head.sale-open > td { background: rgba(166, 113, 83, .26); border-top: 3px solid var(--caramel); padding-top: 10px; padding-bottom: 10px; }
+/* Une vente DÉPLIÉE forme un bloc lisible aux coins ARRONDIS (Antho 2026-10-11) : barre caramel à gauche ET à droite sur toutes ses lignes, bandeau de titre renforcé, trait épais en haut et en bas,
+   espace avant la vente suivante. Les traits sont des ombres internes (box-shadow inset) : elles suivent l'arrondi, contrairement aux bordures d'un tableau « collapse ». */
+table.sales-hist tr.sale-open > :first-child { box-shadow: inset 5px 0 0 var(--caramel); }
+table.sales-hist tr.sale-open > :last-child { box-shadow: inset -5px 0 0 var(--caramel); }
+table.sales-hist tr.sale-open > :first-child:last-child { box-shadow: inset 5px 0 0 var(--caramel), inset -5px 0 0 var(--caramel); }
+table.sales-hist tr.sale-head.sale-open > td:first-child:last-child { background: rgba(166, 113, 83, .26); border-top: 0; padding-top: 12px; padding-bottom: 10px; border-radius: 16px 16px 0 0; box-shadow: inset 5px 0 0 var(--caramel), inset -5px 0 0 var(--caramel), inset 0 4px 0 var(--caramel); }
 table.sales-hist tr.sale-head.sale-open .hc-date { font-size: 1.02rem; }
-table.sales-hist tr.sale-last > td { border-bottom: 3px solid var(--caramel); }
+table.sales-hist tr.sale-last > td:first-child:last-child { border-bottom: 0; border-radius: 0 0 16px 16px; box-shadow: inset 5px 0 0 var(--caramel), inset -5px 0 0 var(--caramel), inset 0 -4px 0 var(--caramel); }
 table.sales-hist tr.sale-gap > td { height: 18px; padding: 0; border: 0; background: transparent !important; box-shadow: none !important; }
 /* Regroupement visuel de tickets d'un même événement/journée (2026-09-30) : léger fond commun,
    sous-total dans une bande caramel bien marquée juste après le dernier ticket du groupe. */
