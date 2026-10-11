@@ -1177,7 +1177,7 @@ const Ventes = {
       const open = !!this._histOpen[s.id];
       const nTodo = s.items.filter(i => i.todo === 'open').length;
       // Colonnes FIXES (grille .hist-row) alignées sur la ligne de titres (2026-09-29).
-      const head = `<tr id="hist-${s.id}" class="sale-head hist-click${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}" title="${open ? 'Cliquer pour replier' : 'Cliquer pour déplier'}" onclick="Ventes._rowClick(event,'${s.id}')"><td colspan="7"><div class="hist-row">
+      const head = `<tr id="hist-${s.id}" class="sale-head hist-click${open ? ' sale-open sale-first' : ''}${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}" title="${open ? 'Cliquer pour replier' : 'Cliquer pour déplier'}" onclick="Ventes._rowClick(event,'${s.id}')"><td colspan="7"><div class="hist-row">
           <span class="hc-cb"><input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)"></span>
           <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}">${open ? '▾' : '▸'}</button></span>
           <span class="hc-date sh-date">${U.frDateTime(s.ts)}</span>
@@ -1192,8 +1192,8 @@ const Ventes = {
         </div></td></tr>`;
       if (!open) return head;
       const kind = this._saleKind(s);
-      const summaryRow = s.cancelled ? '' : `<tr class="sale-detail"><td colspan="7"><details class="fold" ${this._sumOpen && this._sumOpen[s.id] ? 'open' : ''} ontoggle="Ventes._sumOpen=Ventes._sumOpen||{};Ventes._sumOpen['${s.id}']=this.open"><summary><b>🧮 Résumé de cette commande</b> <span class="sensitive ${Pricing.saleProfit(s).net >= 0 ? 'pos' : 'neg'}">bénéfice net ${U.eur(Pricing.saleProfit(s).net)}</span></summary><div class="fold-body sensitive">${this.saleSummaryHTML(s)}</div></details></td></tr>`;
-      const detail = `<tr class="sale-detail ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
+      const summaryRow = s.cancelled ? '' : `<tr class="sale-detail sale-open"><td colspan="7"><details class="fold" ${this._sumOpen && this._sumOpen[s.id] ? 'open' : ''} ontoggle="Ventes._sumOpen=Ventes._sumOpen||{};Ventes._sumOpen['${s.id}']=this.open"><summary><b>🧮 Résumé de cette commande</b> <span class="sensitive ${Pricing.saleProfit(s).net >= 0 ? 'pos' : 'neg'}">bénéfice net ${U.eur(Pricing.saleProfit(s).net)}</span></summary><div class="fold-body sensitive">${this.saleSummaryHTML(s)}</div></details></td></tr>`;
+      const detail = `<tr class="sale-detail sale-open ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
@@ -1209,7 +1209,7 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
           ${this._isRealEvent(s) ? field('Frais en espèces', `<input type="checkbox" ${s.eventFeeCash ? 'checked' : ''} title="Coché : stand, repas et déplacement payés en liquide (ne sortent pas de la banque)" onchange="Ventes.setEventFeeCash('${s.id}',this.checked)">`) : ''}
         </div></td></tr>`;
-      const items = s.items.map(i => `<tr class="${s.cancelled ? 'dim' : ''}">
+      const items = s.items.map(i => `<tr class="sale-open ${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
@@ -1218,7 +1218,7 @@ const Ventes = {
         <td class="num">${U.eur(i.price)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
       </tr>`).join('');
-      return head + detail + summaryRow + `<tr class="hist-items-h"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr>`;
+      return head + detail + summaryRow + `<tr class="hist-items-h sale-open"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot sale-open sale-last"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr><tr class="sale-gap"><td colspan="7"></td></tr>`;
     };
     const rowsArr = [];
     for (let gi = 0; gi < pageList.length;) {

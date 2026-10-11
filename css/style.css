@@ -1232,6 +1232,12 @@ table.sales-hist tr.sale-head:nth-of-type(even) td { background: rgba(255, 255, 
 table.sales-hist tr.sale-head:hover td { background: rgba(166, 113, 83, 0.10); }
 .sales-hist tr.sale-head.is-sel > td { background: rgba(166, 113, 83, 0.22); }
 .sales-hist tr.hist-fold-foot > td { border-bottom: 1px solid var(--card-border); }
+/* Une vente DÉPLIÉE forme un bloc lisible (Antho 2026-10-11) : barre caramel à gauche sur toutes ses lignes, bandeau de titre renforcé avec un gros trait au-dessus, gros trait sous « Replier cette vente », espace avant la vente suivante */
+table.sales-hist tr.sale-open > td:first-child, table.sales-hist tr.sale-open > th:first-child { box-shadow: inset 5px 0 0 var(--caramel); }
+table.sales-hist tr.sale-head.sale-open > td { background: rgba(166, 113, 83, .26); border-top: 3px solid var(--caramel); padding-top: 10px; padding-bottom: 10px; }
+table.sales-hist tr.sale-head.sale-open .hc-date { font-size: 1.02rem; }
+table.sales-hist tr.sale-last > td { border-bottom: 3px solid var(--caramel); }
+table.sales-hist tr.sale-gap > td { height: 18px; padding: 0; border: 0; background: transparent !important; box-shadow: none !important; }
 /* Regroupement visuel de tickets d'un même événement/journée (2026-09-30) : léger fond commun,
    sous-total dans une bande caramel bien marquée juste après le dernier ticket du groupe. */
 table.sales-hist tr.hist-grouped:not(:hover):not(.is-sel) td { background: rgba(166, 113, 83, 0.06); }
