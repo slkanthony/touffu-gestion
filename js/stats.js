@@ -800,16 +800,29 @@ const Stats = {
         ctx.restore();
       }
     };
+    // Nombre de variantes (ou d'accessoires) écrit AU-DESSUS de chaque barre (Antho 2026-10-11 : l'axe de gauche seul ne permettait pas de lire les effectifs) ; les tranches à 0 restent vides.
+    const valuesPlugin = {
+      id: 'barValues',
+      afterDatasetsDraw: (chart) => {
+        const { ctx } = chart, multi = chart.data.datasets.length > 1, size = multi ? 11 : 14;
+        ctx.save(); ctx.fillStyle = textColor; ctx.font = `800 ${size}px Quicksand, "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        chart.data.datasets.forEach((ds, di) => {
+          const meta = chart.getDatasetMeta(di); if (meta.hidden) return;
+          meta.data.forEach((bar, i) => { const v = ds.data[i]; if (v > 0) ctx.fillText(String(v), bar.x, bar.y - 4); });
+        });
+        ctx.restore();
+      }
+    };
     // Barres : chaque série garde sa couleur ; le danger est marqué par la ligne et la bande, pas par la couleur des barres.
     const buildBar = (id, datasets, statsFn, isB2B) => {
       const canvas = document.getElementById(id); if (!canvas) return;
       this._charts[id] = new Chart(canvas, {
         type: 'bar',
         data: { labels: bins.map(b => b.label), datasets: datasets.map(d => ({ ...d, borderRadius: 4 })) },
-        plugins: [thresholdPlugin],
+        plugins: [thresholdPlugin, valuesPlugin],
         options: {
           maintainAspectRatio: false,
-          scales: { y: { beginAtZero: true, ticks: { color: textColor, precision: 0 } }, x: { ticks: { color: textColor, autoSkip: false, maxRotation: 60, font: { size: 10 } } } },
+          scales: { y: { beginAtZero: true, grace: '12%', ticks: { color: textColor, precision: 0 }, title: { display: true, text: acc ? "Nombre d'accessoires" : 'Nombre de variantes', color: textColor, font: { size: 11, weight: '600' } } }, x: { ticks: { color: textColor, autoSkip: false, maxRotation: 60, font: { size: 10 } } } },
           plugins: { legend: { labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } } },
           onClick: (evt, els) => {
             if (!els.length) return;
