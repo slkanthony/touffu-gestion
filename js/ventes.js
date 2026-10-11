@@ -33,6 +33,7 @@ const Ventes = {
   kind: 'M',           // 'M' mastication (défaut) | 'A' accessoires — bascule le sélecteur de produit à sortir
   accWidth: 'all',     // filtre largeur de sangle en mode Accessoires
   balOn: true,   // déduire l'avoir / ajouter la dette du client (fiche client)
+  thanksOn: true,   // case « carte de remerciement incluse » du ticket (cochée par défaut ; remise à true après chaque vente)
   discCode: '', _discAuto: false, _discFor: '',   // code de la réduction (info), remplie par la fiche client (_discAuto) ; _discFor = dernier client traité
   discOn: false, discPct: 5,   // réduction sur le ticket (clients partenaires…), 5 % par défaut, modifiable
   editTicketId: '', ticketConsoId: '', ticketConsoQty: 1,
@@ -387,6 +388,7 @@ const Ventes = {
     U.toast('Ajouté au ticket.');
   },
 
+  _thanksConso() { const id = Store.state.settings.thanksConsoId; return id ? (Store.state.consumables.find(x => x.id === id) || null) : null; },
   _pushConsoIfSelected() {
     if (!this.consoId) return false;
     const c = Store.state.consumables.find(x => x.id === this.consoId);
@@ -494,6 +496,7 @@ const Ventes = {
         ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span><input id="v_disc_code" type="text" value="${U.esc(this.discCode || '')}" placeholder="code (option)" style="width:170px;" onchange="Ventes.discCode=this.value.trim()" title="Code utilisé (information : gardé dans l'historique de la vente)"></div>` : ''}</div>
       <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label>${U.autocomplete({ id: 'v_customer', value: this.customerName || '', placeholder: 'nom du client…', options: this.custOpen ? this._custSuggestions() : [], open: this.custOpen, onInput: 'Ventes.setCust', onPick: 'Ventes.pickCust', onClose: 'Ventes.closeCustMenu' })}</div>
       ${bal ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--caramel);border-radius:8px;"><input type="checkbox" ${this.balOn ? 'checked' : ''} onchange="Ventes.balOn=this.checked;Ventes.render()"> 💶 ${bal > 0 ? 'Déduire l\'avoir de ' + U.eur(bal) : 'Ajouter le solde dû de ' + U.eur(-bal)}</label>` : ''}
+      ${(() => { const co = this._thanksConso(); return co ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--card-border);border-radius:8px;"><input type="checkbox" ${this.thanksOn ? 'checked' : ''} onchange="Ventes.thanksOn=this.checked"> 💌 Carte de remerciement incluse <span class="muted">(coût ${U.eur(U.num(co.costUnit) * Pricing.vatK())})</span></label>` : '<p class="muted mt" style="font-size:.82rem;">💌 Pour compter ta carte de remerciement dans chaque commande, relie-la à un consommable : Paramètres → Réglages financiers → Consommables.</p>'; })()}
       <div class="frow mt">
         <button class="btn-ok" onclick="Ventes.validate()">✅ Valider la sortie de stock</button>
         <button class="btn-ghost" onclick="Ventes.cart=[];Ventes.discOn=false;Ventes.discCode='';Ventes._discFor='';Ventes._discAuto=false;Ventes._basketId=null;Ventes._basketOthers=[];Ventes._fromComposer=false;Ventes._pro=false;Ventes._devisNo='';Ventes.render()">Vider le ticket</button>
@@ -555,7 +558,10 @@ const Ventes = {
     const sale = { id: U.uid(), ts: Date.now(), source: this.source, channel, payment, delivery, customerName: (this.customerName || '').trim(), ...(this._devisNo ? { devisNo: this._devisNo } : {}), ...(this._basketId ? { fromBasket: true, origin: channel === 'online' ? 'online' : 'direct' } : {}), ...(this._pro ? { pro: true } : {}), items: [], total: 0, cancelled: false, undoOps: [] };
     // Réduction : appliquée sur le prix de chaque article (les stats et le CA restent justes)
     const pct = this.discOn ? Math.min(100, Math.max(0, U.num(this.discPct))) : 0;
-    const lines = pct > 0 ? this.cart.map(c => c.kind === 'C' ? c : { ...c, price: U.num(c.price) * (1 - pct / 100) }) : this.cart;
+    let lines = pct > 0 ? this.cart.map(c => c.kind === 'C' ? c : { ...c, price: U.num(c.price) * (1 - pct / 100) }) : this.cart;
+    // Carte de remerciement (case cochée par défaut) : 1 carte = 1 ligne consommable, coût compté même si le stock est à 0 (alerte pour recommander)
+    const thanks = this.thanksOn ? this._thanksConso() : null;
+    if (thanks && !lines.some(c => c.kind === 'C' && c.pId === thanks.id)) lines = lines.concat([{ key: 'C|' + thanks.id, kind: 'C', pId: thanks.id, vId: '', lotId: '', lotLabel: '', name: thanks.name, label: (!thanks.unit || thanks.unit === 'pc') ? 'PCS' : thanks.unit, sku: '', price: 0, qty: 1 }]);
     const shortfalls = this._deductSale(sale, lines, this.source);
     if (pct > 0) { const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = pct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; if (String(this.discCode || '').trim()) sale.discountCode = String(this.discCode).trim(); }
     const ba = this._balApplied(sale.total);
@@ -570,7 +576,7 @@ const Ventes = {
     Store.save('sales', 'stockM', 'catalogA', 'consumables');
     this.cart = [];
     this.customerName = '';
-    this.discOn = false; this.discCode = ''; this._discFor = ''; this._discAuto = false; this.balOn = true; this._devisNo = ''; this._pro = false;
+    this.discOn = false; this.discCode = ''; this._discFor = ''; this._discAuto = false; this.balOn = true; this._devisNo = ''; this._pro = false; this.thanksOn = true;
     // le panier en attente est maintenant une vraie vente : il quitte la liste (avec les autres versions du devis si Antho l'a demandé), et le panier composé qui y correspond est vidé
     const gone = new Set([this._basketId, ...(this._basketOthers || [])].filter(Boolean)), fromComposer = this._fromComposer;
     if (gone.size) { Store.state.baskets = (Store.state.baskets || []).filter(x => !gone.has(x.id)); Store.save('baskets'); }
@@ -579,6 +585,7 @@ const Ventes = {
     this.render();
     U.toast(`Sortie enregistrée : ${U.eur(sale.total)} · stock à jour.`, false, entry.id);
     if (shortfalls.length) this._alertShortfalls(shortfalls);
+    if (thanks) { const t2 = Store.state.consumables.find(x => x.id === thanks.id); if (t2 && U.num(t2.qty) <= 0) setTimeout(() => U.toast('💌 Plus de cartes de remerciement en stock : pense à en recommander.', true), 900); }
   },
 
   /* Déduit une liste de lignes du stock (source 'general'|'event') et remplit sale.items/total/undoOps.
@@ -1560,7 +1567,7 @@ const Ventes = {
     const days = Object.values(dayMap).sort((a, b) => b.ts - a.ts);
     if (!days.length) { U.toast('Aucune vente exploitable dans ce fichier.', true); return; }
     const latest = days[0] && days[0].key !== 'date-inconnue' ? days[0].key : new Date().toISOString().slice(0, 10);
-    this.retourData = { days, mergeOne: false, cashLines: [], cashDate: latest, standFees: {}, cashStandFee: '', mealFees: {}, cashMealFee: '', consoLines: [] };
+    this.retourData = { days, mergeOne: false, cashLines: [], cashDate: latest, standFees: {}, cashStandFee: '', mealFees: {}, cashMealFee: '', consoLines: [], cardsGiven: '' };
     this.render();
   },
   setStandFee(key, val) { if (this.retourData) { (this.retourData.standFees = this.retourData.standFees || {})[key] = U.num(val); } },
@@ -1714,6 +1721,13 @@ const Ventes = {
     this.retourConsoId = ''; this.retourConsoQty = 1; this.render();
   },
   removeRetourConso(i) { this.retourData.consoLines.splice(i, 1); this.render(); },
+  /* Lignes consommables du retour d'événement = celles ajoutées à la main + les CARTES DE VISITE distribuées (champ dédié, relié à un consommable dans Paramètres) */
+  _retourConsoAll(d) {
+    const out = (d.consoLines || []).slice(), S = Store.state.settings, q = U.num(d.cardsGiven);
+    const co = S.cardConsoId ? Store.state.consumables.find(x => x.id === S.cardConsoId) : null;
+    if (co && q > 0) out.push({ consumableId: co.id, name: co.name, qty: q, costUnit: U.num(co.costUnit) * Pricing.vatK() });
+    return out;
+  },
   retourConsoSection() {
     const d = this.retourData;
     const avail = Store.state.consumables.slice().sort((a, b) => Ventes._consoCmp(a, b));
@@ -1721,6 +1735,7 @@ const Ventes = {
     const totalCost = cons.reduce((a, l) => a + l.costUnit * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--caramel);margin-top:12px;">
       <h3 style="margin-top:0;">📦 Consommables utilisés (sacs, étiquettes…)</h3>
+      ${(() => { const S = Store.state.settings, co = S.cardConsoId ? Store.state.consumables.find(x => x.id === S.cardConsoId) : null; if (!co) return '<p class="muted help">🪪 Pour compter tes cartes de visite distribuées, relie-les à un consommable : Paramètres → Réglages financiers → Consommables.</p>'; const q = U.num(d.cardsGiven), u = U.num(co.costUnit) * Pricing.vatK(); return `<div class="fg" style="max-width:340px;"><label>🪪 Cartes de visite distribuées</label><input type="number" step="1" min="0" value="${q || ''}" placeholder="0" onchange="Ventes.retourData.cardsGiven=U.num(this.value);Ventes.render()"><div class="muted" style="font-size:.8rem;margin-top:3px;">${q > 0 ? `${U.qty(q)} × ${U.eur(u)} = <b>${U.eur(q * u)}</b> · ` : ''}stock restant : ${U.qty(co.qty)}</div></div>`; })()}
       <p class="muted help">Indique ce que tu as consommé pendant l'événement (ex : sacs donnés aux clients). ${this.retourDeduct ? 'Déduit du stock consommable' : 'Non déduit (mode historique)'} et compté en <b>coût</b> pour une marge plus précise dans les stats.</p>
       ${avail.length ? `<div class="grid c2">
         <div class="fg"><label>Consommable</label>${U.customSelect({ value: this.retourConsoId, options: [{ v: '', l: '— choisir —' }].concat(avail.map(c => ({ v: c.id, l: Ventes._consoLabel(c) }))), onPick: 'Ventes._setRetourConso', cls: 'conso-pick' })}</div>
@@ -2162,7 +2177,7 @@ const Ventes = {
     const d = this.retourData; if (!d) return;
     const imported = this._retourImportedRefs();
     const groups = d.days.filter(g => g.include && g.lines.some(l => !imported.has(l.ref)));
-    if (!groups.length && !d.cashLines.length && !(d.consoLines || []).length) { U.toast('Rien à valider : coche au moins une journée, ou ajoute une vente espèces / des consommables.', true); return; }
+    if (!groups.length && !d.cashLines.length && !this._retourConsoAll(d).length) { U.toast('Rien à valider : coche au moins une journée, ou ajoute une vente espèces / des consommables.', true); return; }
     const buckets = this._retourBuckets(d, imported);
     const seen = new Set(imported);
     const deduct = this.retourDeduct;   // décoché = import HISTORIQUE (stats sans toucher au stock)
@@ -2239,11 +2254,12 @@ const Ventes = {
     });
     // Consommables utilisés pendant l'événement (sacs…) : un ticket dédié, coût compté dans les stats.
     let consoCost = 0;
-    if ((d.consoLines || []).length) {
+    const consoAll = this._retourConsoAll(d);
+    if (consoAll.length) {
       const consoTs = buckets.length ? (Math.max(...buckets.map(b => b.ts || 0)) || Date.now())
         : (d.cashDate ? new Date(d.cashDate + 'T12:00:00').getTime() : Date.now());
       if (!deduct) {
-        const items = d.consoLines.map(l => ({ kind: 'C', pId: l.consumableId, vId: '', name: l.name, variant: '', sku: '', qty: l.qty, price: 0, cost: U.num(l.costUnit) * U.num(l.qty) }));
+        const items = consoAll.map(l => ({ kind: 'C', pId: l.consumableId, vId: '', name: l.name, variant: '', sku: '', qty: l.qty, price: 0, cost: U.num(l.costUnit) * U.num(l.qty) }));
         consoCost = items.reduce((a, i) => a + i.cost, 0);
         const sale = { id: U.uid(), ts: consoTs, source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', items, total: 0, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
@@ -2251,7 +2267,7 @@ const Ventes = {
         created++;
       } else {
         const sale = { id: U.uid(), ts: consoTs, source: 'event', channel: 'direct', payment: 'sumup', delivery: 'clickcollect', customerName: '', items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
-        this._deductSale(sale, d.consoLines.map(l => ({ kind: 'C', pId: l.consumableId, vId: '', name: l.name, label: '', sku: '', lotLabel: '', price: 0, qty: l.qty })), 'event');
+        this._deductSale(sale, consoAll.map(l => ({ kind: 'C', pId: l.consumableId, vId: '', name: l.name, label: '', sku: '', lotLabel: '', price: 0, qty: l.qty })), 'event');
         this._markImported(sale.items); createdSales.push(sale);
         consoCost = (sale.items || []).reduce((a, i) => a + U.num(i.cost), 0);
         Store.state.sales.unshift(sale);
@@ -2260,6 +2276,7 @@ const Ventes = {
       }
     }
     if (!created) { U.toast('Rien à valider (déjà importé ?).', true); return; }
+    { const _cc = Store.state.settings.cardConsoId && Store.state.consumables.find(x => x.id === Store.state.settings.cardConsoId); if (_cc && U.num(d.cardsGiven) > 0 && U.num(_cc.qty) <= 0) setTimeout(() => U.toast('🪪 Plus de cartes de visite en stock : pense à en recommander.', true), 900); }
     const _recapSales = createdSales.slice();
     if (created) { if (deduct) Store.save('sales', 'stockM', 'catalogA', 'consumables'); else Store.save('sales'); }
     this.retourData = null;

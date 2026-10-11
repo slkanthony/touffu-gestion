@@ -19,7 +19,7 @@ const Store = {
         portRates: { mastication: 0, matiere: 0, conso: 0 },   // port à l'achat (%) ajouté au coût de revient pour fixer les prix
         vatRate: 20, vatActive: false, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5,
         urssafFreq: 'quarter', comptaExtraServices: 0,   // Compta : déclaration URSSAF mensuelle / trimestrielle ; CA hors application (éducation canine…) de l'année en cours
-        laborRate: 20, labelCost: 0.10, fabHistory: [], bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
+        laborRate: 20, thanksConsoId: '', cardConsoId: '', labelCost: 0.10, fabHistory: [], bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
         uvCartridgePrice: 42, uvCartridgeVolume: 100, // impression UV : coût encre/ml = prix ÷ volume
         uvMaintPct: 0, // + majoration entretien optionnelle (% du coût encre) — filtres/nettoyage/entretien
         // Entretien imprimante UV — charges annuelles (déduites du bénéfice net mensuel ÷ 12, PAS du prix de l'accessoire)

@@ -128,6 +128,7 @@ const Params = {
         <div class="fin-block" style="order:${finPos('conso')}">${finTools('conso')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Consommables ${U.info("Chaque fiche prix choisit son type d'étiquette (ex. « Élastique + étiquette » pour les cornes et bois naturels). Changer un coût ici recalcule toutes les fiches qui l'utilisent. Le vrac se règle fiche par fiche avec « Autre montant ».<br><br>● Défaut = type proposé pour les nouvelles fiches.")}</div>
         ${this.labelTypesHTML()}
+        ${this.cardsHTML()}
         </div>
         <div class="fin-block" style="order:${finPos('port')}">${finTools('port')}
         ${this.portCard()}
@@ -1540,6 +1541,22 @@ const Params = {
       <button class="btn-ghost btn-sm mt" onclick="Params.addLabelType()">＋ Ajouter un type d'étiquette</button>
     </div>`;
   },
+  /* Cartes glissées dans les commandes (Antho 2026-10-11) : on relie chaque carte à un CONSOMMABLE (Stock → Consommables : prix d'achat ÷ quantité = coût d'une carte, il suit les achats).
+     thanksConsoId = carte de remerciement (case cochée par défaut dans le ticket de vente) ; cardConsoId = carte de visite (nombre distribué saisi au retour d'événement). */
+  cardsHTML() {
+    const S = Store.state.settings, cons = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const one = (key, label, hint) => {
+      const id = S[key], c = id ? cons.find(x => x.id === id) : null;
+      return `<div class="fg" style="margin:0;flex:1 1 250px;min-width:230px;"><label>${label}</label>
+        <select onchange="Params.setCardConso('${key}',this.value)"><option value="">— aucun —</option>${cons.map(x => `<option value="${x.id}" ${x.id === id ? 'selected' : ''}>${U.esc(x.name)}</option>`).join('')}</select>
+        <div class="muted" style="font-size:.8rem;margin-top:3px;">${c ? `Coût d'une carte : <b>${U.eur(U.num(c.costUnit) * Pricing.vatK())}</b> <span class="badge ok" style="font-size:.7rem;">🔗 auto</span>${Pricing.vatK() > 1 ? ' <span class="muted">(TVA d\'achat comprise)</span>' : ''} · stock : ${U.qty(c.qty)}` : hint}</div></div>`;
+    };
+    return `<div class="mt" style="padding-top:10px;border-top:1px dashed var(--card-border);">
+      <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">💌 Cartes ${U.info("Crée d'abord tes cartes dans Stock → Consommables (prix d'achat et quantité : l'appli divise pour avoir le coût d'une carte), puis relie-les ici.<br><br>● Carte de remerciement : case « 💌 incluse » cochée par défaut dans chaque ticket de vente (Click & Collect, livraison).<br>● Carte de visite : tu saisis le nombre distribué au retour d'événement.<br><br>Leur coût entre dans « Cartons & consommables » et le stock baisse ; s'il tombe à 0, le coût est compté quand même et tu es prévenu de recommander.")}</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">${one('thanksConsoId', '💌 Carte de remerciement', 'Choisis le consommable correspondant.')}${one('cardConsoId', '🪪 Carte de visite', 'Choisis le consommable correspondant.')}</div>
+    </div>`;
+  },
+  setCardConso(key, val) { Store.state.settings[key] = val || ''; Store.save('settings'); App.rerender(); },
   setLabelType(id, field, val) {
     const t = Store.labelType(id); if (!t) return;
     t[field] = field === 'cost' ? U.num(val) : (String(val).trim() || t.name);
