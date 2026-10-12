@@ -102,13 +102,12 @@ const Accessoires = {
     return 0;
   },
 
-  bomLineLabel(l) {
+  bomLineLabel(l, a) {
     let label;
     if (l.familyKey) { const fam = this.families().find(f => f.key === l.familyKey); label = fam ? fam.label : l.familyKey; }
     else if (l.materialId) { const m = Store.material(l.materialId); label = m ? m.name : '⚠ matière supprimée'; }
     else label = '—';
-    if (l.strapColor === 1) label += ' (couleur 1 — rabat + poignée)';
-    else if (l.strapColor === 2) label += ' (couleur 2 — longueur interne)';
+    if (l.strapColor) label += ` (couleur ${l.strapColor}${a ? ' — ' + this._colorTitle(a, l.strapColor) : ''})`;
     return label;
   },
 
@@ -242,22 +241,21 @@ const Accessoires = {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
     const snap = Store.snapshot('catalogA', a);
     a.bicolor = !a.bicolor;
-    if (a.bicolor) {
-      const si = (a.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
-      if (si >= 0) {
-        a.bom[si].strapColor = 1;
-        a.bom.splice(si + 1, 0, { familyKey: a.bom[si].familyKey, qty: 0, strapColor: 2 });
-      }
-    } else {
-      const idxs = []; (a.bom || []).forEach((l, i) => { if (this.bomLineUnit(l) === 'm') idxs.push(i); });
-      if (idxs.length >= 2) {
-        delete a.bom[idxs[0]].strapColor;
-        a.bom.splice(idxs[1], 1);
-      }
-    }
+    this._applyColors(a);
     this._autoStrap(a);
     this._fabOpen[id] = true;
     Store.commitSnapshot(snap, 'accessoires', (a.bicolor ? 'Bicolor activé' : 'Bicolor désactivé') + ' — ' + a.name);
+    Store.save('catalogA'); App.rerender();
+  },
+
+  toggleBicolorEnds(id) {
+    const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
+    const snap = Store.snapshot('catalogA', a);
+    a.bicolorEnds = !a.bicolorEnds;
+    this._applyColors(a);
+    this._autoStrap(a);
+    this._fabOpen[id] = true;
+    Store.commitSnapshot(snap, 'accessoires', (a.bicolorEnds ? '3 couleurs (extrémités différentes)' : '2 couleurs') + ' — ' + a.name);
     Store.save('catalogA'); App.rerender();
   },
 
@@ -271,11 +269,53 @@ const Accessoires = {
     Store.save('catalogA'); App.rerender();
   },
 
-  /* Quantités de sangle déduites des « Longueurs de fabrication » : [total] ou, en bicolor, [couleur 1 = segments fixes (rabat + poignée), couleur 2 = longueur interne] (en m, arrondi au mm) */
+  /* Nombre de COULEURS de sangle (Antho 2026-10-13) : 1 ; bicolor = 2 (couleur 1 = segments fixes rabat + poignée, couleur 2 = longueur interne) ;
+     bicolor + « extrémités de couleurs différentes » (`a.bicolorEnds`, ≥ 2 segments) = 3 (couleur 1 = 1er segment, couleur 2 = les autres segments, couleur 3 = longueur interne). */
+  _colorCount(a) { return a.bicolor ? ((a.bicolorEnds && (a.fabSegments || []).length >= 2) ? 3 : 2) : 1; },
+  /* Quantités de sangle déduites des « Longueurs de fabrication » : [total] ou, par couleur, [segments…, interne] (en m, arrondi au mm) */
   _strapTargets(a, nStrap) {
-    const segTotal = (a.fabSegments || []).reduce((sum, s) => sum + U.num(s.value), 0);
-    const interne = U.num(a.internalLength), r = x => x > 0 ? Math.round(x / 100 * 1000) / 1000 : 0;
-    return (a.bicolor && nStrap >= 2) ? [r(segTotal), r(interne)] : [r(segTotal + interne)];
+    const segs = (a.fabSegments || []).map(s => U.num(s.value)), segTotal = segs.reduce((x, y) => x + y, 0);
+    const interne = U.num(a.internalLength), r = x => x > 0 ? Math.round(x / 100 * 1000) / 1000 : 0, n = this._colorCount(a);
+    if (n >= 2 && nStrap >= n) return n === 3 ? [r(segs[0] || 0), r(segTotal - (segs[0] || 0)), r(interne)] : [r(segTotal), r(interne)];
+    return [r(segTotal + interne)];
+  },
+  /* Nom court de la partie de la laisse qui porte la couleur c (d'après le nom des segments) */
+  _colorTitle(a, c) {
+    const all = a.fabSegments || [], n = this._colorCount(a), clean = l => String(l || '').replace(/\s*\([^)]*\)/g, '').trim() || 'segment';
+    if (c === n) return 'longueur interne';
+    if (n === 2) return all.map(s => clean(s.label)).join(' + ') || 'segments';
+    if (c === 1) return clean(all[0] && all[0].label);
+    return all.length > 2 ? all.slice(1).map(s => clean(s.label)).join(' + ') : clean(all[1] && all[1].label);
+  },
+  _colorParts(a) {
+    const n = this._colorCount(a); if (n < 2) return [];
+    return this._strapTargets(a, n).map((q, i) => ({ k: i + 1, title: this._colorTitle(a, i + 1), qty: q }));
+  },
+  _colorSubText(a) {
+    const p = this._colorParts(a);
+    return p.length ? p.map(x => `Couleur ${x.k} = ${x.title}`).join(' · ') : 'Coche si la laisse utilise des sangles de couleurs différentes.';
+  },
+  /* Met les lignes de sangle de la nomenclature en accord avec le nombre de couleurs (ajoute / retire des lignes, numérote 1, 2, 3) */
+  _applyColors(a) {
+    const n = this._colorCount(a), colored = () => this._strapIdxs(a).filter(i => a.bom[i].strapColor);
+    let col = colored();
+    if (n === 1) {
+      if (!col.length) return;
+      for (let k = col.length - 1; k >= 1; k--) a.bom.splice(col[k], 1);
+      delete a.bom[col[0]].strapColor; delete a.bom[col[0]].qtyManual;
+      return;
+    }
+    if (!col.length) { const si = this._strapIdxs(a); if (!si.length) return; a.bom[si[0]].strapColor = 1; col = colored(); }
+    if (col.length === n) { col.forEach((i, k) => { a.bom[i].strapColor = k + 1; }); return; }
+    for (let k = col.length - 1; k >= n; k--) a.bom.splice(col[k], 1);
+    col = colored();
+    const { strapColor, qtyManual, _cat, tpl, ...rest } = a.bom[col[0]];
+    while (col.length < n) {
+      const at = col[col.length - 1] + 1;
+      a.bom.splice(at, 0, { ...rest, qty: 0, strapColor: col.length + 1 });
+      col = colored();
+    }
+    col.forEach((i, k) => { a.bom[i].strapColor = k + 1; delete a.bom[i].qtyManual; });
   },
   _strapIdxs(a) { const idx = []; (a.bom || []).forEach((l, i) => { if (this.bomLineUnit(l) === 'm') idx.push(i); }); return idx; },
   /* Met la quantité de sangle d'après les longueurs, sauf pour une ligne saisie à la main (l.qtyManual). */
@@ -354,7 +394,7 @@ const Accessoires = {
     const vatOn = Store.state.settings.vatActive;
     const netProfit = c.profitAssujetti;
     const bomRows = (a.bom || []).map((l, li) => {
-      const label = this.bomLineLabel(l);
+      const label = this.bomLineLabel(l, a);
       const unit = this.bomLineUnit(l);
       const unitCost = this.bomLineCost(l);
       const isFamily = !!l.familyKey;
@@ -431,12 +471,8 @@ const Accessoires = {
     if (prodLen > 0) parts.push(`Produit : ${U.qty(prodLen)} m`);
     segs.filter(s => s.value > 0).forEach(s => parts.push(`${U.esc(s.label)} : ${U.lenTxt(s.value)}`));
     if (interne > 0) parts.push(`Interne : ${U.lenTxt(interne)}`);
-    if (a.bicolor) {
-      const s2 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
-      const segT = segs.reduce((sum, s) => sum + U.num(s.value), 0);
-      const s1 = segT > 0 ? Math.round(segT / 100 * 1000) / 1000 : 0;
-      if (s1 > 0) parts.push(`Couleur 1 : ${U.qty(s1)} m`);
-      if (s2 > 0) parts.push(`Couleur 2 : ${U.qty(s2)} m`);
+    if (this._colorCount(a) >= 2) {
+      this._colorParts(a).forEach(p => { if (p.qty > 0) parts.push(`Couleur ${p.k} : ${U.qty(p.qty)} m`); });
     } else {
       const sangleIdx = (a.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
       const totalStrap = sangleIdx >= 0 ? U.num(a.bom[sangleIdx].qty) : 0;
@@ -470,6 +506,7 @@ const Accessoires = {
       <div style="display:flex;align-items:center;gap:8px;">
         ${U.lenSplit('il_' + a.id, interne, { change: `Accessoires.setAccInternalLen('${a.id}',U.lenCm('il_${a.id}'))` })}</div></div>`;
     left += `<div style="margin-top:12px;"><label style="cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:6px;"><input type="checkbox" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.toggleBicolor('${a.id}')"> <span>🎨 Bicolor (2 sangles)</span></label></div>`;
+    if (a.bicolor && segs.length >= 2) left += `<div style="margin-top:6px;"><label style="cursor:pointer;font-size:.82rem;display:flex;align-items:center;gap:6px;"><input type="checkbox" ${a.bicolorEnds ? 'checked' : ''} onchange="Accessoires.toggleBicolorEnds('${a.id}')"> <span>Extrémités de couleurs différentes (3 couleurs)</span></label></div>`;
 
     // -- Colonne droite : Segments fixes --
     let right = `<div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">Segments fixes</div>`;
@@ -483,16 +520,10 @@ const Accessoires = {
 
     // -- Bas pleine largeur : résultat sangle(s), toujours 2 blocs égaux côte à côte --
     let bottom = '';
-    if (a.bicolor) {
-      const s2 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
-      const s1 = segTotal > 0 ? Math.round(segTotal / 100 * 1000) / 1000 : 0;
-      bottom = `<div style="display:flex;gap:12px;margin-top:12px;">
-        <div style="flex:1;text-align:center;padding:10px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);">
-          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Couleur 1 — rabat + poignée</div>
-          <b style="font-size:1.15rem;">${U.qty(s1)} m</b></div>
-        <div style="flex:1;text-align:center;padding:10px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);">
-          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Couleur 2 — longueur interne</div>
-          <b style="font-size:1.15rem;">${U.qty(s2)} m</b></div></div>`;
+    if (this._colorCount(a) >= 2) {
+      bottom = `<div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;">${this._colorParts(a).map(p => `<div style="flex:1;min-width:150px;text-align:center;padding:10px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);">
+          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Couleur ${p.k} — ${U.esc(p.title)}</div>
+          <b style="font-size:1.15rem;">${U.qty(p.qty)} m</b></div>`).join('')}</div>`;
     } else if (totalStrap > 0) {
       bottom = `<div style="margin-top:12px;padding:10px 16px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);display:flex;justify-content:space-between;align-items:center;">
         <span style="font-weight:500;">Sangle à couper</span><b style="font-size:1.15rem;">${U.qty(totalStrap)} m</b></div>`;
@@ -556,11 +587,19 @@ const Accessoires = {
     document.getElementById('a_sku').value = sku;
     U.toast(`SKU proposé : ${sku}${n > 1 ? ' (le SKU de base existait déjà)' : ''}`);
   },
-  /* Impression UV saisie / retirée : le SKU déjà écrit prend / perd son suffixe -UV (un SKU vide n'est pas inventé : bouton « Générer »). */
+  /* Nom avec / sans le suffixe « — Personnalisation UV » */
+  _uvName(name, on) {
+    const base = String(name || '').replace(/\s*[—–-]\s*personnalisation\s+uv\s*$/i, '').trimEnd();
+    return on && base ? base + ' — Personnalisation UV' : base;
+  },
+  /* Impression UV saisie / retirée : le NOM prend / perd « — Personnalisation UV » ; le SKU déjà écrit prend / perd son suffixe -UV (un SKU vide n'est pas inventé : bouton « Générer »). */
   onUvChange() {
+    const uv = U.numVal('a_uvml') > 0;
+    const nm = document.getElementById('a_name');
+    if (nm) { const v = this._uvName(nm.value, uv); if (v !== nm.value) nm.value = v; }
     const el = document.getElementById('a_sku'); if (!el) return;
     let sku = el.value.trim(); if (!sku) return;
-    const uv = U.numVal('a_uvml') > 0, has = /-UV(-\d+)?$/i.test(sku);
+    const has = /-UV(-\d+)?$/i.test(sku);
     if (uv && !has) sku += '-UV'; else if (!uv && has) sku = sku.replace(/-UV(?=(-\d+)?$)/i, ''); else return;
     el.value = sku;
     const taken = this._takenSkus(this._a.id);
@@ -595,9 +634,9 @@ const Accessoires = {
     return `<div class="fg"><label>Longueur produit fini</label><div>${U.lenSplit('a_prodLen', U.num(a.productLength) * 100, { change: 'Accessoires.onProdLenChange()' })}</div></div>
       <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--input-border);background:var(--th-bg);">
         <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Détail des longueurs</div>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--caramel);border-radius:8px;margin-bottom:8px;text-transform:none;letter-spacing:0;color:var(--texte);">
-          <input id="a_bicolor" type="checkbox" style="width:22px;height:22px;flex:0 0 auto;" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.onBicolor()">
-          <span><b style="font-size:1rem;">🎨 Bicolor — 2 sangles de couleurs différentes</b><br><span class="muted" style="font-size:.82rem;">Couleur 1 = rabat + poignée · Couleur 2 = longueur interne</span></span>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 10px;border:1px solid var(--caramel);border-radius:8px;margin-bottom:6px;text-transform:none;letter-spacing:0;color:var(--texte);">
+          <input id="a_bicolor" type="checkbox" style="width:15px;height:15px;flex:0 0 auto;" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.onBicolor()">
+          <span><b style="font-size:.85rem;">🎨 Bicolor — sangles de couleurs différentes</b><br><span class="muted" id="a_bicolor_sub" style="font-size:.72rem;">${this._colorSubText(a)}</span></span>
         </label>
         <div id="a_segs_wrap">${this._fabSegsInnerHTML(segs)}</div>
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
@@ -608,12 +647,17 @@ const Accessoires = {
 
   _fabSegsInnerHTML(segs) {
     return (segs || []).map((s, i) => `<div class="frow" style="gap:8px;align-items:flex-end;margin-top:6px;">
-      <div class="fg" style="flex:2;"><input id="a_seg_label_${i}" value="${U.esc(s.label)}" placeholder="ex: Rabat" style="width:100%;"></div>
+      <div class="fg" style="flex:2;"><input id="a_seg_label_${i}" value="${U.esc(s.label)}" placeholder="ex: Rabat" style="width:100%;" onchange="Accessoires.syncStrap()"></div>
       <div class="fg" style="flex:0 0 auto;">${U.lenSplit('a_seg_val_' + i, s.value, { change: 'Accessoires.syncStrap()' })}</div>
       <div class="fg" style="flex:0;"><button class="btn-icon" type="button" onclick="Accessoires.delFabSeg(${i})">×</button></div>
-    </div>`).join('') + `<button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addFabSeg()">＋ Ajouter un segment</button>`;
+    </div>${i === 0 ? this._endsToggleHTML(segs) : ''}`).join('') + `<button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addFabSeg()">＋ Ajouter un segment</button>`;
   },
 
+  /* Petite case entre le 1er et le 2e segment : « ces extrémités n'ont pas la même couleur » → 3 couleurs (visible seulement en bicolor, avec ≥ 2 segments) */
+  _endsToggleHTML(segs) {
+    if (!(this._a && this._a.bicolor && segs.length >= 2)) return '';
+    return `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0 0 6px;font-size:.84rem;text-transform:none;letter-spacing:0;color:var(--texte);"><input id="a_bicolorEnds" type="checkbox" ${this._a.bicolorEnds ? 'checked' : ''} onchange="Accessoires.onBicolorEnds()"> <span>Ces 2 sangles ne sont pas de la même couleur <span class="muted">(→ 3 couleurs)</span></span></label>`;
+  },
   _readFabSegs() {
     const segs = this._a.fabSegments || [];
     for (let i = 0; i < segs.length; i++) {
@@ -670,12 +714,12 @@ const Accessoires = {
     if (!nameEl || !document.getElementById('a_prodLen_m')) return;
     const len = U.lenCm('a_prodLen') / 100;
     const cat = U.val('a_cat');
-    let name = nameEl.value.trim();
+    let name = nameEl.value.trim().replace(/\s*[—–-]\s*personnalisation\s+uv\s*$/i, '');
     const lenRx = /\s*[—–-]\s*\d+([.,]\d+)?\s*m\s*$/i;
     name = name.replace(lenRx, '');
     if (!name) name = cat;
     if (len > 0) name += ' — ' + len + 'm';
-    nameEl.value = name;
+    nameEl.value = this._uvName(name, U.numVal('a_uvml') > 0);
   },
 
   editAcc(id) {
@@ -901,6 +945,7 @@ const Accessoires = {
     const n = { ...o, qty: o.qty || 1 }; delete n.familyKey; delete n.materialId; delete n.qtyManual; delete n.tpl;
     this._a.bom[i] = { ...n, ...ref };
     this._bomOpen = -1; this._bomQ[i] = '';
+    this._applyColors(this._a);
     this._autoStrap(this._a);
     this.drawBom();
   },
@@ -925,7 +970,9 @@ const Accessoires = {
     const a = this._a; if (!a) return;
     this._readFabSegs();
     if (document.getElementById('a_internLen_m')) a.internalLength = U.lenCm('a_internLen');
+    this._applyColors(a);
     this._autoStrap(a);
+    const sub = document.getElementById('a_bicolor_sub'); if (sub) sub.textContent = this._colorSubText(a);
     this.drawBom();
   },
 
@@ -946,22 +993,15 @@ const Accessoires = {
     });
   },
 
-  /* Bicolor : les deux sangles apparaissent tout de suite dans « Matières utilisées » (couleur 1 = rabat + poignée, couleur 2 = longueur interne). */
+  /* Bicolor : les sangles de chaque couleur apparaissent tout de suite dans « Matières utilisées ». */
   onBicolor() {
-    const a = this._a, on = !!document.getElementById('a_bicolor')?.checked;
-    if (on === !!a.bicolor) return;
-    a.bicolor = on;
-    const idxs = this._strapIdxs(a);
-    if (on) {
-      if (idxs.length) {
-        const l = a.bom[idxs[0]], { strapColor, qtyManual, _cat, tpl, ...rest } = l;
-        l.strapColor = 1; delete l.qtyManual;
-        a.bom.splice(idxs[0] + 1, 0, { ...rest, qty: 0, strapColor: 2 });
-      }
-    } else if (idxs.length >= 2) {
-      delete a.bom[idxs[0]].strapColor; delete a.bom[idxs[0]].qtyManual;
-      a.bom.splice(idxs[1], 1);
-    }
+    this._a.bicolor = !!document.getElementById('a_bicolor')?.checked;
+    this._readFabSegs();
+    const el = document.getElementById('a_segs_wrap'); if (el) el.innerHTML = this._fabSegsInnerHTML(this._a.fabSegments || []);
+    this.syncStrap();
+  },
+  onBicolorEnds() {
+    this._a.bicolorEnds = !!document.getElementById('a_bicolorEnds')?.checked;
     this.syncStrap();
   },
 
@@ -994,7 +1034,7 @@ const Accessoires = {
           : '🔗 Renseigne les longueurs de fabrication ci-dessous : la quantité de sangle se calcule toute seule.';
       } else if (!picked && l.tpl) hint = '🧩 Ligne prévue par ton modèle : choisis la référence (sans référence, elle est ignorée à l\'enregistrement).';
 
-      const chip = l.strapColor === 1 ? '🎨 Couleur 1 — rabat + poignée' : l.strapColor === 2 ? '🎨 Couleur 2 — longueur interne' : '';
+      const chip = l.strapColor ? `🎨 Couleur ${l.strapColor} — ${U.esc(this._colorTitle(this._a, l.strapColor))}` : '';
       return `<div style="margin-bottom:8px;${chip ? 'padding:6px 8px;border-left:4px solid var(--caramel);background:var(--th-bg);border-radius:6px;' : ''}">${chip ? `<div style="font-weight:700;font-size:.9rem;color:var(--caramel);margin-bottom:4px;">${chip}</div>` : ''}<div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Catégorie</label>
           <select onchange="Accessoires.setBomCat(${i},this.value)">
@@ -1023,16 +1063,15 @@ const Accessoires = {
     const el = document.getElementById('cl_preview');
     if (!el || !this._clSrc) return;
     const desired = U.lenCm('cl_desired') / 100;
-    const { prodLen, interneVal, fixedTotal, bicolor } = this._clSrc;
+    const { prodLen, interneVal, fixedTotal } = this._clSrc;
     if (desired > 0 && prodLen > 0) {
       const delta = desired - prodLen;
       const newInterne = Math.max(0, Math.round((interneVal + delta * 100) * 10) / 10);
-      if (bicolor) {
-        const s2 = Math.round(newInterne / 100 * 1000) / 1000;
-        const s1 = Math.round(fixedTotal / 100 * 1000) / 1000;
+      if (this._colorCount(this._clSrc.src) >= 2) {
+        const parts = this._colorParts({ ...this._clSrc.src, internalLength: newInterne });
         el.innerHTML = `Produit : <b>${U.qty(desired)} m</b> (${delta >= 0 ? '+' : ''}${U.qty(delta)} m)
           → Longueur interne : <b>${U.lenTxt(newInterne)}</b>
-          → <b>Couleur 1 (rabat + poignée) : ${U.qty(s1)} m</b> · <b>Couleur 2 (interne) : ${U.qty(s2)} m</b>`;
+          → ${parts.map(p => `<b>Couleur ${p.k} (${U.esc(p.title)}) : ${U.qty(p.qty)} m</b>`).join(' · ')}`;
       } else {
         const newStrap = Math.round((fixedTotal + newInterne) / 100 * 1000) / 1000;
         el.innerHTML = `Produit : <b>${U.qty(desired)} m</b> (${delta >= 0 ? '+' : ''}${U.qty(delta)} m)
@@ -1059,7 +1098,7 @@ const Accessoires = {
     }
     const interneVal = U.num(src.internalLength);
     const fixedTotal = segs.reduce((sum, s) => sum + U.num(s.value), 0);
-    this._clSrc = { prodLen, interneVal, fixedTotal, bicolor: !!src.bicolor };
+    this._clSrc = { prodLen, interneVal, fixedTotal, src };
     U.modal({
       title: '📐 Sur mesure — ' + U.esc(src.name), okLabel: 'Créer la copie',
       body: `<p>Sangle actuelle : <b>${U.qty(currentStrap)} m</b> | Produit : <b>${U.qty(prodLen)} m</b></p>

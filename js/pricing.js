@@ -397,7 +397,7 @@ const Pricing = {
   autoSkuAcc(a) {
     const noise = new Set(['DE', 'D', 'DU', 'DES', 'LE', 'LA', 'LES', 'AU', 'AUX', 'AVEC', 'ET', 'EN']);
     const type = this.slugify(a.category), w = this.slugify(a.mainWidth || (a.strapWidths || [])[0] || '');
-    let parts = this.slugify(String(a.name || '').replace(/\([^)]*\)/g, ' ')).split('-').filter(x => x && !noise.has(x));
+    let parts = this.slugify(String(a.name || '').replace(/\s*[—–-]\s*personnalisation\s+uv\s*$/i, '').replace(/\([^)]*\)/g, ' ')).split('-').filter(x => x && !noise.has(x));
     const tp = type.split('-').filter(Boolean);
     while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
     parts = parts.filter(x => x !== w);
