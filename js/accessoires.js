@@ -842,6 +842,14 @@ const Accessoires = {
     });
   },
 
+  /* Le texte (nom de produit) cite-t-il une largeur en mm qui n'est PAS parmi celles choisies ? « mousqueton 25mm » avec 20mm choisi → vrai (peu importe l'unité de la matière). */
+  _otherWidthOnly(txt, ws) {
+    const found = [...String(txt || '').matchAll(/(?:^|[^\d.,])(\d+(?:[.,]\d+)?)\s*mm(?![a-z])/gi)].map(m => m[1].replace(',', '.') + 'mm');
+    if (!found.length) return false;
+    const wsn = ws.map(w => this._normWidth(w));
+    return !found.some(w => wsn.includes(w));
+  },
+
   _bomListHTML(i) {
     const fams = this.families();
     const cat = (this._a.bom[i] || {})._cat || '';
@@ -864,10 +872,10 @@ const Accessoires = {
           // produit « Toutes les tailles » (rivets, clous, décorations…) : proposé quelle que soit la largeur choisie
           const dedicated = this._labelHasWidth(f.label, ws), allW = f.materials.every(m => m.allSizes);
           if (dedicated || allW) items.push({ type: 'family', data: f });
-          const wsn = ws.map(w => this._normWidth(w)), compatible = f.materials.filter(m => dedicated || m.allSizes || !m.variant || ws.includes(m.variant) || wsn.includes(this._sizeOf(m)));
+          const wsn = ws.map(w => this._normWidth(w)), compatible = f.materials.filter(m => dedicated || m.allSizes || ((!m.variant || ws.includes(m.variant) || wsn.includes(this._sizeOf(m))) && !this._otherWidthOnly(m.product || m.name, ws)));
           compatible.forEach(m => items.push({ type: 'material', data: m, family: f }));
-        } else {
-          items.push({ type: 'family', data: f });
+        } else if (!this._otherWidthOnly(f.label, ws)) {
+          items.push({ type: 'family', data: f });   // autre unité (m…) : proposée sauf si son nom cite une autre largeur
         }
       });
     } else {
