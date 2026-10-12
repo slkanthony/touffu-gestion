@@ -197,6 +197,10 @@ const Pricing = {
   uvCostPerMl() {
     return this.uvInkPerMl() + this.uvMaintPerMl();
   },
+  /* Coût de la gravure laser à l'HEURE : électricité (puissance en kW × prix du kWh) + usure/entretien du laser (€/h, facultatif).
+     Le temps d'Antho reste dans « Main d'œuvre », l'amortissement de la machine dans « Amortissement du matériel ». */
+  laserElecPerHour() { const S = Store.state.settings; return U.num(S.laserWatts) / 1000 * U.num(S.kwhPrice); },
+  laserCostPerHour() { return this.laserElecPerHour() + U.num(Store.state.settings.laserWearPerHour); },
   // Amortissement du matériel — liste GÉNÉRALE (imprimante UV, extracteur, scelleuse mastication…), pas propre à l'UV.
   // Charge fixe de l'atelier, déduite du bénéfice net mensuel global. Migre l'ancien slot unique uvEquipPrice/uvEquipYears.
   equipItems() {
@@ -311,9 +315,10 @@ const Pricing = {
     }, 0);
     const laborCost = (U.num(a.laborMinutes) / 60) * U.num(S.laborRate);
     const uvCost = U.num(a.uvMl) * this.uvCostPerMl();   // perso UV : ml d'encre × coût/ml
-    const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost;
+    const laserCost = a.laser ? U.num(a.laserMin) / 60 * this.laserCostPerHour() : 0;   // gravure laser : minutes ÷ 60 × (électricité + usure)/h
+    const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost + laserCost;
     const portCost = matCost * this.portRate('matiere');
-    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, portCost, costBase, cost: costBase + portCost };
+    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, portCost, costBase, cost: costBase + portCost };
   },
   /* ---------- SKU automatique ---------- */
   slugify(text) {
@@ -393,15 +398,15 @@ const Pricing = {
 
   /* SKU d'un ACCESSOIRE (Antho 2026-10-11) : TYPE-LARGEUR-NOM, ex. « Longe — 5m » (type Longe, sangle 20mm) → LONGE-20MM-5M.
      Largeur = la largeur PRINCIPALE de la fiche (mainWidth, sinon la 1re). Le type et la largeur déjà écrits dans le nom ne sont pas répétés ; le texte entre parenthèses est ignoré.
-     1 SKU par modèle ET par variation (taille, longueur, largeur, UV = fiche à part) : la COULEUR n'entre jamais dans le SKU. Impression UV (case `a.uv` cochée, ou `a.uvMl` > 0 sur une ancienne fiche) → suffixe « -UV » (Antho 2026-10-13). */
+     1 SKU par modèle ET par variation (taille, longueur, largeur, UV = fiche à part) : la COULEUR n'entre jamais dans le SKU. Impression UV (case `a.uv` cochée, ou `a.uvMl` > 0 sur une ancienne fiche) → suffixe « -UV », gravure laser (`a.laser`) → « -LASER » (après -UV) (Antho 2026-10-13). */
   autoSkuAcc(a) {
     const noise = new Set(['DE', 'D', 'DU', 'DES', 'LE', 'LA', 'LES', 'AU', 'AUX', 'AVEC', 'ET', 'EN']);
     const type = this.slugify(a.category), w = this.slugify(a.mainWidth || (a.strapWidths || [])[0] || '');
-    let parts = this.slugify(String(a.name || '').replace(/\s*[—–-]\s*personnalisation\s+uv\s*$/i, '').replace(/\([^)]*\)/g, ' ')).split('-').filter(x => x && !noise.has(x));
+    let parts = this.slugify(String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|gravure\s+laser))+\s*$/i, '').replace(/\([^)]*\)/g, ' ')).split('-').filter(x => x && !noise.has(x));
     const tp = type.split('-').filter(Boolean);
     while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
     parts = parts.filter(x => x !== w);
-    return [type, w, parts.join('-'), (a.uv || U.num(a.uvMl) > 0) ? 'UV' : ''].filter(Boolean).join('-');   // impression UV (personnalisation) = SKU à part, suffixe -UV
+    return [type, w, parts.join('-'), (a.uv || U.num(a.uvMl) > 0) ? 'UV' : '', a.laser ? 'LASER' : ''].filter(Boolean).join('-');   // impression UV (personnalisation) = SKU à part, suffixe -UV
   },
 
   autoSku(productName, meatType, variantLabel) {

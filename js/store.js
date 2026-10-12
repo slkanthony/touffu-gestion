@@ -22,6 +22,7 @@ const Store = {
         laborRate: 20, thanksConsoId: '', cardConsoId: '', labelCost: 0.10, fabHistory: [], bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
         uvCartridgePrice: 42, uvCartridgeVolume: 100, // impression UV : coût encre/ml = prix ÷ volume
         uvMaintPct: 0, // + majoration entretien optionnelle (% du coût encre) — filtres/nettoyage/entretien
+        laserWatts: 0, kwhPrice: 0, laserWearPerHour: 0, // gravure laser : puissance (W), prix de l'électricité (€/kWh), usure/entretien du laser (€/h, facultatif)
         // Entretien imprimante UV — charges annuelles (déduites du bénéfice net mensuel ÷ 12, PAS du prix de l'accessoire)
         uvFilterPrice: 0, uvFilterPerYear: 0, // prix d'un filtre × nb de changements/an
         uvCleanPrice: 0, uvCleanPerYear: 0, // prix d'une cartouche de nettoyage × nb/an

@@ -110,6 +110,14 @@ const Params = {
         </div>
         <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Coût UV tout compris ${U.info("Renseigne les ml d'encre par accessoire dans sa fiche : le coût d'impression est alors intégré à son coût de revient (donc à sa marge et à son prix). La majoration reste optionnelle.")} : <b>${U.eur(Pricing.uvCostPerMl())}/ml</b> <span class="muted">(encre ${U.eur(Pricing.uvInkPerMl())}${U.num(S.uvMaintPct) ? ` + ${U.pct(U.num(S.uvMaintPct))} entretien = ${U.eur(Pricing.uvMaintPerMl())}` : ''})</span></p>
 
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:16px 0 6px;">🔦 Gravure laser ${U.info("Coût de la gravure par accessoire = minutes de gravure ÷ 60 × (puissance en kW × prix du kWh + usure par heure). Les minutes se renseignent dans la fiche de l'accessoire (case « Gravure laser »). Ton temps reste dans « Main d'œuvre » et l'amortissement de la machine dans « Amortissement du matériel ».")}</div>
+        <div class="frow" style="gap:20px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
+          <div class="fg" style="margin:0;flex:0 0 auto;width:170px;text-align:center;"><label>Puissance du laser (W) ${U.info("Consommation réelle de la machine en watts (plaque signalétique ou wattmètre).")}</label><input id="p_laser_w" type="number" step="1" min="0" value="${U.num(S.laserWatts) || ''}" placeholder="ex : 100" style="text-align:center;" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg" style="margin:0;flex:0 0 auto;width:170px;text-align:center;"><label>Électricité (€ / kWh) ${U.info("Prix du kWh sur ta facture d'électricité (utilisé pour la gravure laser).")}</label><input id="p_kwh" type="number" step="0.001" min="0" value="${U.num(S.kwhPrice) || ''}" placeholder="ex : 0,25" style="text-align:center;" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg" style="margin:0;flex:0 0 auto;width:190px;text-align:center;"><label>Usure du laser (€ / heure) ${U.info("Facultatif : coût d'usure du laser par heure de gravure (tube / source, lentille, entretien). Laisse vide pour ne compter que l'électricité.")}</label><input id="p_laser_wear" type="number" step="0.01" min="0" value="${U.num(S.laserWearPerHour) || ''}" placeholder="0" style="text-align:center;" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+        </div>
+        <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Coût laser tout compris : <b>${U.eur(Pricing.laserCostPerHour())}/h</b> <span class="muted">(${U.eur(Pricing.laserCostPerHour() / 60)} / minute · électricité ${U.eur(Pricing.laserElecPerHour())}/h${U.num(S.laserWearPerHour) ? ` + usure ${U.eur(U.num(S.laserWearPerHour))}/h` : ''})</span></p>
+
         ${(() => { const ma = Pricing.uvMaintenanceAnnual(); const _mh = U.num(S.uvMaintHoursPerYear); const _h = Math.floor(_mh); const _min = Math.round((_mh - _h) * 60); return `
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:16px 0 6px;">🛠️ Entretien imprimante (charges annuelles) ${U.info("Charge fixe de la machine, déduite du <b>bénéfice net mensuel</b> (Tableau de bord → CA par mois, ligne « Entretien matériel »), pas du prix de chaque accessoire.<br><br>Main d'œuvre = temps total sur l'année. L'<b>amortissement</b> du matériel se règle dans « 🛠️ Amortissement du matériel ».")}</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
@@ -716,6 +724,7 @@ const Params = {
     S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
     S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
     S.uvCartridgePrice = U.numVal('p_uv_price'); S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
+    S.laserWatts = U.numVal('p_laser_w'); S.kwhPrice = U.numVal('p_kwh'); S.laserWearPerHour = U.numVal('p_laser_wear');
     S.uvFilterPrice = U.numVal('p_uv_filter_price'); S.uvFilterPerYear = U.numVal('p_uv_filter_year');
     S.uvCleanPrice = U.numVal('p_uv_clean_price'); S.uvCleanPerYear = U.numVal('p_uv_clean_year');
     S.uvMaintHoursPerYear = U.numVal('p_uv_maint_h') + U.numVal('p_uv_maint_min') / 60;

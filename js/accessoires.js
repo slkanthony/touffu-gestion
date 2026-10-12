@@ -424,6 +424,7 @@ const Accessoires = {
               <tbody>${bomRows || '<tr><td colspan="3" class="muted">Aucune matière.</td></tr>'}
               <tr><td>Main d'œuvre (<input type="number" step="1" value="${U.num(a.laborMinutes)}" class="acc-inline-input" onchange="Accessoires.setAccInline('${a.id}','laborMinutes',this.value)"> min à <span class="sensitive">${U.eur(Store.state.settings.laborRate)}/h</span>)</td><td></td><td class="num sensitive">${U.eur(c.laborCost)}</td></tr>
               ${U.num(a.extraCost) ? `<tr><td>Autres coûts</td><td></td><td class="num sensitive">${U.eur(a.extraCost)}</td></tr>` : ''}
+              ${U.num(c.laserCost) ? `<tr><td>🔦 Gravure laser <span class="muted">(${U.qty(a.laserMin)} min × ${U.eur(Pricing.laserCostPerHour() / 60)}/min)</span></td><td></td><td class="num sensitive">${U.eur(c.laserCost)}</td></tr>` : ''}
               ${U.num(c.uvCost) ? `<tr><td>🖨️ Impression UV <span class="muted">(${U.qty(a.uvMl)} ml × ${U.eur(Pricing.uvCostPerMl())}/ml)</span></td><td></td><td class="num sensitive">${U.eur(c.uvCost)}</td></tr>` : ''}
               <tr><th>Coût de revient</th><th></th><th class="num sensitive">${U.eur(c.cost)}</th></tr></tbody></table></div>
           </div>
@@ -580,32 +581,43 @@ const Accessoires = {
   },
   genSku() {
     const a = this._a, ws = a.strapWidths || [];
-    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', uv: U.chk('a_uv') });
+    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', uv: U.chk('a_uv'), laser: U.chk('a_laser') });
     if (!base) { U.toast('Choisis un type et un nom pour générer le SKU.', true); return; }
     const taken = this._takenSkus(a.id); let sku = base, n = 1;
     while (taken.has(sku)) { n++; sku = base + '-' + n; }
     document.getElementById('a_sku').value = sku;
     U.toast(`SKU proposé : ${sku}${n > 1 ? ' (le SKU de base existait déjà)' : ''}`);
   },
-  /* Nom avec / sans le suffixe « — Personnalisation UV » */
-  _uvName(name, on) {
-    const base = String(name || '').replace(/\s*[—–-]\s*personnalisation\s+uv\s*$/i, '').trimEnd();
-    return on && base ? base + ' — Personnalisation UV' : base;
+  /* Personnalisation (Antho 2026-10-13) : impression UV et/ou gravure laser. Nom : « … — Personnalisation UV — Gravure laser » ; SKU : « …-UV-LASER ». */
+  _PERSO_RX: /(\s*[—–-]\s*(personnalisation\s+uv|gravure\s+laser))+\s*$/i,
+  _persoName(name, uv, laser) {
+    const base = String(name || '').replace(this._PERSO_RX, '').trimEnd();
+    return base ? base + (uv ? ' — Personnalisation UV' : '') + (laser ? ' — Gravure laser' : '') : base;
   },
-  /* Case « Personnalisation UV » (Antho 2026-10-13) : cochée → le NOM prend « — Personnalisation UV », le SKU déjà écrit prend -UV et la case des ml d'encre apparaît ; décochée → tout est retiré (ml remis à 0). Un SKU vide n'est pas inventé : bouton « Générer ». */
-  onUvToggle() {
-    const uv = U.chk('a_uv'), ml = document.getElementById('a_uvml');
-    if (ml) { ml.style.display = uv ? '' : 'none'; if (!uv) ml.value = ''; else ml.focus({ preventScroll: true }); }
+  /* SKU avec les bons suffixes (-UV puis -LASER), avant un éventuel -2 de collision ; un « -5 » sans suffixe fait partie du nom. */
+  _persoSku(sku, uv, laser) {
+    const m = String(sku).match(/^(.*?)((?:-UV)?(?:-LASER)?)((?:-\d+)?)$/i);
+    let base = m[1], tags = m[2], num = m[3];
+    if (!tags && num) { base += num; num = ''; }
+    return base + (uv ? '-UV' : '') + (laser ? '-LASER' : '') + num;
+  },
+  /* Cases « Personnalisation UV » / « Gravure laser » : cochée → le NOM et le SKU déjà écrit prennent leur suffixe et la case des ml / minutes apparaît à droite ; décochée → tout est retiré (valeur remise à 0). Un SKU vide n'est pas inventé : bouton « Générer ». */
+  onPersoToggle(which) {
+    const uv = U.chk('a_uv'), laser = U.chk('a_laser');
+    [['a_uvml', uv, 'uv'], ['a_lasermin', laser, 'laser']].forEach(([id, on, w]) => {
+      const el = document.getElementById(id); if (!el) return;
+      el.style.display = on ? '' : 'none';
+      if (!on) el.value = ''; else if (w === which) el.focus({ preventScroll: true });
+    });
     const nm = document.getElementById('a_name');
-    if (nm) { const v = this._uvName(nm.value, uv); if (v !== nm.value) nm.value = v; }
+    if (nm) { const v = this._persoName(nm.value, uv, laser); if (v !== nm.value) nm.value = v; }
     const el = document.getElementById('a_sku'); if (!el) return;
-    let sku = el.value.trim(); if (!sku) return;
-    const has = /-UV(-\d+)?$/i.test(sku);
-    if (uv && !has) sku += '-UV'; else if (!uv && has) sku = sku.replace(/-UV(?=(-\d+)?$)/i, ''); else return;
+    const old = el.value.trim(); if (!old) return;
+    const sku = this._persoSku(old, uv, laser); if (sku === old) return;
     el.value = sku;
     const taken = this._takenSkus(this._a.id);
     if (taken.has(sku.toUpperCase())) U.toast(`SKU ${sku} : déjà utilisé par une autre fiche.`, true);
-    else U.toast(uv ? `SKU mis à jour : ${sku}` : `SKU sans -UV : ${sku}`);
+    else U.toast(`SKU mis à jour : ${sku}`);
   },
   _widthsSelectHTML() {
     const widths = this._availableWidths();
@@ -715,12 +727,12 @@ const Accessoires = {
     if (!nameEl || !document.getElementById('a_prodLen_m')) return;
     const len = U.lenCm('a_prodLen') / 100;
     const cat = U.val('a_cat');
-    let name = nameEl.value.trim().replace(/\s*[—–-]\s*personnalisation\s+uv\s*$/i, '');
+    let name = nameEl.value.trim().replace(this._PERSO_RX, '');
     const lenRx = /\s*[—–-]\s*\d+([.,]\d+)?\s*m\s*$/i;
     name = name.replace(lenRx, '');
     if (!name) name = cat;
     if (len > 0) name += ' — ' + len + 'm';
-    nameEl.value = this._uvName(name, U.chk('a_uv'));
+    nameEl.value = this._persoName(name, U.chk('a_uv'), U.chk('a_laser'));
   },
 
   editAcc(id) {
@@ -765,7 +777,11 @@ const Accessoires = {
         <div class="fg"><label>SKU (option)</label><div style="display:flex;gap:6px;"><input id="a_sku" style="flex:1;min-width:0;" value="${U.esc(a.sku || '')}" placeholder="TYPE-LARGEUR-NOM"><button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Accessoires.genSku()" title="Génère le SKU : type - largeur principale - nom (ex. LONGE-20MM-5M, + -UV si impression UV). La couleur n'y entre jamais.">✨ Générer</button></div></div>
       </div>
       <div class="frow">
-        <div class="fg"><label>🖨️ Impression UV</label>${(() => { const uvOn = a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0; return `<div style="display:flex;align-items:center;gap:14px;min-height:40px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--texte);font-size:.9rem;margin:0;white-space:nowrap;"><input id="a_uv" type="checkbox" style="width:16px;height:16px;" ${uvOn ? 'checked' : ''} onchange="Accessoires.onUvToggle()"> Personnalisation UV</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="ml d'encre" style="width:130px;margin:0;${uvOn ? '' : 'display:none;'}"></div>`; })()}</div>
+        <div class="fg"><label>🎨 Personnalisation</label>${(() => { const uvOn = a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0, laOn = !!a.laser;
+          const lab = 'display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--texte);font-size:.9rem;margin:0;white-space:nowrap;';
+          return `<div style="display:flex;align-items:center;gap:8px 22px;flex-wrap:wrap;min-height:40px;">
+            <span style="display:flex;align-items:center;gap:12px;"><label style="${lab}"><input id="a_uv" type="checkbox" style="width:16px;height:16px;" ${uvOn ? 'checked' : ''} onchange="Accessoires.onPersoToggle('uv')"> Impression UV</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="ml d'encre" style="width:120px;margin:0;${uvOn ? '' : 'display:none;'}"></span>
+            <span style="display:flex;align-items:center;gap:12px;"><label style="${lab}"><input id="a_laser" type="checkbox" style="width:16px;height:16px;" ${laOn ? 'checked' : ''} onchange="Accessoires.onPersoToggle('laser')"> Gravure laser</label><input id="a_lasermin" type="number" step="0.5" min="0" value="${a.laserMin || ''}" placeholder="minutes" style="width:110px;margin:0;${laOn ? '' : 'display:none;'}"></span></div>`; })()}</div>
       </div>
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>
       <div id="a_fab_row">
@@ -781,7 +797,7 @@ const Accessoires = {
         if (!a.name) { U.toast('Nom obligatoire', true); return false; }
         a.category = U.val('a_cat'); a.laborMinutes = U.numVal('a_min'); a.extraCost = U.numVal('a_extra');
         a.coefficient = U.numVal('a_coeff'); a.priceTTCManual = U.val('a_pttc');
-        a.sku = U.val('a_sku'); a.uv = U.chk('a_uv'); a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
+        a.sku = U.val('a_sku'); a.uv = U.chk('a_uv'); a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.laser = U.chk('a_laser'); a.laserMin = a.laser ? U.numVal('a_lasermin') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
         a.notes = U.val('a_notes');
         this._readFabSegs();
         a.fabSegments = this._a.fabSegments || [];
