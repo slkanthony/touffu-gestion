@@ -107,8 +107,8 @@ const Accessoires = {
     if (l.familyKey) { const fam = this.families().find(f => f.key === l.familyKey); label = fam ? fam.label : l.familyKey; }
     else if (l.materialId) { const m = Store.material(l.materialId); label = m ? m.name : '⚠ matière supprimée'; }
     else label = '—';
-    if (l.strapColor === 1) label += ' (couleur 1 — interne)';
-    else if (l.strapColor === 2) label += ' (couleur 2 — segments)';
+    if (l.strapColor === 1) label += ' (couleur 1 — rabat + poignée)';
+    else if (l.strapColor === 2) label += ' (couleur 2 — longueur interne)';
     return label;
   },
 
@@ -271,11 +271,11 @@ const Accessoires = {
     Store.save('catalogA'); App.rerender();
   },
 
-  /* Quantités de sangle déduites des « Longueurs de fabrication » : [total] ou, en bicolor, [interne, segments fixes] (en m, arrondi au mm) */
+  /* Quantités de sangle déduites des « Longueurs de fabrication » : [total] ou, en bicolor, [couleur 1 = segments fixes (rabat + poignée), couleur 2 = longueur interne] (en m, arrondi au mm) */
   _strapTargets(a, nStrap) {
     const segTotal = (a.fabSegments || []).reduce((sum, s) => sum + U.num(s.value), 0);
     const interne = U.num(a.internalLength), r = x => x > 0 ? Math.round(x / 100 * 1000) / 1000 : 0;
-    return (a.bicolor && nStrap >= 2) ? [r(interne), r(segTotal)] : [r(segTotal + interne)];
+    return (a.bicolor && nStrap >= 2) ? [r(segTotal), r(interne)] : [r(segTotal + interne)];
   },
   _strapIdxs(a) { const idx = []; (a.bom || []).forEach((l, i) => { if (this.bomLineUnit(l) === 'm') idx.push(i); }); return idx; },
   /* Met la quantité de sangle d'après les longueurs, sauf pour une ligne saisie à la main (l.qtyManual). */
@@ -432,11 +432,11 @@ const Accessoires = {
     segs.filter(s => s.value > 0).forEach(s => parts.push(`${U.esc(s.label)} : ${U.lenTxt(s.value)}`));
     if (interne > 0) parts.push(`Interne : ${U.lenTxt(interne)}`);
     if (a.bicolor) {
-      const s1 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
+      const s2 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
       const segT = segs.reduce((sum, s) => sum + U.num(s.value), 0);
-      const s2 = segT > 0 ? Math.round(segT / 100 * 1000) / 1000 : 0;
-      if (s1 > 0) parts.push(`S1 : ${U.qty(s1)} m`);
-      if (s2 > 0) parts.push(`S2 : ${U.qty(s2)} m`);
+      const s1 = segT > 0 ? Math.round(segT / 100 * 1000) / 1000 : 0;
+      if (s1 > 0) parts.push(`Couleur 1 : ${U.qty(s1)} m`);
+      if (s2 > 0) parts.push(`Couleur 2 : ${U.qty(s2)} m`);
     } else {
       const sangleIdx = (a.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
       const totalStrap = sangleIdx >= 0 ? U.num(a.bom[sangleIdx].qty) : 0;
@@ -484,14 +484,14 @@ const Accessoires = {
     // -- Bas pleine largeur : résultat sangle(s), toujours 2 blocs égaux côte à côte --
     let bottom = '';
     if (a.bicolor) {
-      const s1 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
-      const s2 = segTotal > 0 ? Math.round(segTotal / 100 * 1000) / 1000 : 0;
+      const s2 = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
+      const s1 = segTotal > 0 ? Math.round(segTotal / 100 * 1000) / 1000 : 0;
       bottom = `<div style="display:flex;gap:12px;margin-top:12px;">
         <div style="flex:1;text-align:center;padding:10px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);">
-          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Sangle 1 — interne</div>
+          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Couleur 1 — rabat + poignée</div>
           <b style="font-size:1.15rem;">${U.qty(s1)} m</b></div>
         <div style="flex:1;text-align:center;padding:10px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);">
-          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Sangle 2 — segments</div>
+          <div class="muted" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;">Couleur 2 — longueur interne</div>
           <b style="font-size:1.15rem;">${U.qty(s2)} m</b></div></div>`;
     } else if (totalStrap > 0) {
       bottom = `<div style="margin-top:12px;padding:10px 16px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);display:flex;justify-content:space-between;align-items:center;">
@@ -549,12 +549,23 @@ const Accessoires = {
   },
   genSku() {
     const a = this._a, ws = a.strapWidths || [];
-    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '' });
+    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', uvMl: U.numVal('a_uvml') });
     if (!base) { U.toast('Choisis un type et un nom pour générer le SKU.', true); return; }
     const taken = this._takenSkus(a.id); let sku = base, n = 1;
     while (taken.has(sku)) { n++; sku = base + '-' + n; }
     document.getElementById('a_sku').value = sku;
     U.toast(`SKU proposé : ${sku}${n > 1 ? ' (le SKU de base existait déjà)' : ''}`);
+  },
+  /* Impression UV saisie / retirée : le SKU déjà écrit prend / perd son suffixe -UV (un SKU vide n'est pas inventé : bouton « Générer »). */
+  onUvChange() {
+    const el = document.getElementById('a_sku'); if (!el) return;
+    let sku = el.value.trim(); if (!sku) return;
+    const uv = U.numVal('a_uvml') > 0, has = /-UV(-\d+)?$/i.test(sku);
+    if (uv && !has) sku += '-UV'; else if (!uv && has) sku = sku.replace(/-UV(?=(-\d+)?$)/i, ''); else return;
+    el.value = sku;
+    const taken = this._takenSkus(this._a.id);
+    if (taken.has(sku.toUpperCase())) U.toast(`SKU ${sku} : déjà utilisé par une autre fiche.`, true);
+    else U.toast(uv ? `SKU mis à jour : ${sku}` : `SKU sans -UV : ${sku}`);
   },
   _widthsSelectHTML() {
     const widths = this._availableWidths();
@@ -584,6 +595,10 @@ const Accessoires = {
     return `<div class="fg"><label>Longueur produit fini</label><div>${U.lenSplit('a_prodLen', U.num(a.productLength) * 100, { change: 'Accessoires.onProdLenChange()' })}</div></div>
       <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--input-border);background:var(--th-bg);">
         <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Détail des longueurs</div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--caramel);border-radius:8px;margin-bottom:8px;text-transform:none;letter-spacing:0;color:var(--texte);">
+          <input id="a_bicolor" type="checkbox" style="width:22px;height:22px;flex:0 0 auto;" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.onBicolor()">
+          <span><b style="font-size:1rem;">🎨 Bicolor — 2 sangles de couleurs différentes</b><br><span class="muted" style="font-size:.82rem;">Couleur 1 = rabat + poignée · Couleur 2 = longueur interne</span></span>
+        </label>
         <div id="a_segs_wrap">${this._fabSegsInnerHTML(segs)}</div>
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
           <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne, { change: 'Accessoires.syncStrap()' })}</div></div>
@@ -702,13 +717,12 @@ const Accessoires = {
         <div class="fg"><label>Prix TTC forcé (option)</label><input id="a_pttc" type="number" step="0.10" value="${a.priceTTCManual}" placeholder="laisser vide = coeff"></div>
       </div>
       <div class="frow">
-        <div class="fg"><label>SKU (option)</label><div style="display:flex;gap:6px;"><input id="a_sku" style="flex:1;min-width:0;" value="${U.esc(a.sku || '')}" placeholder="TYPE-LARGEUR-NOM"><button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Accessoires.genSku()" title="Génère le SKU : type - largeur principale - nom (ex. LONGE-20MM-5M). La couleur n'y entre jamais.">✨ Générer</button></div></div>
-        <div class="fg"><label>🖨️ Impression UV — ml d'encre</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="0 = pas de perso"></div>
+        <div class="fg"><label>SKU (option)</label><div style="display:flex;gap:6px;"><input id="a_sku" style="flex:1;min-width:0;" value="${U.esc(a.sku || '')}" placeholder="TYPE-LARGEUR-NOM"><button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Accessoires.genSku()" title="Génère le SKU : type - largeur principale - nom (ex. LONGE-20MM-5M, + -UV si impression UV). La couleur n'y entre jamais.">✨ Générer</button></div></div>
+        <div class="fg"><label>🖨️ Impression UV — ml d'encre</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="0 = pas de perso" onchange="Accessoires.onUvChange()"></div>
       </div>
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>
       <div id="a_fab_row">
         ${this._fabFieldsHTML(a)}
-        <div style="margin-top:6px;"><label style="cursor:pointer;font-size:.85rem;"><input id="a_bicolor" type="checkbox" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.onBicolor()"> 🎨 Bicolor (2 sangles de couleurs différentes)</label></div>
       </div>
       <h2 style="font-size:.95rem;">📝 Notes</h2>
       <div class="frow">
@@ -932,7 +946,7 @@ const Accessoires = {
     });
   },
 
-  /* Bicolor : les deux sangles apparaissent tout de suite dans « Matières utilisées » (sangle 1 = longueur interne, sangle 2 = segments fixes). */
+  /* Bicolor : les deux sangles apparaissent tout de suite dans « Matières utilisées » (couleur 1 = rabat + poignée, couleur 2 = longueur interne). */
   onBicolor() {
     const a = this._a, on = !!document.getElementById('a_bicolor')?.checked;
     if (on === !!a.bicolor) return;
@@ -980,7 +994,8 @@ const Accessoires = {
           : '🔗 Renseigne les longueurs de fabrication ci-dessous : la quantité de sangle se calcule toute seule.';
       } else if (!picked && l.tpl) hint = '🧩 Ligne prévue par ton modèle : choisis la référence (sans référence, elle est ignorée à l\'enregistrement).';
 
-      return `<div style="margin-bottom:8px;"><div class="frow" style="align-items:flex-end;">
+      const chip = l.strapColor === 1 ? '🎨 Couleur 1 — rabat + poignée' : l.strapColor === 2 ? '🎨 Couleur 2 — longueur interne' : '';
+      return `<div style="margin-bottom:8px;${chip ? 'padding:6px 8px;border-left:4px solid var(--caramel);background:var(--th-bg);border-radius:6px;' : ''}">${chip ? `<div style="font-weight:700;font-size:.9rem;color:var(--caramel);margin-bottom:4px;">${chip}</div>` : ''}<div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Catégorie</label>
           <select onchange="Accessoires.setBomCat(${i},this.value)">
             <option value="">— tous —</option>
@@ -1013,11 +1028,11 @@ const Accessoires = {
       const delta = desired - prodLen;
       const newInterne = Math.max(0, Math.round((interneVal + delta * 100) * 10) / 10);
       if (bicolor) {
-        const s1 = Math.round(newInterne / 100 * 1000) / 1000;
-        const s2 = Math.round(fixedTotal / 100 * 1000) / 1000;
+        const s2 = Math.round(newInterne / 100 * 1000) / 1000;
+        const s1 = Math.round(fixedTotal / 100 * 1000) / 1000;
         el.innerHTML = `Produit : <b>${U.qty(desired)} m</b> (${delta >= 0 ? '+' : ''}${U.qty(delta)} m)
           → Longueur interne : <b>${U.lenTxt(newInterne)}</b>
-          → <b>Sangle 1 : ${U.qty(s1)} m</b> · <b>Sangle 2 : ${U.qty(s2)} m</b>`;
+          → <b>Couleur 1 (rabat + poignée) : ${U.qty(s1)} m</b> · <b>Couleur 2 (interne) : ${U.qty(s2)} m</b>`;
       } else {
         const newStrap = Math.round((fixedTotal + newInterne) / 100 * 1000) / 1000;
         el.innerHTML = `Produit : <b>${U.qty(desired)} m</b> (${delta >= 0 ? '+' : ''}${U.qty(delta)} m)
