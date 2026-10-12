@@ -595,7 +595,7 @@ const Accessoires = {
   /* Case « Personnalisation UV » (Antho 2026-10-13) : cochée → le NOM prend « — Personnalisation UV », le SKU déjà écrit prend -UV et la case des ml d'encre apparaît ; décochée → tout est retiré (ml remis à 0). Un SKU vide n'est pas inventé : bouton « Générer ». */
   onUvToggle() {
     const uv = U.chk('a_uv'), ml = document.getElementById('a_uvml');
-    if (ml) { ml.style.display = uv ? '' : 'none'; if (!uv) ml.value = ''; else ml.focus(); }
+    if (ml) { ml.style.display = uv ? '' : 'none'; if (!uv) ml.value = ''; else ml.focus({ preventScroll: true }); }
     const nm = document.getElementById('a_name');
     if (nm) { const v = this._uvName(nm.value, uv); if (v !== nm.value) nm.value = v; }
     const el = document.getElementById('a_sku'); if (!el) return;
@@ -763,7 +763,9 @@ const Accessoires = {
       </div>
       <div class="frow">
         <div class="fg"><label>SKU (option)</label><div style="display:flex;gap:6px;"><input id="a_sku" style="flex:1;min-width:0;" value="${U.esc(a.sku || '')}" placeholder="TYPE-LARGEUR-NOM"><button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Accessoires.genSku()" title="Génère le SKU : type - largeur principale - nom (ex. LONGE-20MM-5M, + -UV si impression UV). La couleur n'y entre jamais.">✨ Générer</button></div></div>
-        <div class="fg"><label>🖨️ Impression UV</label>${(() => { const uvOn = a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0; return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:40px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--texte);font-size:.9rem;"><input id="a_uv" type="checkbox" style="width:16px;height:16px;" ${uvOn ? 'checked' : ''} onchange="Accessoires.onUvToggle()"> Personnalisation UV</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="ml d'encre" style="width:120px;${uvOn ? '' : 'display:none;'}"></div>`; })()}</div>
+      </div>
+      <div class="frow">
+        <div class="fg"><label>🖨️ Impression UV</label>${(() => { const uvOn = a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0; return `<div style="display:flex;align-items:center;gap:14px;min-height:40px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--texte);font-size:.9rem;margin:0;white-space:nowrap;"><input id="a_uv" type="checkbox" style="width:16px;height:16px;" ${uvOn ? 'checked' : ''} onchange="Accessoires.onUvToggle()"> Personnalisation UV</label><input id="a_uvml" type="number" step="0.1" min="0" value="${a.uvMl || ''}" placeholder="ml d'encre" style="width:130px;margin:0;${uvOn ? '' : 'display:none;'}"></div>`; })()}</div>
       </div>
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>
       <div id="a_fab_row">
