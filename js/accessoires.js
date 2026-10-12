@@ -14,7 +14,6 @@ const Accessoires = {
   _strapRecalced: false,
   _bomOpen: -1,
   _bomQ: {},
-  _bomCat: {},
   _widthsOpen: false,
   _accOpen: {},
   focusId: null,  // fiche à ouvrir/faire défiler (lien direct #/accessoires/<id>)
@@ -272,18 +271,29 @@ const Accessoires = {
     Store.save('catalogA'); App.rerender();
   },
 
-  _autoStrap(a) {
-    const strapIdxs = []; (a.bom || []).forEach((l, i) => { if (this.bomLineUnit(l) === 'm') strapIdxs.push(i); });
-    if (!strapIdxs.length) return;
+  /* Quantités de sangle déduites des « Longueurs de fabrication » : [total] ou, en bicolor, [interne, segments fixes] (en m, arrondi au mm) */
+  _strapTargets(a, nStrap) {
     const segTotal = (a.fabSegments || []).reduce((sum, s) => sum + U.num(s.value), 0);
-    const interne = U.num(a.internalLength);
-    if (a.bicolor && strapIdxs.length >= 2) {
-      a.bom[strapIdxs[0]].qty = interne > 0 ? Math.round(interne / 100 * 1000) / 1000 : 0;
-      a.bom[strapIdxs[1]].qty = segTotal > 0 ? Math.round(segTotal / 100 * 1000) / 1000 : 0;
-    } else {
-      const total = segTotal + interne;
-      if (total > 0) a.bom[strapIdxs[0]].qty = Math.round(total / 100 * 1000) / 1000;
-    }
+    const interne = U.num(a.internalLength), r = x => x > 0 ? Math.round(x / 100 * 1000) / 1000 : 0;
+    return (a.bicolor && nStrap >= 2) ? [r(interne), r(segTotal)] : [r(segTotal + interne)];
+  },
+  _strapIdxs(a) { const idx = []; (a.bom || []).forEach((l, i) => { if (this.bomLineUnit(l) === 'm') idx.push(i); }); return idx; },
+  /* Met la quantité de sangle d'après les longueurs, sauf pour une ligne saisie à la main (l.qtyManual). */
+  _autoStrap(a) {
+    const idxs = this._strapIdxs(a); if (!idxs.length) return;
+    this._strapTargets(a, idxs.length).forEach((q, k) => {
+      const l = a.bom[idxs[k]];
+      if (!l || l.qtyManual) return;
+      if ((a.bicolor && idxs.length >= 2) || q > 0) l.qty = q;
+    });
+  },
+  /* À l'ouverture d'une fiche existante : une quantité de sangle différente du calcul est considérée « saisie à la main » (on ne la change pas en douce). */
+  _flagManualStrap(a) {
+    const idxs = this._strapIdxs(a);
+    this._strapTargets(a, idxs.length).forEach((q, k) => {
+      const l = a.bom[idxs[k]];
+      if (l && q > 0 && Math.abs(U.num(l.qty) - q) > 0.0005) l.qtyManual = true;
+    });
   },
 
   _migrateInternalLength(a) {
@@ -512,14 +522,14 @@ const Accessoires = {
     this._a.strapWidths = ws;
     if (ws.length === 1) this._a.mainWidth = ws[0];
     else if (this._a.mainWidth && !ws.includes(this._a.mainWidth)) this._a.mainWidth = ws[0] || '';
-    this.drawBom();
+    this._ensureStrap(); this.syncStrap();
     const el = document.getElementById('a_widths_wrap');
     if (el) el.innerHTML = this._widthsSelectHTML();
   },
   setAllWidths(all) {
     this._a.strapWidths = all ? this._availableWidths().slice() : [];
     if (!all || this._a.strapWidths.length === 1) this._a.mainWidth = this._a.strapWidths[0] || '';
-    this.drawBom();
+    this._ensureStrap(); this.syncStrap();
     const el = document.getElementById('a_widths_wrap');
     if (el) el.innerHTML = this._widthsSelectHTML();
   },
@@ -576,7 +586,7 @@ const Accessoires = {
         <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Détail des longueurs</div>
         <div id="a_segs_wrap">${this._fabSegsInnerHTML(segs)}</div>
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
-          <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne)}</div></div>
+          <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne, { change: 'Accessoires.syncStrap()' })}</div></div>
         </div>
       </div>`;
   },
@@ -584,7 +594,7 @@ const Accessoires = {
   _fabSegsInnerHTML(segs) {
     return (segs || []).map((s, i) => `<div class="frow" style="gap:8px;align-items:flex-end;margin-top:6px;">
       <div class="fg" style="flex:2;"><input id="a_seg_label_${i}" value="${U.esc(s.label)}" placeholder="ex: Rabat" style="width:100%;"></div>
-      <div class="fg" style="flex:0 0 auto;">${U.lenSplit('a_seg_val_' + i, s.value)}</div>
+      <div class="fg" style="flex:0 0 auto;">${U.lenSplit('a_seg_val_' + i, s.value, { change: 'Accessoires.syncStrap()' })}</div>
       <div class="fg" style="flex:0;"><button class="btn-icon" type="button" onclick="Accessoires.delFabSeg(${i})">×</button></div>
     </div>`).join('') + `<button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addFabSeg()">＋ Ajouter un segment</button>`;
   },
@@ -604,6 +614,7 @@ const Accessoires = {
     this._a.fabSegments.push({ label: '', value: 0 });
     const el = document.getElementById('a_segs_wrap');
     if (el) el.innerHTML = this._fabSegsInnerHTML(this._a.fabSegments);
+    this.syncStrap();
   },
 
   delFabSeg(i) {
@@ -611,6 +622,7 @@ const Accessoires = {
     if (this._a.fabSegments) this._a.fabSegments.splice(i, 1);
     const el = document.getElementById('a_segs_wrap');
     if (el) el.innerHTML = this._fabSegsInnerHTML(this._a.fabSegments || []);
+    this.syncStrap();
   },
 
   onCatChange() {
@@ -634,6 +646,8 @@ const Accessoires = {
     const el = document.getElementById('a_segs_wrap');
     if (el) el.innerHTML = this._fabSegsInnerHTML(this._a.fabSegments || []);
     U.lenSet('a_internLen', U.num(this._a.internalLength));
+    if (this._isNewA || !(this._a.bom || []).length) this._a.bom = (this._a.bom || []).filter(l => !(l.tpl && !l.familyKey && !l.materialId)).concat(this._tplLines(cat));
+    this.syncStrap();
   },
 
   onProdLenChange() {
@@ -653,9 +667,10 @@ const Accessoires = {
     const S = Store.state.settings;
     const fabDefs = S.accFabDefaults || {};
     const a = id ? JSON.parse(JSON.stringify(Store.state.catalogA.find(x => x.id === id)))
-      : (() => { const cat = S.accCategories[0]; const defs = (fabDefs[cat]?.segments || []).map(s => ({ ...s })); let internLen = 0; const ii = defs.findIndex(s => s.label && s.label.toLowerCase().includes('interne')); if (ii >= 0) { internLen = U.num(defs[ii].value); defs.splice(ii, 1); } return { id: U.uid(), name: '', category: cat, bom: [], laborMinutes: 20, extraCost: 0, coefficient: 2.5, priceTTCManual: '', sku: '', notes: '', handleLength: '', flapLength: '', materialsDesc: '', strapWidths: [], fabSegments: defs, productLength: 0, internalLength: internLen }; })();
+      : (() => { const cat = S.accCategories[0]; const defs = (fabDefs[cat]?.segments || []).map(s => ({ ...s })); let internLen = 0; const ii = defs.findIndex(s => s.label && s.label.toLowerCase().includes('interne')); if (ii >= 0) { internLen = U.num(defs[ii].value); defs.splice(ii, 1); } return { id: U.uid(), name: '', category: cat, bom: this._tplLines(cat), laborMinutes: 20, extraCost: 0, coefficient: 2.5, priceTTCManual: '', sku: '', notes: '', handleLength: '', flapLength: '', materialsDesc: '', strapWidths: [], fabSegments: defs, productLength: 0, internalLength: internLen }; })();
     this._normalizeWidths(a);
-    this._a = a; this._isNewA = !id; this._widthsOpen = false;
+    this._a = a; this._isNewA = !id; this._widthsOpen = false; this._bomQ = {};
+    if (!this._isNewA) this._flagManualStrap(a);
     if (!this._isNewA && (!a.fabSegments || !a.fabSegments.length)) {
       const defs = this._fabDefaults(a.category).map(s => ({ ...s }));
       if (defs.length) {
@@ -676,6 +691,7 @@ const Accessoires = {
         <div class="fg" style="flex:2;"><label>Nom</label><input id="a_name" value="${U.esc(a.name || a.category)}" placeholder="ex: Longe 5m — 20mm"></div>
       </div>
       <h2 style="font-size:.95rem;">Matières utilisées ${(a.strapWidths||[]).length ? '' : '<span class="muted" style="font-weight:normal;font-size:.8rem;">(coût moyen par famille)</span>'}</h2>
+      <p class="muted help">La sangle se calcule toute seule d'après « Longueurs de fabrication » (en bas) : tu n'as pas à la saisir. Mousquetons, rivets, anneaux… : choisis la catégorie puis la référence, avec la quantité. Les lignes sans référence sont ignorées à l'enregistrement.</p>
       <div id="a_bom" data-onclose="Accessoires.closeBomPick"></div>
       <button class="btn-ghost btn-sm" onclick="Accessoires.addBom()">＋ Ajouter une matière</button>
       <hr class="sep">
@@ -692,7 +708,7 @@ const Accessoires = {
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>
       <div id="a_fab_row">
         ${this._fabFieldsHTML(a)}
-        <div style="margin-top:6px;"><label style="cursor:pointer;font-size:.85rem;"><input id="a_bicolor" type="checkbox" ${a.bicolor ? 'checked' : ''}> 🎨 Bicolor (2 sangles de couleurs différentes)</label></div>
+        <div style="margin-top:6px;"><label style="cursor:pointer;font-size:.85rem;"><input id="a_bicolor" type="checkbox" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.onBicolor()"> 🎨 Bicolor (2 sangles de couleurs différentes)</label></div>
       </div>
       <h2 style="font-size:.95rem;">📝 Notes</h2>
       <div class="frow">
@@ -710,16 +726,12 @@ const Accessoires = {
         a.fabSegments = this._a.fabSegments || [];
         a.productLength = U.lenCm('a_prodLen') / 100;
         a.internalLength = U.lenCm('a_internLen');
-        const wasBicolor = !!this._a.bicolor;
-        const nowBicolor = !!document.getElementById('a_bicolor')?.checked;
-        a.bicolor = nowBicolor;
-        if (nowBicolor && !wasBicolor) {
-          const si = (a.bom || []).findIndex(l => Accessoires.bomLineUnit(l) === 'm');
-          if (si >= 0) { a.bom[si].strapColor = 1; a.bom.splice(si + 1, 0, { familyKey: a.bom[si].familyKey, qty: 0, strapColor: 2 }); }
-        } else if (!nowBicolor && wasBicolor) {
-          const idxs = []; (a.bom || []).forEach((l, i) => { if (Accessoires.bomLineUnit(l) === 'm') idxs.push(i); });
-          if (idxs.length >= 2) { delete a.bom[idxs[0]].strapColor; a.bom.splice(idxs[1], 1); }
-        }
+        a.bicolor = !!document.getElementById('a_bicolor')?.checked;
+        // lignes sans référence ignorées ; champs de travail du formulaire retirés ; sangle recalculée d'après les longueurs
+        const nBefore = (a.bom || []).length;
+        a.bom = (a.bom || []).filter(l => l.familyKey || l.materialId).map(l => { const c = { ...l }; delete c._cat; delete c.tpl; return c; });
+        this._autoStrap(a);
+        if (a.bom.length < nBefore) U.toast(`${nBefore - a.bom.length} ligne(s) de matière sans référence ignorée(s).`);
         a.materialsDesc = U.val('a_matdesc').trim();
         const idx = Store.state.catalogA.findIndex(x => x.id === a.id);
         const before = idx >= 0 ? JSON.parse(JSON.stringify(Store.state.catalogA[idx])) : null;
@@ -774,7 +786,7 @@ const Accessoires = {
 
   _bomListHTML(i) {
     const fams = this.families();
-    const cat = this._bomCat[i] || '';
+    const cat = (this._a.bom[i] || {})._cat || '';
     const q = (this._bomQ[i] || '').toLowerCase();
     const ws = (this._a.strapWidths || []);
     let items = [];
@@ -853,12 +865,12 @@ const Accessoires = {
   },
 
   setBomCat(i, v) {
-    this._bomCat[i] = v;
-    const l = this._a.bom[i];
-    if (v && l && l.familyKey) {
+    const l = this._a.bom[i]; if (!l) return;
+    l._cat = v;
+    if (v && l.familyKey) {
       const fam = this.families().find(f => f.key === l.familyKey);
       if (fam && fam.kind !== v) {
-        this._a.bom[i] = { familyKey: '', qty: l.qty || 1 };
+        this._a.bom[i] = { familyKey: '', qty: l.qty || 1, _cat: v };
         this.drawBom();
         return;
       }
@@ -869,18 +881,79 @@ const Accessoires = {
     }
   },
 
-  pickBomFamily(i, key) {
-    this._a.bom[i] = { familyKey: key, qty: this._a.bom[i]?.qty || 1 };
-    this._bomOpen = -1;
-    this._bomQ[i] = '';
+  /* Choisir une référence garde le reste de la ligne (couleur de sangle 1/2, catégorie) ; une sangle reprend la quantité calculée. */
+  _pickInto(i, ref) {
+    const o = this._a.bom[i] || {};
+    const n = { ...o, qty: o.qty || 1 }; delete n.familyKey; delete n.materialId; delete n.qtyManual; delete n.tpl;
+    this._a.bom[i] = { ...n, ...ref };
+    this._bomOpen = -1; this._bomQ[i] = '';
+    this._autoStrap(this._a);
+    this.drawBom();
+  },
+  pickBomFamily(i, key) { this._pickInto(i, { familyKey: key }); },
+  pickBomMaterial(i, matId) { this._pickInto(i, { materialId: matId }); },
+
+  setBomQty(i, v) {
+    const l = this._a.bom[i]; if (!l) return;
+    l.qty = U.num(v);
+    if (this.bomLineUnit(l) === 'm') l.qtyManual = true;
+    this.drawBom();
+  },
+  bomAuto(i) {
+    const l = this._a.bom[i]; if (!l) return;
+    delete l.qtyManual;
+    this.syncStrap();
+  },
+  delBom(i) { this._a.bom.splice(i, 1); this.drawBom(); },
+
+  /* Relit les longueurs du formulaire, recalcule la sangle, redessine les matières (appelé à chaque modification des longueurs, du bicolor, de la largeur…). */
+  syncStrap() {
+    const a = this._a; if (!a) return;
+    this._readFabSegs();
+    if (document.getElementById('a_internLen_m')) a.internalLength = U.lenCm('a_internLen');
+    this._autoStrap(a);
     this.drawBom();
   },
 
-  pickBomMaterial(i, matId) {
-    this._a.bom[i] = { materialId: matId, qty: this._a.bom[i]?.qty || 1 };
-    this._bomOpen = -1;
-    this._bomQ[i] = '';
-    this.drawBom();
+  /* Une seule largeur choisie : la sangle correspondante est proposée toute seule (ou mise à la nouvelle largeur). */
+  _ensureStrap() {
+    const a = this._a, ws = a.strapWidths || []; if (ws.length !== 1) return;
+    const fams = this.families(), idxs = this._strapIdxs(a);
+    if (!idxs.length) {
+      const fam = fams.find(f => f.key === 'sangle:' + ws[0]);
+      if (fam) a.bom.unshift({ familyKey: fam.key, qty: 1 });
+      return;
+    }
+    idxs.forEach(i => {
+      const l = a.bom[i]; if (!l.familyKey) return;
+      const k = l.familyKey.indexOf(':'); if (k < 0 || l.familyKey.slice(k + 1) === ws[0]) return;
+      const nk = l.familyKey.slice(0, k) + ':' + ws[0];
+      if (fams.some(f => f.key === nk)) l.familyKey = nk;
+    });
+  },
+
+  /* Bicolor : les deux sangles apparaissent tout de suite dans « Matières utilisées » (sangle 1 = longueur interne, sangle 2 = segments fixes). */
+  onBicolor() {
+    const a = this._a, on = !!document.getElementById('a_bicolor')?.checked;
+    if (on === !!a.bicolor) return;
+    a.bicolor = on;
+    const idxs = this._strapIdxs(a);
+    if (on) {
+      if (idxs.length) {
+        const l = a.bom[idxs[0]], { strapColor, qtyManual, _cat, tpl, ...rest } = l;
+        l.strapColor = 1; delete l.qtyManual;
+        a.bom.splice(idxs[0] + 1, 0, { ...rest, qty: 0, strapColor: 2 });
+      }
+    } else if (idxs.length >= 2) {
+      delete a.bom[idxs[0]].strapColor; delete a.bom[idxs[0]].qtyManual;
+      a.bom.splice(idxs[1], 1);
+    }
+    this.syncStrap();
+  },
+
+  /* Lignes « modèle » du type d'accessoire (Paramètres → Segments et pièces de fabrication) : catégorie + quantité, référence à choisir. */
+  _tplLines(cat) {
+    return (((Store.state.settings.accFabDefaults || {})[cat] || {}).parts || []).map(p => ({ familyKey: '', qty: U.num(p.qty) || 1, _cat: p.kind || '', tpl: true }));
   },
 
   drawBom() {
@@ -888,17 +961,30 @@ const Accessoires = {
       .map(k => ({ key: k.value, label: k.label }))
       .filter(k => Store.state.materials.some(m => (m.kind || 'autre') === k.key));
     const box = document.getElementById('a_bom');
+    if (!box) return;
     this._bomOpen = -1;
+    const bom = this._a.bom || [], sIdx = this._strapIdxs(this._a), targets = this._strapTargets(this._a, sIdx.length);
 
-    box.innerHTML = (this._a.bom || []).map((l, i) => {
+    box.innerHTML = bom.map((l, i) => {
       const selLabel = this._bomLabel(l);
-      const cat = this._bomCat[i] || '';
+      const cat = l._cat || '';
+      const picked = !!(l.familyKey || l.materialId), k = sIdx.indexOf(i);
+      const unit = picked ? this.bomLineUnit(l) : '';
+      let hint = '';
+      if (k >= 0 && k < targets.length) {
+        const t = targets[k];
+        hint = t > 0
+          ? (l.qtyManual
+            ? `✏️ Quantité saisie à la main · les longueurs ci-dessous donnent <b>${U.qty(t)} m</b> <button type="button" class="btn-ghost btn-sm" onclick="Accessoires.bomAuto(${i})">🔗 Revenir au calcul auto</button>`
+            : `🔗 Calculée d'après les longueurs de fabrication ci-dessous (${U.qty(t)} m)`)
+          : '🔗 Renseigne les longueurs de fabrication ci-dessous : la quantité de sangle se calcule toute seule.';
+      } else if (!picked && l.tpl) hint = '🧩 Ligne prévue par ton modèle : choisis la référence (sans référence, elle est ignorée à l\'enregistrement).';
 
-      return `<div class="frow" style="align-items:flex-end; margin-bottom:6px;">
+      return `<div style="margin-bottom:8px;"><div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Catégorie</label>
           <select onchange="Accessoires.setBomCat(${i},this.value)">
             <option value="">— tous —</option>
-            ${kinds.map(k => `<option value="${k.key}" ${cat === k.key ? 'selected' : ''}>${k.label}</option>`).join('')}
+            ${kinds.map(kd => `<option value="${kd.key}" ${cat === kd.key ? 'selected' : ''}>${kd.label}</option>`).join('')}
           </select>
         </div>
         <div class="fg" style="flex:2;position:relative;">
@@ -910,9 +996,9 @@ const Accessoires = {
             oninput="Accessoires.filterBomPick(${i},this.value)">
           <div id="a_bom_list_${i}" class="ac-list" style="max-height:200px;overflow:auto;display:none;"></div>
         </div>
-        <div class="fg"><label>Quantité</label><input type="number" step="0.01" value="${l.qty}" onchange="Accessoires._a.bom[${i}].qty=this.value"></div>
-        <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Accessoires._a.bom.splice(${i},1);Accessoires.drawBom()">🗑️</button></div>
-      </div>`;
+        <div class="fg"><label>Quantité${unit ? ' (' + unit + ')' : ''}</label><input type="number" step="0.001" value="${l.qty}" onchange="Accessoires.setBomQty(${i},this.value)"></div>
+        <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Accessoires.delBom(${i})">🗑️</button></div>
+      </div>${hint ? `<div class="muted" style="font-size:.8rem;margin-top:3px;">${hint}</div>` : ''}</div>`;
     }).join('') || '<p class="muted">ex: 2,4 m de sangle 20mm + 1 mousqueton + 4 rivets…</p>';
   },
 

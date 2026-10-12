@@ -207,9 +207,9 @@ const Params = {
       </details>
 
       <details class="fold card params-fold" ${this._fabOpen ? 'open' : ''} ontoggle="Params._fabOpen=this.open">
-        <summary><h2 style="display:inline;">📐 Segments de fabrication</h2> <span class="muted">(accessoires — longueurs fixes)</span></summary>
+        <summary><h2 style="display:inline;">📐 Segments et pièces de fabrication</h2> <span class="muted">(accessoires — longueurs fixes et quincaillerie)</span></summary>
         <div class="fold-body">
-        <p class="muted help mb0">Longueurs fixes (sangle consommée, en m + cm) de chaque segment par type d'accessoire. Ces valeurs sont pré-remplies à la création d'un nouvel accessoire et utilisées pour le calcul "Sur mesure".</p>
+        <p class="muted help mb0">Longueurs fixes (sangle consommée, en m + cm) de chaque segment par type d'accessoire. Ces valeurs sont pré-remplies à la création d'un nouvel accessoire et utilisées pour le calcul "Sur mesure".<br>Pièces : une ligne par pièce (mousqueton, rivet, anneau…) apparaît dans « Matières utilisées » avec sa catégorie et sa quantité ; il ne reste qu'à choisir la référence.</p>
         ${(S.accCategories || []).map((cat, ci) => {
           const d = (S.accFabDefaults || {})[cat] || { segments: [] };
           const segs = d.segments || [];
@@ -222,6 +222,13 @@ const Params = {
               <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Params.delFabSeg('${ce}',${i})" title="Supprimer">×</button></div>
             </div>`).join('')}
             <button class="btn-ghost btn-sm mt" onclick="Params.addFabSeg('${ce}')">＋ Ajouter un segment</button>
+            <div class="muted" style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;margin-top:14px;">🧩 Pièces à la pièce (quincaillerie)</div>
+            ${(d.parts || []).map((p, i) => `<div class="frow mt" style="gap:10px;align-items:flex-end;">
+              <div class="fg" style="flex:2;"><select onchange="Params.setFabPart('${ce}',${i},'kind',this.value)"><option value="">— catégorie —</option>${this._partKinds(p.kind).map(k => `<option value="${U.esc(k.value)}" ${k.value === p.kind ? 'selected' : ''}>${U.esc(k.label)}</option>`).join('')}</select></div>
+              <div class="fg" style="flex:0 0 90px;"><label>Quantité</label><input type="number" step="1" min="0" value="${U.num(p.qty) || ''}" onchange="Params.setFabPart('${ce}',${i},'qty',this.value)"></div>
+              <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Params.delFabPart('${ce}',${i})" title="Supprimer">×</button></div>
+            </div>`).join('')}
+            <button class="btn-ghost btn-sm mt" onclick="Params.addFabPart('${ce}')">＋ Ajouter une pièce</button>
           </div>`;
         }).join('')}
         </div>
@@ -1737,6 +1744,25 @@ const Params = {
     segs.splice(idx, 1);
     Store.save('settings'); App.rerender();
   },
+
+  /* Catégories proposées pour les pièces d'un modèle : hors sangles (calculées d'après les longueurs), celles qui ont des matières + celle déjà choisie. */
+  _partKinds(cur) {
+    return Store.materialKinds().filter(k => !Store.isSangleKind(k.value) && (k.value === cur || Store.state.materials.some(m => (m.kind || 'autre') === k.value)));
+  },
+  _fabD(cat) {
+    const S = Store.state.settings;
+    if (!S.accFabDefaults) S.accFabDefaults = {};
+    if (!S.accFabDefaults[cat]) S.accFabDefaults[cat] = { segments: [] };
+    if (!S.accFabDefaults[cat].parts) S.accFabDefaults[cat].parts = [];
+    return S.accFabDefaults[cat];
+  },
+  setFabPart(cat, idx, field, val) {
+    const p = this._fabD(cat).parts[idx]; if (!p) return;
+    if (field === 'qty') p.qty = Math.max(0, Math.round(U.num(val))); else p.kind = val;
+    Store.save('settings');
+  },
+  addFabPart(cat) { this._fabD(cat).parts.push({ kind: '', qty: 1 }); Store.save('settings'); App.rerender(); },
+  delFabPart(cat, idx) { this._fabD(cat).parts.splice(idx, 1); Store.save('settings'); App.rerender(); },
 
   setConsoAbbrev(cat, val) {
     const S = Store.state.settings;
