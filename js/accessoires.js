@@ -1184,13 +1184,14 @@ const Accessoires = {
     const a = Store.state.catalogA.find(x => x.id === id);
     if (!a) return;
     this._fabBom = (a.bom || []).map(l => {
+      const tag = l.strapColor ? '🎨 Couleur ' + l.strapColor + ' — ' + this._colorTitle(a, l.strapColor) : '';
       if (l.familyKey) {
         const fam = this.families().find(f => f.key === l.familyKey);
         if (!fam) return { type: 'missing', label: l.familyKey, qty: l.qty };
         const sorted = [...fam.materials].sort((x, y) => U.num(y.qty) - U.num(x.qty));
-        return { type: 'family', fam, materials: sorted, qty: l.qty, selectedId: sorted[0]?.id || '' };
+        return { type: 'family', fam, materials: sorted, qty: l.qty, selectedId: sorted[0]?.id || '', tag };
       }
-      if (l.materialId) { return { type: 'direct', m: Store.material(l.materialId), qty: l.qty }; }
+      if (l.materialId) { return { type: 'direct', m: Store.material(l.materialId), qty: l.qty, tag }; }
       return null;
     }).filter(Boolean);
 
@@ -1201,6 +1202,7 @@ const Accessoires = {
           `<option value="${m.id}" ${m.id === b.selectedId ? 'selected' : ''}>${U.esc(m.name)} — stock : ${U.qty(m.qty)} ${unit}</option>`
         ).join('');
         return `<div class="card" style="padding:8px 12px;margin-bottom:6px;background:var(--th-bg);">
+          ${b.tag ? `<div style="font-weight:700;font-size:.85rem;color:var(--caramel);margin-bottom:4px;">${U.esc(b.tag)}</div>` : ''}
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <b>${U.esc(b.fam.label)}</b><span class="muted">${U.qty(b.qty)} ${unit} par pièce</span></div>
           <select id="fab_mat_${i}" style="width:100%;" onchange="Accessoires._fabBom[${i}].selectedId=this.value">${opts}</select>
@@ -1209,6 +1211,7 @@ const Accessoires = {
       if (b.type === 'direct' && b.m) {
         const unit = b.m.unit === 'm' ? 'm' : 'PCS';
         return `<div class="card" style="padding:8px 12px;margin-bottom:6px;background:var(--th-bg);">
+          ${b.tag ? `<div style="font-weight:700;font-size:.85rem;color:var(--caramel);margin-bottom:4px;">${U.esc(b.tag)}</div>` : ''}
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <b>${U.esc(b.m.name)}</b><span class="muted">${U.qty(b.qty)} ${unit} — stock : ${U.qty(b.m.qty)} ${unit}</span></div>
         </div>`;
