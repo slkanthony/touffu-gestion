@@ -751,7 +751,20 @@ const Accessoires = {
       if (sku && sku.toUpperCase() !== prev) { skuEl.value = sku; U.toast(`SKU mis à jour : ${sku}`); }
     }
   },
-  onProdLenChange() { this._syncIdentity(); },
+  /* Longueur du produit fini modifiée : la longueur interne bouge du même écart (même règle que « Sur mesure » et la saisie dans la fiche), donc sangle et coût suivent. */
+  onProdLenChange() {
+    const el = document.getElementById('a_internLen_m'); if (!el) return;
+    const oldLen = U.num(this._a.productLength), newLen = Math.round(U.lenCm('a_prodLen')) / 100;
+    this._syncIdentity();
+    if (oldLen > 0 && newLen > 0 && Math.abs(newLen - oldLen) > 0.0001) {
+      const oldInt = U.lenCm('a_internLen'), newInt = Math.max(0, Math.round((oldInt + (newLen - oldLen) * 100) * 10) / 10);
+      if (newInt !== oldInt) {
+        U.lenSet('a_internLen', newInt);
+        this.syncStrap();
+        U.toast(`Longueur interne ajustée : ${U.lenTxt(oldInt)} → ${U.lenTxt(newInt)}`);
+      }
+    }
+  },
 
   editAcc(id) {
     const S = Store.state.settings;
