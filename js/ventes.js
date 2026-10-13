@@ -768,6 +768,19 @@ const Ventes = {
     const d = Stock.consoDims(c);
     return c.name + (d ? ' — ' + d : '') + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '');
   },
+  /* Détail d'une ligne de vente dans l'historique (Antho 2026-10-13) : coût de revient par unité et marge de la ligne, pour repérer un coût anormal. */
+  _itemCostCell(i) {
+    const q = U.num(i.qty), c = Pricing.saleItemCost(i);
+    if (i.deducted === false && i.todo !== 'caOnly' && !c) return '<span class="muted">—</span>';
+    if (!c && U.num(i.price) > 0) return '<span class="badge warn" title="Coût de revient inconnu (0) : la marge de cette ligne est faussée">0,00 €</span>';
+    return q ? U.eur(c / q) : '—';
+  },
+  _itemMarginCell(i) {
+    const rev = U.num(i.price) * U.num(i.qty), c = Pricing.saleItemCost(i);
+    if (!rev && !c) return '<span class="muted">—</span>';
+    const m = rev - c, pct = rev > 0 ? ' <span class="muted" style="font-size:.78rem;">· ' + U.pct(m / rev * 100) + '</span>' : '';
+    return '<span class="' + (m < 0 ? 'neg' : '') + '" style="' + (m < 0 ? 'color:var(--alerte);' : '') + '">' + (m >= 0 ? '+' : '−') + U.eur(Math.abs(m)) + '</span>' + pct;
+  },
   /* Résumé de rentabilité d'UNE commande : ce qu'elle a rapporté, ce qu'elle a coûté, le bénéfice net. */
   saleSummaryHTML(s) {
     const r = Pricing.saleProfit(s);
@@ -1221,7 +1234,7 @@ const Ventes = {
       const open = !!this._histOpen[s.id];
       const nTodo = s.items.filter(i => i.todo === 'open').length;
       // Colonnes FIXES (grille .hist-row) alignées sur la ligne de titres (2026-09-29).
-      const head = `<tr id="hist-${s.id}" class="sale-head hist-click${open ? ' sale-open sale-first' : ''}${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}" title="${open ? 'Cliquer pour replier' : 'Cliquer pour déplier'}" onclick="Ventes._rowClick(event,'${s.id}')"><td colspan="7"><div class="hist-row">
+      const head = `<tr id="hist-${s.id}" class="sale-head hist-click${open ? ' sale-open sale-first' : ''}${grouped ? ' hist-grouped' : ''} ${s.cancelled ? 'dim' : ''}${this._histSel[s.id] ? ' is-sel' : ''}" title="${open ? 'Cliquer pour replier' : 'Cliquer pour déplier'}" onclick="Ventes._rowClick(event,'${s.id}')"><td colspan="9"><div class="hist-row">
           <span class="hc-cb"><input type="checkbox" class="hist-cb" ${this._histSel[s.id] ? 'checked' : ''} title="Sélectionner" onclick="event.stopPropagation();Ventes.toggleHistSel('${s.id}',this.checked)"></span>
           <span class="hc-tg"><button class="btn-icon hist-tg" title="${open ? 'Replier' : 'Voir les articles'}">${open ? '▾' : '▸'}</button></span>
           <span class="hc-date sh-date">${U.frDateTime(s.ts)}</span>
@@ -1236,8 +1249,8 @@ const Ventes = {
         </div></td></tr>`;
       if (!open) return head;
       const kind = this._saleKind(s);
-      const summaryRow = s.cancelled ? '' : `<tr class="sale-detail sale-open"><td colspan="7"><details class="fold" ${this._sumOpen && this._sumOpen[s.id] ? 'open' : ''} ontoggle="Ventes._sumOpen=Ventes._sumOpen||{};Ventes._sumOpen['${s.id}']=this.open"><summary><b>🧮 Résumé de cette commande</b> <span class="sensitive ${Pricing.saleProfit(s).net >= 0 ? 'pos' : 'neg'}">bénéfice net ${U.eur(Pricing.saleProfit(s).net)}</span></summary><div class="fold-body sensitive">${this.saleSummaryHTML(s)}</div></details></td></tr>`;
-      const detail = `<tr class="sale-detail sale-open ${s.cancelled ? 'dim' : ''}"><td colspan="7"><div class="sh-info">
+      const summaryRow = s.cancelled ? '' : `<tr class="sale-detail sale-open"><td colspan="9"><details class="fold" ${this._sumOpen && this._sumOpen[s.id] ? 'open' : ''} ontoggle="Ventes._sumOpen=Ventes._sumOpen||{};Ventes._sumOpen['${s.id}']=this.open"><summary><b>🧮 Résumé de cette commande</b> <span class="sensitive ${Pricing.saleProfit(s).net >= 0 ? 'pos' : 'neg'}">bénéfice net ${U.eur(Pricing.saleProfit(s).net)}</span></summary><div class="fold-body sensitive">${this.saleSummaryHTML(s)}</div></details></td></tr>`;
+      const detail = `<tr class="sale-detail sale-open ${s.cancelled ? 'dim' : ''}"><td colspan="9"><div class="sh-info">
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
@@ -1260,9 +1273,11 @@ const Ventes = {
         <td>${i.todo === 'open' ? `<span class="badge warn">🧩 à traiter</span>` : i.deducted === false ? `<span class="badge info">${i.todo === 'caOnly' ? '💶 CA seul' : '✔ fait à la main'}</span>` : i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
         <td class="num">${U.qty(i.qty)}</td>
         <td class="num">${U.eur(i.price)}</td>
+        <td class="num sensitive">${this._itemCostCell(i)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
+        <td class="num sensitive">${this._itemMarginCell(i)}</td>
       </tr>`).join('');
-      return head + detail + summaryRow + `<tr class="hist-items-h sale-open"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th></tr>` + items + `<tr class="hist-fold-foot sale-open sale-last"><td colspan="7"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr><tr class="sale-gap"><td colspan="7"></td></tr>`;
+      return head + detail + summaryRow + `<tr class="hist-items-h sale-open"><th class="col-name" style="text-align:left;">Produit</th><th>Variante</th><th>SKU</th><th>Lot / DLUO</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num sensitive" title="Coût de revient par unité vendue (figé à la vente)">Coût U.</th><th class="num">Total</th><th class="num sensitive" title="Marge brute de la ligne : prix de vente − coût de revient (et en % du prix)">Marge</th></tr>` + items + `<tr class="hist-fold-foot sale-open sale-last"><td colspan="9"><button class="btn-ghost btn-sm" onclick="Ventes.toggleHistOpen('${s.id}',true)">▴ Replier cette vente (${s.items.length} article(s))</button></td></tr><tr class="sale-gap"><td colspan="9"></td></tr>`;
     };
     const rowsArr = [];
     for (let gi = 0; gi < pageList.length;) {
@@ -1277,7 +1292,7 @@ const Ventes = {
       group.forEach(gs => rowsArr.push(rowHtml(gs, grouped)));
       if (grouped) {
         const sum = group.filter(x => !x.cancelled).reduce((a, x) => a + U.num(x.total), 0);
-        rowsArr.push(`<tr class="hist-group-sub"><td colspan="7"><div class="hist-row">
+        rowsArr.push(`<tr class="hist-group-sub"><td colspan="9"><div class="hist-row">
           <span class="hc-cb"></span><span class="hc-tg"></span><span class="hc-date"></span><span class="hc-kind"></span><span class="hc-orig"></span>
           <span class="hc-ev">🎪 Total ${U.esc(s0.eventName)}</span><span class="hc-pay muted">${group.length} tickets</span><span class="hc-prod"></span><span class="hc-n"></span>
           <span class="hc-tot"><b>${U.eur(sum)}</b></span><span class="hc-act"></span>
@@ -1310,7 +1325,7 @@ const Ventes = {
         <span class="muted">Origine :</span><select onchange="if(this.value){Ventes.setSaleOrigin(Ventes._selIds(),this.value)}"><option value="">— changer —</option><option value="online">🌐 En ligne</option><option value="direct">🏪 Directe</option><option value="event">🎪 Événement</option></select>
         <button class="btn-danger btn-sm" onclick="Ventes.deleteSales(Ventes._selIds())">🗑 Supprimer la sélection</button>
         <button class="btn-ghost btn-sm" onclick="Ventes._histSel={};Ventes.render()">✕ Désélectionner</button></div>` : ''}
-      <div class="table-wrap"><table class="sales-hist"><tbody>${pageList.length ? (() => { const hs = (key, label, cls) => `<span class="${cls}${key ? ' sortable' + (f.sort === key ? ' active' : '') : ''}"${key ? ` onclick="Ventes.setHistorySort('${key}')"` : ''}>${label}${key ? (f.sort === key ? (f.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇕') : ''}</span>`; return `<tr class="hist-head"><td colspan="7"><div class="hist-row"><span class="hc-cb"></span><span class="hc-tg"></span>${hs('date', 'Date', 'hc-date')}${hs('', 'Canal', 'hc-kind')}${hs('', 'Origine', 'hc-orig')}${hs('', 'Événement', 'hc-ev')}${hs('payment', 'Paiement', 'hc-pay')}${hs('name', 'Produits', 'hc-prod')}${hs('', 'Art.', 'hc-n')}${hs('total', 'Total', 'hc-tot')}<span class="hc-act"></span></div></td></tr>`; })() : ''}${rowsHtml || '<tr><td colspan="7" class="muted">Aucune vente pour ces filtres.</td></tr>'}</tbody></table></div>
+      <div class="table-wrap"><table class="sales-hist"><tbody>${pageList.length ? (() => { const hs = (key, label, cls) => `<span class="${cls}${key ? ' sortable' + (f.sort === key ? ' active' : '') : ''}"${key ? ` onclick="Ventes.setHistorySort('${key}')"` : ''}>${label}${key ? (f.sort === key ? (f.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇕') : ''}</span>`; return `<tr class="hist-head"><td colspan="9"><div class="hist-row"><span class="hc-cb"></span><span class="hc-tg"></span>${hs('date', 'Date', 'hc-date')}${hs('', 'Canal', 'hc-kind')}${hs('', 'Origine', 'hc-orig')}${hs('', 'Événement', 'hc-ev')}${hs('payment', 'Paiement', 'hc-pay')}${hs('name', 'Produits', 'hc-prod')}${hs('', 'Art.', 'hc-n')}${hs('total', 'Total', 'hc-tot')}<span class="hc-act"></span></div></td></tr>`; })() : ''}${rowsHtml || '<tr><td colspan="9" class="muted">Aucune vente pour ces filtres.</td></tr>'}</tbody></table></div>
       ${pager}`;
   },
 
