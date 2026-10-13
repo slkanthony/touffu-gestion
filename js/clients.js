@@ -202,45 +202,66 @@ const Clients = {
     Store.save('clients'); Stats.render();
   },
 
-  /* ---------- Produits déjà mastiqués (par chien) : d.tried = [{id, name, event, verdict:'' | 'like' | 'avoid'}] ----------
-     Ne touche NI au stock, NI au chiffre d'affaires : simple mémoire de ce que le chien a déjà eu (et aimé ou non). */
-  _addEv: {},
-  _prodNames() {
-    const set = new Set();
-    (Store.state.catalogM || []).forEach(p => { if (p.name) set.add(p.name); });
-    (Store.state.stockM || []).forEach(p => { if (p.name) set.add(p.name); });
-    return [...set].sort(U.sortFr);
+  /* ---------- Produits déjà mastiqués (par chien) : d.tried = [{id, name, label, event, verdict:'' | 'like' | 'avoid'}] ----------
+     Ne touche NI au stock, NI au chiffre d'affaires : simple mémoire de ce que le chien a déjà eu (et aimé ou non).
+     Liste de choix = même habillage que « Ajouter un produit » des Paniers (filtre Variantes + recherche + lignes .pp-row). */
+  _addEv: {}, _tQ: {}, _tOpen: '', _tVars: [], _tVarsOpen: false,
+  _prodRows() {   // une ligne par variante du stock mastication
+    const out = [];
+    (Store.state.stockM || []).forEach(p => (p.variants || []).forEach(v => out.push({ name: p.name, label: Pricing.labelVariant(v), meat: p.meatType || '', sku: v.sku || '' })));
+    return out;
+  },
+  _tCandidates(did) {
+    const q = U.normSearch(this._tQ[did] || '');
+    return this._prodRows().filter(c => {
+      if (q && !U.has(c.name + ' ' + c.label + ' ' + c.sku, q)) return false;
+      return !this._tVars.length || this._tVars.includes(c.label);
+    }).sort((a, b) => U.sortFr(a.name + ' ' + a.label, b.name + ' ' + b.label)).slice(0, 100);
   },
   /* Produits (mastication) vendus lors d'un événement, tous clients confondus : proposés d'un clic. */
   _eventProds(ev) {
     const set = new Map();
     (Store.state.sales || []).filter(x => !x.cancelled && x.eventName === ev).forEach(x => (x.items || []).forEach(i => {
       if (i.kind === 'C' || i.kind === 'A' || !i.name) return;
-      if (!set.has(this.key(i.name))) set.set(this.key(i.name), i.name);
+      const k = this.key(i.name) + '|' + this.key(i.label);
+      if (!set.has(k)) set.set(k, { name: i.name, label: i.label || '' });
     }));
-    return [...set.values()].sort(U.sortFr);
+    return [...set.values()].sort((a, b) => U.sortFr(a.name + ' ' + a.label, b.name + ' ' + b.label));
   },
   _dogOf(cid, did) { const c = this.list().find(x => x.id === cid); return c && c.dogs.find(x => x.id === did); },
   setAddEv(did, v) { this._addEv[did] = v; Stats.render(); },
-  _pushTried(d, name, ev) {
-    name = String(name || '').trim(); if (!name) return false;
+  setTQ(did, v) { this._tQ[did] = v; this._tOpen = did; Stats.render(); U.refocus('cl_t_' + did); },
+  openT(did) { if (this._tOpen === did) return; this._tOpen = did; this._tVarsOpen = false; Stats.render(); U.refocus('cl_t_' + did); },
+  closeT() {
+    if (!this._tOpen) return;
+    if (document.activeElement && /^cl_t_/.test(document.activeElement.id)) return;   // le clic dans le champ arrive après son « focus » : pas un clic extérieur
+    this._tOpen = ''; Stats.render();
+  },
+  toggleTVar(v) { const i = this._tVars.indexOf(v); if (i >= 0) this._tVars.splice(i, 1); else this._tVars.push(v); Stats.render(); },
+  setAllTVar(all) { this._tVars = all ? Stock.allVariantGroups().flatMap(g => g.items) : []; Stats.render(); },
+  setTVarsOpen(v) { this._tVarsOpen = v; if (v && this._tOpen) { this._tOpen = ''; Stats.render(); } },
+  _pushTried(d, name, label, ev) {
+    name = String(name || '').trim(); label = String(label || '').trim(); if (!name) return false;
     d.tried = d.tried || [];
-    const k = this.key(name), ex = d.tried.find(t => this.key(t.name) === k && (t.event || '') === (ev || ''));
-    if (ex) { U.toast('Déjà dans la liste.', true); return false; }
-    d.tried.push({ id: U.uid(), name, event: ev || '', verdict: '' });
+    if (d.tried.some(t => this.key(t.name) === this.key(name) && this.key(t.label) === this.key(label) && (t.event || '') === (ev || ''))) { U.toast('Déjà dans la liste.', true); return false; }
+    d.tried.push({ id: U.uid(), name, label, event: ev || '', verdict: '' });
     return true;
   },
-  addTried(cid, did) {
+  pickTried(cid, did, idx) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did), c = this._tCandidates(did)[idx]; if (!d || !c) return;
+    if (this._pushTried(d, c.name, c.label, this._addEv[did] || '')) { this._tQ[did] = ''; this._tOpen = ''; Store.save('clients'); Stats.render(); }
+  },
+  addTriedFree(cid, did) {   // texte libre + Entrée (produit absent de la liste)
     if (this.ro()) return;
     const d = this._dogOf(cid, did); if (!d) return;
-    const el = document.getElementById('cl_t_' + did); const v = (el && el.value || '').trim();
-    if (!v) { U.toast('Choisis ou tape un produit.', true); return; }
-    if (this._pushTried(d, v, this._addEv[did] || '')) { Store.save('clients'); Stats.render(); }
+    const v = (this._tQ[did] || '').trim(); if (!v) return;
+    if (this._pushTried(d, v, '', this._addEv[did] || '')) { this._tQ[did] = ''; this._tOpen = ''; Store.save('clients'); Stats.render(); }
   },
   addTriedFromEvent(cid, did, idx) {
     if (this.ro()) return;
-    const d = this._dogOf(cid, did), name = this._eventProds(this._addEv[did] || '')[idx]; if (!d || !name) return;
-    if (this._pushTried(d, name, this._addEv[did] || '')) { Store.save('clients'); Stats.render(); }
+    const d = this._dogOf(cid, did), p = this._eventProds(this._addEv[did] || '')[idx]; if (!d || !p) return;
+    if (this._pushTried(d, p.name, p.label, this._addEv[did] || '')) { Store.save('clients'); Stats.render(); }
   },
   /* Clic = neutre → aimé (vert) → pas aimé (rouge) → neutre */
   cycleTried(cid, did, tid) {
@@ -256,16 +277,26 @@ const Clients = {
   },
   _triedUI(c, d) {
     const ro = this.ro(), tried = d.tried || [], ev = this._addEv[d.id] || '';
-    const chips = tried.map(t => `<span class="cl-chip ${t.verdict || ''}" title="${ro ? '' : 'Clique : aimé (vert) → pas aimé (rouge) → neutre'}" ${ro ? '' : `onclick="Clients.cycleTried('${c.id}','${d.id}','${t.id}')"`}>${t.verdict === 'like' ? '✓ ' : t.verdict === 'avoid' ? '✗ ' : ''}${U.esc(t.name)}${t.event ? ` <span class="muted" style="font-size:.75rem;">🎪 ${U.esc(t.event)}</span>` : ''}${ro ? '' : ` <b title="Retirer" style="margin-left:4px;opacity:.7;" onclick="event.stopPropagation();Clients.delTried('${c.id}','${d.id}','${t.id}')">✕</b>`}</span>`).join('');
-    const all = ev ? this._eventProds(ev) : [], sold = ev ? all.filter(n => !tried.some(t => this.key(t.name) === this.key(n) && (t.event || '') === ev)) : [];
+    const chips = tried.map(t => `<span class="cl-chip ${t.verdict || ''}" title="${ro ? '' : 'Clique : aimé (vert) → pas aimé (rouge) → neutre'}" ${ro ? '' : `onclick="Clients.cycleTried('${c.id}','${d.id}','${t.id}')"`}>${t.verdict === 'like' ? '✓ ' : t.verdict === 'avoid' ? '✗ ' : ''}${U.esc(t.name)}${t.label ? ` <span class="muted" style="font-size:.78rem;">${U.esc(t.label)}</span>` : ''}${t.event ? ` <span class="muted" style="font-size:.75rem;">🎪 ${U.esc(t.event)}</span>` : ''}${ro ? '' : ` <b title="Retirer" style="margin-left:4px;opacity:.7;" onclick="event.stopPropagation();Clients.delTried('${c.id}','${d.id}','${t.id}')">✕</b>`}</span>`).join('');
+    const all = ev ? this._eventProds(ev) : [];
+    const sold = all.filter(p => !tried.some(t => this.key(t.name) === this.key(p.name) && this.key(t.label) === this.key(p.label) && (t.event || '') === ev));
     const events = Store.eventList();
+    const list = this._tOpen === d.id ? this._tCandidates(d.id) : [];
+    const rows = list.map((p, i) => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Clients.pickTried('${c.id}','${d.id}',${i})"><span class="pp-a">${U.esc(p.name)} <span class="pp-v">${U.esc(p.label)}</span></span><span class="pp-b">${U.esc(p.meat)}</span><span class="pp-c"></span></div>`).join('');
     return `<div class="fg mt"><label>🍖 Produits déjà mastiqués <span class="muted" style="font-weight:400;">(clique une pastille : vert = a aimé · rouge = n'a pas aimé)</span></label>
       <div class="cl-chips">${chips || '<span class="muted">Aucun produit noté.</span>'}</div>
-      ${ro ? '' : `<div class="frow" style="align-items:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap;">
-        <div class="fg" style="min-width:200px;flex:2;"><label>Produit</label><input id="cl_t_${d.id}" list="dl_cl_prods" placeholder="Chercher un produit…" onkeydown="if(event.key==='Enter')Clients.addTried('${c.id}','${d.id}')"></div>
-        <div class="fg" style="min-width:180px;flex:1;"><label>Événement (facultatif)</label><select onchange="Clients.setAddEv('${d.id}',this.value)"><option value="">— aucun —</option>${events.map(e => `<option value="${U.esc(e)}" ${e === ev ? 'selected' : ''}>${U.esc(e)}</option>`).join('')}</select></div>
-        <button class="btn-cta btn-sm" onclick="Clients.addTried('${c.id}','${d.id}')">＋ Ajouter</button></div>
-      ${ev ? `<div class="muted" style="font-size:.82rem;margin-top:6px;">Vendus à « ${U.esc(ev)} » (clique pour ajouter) :</div><div class="cl-chips" style="margin-top:4px;">${sold.map(n => `<span class="cl-chip" onclick="Clients.addTriedFromEvent('${c.id}','${d.id}',${all.indexOf(n)})">＋ ${U.esc(n)}</span>`).join('') || '<span class="muted">Tout est déjà ajouté (ou aucune vente enregistrée pour cet événement).</span>'}</div>` : ''}`}
+      ${ro ? '' : `<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:12px;">
+        <div class="fg mb0" style="min-width:160px;max-width:220px;"><label>Variantes</label>
+          ${U.multiSelect({ groups: Stock.allVariantGroups(), selected: this._tVars, toggle: 'Clients.toggleTVar', setAll: 'Clients.setAllTVar', open: this._tVarsOpen, onOpen: 'Clients.setTVarsOpen' })}</div>
+        <div class="fg mb0" style="flex:2;min-width:200px;"><label>➕ Ajouter un produit</label>
+          <div class="autocomplete" data-onclose="Clients.closeT">
+            <input id="cl_t_${d.id}" type="text" autocomplete="off" placeholder="Chercher un produit… (Entrée = texte libre)" value="${U.esc(this._tQ[d.id] || '')}" oninput="Clients.setTQ('${d.id}',this.value)" onfocus="Clients.openT('${d.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();Clients.addTriedFree('${c.id}','${d.id}')}">
+            ${rows ? `<div class="ac-list" style="max-height:250px;overflow:auto;">${rows}</div>` : ''}
+          </div></div>
+        <div class="fg mb0" style="flex:1;min-width:180px;"><label>🎪 Événement (facultatif)</label>
+          <select onchange="Clients.setAddEv('${d.id}',this.value)"><option value="">— aucun —</option>${events.map(e => `<option value="${U.esc(e)}" ${e === ev ? 'selected' : ''}>${U.esc(e)}</option>`).join('')}</select></div>
+      </div>
+      ${ev ? `<div class="muted" style="font-size:.82rem;margin-top:8px;">Vendus à « ${U.esc(ev)} » (clique pour ajouter) :</div><div class="cl-chips" style="margin-top:4px;">${sold.map(p => `<span class="cl-chip" onclick="Clients.addTriedFromEvent('${c.id}','${d.id}',${all.indexOf(p)})">＋ ${U.esc(p.name)}${p.label ? ` <span class="muted" style="font-size:.78rem;">${U.esc(p.label)}</span>` : ''}</span>`).join('') || '<span class="muted">Tout est déjà ajouté (ou aucune vente enregistrée pour cet événement).</span>'}</div>` : ''}`}
     </div>`;
   },
 
@@ -349,7 +380,6 @@ const Clients = {
       <div class="view-title"><h1>Statistiques</h1><span class="sub">clients &amp; chiens</span></div>
       ${Stats.tabBar()}
       <div class="card cl-card">
-        <datalist id="dl_cl_prods">${this._prodNames().map(n => `<option value="${U.esc(n)}">`).join('')}</datalist>
         <h2>👤 Mes clients</h2>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:280px;"><label>Rechercher (client ou chien)</label><input id="cl_q" value="${U.esc(this._q)}" placeholder="nom…" oninput="Clients.setQ(this.value)"></div>
