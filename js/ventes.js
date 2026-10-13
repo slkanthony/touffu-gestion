@@ -769,11 +769,46 @@ const Ventes = {
     return c.name + (d ? ' — ' + d : '') + ' — dispo ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : '');
   },
   /* Détail d'une ligne de vente dans l'historique (Antho 2026-10-13) : coût de revient par unité et marge de la ligne, pour repérer un coût anormal. */
-  _itemCostCell(i) {
+  _costRo() { return !!(App.isViewer || App.isTeam || App.visitMode); },
+  _itemCostCell(i, sid, ix) {
     const q = U.num(i.qty), c = Pricing.saleItemCost(i);
     if (i.deducted === false && i.todo !== 'caOnly' && !c) return '<span class="muted">—</span>';
-    if (!c && U.num(i.price) > 0) return '<span class="badge warn" title="Coût de revient inconnu (0) : la marge de cette ligne est faussée">0,00 €</span>';
-    return q ? U.eur(c / q) : '—';
+    const miss = !c && U.num(i.price) > 0, u = q ? c / q : 0;
+    if (!sid || this._costRo()) return miss ? '<span class="badge warn" title="Coût de revient inconnu (0) : la marge de cette ligne est faussée">0,00 €</span>' : (q ? U.eur(u) : '—');
+    // modifiable sur place (coût figé à la vente) + ↻ = recalculer au coût actuel de la fiche
+    return `<input type="number" step="0.01" min="0" class="acc-inline-input" style="width:74px;${miss ? 'border-color:var(--warn);' : ''}" value="${Math.round(u * 100) / 100}" title="${miss ? 'Coût inconnu (0) : tape-le ou clique ↻' : 'Coût de revient par unité, figé à la vente — modifiable'}" onclick="event.stopPropagation()" onchange="Ventes.setItemCost('${sid}',${ix},this.value)"> <button class="btn-icon" title="Recalculer au coût ACTUEL de la fiche" onclick="event.stopPropagation();Ventes.recalcItemCost('${sid}',${ix})">↻</button>`;
+  },
+  /* Coût TOTAL actuel d'une ligne de vente (fiche Prix mastication / fiche accessoire / consommable), ou null si introuvable. */
+  _currentLineCost(i) {
+    const q = U.num(i.qty);
+    if (i.kind === 'A') { const a = Store.state.catalogA.find(x => x.id === i.pId); return a ? U.num(Pricing.accCalc(a).costBase) * q : null; }
+    if (i.kind === 'C') { const co = Store.state.consumables.find(x => x.id === i.pId); return co ? U.num(co.costUnit) * Pricing.vatK() * q : null; }
+    const p = Store.state.stockM.find(x => x.id === i.pId), v = p && (p.variants || []).find(x => x.id === i.vId); if (!v) return null;
+    const unit = x => { const rc = Stock.refCalc(p, x); return rc ? U.num(rc.calc.costBase) : U.num(x.costUnit); };
+    const virt = Stock.isVirtual(p, v), base = virt ? Stock.parentOf(p, v) : v;
+    const pieces = U.num(i.pack) >= 2 && U.num(i.packs) > 0 ? U.num(i.pack) * U.num(i.packs) : (virt ? Stock.packQtyOf(v) * q : q);
+    return unit(base) * pieces;
+  },
+  _setLineCost(sid, ix, total, label) {
+    const s = Store.state.sales.find(x => x.id === sid), i = s && s.items[ix]; if (!i) return;
+    const snap = Store.snapshot('sales', s);
+    i.cost = Math.round(U.num(total) * 10000) / 10000;
+    const entry = Store.commitSnapshot(snap, 'vente', `Coût de revient modifié — ${i.name}${i.label ? ' ' + i.label : ''} (${U.frDateTime(s.ts)}) : ${U.eur(i.cost)}`);
+    Store.save('sales'); App.rerender();
+    U.toast(label, false, entry.id);
+  },
+  setItemCost(sid, ix, val) {
+    if (this._costRo()) return;
+    const s = Store.state.sales.find(x => x.id === sid), i = s && s.items[ix]; if (!i) return;
+    this._setLineCost(sid, ix, Math.max(0, U.num(val)) * U.num(i.qty), 'Coût de revient de la ligne mis à jour.');
+  },
+  recalcItemCost(sid, ix) {
+    if (this._costRo()) return;
+    const s = Store.state.sales.find(x => x.id === sid), i = s && s.items[ix]; if (!i) return;
+    const c = this._currentLineCost(i);
+    if (c === null) { U.toast('Produit introuvable (supprimé ?) : tape le coût à la main.', true); return; }
+    if (!c) { U.toast('Le coût actuel de la fiche est aussi à 0 : renseigne d\'abord le prix d\'achat (fiche Prix mastication).', true); return; }
+    this._setLineCost(sid, ix, c, 'Coût recalculé au coût actuel de la fiche.');
   },
   _itemMarginCell(i) {
     const rev = U.num(i.price) * U.num(i.qty), c = Pricing.saleItemCost(i);
@@ -1266,14 +1301,14 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Déplacement', `<span class="sensitive" title="Détail km / carburant / péages : bouton 🎪 Modifier">${U.eur(s.travelCost)}</span>`) : ''}
           ${this._isRealEvent(s) ? field('Frais en espèces', `<input type="checkbox" ${s.eventFeeCash ? 'checked' : ''} title="Coché : stand, repas et déplacement payés en liquide (ne sortent pas de la banque)" onchange="Ventes.setEventFeeCash('${s.id}',this.checked)">`) : ''}
         </div></td></tr>`;
-      const items = s.items.map(i => `<tr class="sale-open ${s.cancelled ? 'dim' : ''}">
+      const items = s.items.map((i, ix) => `<tr class="sale-open ${s.cancelled ? 'dim' : ''}">
         <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
         <td>${i.todo === 'open' ? `<span class="badge warn">🧩 à traiter</span>` : i.deducted === false ? `<span class="badge info">${i.todo === 'caOnly' ? '💶 CA seul' : '✔ fait à la main'}</span>` : i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
         <td class="num">${U.qty(i.qty)}</td>
         <td class="num">${U.eur(i.price)}</td>
-        <td class="num sensitive">${this._itemCostCell(i)}</td>
+        <td class="num sensitive" style="white-space:nowrap;">${this._itemCostCell(i, s.cancelled ? '' : s.id, ix)}</td>
         <td class="num"><b>${U.eur(i.price * i.qty)}</b></td>
         <td class="num sensitive">${this._itemMarginCell(i)}</td>
       </tr>`).join('');
