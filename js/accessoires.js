@@ -402,6 +402,8 @@ const Accessoires = {
         <td class="num"><input type="number" step="0.01" value="${l.qty}" class="acc-inline-input" onchange="Accessoires.setAccBomQty('${a.id}',${li},this.value)"> ${unit}</td>
         <td class="num sensitive">${U.eur(unitCost * U.num(l.qty))}</td></tr>`;
     }).join('');
+    const strapRows = (a.bom || []).filter(l => this.bomLineUnit(l) === 'm');
+    const strapTotalRow = strapRows.length >= 2 ? `<tr><td class="col-name"><b>📏 Total sangle</b> <span class="muted">(${strapRows.length} couleurs)</span></td><td class="num"><b>${U.qty(strapRows.reduce((s, l) => s + U.num(l.qty), 0))} m</b></td><td class="num sensitive">${U.eur(strapRows.reduce((s, l) => s + this.bomLineCost(l) * U.num(l.qty), 0))}</td></tr>` : '';
     const fabHTML = this._fabCardHTML(a);
     const notesHTML = this._notesHTML(a);
     const accOpen = this._accOpen[a.id] || false;
@@ -421,7 +423,7 @@ const Accessoires = {
           <div>
             <h2 style="font-size:.9rem;">Nomenclature</h2>
             <div class="table-wrap"><table><thead><tr><th class="col-name">Matière</th><th class="num">Qté</th><th class="num">Coût</th></tr></thead>
-              <tbody>${bomRows || '<tr><td colspan="3" class="muted">Aucune matière.</td></tr>'}
+              <tbody>${bomRows || '<tr><td colspan="3" class="muted">Aucune matière.</td></tr>'}${strapTotalRow}
               <tr><td>Main d'œuvre (<input type="number" step="1" value="${U.num(a.laborMinutes)}" class="acc-inline-input" onchange="Accessoires.setAccInline('${a.id}','laborMinutes',this.value)"> min à <span class="sensitive">${U.eur(Store.state.settings.laborRate)}/h</span>)</td><td></td><td class="num sensitive">${U.eur(c.laborCost)}</td></tr>
               ${U.num(a.extraCost) ? `<tr><td>Autres coûts</td><td></td><td class="num sensitive">${U.eur(a.extraCost)}</td></tr>` : ''}
               ${U.num(c.laserCost) ? `<tr><td>🔦 Gravure laser <span class="muted">(${U.qty(a.laserMin)} min × ${U.eur(Pricing.laserCostPerHour() / 60)}/min)</span></td><td></td><td class="num sensitive">${U.eur(c.laserCost)}</td></tr>` : ''}
@@ -1082,6 +1084,10 @@ const Accessoires = {
         <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Accessoires.delBom(${i})">🗑️</button></div>
       </div>${hint ? `<div class="muted" style="font-size:.8rem;margin-top:3px;">${hint}</div>` : ''}</div>`;
     }).join('') || '<p class="muted">ex: 2,4 m de sangle 20mm + 1 mousqueton + 4 rivets…</p>';
+    if (sIdx.length >= 2) {
+      const tot = sIdx.reduce((s, i) => s + U.num(bom[i].qty), 0);
+      box.innerHTML += `<div style="padding:6px 8px;border-radius:6px;background:var(--th-bg);font-weight:700;">📏 Total sangle : ${U.qty(tot)} m <span class="muted" style="font-weight:400;">(${sIdx.length} sangles)</span></div>`;
+    }
   },
 
   addBom() { this._a.bom.push({ familyKey: '', qty: 1 }); this.drawBom(); },
