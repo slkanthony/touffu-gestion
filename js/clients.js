@@ -1,6 +1,6 @@
 /* ═══════════ Clients & chiens (2026-09-30) ═══════════
    Store.state.clients = [{id, name, phone, email, note, dogs:[{id, name, breed, birth, gabarit, chew, meats:{<viande>:'like'|'avoid'},
-   allergies, health, food, hair, odor, fat, liked, note}]}]
+   allergies, health, food, hair, odor, fat, liked, note, tried:[{id, name, event, verdict:'like'|'avoid'|''}]}]}]
    Le lien avec les ventes se fait par le NOM (sale.customerName, casse/espaces ignorés) : renommer un client met à jour ses ventes.
    Affiché dans Statistiques → 👤 Clients (admin seulement : données personnelles). */
 const Clients = {
@@ -202,6 +202,73 @@ const Clients = {
     Store.save('clients'); Stats.render();
   },
 
+  /* ---------- Produits déjà mastiqués (par chien) : d.tried = [{id, name, event, verdict:'' | 'like' | 'avoid'}] ----------
+     Ne touche NI au stock, NI au chiffre d'affaires : simple mémoire de ce que le chien a déjà eu (et aimé ou non). */
+  _addEv: {},
+  _prodNames() {
+    const set = new Set();
+    (Store.state.catalogM || []).forEach(p => { if (p.name) set.add(p.name); });
+    (Store.state.stockM || []).forEach(p => { if (p.name) set.add(p.name); });
+    return [...set].sort(U.sortFr);
+  },
+  /* Produits (mastication) vendus lors d'un événement, tous clients confondus : proposés d'un clic. */
+  _eventProds(ev) {
+    const set = new Map();
+    (Store.state.sales || []).filter(x => !x.cancelled && x.eventName === ev).forEach(x => (x.items || []).forEach(i => {
+      if (i.kind === 'C' || i.kind === 'A' || !i.name) return;
+      if (!set.has(this.key(i.name))) set.set(this.key(i.name), i.name);
+    }));
+    return [...set.values()].sort(U.sortFr);
+  },
+  _dogOf(cid, did) { const c = this.list().find(x => x.id === cid); return c && c.dogs.find(x => x.id === did); },
+  setAddEv(did, v) { this._addEv[did] = v; Stats.render(); },
+  _pushTried(d, name, ev) {
+    name = String(name || '').trim(); if (!name) return false;
+    d.tried = d.tried || [];
+    const k = this.key(name), ex = d.tried.find(t => this.key(t.name) === k && (t.event || '') === (ev || ''));
+    if (ex) { U.toast('Déjà dans la liste.', true); return false; }
+    d.tried.push({ id: U.uid(), name, event: ev || '', verdict: '' });
+    return true;
+  },
+  addTried(cid, did) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did); if (!d) return;
+    const el = document.getElementById('cl_t_' + did); const v = (el && el.value || '').trim();
+    if (!v) { U.toast('Choisis ou tape un produit.', true); return; }
+    if (this._pushTried(d, v, this._addEv[did] || '')) { Store.save('clients'); Stats.render(); }
+  },
+  addTriedFromEvent(cid, did, idx) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did), name = this._eventProds(this._addEv[did] || '')[idx]; if (!d || !name) return;
+    if (this._pushTried(d, name, this._addEv[did] || '')) { Store.save('clients'); Stats.render(); }
+  },
+  /* Clic = neutre → aimé (vert) → pas aimé (rouge) → neutre */
+  cycleTried(cid, did, tid) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did), t = d && (d.tried || []).find(x => x.id === tid); if (!t) return;
+    t.verdict = !t.verdict ? 'like' : t.verdict === 'like' ? 'avoid' : '';
+    Store.save('clients'); Stats.render();
+  },
+  delTried(cid, did, tid) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did); if (!d) return;
+    d.tried = (d.tried || []).filter(x => x.id !== tid); Store.save('clients'); Stats.render();
+  },
+  _triedUI(c, d) {
+    const ro = this.ro(), tried = d.tried || [], ev = this._addEv[d.id] || '';
+    const chips = tried.map(t => `<span class="cl-chip ${t.verdict || ''}" title="${ro ? '' : 'Clique : aimé (vert) → pas aimé (rouge) → neutre'}" ${ro ? '' : `onclick="Clients.cycleTried('${c.id}','${d.id}','${t.id}')"`}>${t.verdict === 'like' ? '✓ ' : t.verdict === 'avoid' ? '✗ ' : ''}${U.esc(t.name)}${t.event ? ` <span class="muted" style="font-size:.75rem;">🎪 ${U.esc(t.event)}</span>` : ''}${ro ? '' : ` <b title="Retirer" style="margin-left:4px;opacity:.7;" onclick="event.stopPropagation();Clients.delTried('${c.id}','${d.id}','${t.id}')">✕</b>`}</span>`).join('');
+    const all = ev ? this._eventProds(ev) : [], sold = ev ? all.filter(n => !tried.some(t => this.key(t.name) === this.key(n) && (t.event || '') === ev)) : [];
+    const events = Store.eventList();
+    return `<div class="fg mt"><label>🍖 Produits déjà mastiqués <span class="muted" style="font-weight:400;">(clique une pastille : vert = a aimé · rouge = n'a pas aimé)</span></label>
+      <div class="cl-chips">${chips || '<span class="muted">Aucun produit noté.</span>'}</div>
+      ${ro ? '' : `<div class="frow" style="align-items:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <div class="fg" style="min-width:200px;flex:2;"><label>Produit</label><input id="cl_t_${d.id}" list="dl_cl_prods" placeholder="Chercher un produit…" onkeydown="if(event.key==='Enter')Clients.addTried('${c.id}','${d.id}')"></div>
+        <div class="fg" style="min-width:180px;flex:1;"><label>Événement (facultatif)</label><select onchange="Clients.setAddEv('${d.id}',this.value)"><option value="">— aucun —</option>${events.map(e => `<option value="${U.esc(e)}" ${e === ev ? 'selected' : ''}>${U.esc(e)}</option>`).join('')}</select></div>
+        <button class="btn-cta btn-sm" onclick="Clients.addTried('${c.id}','${d.id}')">＋ Ajouter</button></div>
+      ${ev ? `<div class="muted" style="font-size:.82rem;margin-top:6px;">Vendus à « ${U.esc(ev)} » (clique pour ajouter) :</div><div class="cl-chips" style="margin-top:4px;">${sold.map(n => `<span class="cl-chip" onclick="Clients.addTriedFromEvent('${c.id}','${d.id}',${all.indexOf(n)})">＋ ${U.esc(n)}</span>`).join('') || '<span class="muted">Tout est déjà ajouté (ou aucune vente enregistrée pour cet événement).</span>'}</div>` : ''}`}
+    </div>`;
+  },
+
   /* ---------- rendu ---------- */
   _sel(cid, did, f, v, opts) {
     return `<select ${this.ro() ? 'disabled' : ''} onchange="Clients.setDog('${cid}','${did}','${f}',this.value)">${opts.map(o => `<option value="${o[0]}" ${String(v || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>`;
@@ -232,8 +299,9 @@ const Clients = {
       <div class="fg mt"><label>Viandes <span class="muted" style="font-weight:400;">(clique : ❤ aime · ⛔ évite / n'aime pas)</span></label><div class="cl-chips">${chips}</div></div>
       <div class="grid c2 mt">
         ${inp('allergies', '⚠️ Allergies / intolérances', 'ex : poulet, céréales')}${inp('health', 'Maladie / santé', 'ex : pancréatite')}
-        ${inp('food', 'Croquettes / alimentation', 'marque, ration…')}${inp('liked', 'Produits préférés / déjà mastiqués', 'ex : oreilles de porc, tendons')}
+        ${inp('food', 'Croquettes / alimentation', 'marque, ration…')}${d.liked ? inp('liked', 'Ancien texte « produits préférés »', '') : ''}
       </div>
+      ${this._triedUI(c, d)}
       ${inp('note', 'Note', 'autre chose à retenir')}
       </div></details>`;
   },
@@ -281,6 +349,7 @@ const Clients = {
       <div class="view-title"><h1>Statistiques</h1><span class="sub">clients &amp; chiens</span></div>
       ${Stats.tabBar()}
       <div class="card cl-card">
+        <datalist id="dl_cl_prods">${this._prodNames().map(n => `<option value="${U.esc(n)}">`).join('')}</datalist>
         <h2>👤 Mes clients</h2>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
           <div class="fg" style="max-width:280px;"><label>Rechercher (client ou chien)</label><input id="cl_q" value="${U.esc(this._q)}" placeholder="nom…" oninput="Clients.setQ(this.value)"></div>
