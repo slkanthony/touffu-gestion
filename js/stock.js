@@ -1337,6 +1337,19 @@ const Stock = {
         sv.priceTTC=calc.priceTTC; sv.costUnit=calc.costBase;
       });
     });
+    // Variante dont Antho a CHOISI cette fiche (v.catalogId) mais qui n'a pas de ligne de la fiche (v.catalogVariantId vide) : ex. « 25CM » (taille) face à une fiche
+    // « 1 pièce + Lot de 2 ». Rapprochement par SKU, par valeur/libellé, sinon par la SEULE ligne restante (hors lignes « Lot de N » prises par ses déclinaisons et
+    // lignes déjà prises par une variante sœur) ; s'il y a plusieurs candidates on ne devine pas.
+    Store.state.stockM.forEach(sp => sp.variants.forEach(sv => {
+      if (Stock.parentOf(sp, sv) || sv.catalogId !== catalogId || sv.catalogVariantId) return;
+      let cv = (sv.sku && enabledVars.find(x => x.sku && norm(x.sku) === norm(sv.sku))) || enabledVars.find(x => sameVar(x, sv));
+      if (!cv) {
+        const kids = sp.variants.filter(k => Stock.parentOf(sp, k) && Stock.parentOf(sp, k).id === sv.id).map(k => Stock.packQtyOf(k));
+        const free = enabledVars.filter(x => !(x.mode === 'piece' && kids.includes(U.num(x.value))) && !sp.variants.some(o => o !== sv && !Stock.parentOf(sp, o) && o.catalogId === catalogId && o.catalogVariantId === x.id));
+        if (free.length === 1) cv = free[0];
+      }
+      if (cv) sv.catalogVariantId = cv.id;
+    }));
     // Variantes liées à cette fiche AU NIVEAU VARIANTE (produit stock non lié à la fiche) : prix/coût mis à jour
     // aussi (avant, seul le lien produit suivait → ex. « 25CM LOT 2 » restait à 7,50 € quand la fiche passait à 7,69 €).
     Store.state.stockM.forEach(sp => sp.variants.forEach(sv => {
