@@ -1560,9 +1560,13 @@ const Params = {
   /* Cartes glissées dans les commandes (Antho 2026-10-11) : on relie chaque carte à un CONSOMMABLE (Stock → Consommables : prix d'achat ÷ quantité = coût d'une carte, il suit les achats).
      thanksConsoId = carte de remerciement (case cochée par défaut dans le ticket de vente) ; cardConsoId = carte de visite (nombre distribué saisi au retour d'événement). */
   cardsHTML() {
-    const S = Store.state.settings, cons = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const S = Store.state.settings, all = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
+    // seulement la catégorie « Cartes » (Stock → Consommables) ; s'il n'y en a aucune, tous les consommables restent proposés
+    const isCard = x => /^cartes?$/.test(U.normSearch(x.category || '').trim());
+    const cards = all.filter(isCard);
     const one = (key, label, hint) => {
-      const id = S[key], c = id ? cons.find(x => x.id === id) : null;
+      const id = S[key], c = id ? all.find(x => x.id === id) : null;
+      const cons = cards.length ? all.filter(x => isCard(x) || x.id === id) : all;
       return `<div class="fg" style="margin:0;flex:1 1 250px;min-width:230px;"><label>${label}</label>
         <select onchange="Params.setCardConso('${key}',this.value)"><option value="">— aucun —</option>${cons.map(x => `<option value="${x.id}" ${x.id === id ? 'selected' : ''}>${U.esc(x.name)}</option>`).join('')}</select>
         <div class="muted" style="font-size:.8rem;margin-top:3px;">${c ? `Coût d'une carte : <b>${U.eur(U.num(c.costUnit) * Pricing.vatK())}</b> <span class="badge ok" style="font-size:.7rem;">🔗 auto</span>${Pricing.vatK() > 1 ? ' <span class="muted">(TVA d\'achat comprise)</span>' : ''} · stock : ${U.qty(c.qty)}` : hint}</div></div>`;
