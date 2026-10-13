@@ -559,6 +559,7 @@ const Accessoires = {
     this._ensureStrap(); this.syncStrap();
     const el = document.getElementById('a_widths_wrap');
     if (el) el.innerHTML = this._widthsSelectHTML();
+    this._syncIdentity();
   },
   setAllWidths(all) {
     this._a.strapWidths = all ? this._availableWidths().slice() : [];
@@ -566,11 +567,13 @@ const Accessoires = {
     this._ensureStrap(); this.syncStrap();
     const el = document.getElementById('a_widths_wrap');
     if (el) el.innerHTML = this._widthsSelectHTML();
+    this._syncIdentity();
   },
   setMainWidth(w) {
     this._a.mainWidth = w;
     const el = document.getElementById('a_widths_wrap');
     if (el) el.innerHTML = this._widthsSelectHTML();
+    this._syncIdentity();
   },
   onWidthsOpen(open) { this._widthsOpen = open; },
   /* SKU TYPE-LARGEUR-NOM proposé d'après le formulaire (type, largeur principale, nom) ; en cas de collision avec un autre SKU : suffixe -2, -3… */
@@ -716,13 +719,7 @@ const Accessoires = {
       this._a.fabSegments = defs;
     }
     this._a.category = cat;
-    const nameEl = document.getElementById('a_name');
-    if (nameEl) {
-      const cur = nameEl.value.trim();
-      const oldCat = this._a._prevCat || '';
-      if (!cur || cur === oldCat) nameEl.value = cat;
-      this._a._prevCat = cat;
-    }
+    this._syncIdentity();
     const el = document.getElementById('a_segs_wrap');
     if (el) el.innerHTML = this._fabSegsInnerHTML(this._a.fabSegments || []);
     U.lenSet('a_internLen', U.num(this._a.internalLength));
@@ -730,23 +727,31 @@ const Accessoires = {
     this.syncStrap();
   },
 
-  onProdLenChange() {
-    const nameEl = document.getElementById('a_name');
-    if (!nameEl || !document.getElementById('a_prodLen_m')) return;
-    const len = U.lenCm('a_prodLen') / 100;
-    const cat = U.val('a_cat');
-    const skuEl = document.getElementById('a_sku'), prev = skuEl ? skuEl.value.trim().toUpperCase() : '', a = this._a, ws = a.strapWidths || [];
-    const prevAuto = Pricing.autoSkuAcc({ category: cat, name: nameEl.value, mainWidth: a.mainWidth || ws[0] || '', productLength: a.productLength, uv: U.chk('a_uv'), laser: U.chk('a_laser') }).toUpperCase();
+  /* Nom + SKU suivent le type, la longueur du produit fini et la largeur principale tant qu'ils sont « automatiques » (Antho 2026-10-13) :
+     le nom garde ses mots (« Bi-color », « (copie) »…) mais change de type / de longueur ; le SKU est refait seulement s'il est au format automatique TYPE-LARGEUR-… (jamais un SKU tapé à la main). */
+  _syncIdentity() {
+    const nameEl = document.getElementById('a_name'); if (!nameEl || !document.getElementById('a_prodLen_m')) return;
+    const a = this._a, ws = a.strapWidths || [], cat = U.val('a_cat'), len = Math.round(U.lenCm('a_prodLen')) / 100;
+    const snap = this._idSnap || { category: cat, mainWidth: a.mainWidth || ws[0] || '' };
+    const skuEl = document.getElementById('a_sku'), prev = skuEl ? skuEl.value.trim().toUpperCase() : '';
+    const autoPrefix = [Pricing.slugify(snap.category), Pricing.slugify(snap.mainWidth)].filter(Boolean).join('-');
     let name = nameEl.value.trim().replace(this._PERSO_RX, '');
-    const lenRx = /\s*[—–-]\s*\d+([.,]\d+)?\s*m\s*$/i;
-    name = name.replace(lenRx, '');
     if (!name) name = cat;
-    if (len > 0) name += ' — ' + Math.round(len * 100) / 100 + 'm';
+    else if (snap.category && snap.category !== cat && name.toLowerCase().startsWith(snap.category.toLowerCase()) && !/^[A-Za-zÀ-ÿ0-9]/.test(name.slice(snap.category.length))) name = cat + name.slice(snap.category.length);
+    if (len > 0) {
+      const tok = /(^|[\s—–-])\d+(?:[.,]\d+)?\s*m(?![A-Za-z0-9])/i, txt = Math.round(len * 100) / 100 + 'm';
+      if (tok.test(name)) name = name.replace(tok, (m0, p) => p + txt);
+      else { const mm = name.match(/^(.*?)\s*(\([^)]*\))?\s*$/); name = mm[1] + ' — ' + txt + (mm[2] ? ' ' + mm[2] : ''); }
+    }
     nameEl.value = this._persoName(name, U.chk('a_uv'), U.chk('a_laser'));
+    this._idSnap = { category: cat, mainWidth: a.mainWidth || ws[0] || '' };
     a.productLength = len;
-    // le SKU suit la longueur seulement s'il était encore le SKU automatique (jamais un SKU saisi à la main)
-    if (skuEl && prev && (prev === prevAuto || (prev.startsWith(prevAuto) && /^(-(UV|LASER|\d+))+$/.test(prev.slice(prevAuto.length))))) { const { sku } = this._formSku(); if (sku && sku.toUpperCase() !== prev) { skuEl.value = sku; U.toast(`SKU mis à jour : ${sku}`); } }
+    if (skuEl && prev && autoPrefix && (prev === autoPrefix || prev.startsWith(autoPrefix + '-'))) {
+      const { sku } = this._formSku();
+      if (sku && sku.toUpperCase() !== prev) { skuEl.value = sku; U.toast(`SKU mis à jour : ${sku}`); }
+    }
   },
+  onProdLenChange() { this._syncIdentity(); },
 
   editAcc(id) {
     const S = Store.state.settings;
@@ -764,7 +769,7 @@ const Accessoires = {
         a.fabSegments = defs;
       }
     }
-    this._a._prevCat = a.category;
+    this._idSnap = { category: a.category || '', mainWidth: a.mainWidth || (a.strapWidths || [])[0] || '' };
     U.modal({
       title: id ? U.esc(a.name) : 'Nouvel accessoire', okLabel: 'Enregistrer',
       body: `
@@ -841,6 +846,7 @@ const Accessoires = {
     const copy = JSON.parse(JSON.stringify(src));
     copy.id = U.uid();
     copy.name = src.name + ' (copie)';
+    { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }   // jamais le même SKU que l'original
     copy.stockGeneral = 0;
     copy.stockEvent = 0;
     Store.state.catalogA.push(copy);
@@ -1169,6 +1175,7 @@ const Accessoires = {
         copy.name = lenRx.test(src.name)
           ? src.name.replace(lenRx, desired + 'm')
           : src.name + ' — ' + desired + 'm';
+        { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }   // SKU propre à cette longueur
         Store.state.catalogA.push(copy);
         const entry = Store.log('accessoires', 'Sur mesure créé — ' + copy.name,
           { type: 'deleteCreated', data: { domain: 'catalogA', id: copy.id } });
