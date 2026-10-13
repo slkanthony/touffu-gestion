@@ -44,7 +44,7 @@ const U = {
   qty: (v) => (U.num(v)).toLocaleString('fr-FR', { maximumFractionDigits: 2 }),
   pct: (v) => (U.num(v)).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %',
   esc: (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
-  today: () => new Date().toISOString().slice(0, 10),
+  today: () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },   // date LOCALE (toISOString donnait la veille entre minuit et 2 h)
   frDate: (iso) => { if (!iso) return '—'; const [y, m, d] = String(iso).slice(0, 10).split('-'); return d && y ? `${d}/${m}/${y}` : iso; },
   frDateTime: (ts) => new Date(ts).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }),
   daysTo: (iso) => { if (!iso) return null; return Math.ceil((new Date(iso) - new Date(U.today())) / 86400000); },

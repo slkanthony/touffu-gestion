@@ -1546,7 +1546,7 @@ const Paniers = {
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},1)">+</button>
               </td>
               <td class="num"><b>${U.eur(b.price * b.qty)}</b></td>
-              <td>${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? ` (${daysLeft}j)` : ''}</span>` : '<span class="muted">—</span>'}</td>
+              <td>${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
               <td class="num">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
               <td style="white-space:nowrap;"><button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button><button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
             </tr>`;
@@ -1628,7 +1628,7 @@ const Paniers = {
       ${totCost > 0 && valeur > 0 ? ` · <span class="sensitive" title="Panier offert : la valeur affichée est celle au prix public ; le coût réel est le coût de revient des produits (fiche Prix mastication, frais de port d'achat estimés compris)">🎁 <b>Coût réel ${U.eur(totCost)}</b> pour ${U.eur(valeur)} de valeur affichée (${Math.round(totCost / valeur * 100)} %)</span>` : ''}
       ${this.nbChiens > 1 ? ` · × ${this.nbChiens} chiens` : ''}
       ${hasLocked ? ` · 🔒 ${this.basket.filter(b => b.locked).length} verrouillé(s)` : ''}
-      ${this.basket.some(b => b.daysLeft <= 30) ? ` · <span class="badge warn">contient des DLUO proches</span>` : ''}
+      ${this.basket.some(b => b.dluo && U.daysTo(b.dluo) <= 30) ? ` · <span class="badge warn">contient des DLUO proches</span>` : ''}
     </div>
     <details style="margin-top:12px;" ontoggle="this.open&&this.scrollIntoView({behavior:'smooth',block:'nearest'})">
       <summary style="cursor:pointer;font-weight:600;">📊 Détail financier du panier</summary>

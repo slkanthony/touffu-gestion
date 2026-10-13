@@ -34,6 +34,22 @@ const App = {
     if (status === 'login') { this.showLogin(); return; }
     if (status === 'recovery') { this.showRecovery(); return; }
     this.showApp();
+    this.watchNewDay();
+  },
+
+  /* Écran laissé ouvert plusieurs jours : à minuit (ou au retour sur l'onglet) tout est redessiné pour que les « jours restants » des DLUO soient justes. */
+  watchNewDay() {
+    this._dayStamp = U.today();
+    const check = () => {
+      if (U.today() === this._dayStamp) return;
+      const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+      if (Store._modalOpen() || typing || (Store._dirty && Store._dirty.size)) return;   // on réessaie à la prochaine minute : jamais en pleine saisie
+      this._dayStamp = U.today();
+      try { this.rerender(); } catch (e) { console.error(e); }
+    };
+    setInterval(check, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    window.addEventListener('focus', check);
   },
 
   wirePasswordToggle(inputId, toggleId) {
