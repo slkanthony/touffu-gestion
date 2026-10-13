@@ -114,7 +114,38 @@ const Ventes = {
     return { weights, dims, sizes, others };
   },
 
+  /* ── Ticket en cours mémorisé sur cet appareil (Antho 2026-10-13) : un F5 / une coupure ne fait plus perdre le panier envoyé en vente
+     ni les lots déjà choisis. Effacé dès que le ticket est vide (validé ou vidé). Jamais envoyé à Supabase. ── */
+  _DRAFT_KEY: 'touffu_ticketDraft',
+  _DRAFT_FIELDS: ['source', 'kind', 'cart', '_pro', '_basketId', '_basketOthers', '_fromComposer', 'customerName', 'balOn', 'thanksOn', 'discOn', 'discPct', 'discCode', '_discAuto', '_discFor', '_devisNo'],
+  _saveDraft() {
+    try {
+      if (!this.cart.length) { localStorage.removeItem(this._DRAFT_KEY); return; }
+      const d = { ts: Date.now() }; this._DRAFT_FIELDS.forEach(k => { d[k] = this[k]; });
+      localStorage.setItem(this._DRAFT_KEY, JSON.stringify(d));
+    } catch (e) { /* stockage indisponible : sans conséquence */ }
+  },
+  _restoreDraft() {
+    try {
+      if (this.cart.length) return;
+      const raw = localStorage.getItem(this._DRAFT_KEY); if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d || !Array.isArray(d.cart) || !d.cart.length || Date.now() - U.num(d.ts) > 7 * 86400000) { localStorage.removeItem(this._DRAFT_KEY); return; }
+      // lignes dont le produit n'existe plus : ignorées ; lot disparu : à rechoisir
+      const cart = d.cart.filter(l => l.kind === 'A' ? (Store.state.catalogA || []).some(a => a.id === l.pId) : (Store.state.stockM || []).some(p => p.id === l.pId && (p.variants || []).some(v => v.id === l.vId))).map(l => {
+        if (l.kind === 'A' || !l.lotId) return l;
+        const v = Store.state.stockM.find(p => p.id === l.pId).variants.find(x => x.id === l.vId);
+        return (v.lots || []).some(x => x.id === l.lotId) ? l : { ...l, lotId: '', lotLabel: '', needLot: true };
+      });
+      if (!cart.length) { localStorage.removeItem(this._DRAFT_KEY); return; }
+      this._DRAFT_FIELDS.forEach(k => { if (d[k] !== undefined) this[k] = d[k]; });
+      this.cart = cart; this._draftRestored = true;
+    } catch (e) { console.error(e); }
+  },
+
   render() {
+    this._saveDraft();
+    if (this._draftRestored) { this._draftRestored = false; U.toast('Ticket de vente en cours retrouvé : lots déjà choisis conservés.'); }
     if (this.editTicketId) { this.renderTicketEditor(); return; }
     if (this.todoOpen) { this.renderTodo(); return; }
     const units = this.units();
@@ -407,7 +438,7 @@ const Ventes = {
      pas de séparation gén./évén. (les consommables n'ont qu'un seul stock, contrairement
      à Mastication/Accessoires). */
   consoSection() {
-    const avail = Store.state.consumables.filter(c => U.num(c.qty) > 0).sort((a, b) => Ventes._consoCmp(a, b));
+    const avail = this._saleConsos(Store.state.consumables.filter(c => U.num(c.qty) > 0)).sort((a, b) => Ventes._consoCmp(a, b));
     return `<div class="card">
       <h2>📦 Consommable utilisé</h2>
       <div class="grid c2">
@@ -726,6 +757,12 @@ const Ventes = {
     if (!x && !y) return 0; if (!x) return 1; if (!y) return -1;
     for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] ?? -1) - (y[i] ?? -1); if (d) return d; }
     return 0;
+  },
+  /* Consommables proposés pendant une vente : seulement les catégories Carton(s) et Sac(s) (pas les blisters, sachets, cartes…) ;
+     s'il n'y en a aucun (catégories autrement nommées), tout reste proposé. */
+  _saleConsos(list) {
+    const ok = c => /^(cartons?|sacs?)(\s|$)/.test(U.normSearch(c.category || '').trim());
+    return list.some(ok) ? list.filter(ok) : list;
   },
   _consoLabel(c) {
     const d = Stock.consoDims(c);
@@ -1730,7 +1767,7 @@ const Ventes = {
   },
   retourConsoSection() {
     const d = this.retourData;
-    const avail = Store.state.consumables.slice().sort((a, b) => Ventes._consoCmp(a, b));
+    const avail = this._saleConsos(Store.state.consumables.slice()).sort((a, b) => Ventes._consoCmp(a, b));
     const cons = d.consoLines || [];
     const totalCost = cons.reduce((a, l) => a + l.costUnit * l.qty, 0);
     return `<div class="card" style="border-left:3px solid var(--caramel);margin-top:12px;">
@@ -2083,7 +2120,7 @@ const Ventes = {
     const isEv = this._isEventSale(s);
     const consoItems = (s.items || []).map((it, i) => ({ it, i })).filter(x => x.it.kind === 'C');
     const soldItems = (s.items || []).map((it, i) => ({ it, i })).filter(x => x.it.kind !== 'C');
-    const avail = Store.state.consumables.slice().sort((a, b) => Ventes._consoCmp(a, b));
+    const avail = this._saleConsos(Store.state.consumables.slice()).sort((a, b) => Ventes._consoCmp(a, b));
     const consoCost = consoItems.reduce((a, x) => a + U.num(x.it.cost), 0);
     App.mount(`
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;">

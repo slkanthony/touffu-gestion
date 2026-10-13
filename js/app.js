@@ -109,6 +109,7 @@ const App = {
   },
 
   showApp() {
+    try { Ventes._restoreDraft(); } catch (e) { console.error(e); }   // ticket de vente en cours retrouvé après un F5
     document.getElementById('appScreen').style.display = 'flex';
     document.getElementById('scrollFab').style.display = '';
     /* Rôles (app_metadata.role dans Supabase) : absent = admin ; 'viewer' = lecture seule,
