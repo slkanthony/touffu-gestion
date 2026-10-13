@@ -407,6 +407,9 @@ const Pricing = {
     const tp = type.split('-').filter(Boolean);
     while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
     parts = parts.filter(x => x !== w);
+    // longueur du produit fini (champ « Longueur produit fini ») : ajoutée seulement si le nom n'en cite pas déjà une
+    const plen = U.num(a.productLength);
+    if (plen > 0 && !/(^|[^A-Za-z0-9.])\d+([.,]\d+)?\s*m(?![A-Za-z])/i.test(String(a.name || '').replace(/\([^)]*\)/g, ' '))) parts.push(String(Math.round(plen * 100) / 100).replace(',', '.') + 'M');
     return [type, w, parts.join('-'), (a.uv || U.num(a.uvMl) > 0) ? 'UV' : '', a.laser ? 'LASER' : ''].filter(Boolean).join('-');   // impression UV (personnalisation) = SKU à part, suffixe -UV
   },
 

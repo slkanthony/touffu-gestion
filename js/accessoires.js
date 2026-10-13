@@ -324,7 +324,7 @@ const Accessoires = {
     this._strapTargets(a, idxs.length).forEach((q, k) => {
       const l = a.bom[idxs[k]];
       if (!l || l.qtyManual) return;
-      if ((a.bicolor && idxs.length >= 2) || q > 0) l.qty = q;
+      if ((a.bicolor && idxs.length >= 2) || q > 0) l.qty = Math.round(q * 100) / 100;   // 2 décimales (au cm près) comme tout l'affichage
     });
   },
   /* À l'ouverture d'une fiche existante : une quantité de sangle différente du calcul est considérée « saisie à la main » (on ne la change pas en douce). */
@@ -332,7 +332,7 @@ const Accessoires = {
     const idxs = this._strapIdxs(a);
     this._strapTargets(a, idxs.length).forEach((q, k) => {
       const l = a.bom[idxs[k]];
-      if (l && q > 0 && Math.abs(U.num(l.qty) - q) > 0.0005) l.qtyManual = true;
+      if (l && q > 0 && Math.abs(U.num(l.qty) - q) > 0.0051) l.qtyManual = true;
     });
   },
 
@@ -581,12 +581,18 @@ const Accessoires = {
     Store.state.catalogM.forEach(p => (p.variants || []).forEach(v => add(v.sku)));
     return s;
   },
-  genSku() {
+  /* SKU proposé d'après le formulaire (type, largeur principale, nom, longueur du produit fini, UV / laser), unique parmi les autres fiches. */
+  _formSku() {
     const a = this._a, ws = a.strapWidths || [];
-    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', uv: U.chk('a_uv'), laser: U.chk('a_laser') });
-    if (!base) { U.toast('Choisis un type et un nom pour générer le SKU.', true); return; }
+    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', productLength: U.lenCm('a_prodLen') / 100, uv: U.chk('a_uv'), laser: U.chk('a_laser') });
     const taken = this._takenSkus(a.id); let sku = base, n = 1;
-    while (taken.has(sku)) { n++; sku = base + '-' + n; }
+    while (base && taken.has(sku)) { n++; sku = base + '-' + n; }
+    return { base, sku, n };
+  },
+  genSku() {
+    this.onProdLenChange();   // le nom reçoit d'abord la longueur du produit fini
+    const { base, sku, n } = this._formSku();
+    if (!base) { U.toast('Choisis un type et un nom pour générer le SKU.', true); return; }
     document.getElementById('a_sku').value = sku;
     U.toast(`SKU proposé : ${sku}${n > 1 ? ' (le SKU de base existait déjà)' : ''}`);
   },
@@ -729,12 +735,17 @@ const Accessoires = {
     if (!nameEl || !document.getElementById('a_prodLen_m')) return;
     const len = U.lenCm('a_prodLen') / 100;
     const cat = U.val('a_cat');
+    const skuEl = document.getElementById('a_sku'), prev = skuEl ? skuEl.value.trim().toUpperCase() : '', a = this._a, ws = a.strapWidths || [];
+    const prevAuto = Pricing.autoSkuAcc({ category: cat, name: nameEl.value, mainWidth: a.mainWidth || ws[0] || '', productLength: a.productLength, uv: U.chk('a_uv'), laser: U.chk('a_laser') }).toUpperCase();
     let name = nameEl.value.trim().replace(this._PERSO_RX, '');
     const lenRx = /\s*[—–-]\s*\d+([.,]\d+)?\s*m\s*$/i;
     name = name.replace(lenRx, '');
     if (!name) name = cat;
-    if (len > 0) name += ' — ' + len + 'm';
+    if (len > 0) name += ' — ' + Math.round(len * 100) / 100 + 'm';
     nameEl.value = this._persoName(name, U.chk('a_uv'), U.chk('a_laser'));
+    a.productLength = len;
+    // le SKU suit la longueur seulement s'il était encore le SKU automatique (jamais un SKU saisi à la main)
+    if (skuEl && prev && (prev === prevAuto || (prev.startsWith(prevAuto) && /^(-(UV|LASER|\d+))+$/.test(prev.slice(prevAuto.length))))) { const { sku } = this._formSku(); if (sku && sku.toUpperCase() !== prev) { skuEl.value = sku; U.toast(`SKU mis à jour : ${sku}`); } }
   },
 
   editAcc(id) {
@@ -983,7 +994,7 @@ const Accessoires = {
 
   setBomQty(i, v) {
     const l = this._a.bom[i]; if (!l) return;
-    l.qty = U.num(v);
+    l.qty = Math.round(U.num(v) * 100) / 100;
     if (this.bomLineUnit(l) === 'm') l.qtyManual = true;
     this.drawBom();
   },
@@ -1080,7 +1091,7 @@ const Accessoires = {
             oninput="Accessoires.filterBomPick(${i},this.value)">
           <div id="a_bom_list_${i}" class="ac-list" style="max-height:200px;overflow:auto;display:none;"></div>
         </div>
-        <div class="fg"><label>Quantité${unit ? ' (' + unit + ')' : ''}</label><input type="number" step="0.001" value="${l.qty}" onchange="Accessoires.setBomQty(${i},this.value)"></div>
+        <div class="fg"><label>Quantité${unit ? ' (' + unit + ')' : ''}</label><input type="number" step="0.01" value="${Math.round(U.num(l.qty) * 100) / 100}" onchange="Accessoires.setBomQty(${i},this.value)"></div>
         <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Accessoires.delBom(${i})">🗑️</button></div>
       </div>${hint ? `<div class="muted" style="font-size:.8rem;margin-top:3px;">${hint}</div>` : ''}</div>`;
     }).join('') || '<p class="muted">ex: 2,4 m de sangle 20mm + 1 mousqueton + 4 rivets…</p>';
