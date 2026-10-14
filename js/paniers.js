@@ -42,6 +42,7 @@ const Paniers = {
   addQ: '',
   addOpen: false,
   addVariants: [],
+  addKind: 'all',   // ajout manuel : 'all' | 'M' (mastication) | 'A' (accessoires) — les devis peuvent aussi contenir des accessoires (2026-10-14)
   addVariantsOpen: false,
   proposals: null,
   client: '',   // cliente choisie avant de générer : sa fiche (viandes évitées, allergies, poils, odeurs, gras) filtre les produits
@@ -959,7 +960,7 @@ const Paniers = {
   async _sendRecToSale(rec) {
     const units = Ventes.units(), merged = new Map(), warns = [], general = [];
     (rec.items || []).forEach(b => {
-      const key = 'M|' + b.pId + '|' + b.vId;
+      const key = b.kind === 'A' ? 'A|' + b.pId : 'M|' + b.pId + '|' + b.vId;
       if (merged.has(key)) merged.get(key).qty += U.num(b.qty);
       else merged.set(key, { key, name: b.name, variant: b.variant, price: U.num(b.price), qty: U.num(b.qty) });
     });
@@ -967,6 +968,7 @@ const Paniers = {
     merged.forEach(m => {
       const u = units.find(x => x.key === m.key);
       if (!u) { warns.push(`<b>${U.esc(m.name)}</b> ${U.esc(m.variant || '')} : produit introuvable dans le stock (ignoré).`); return; }
+      if (u.kind === 'A' && U.num(u.availE) + U.num(u.availG) < m.qty) warns.push(`🐕 <b>${U.esc(m.name)}</b> : stock fini insuffisant (${U.qty(m.qty)} demandé, ${U.qty(U.num(u.availE) + U.num(u.availG))} en stock) — à fabriquer.`);
       // Règle : toujours le stock ÉVÉNEMENT d'abord ; le manquant vient du stock général (confirmé dans la fenêtre)
       const e = Math.min(m.qty, Math.max(0, U.num(u.availE))), g = m.qty - e;
       if (e > 0) lines.push({ u, qty: e, price: m.price, src: 'event' });
@@ -1180,15 +1182,26 @@ const Paniers = {
     });
     return out;
   },
+  /* Accessoires proposables dans un panier / devis (toutes les fiches, même sans stock fini : fabriqués à la demande). Prix = fiche accessoire (accCalc). */
+  accCandidates() {
+    return Store.state.catalogA.map(a => {
+      const c = Pricing.accCalc(a), w = a.mainWidth || (a.strapWidths || [])[0] || '';
+      return { kind: 'A', pId: a.id, vId: '', lotId: '', name: a.name, meat: '', category: a.category || '', variant: '', width: w, sku: a.sku || '', price: c.priceTTC, coeff: c.effCoeff || 0,
+        avail: U.num(a.stockGeneral) + U.num(a.stockEvent), dluo: '', daysLeft: 9999, tags: {} };
+    });
+  },
+  setAddKind(v) { this.addKind = v; this.addOpen = false; this.render(); },
   manualCandidates() {
-    const q = U.normSearch(this.addQ);
+    const q = U.normSearch(this.addQ), kind = this.addKind || 'all';
+    const accs = kind === 'M' ? [] : this.accCandidates().filter(c => (q ? U.has(c.name + ' ' + c.category + ' ' + c.width + ' ' + c.sku, q) : kind === 'A')).sort((a, b) => U.sortFr(a.name, b.name)).slice(0, 100);
+    if (kind === 'A') return accs;
     return this.allCandidates().filter(c => {
       if (q && !U.has(c.name + ' ' + c.variant + ' ' + c.sku, q)) return false;
       if (this.addVariants.length && !this.addVariants.includes(c.variant)) return false;
       if (!q && !this.addVariants.length) return false;
       return true;
     }).filter((c, _i, arr) => !arr.some(o => o !== c && o.pId === c.pId && o.vId === c.vId && (o.daysLeft < c.daysLeft || (o.daysLeft === c.daysLeft && arr.indexOf(o) < arr.indexOf(c)))))   // une seule ligne par variante : le lot à la DLUO la plus courte (comme en vente)
-      .sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 100);
+      .sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 100).concat(accs);
   },
   addVariantGroups() {
     return Stock.allVariantGroups();
@@ -1214,7 +1227,16 @@ const Paniers = {
     if (document.activeElement && document.activeElement.id === 'pan_add_q') return;
     this.addOpen = false; this.render();
   },
-  pickManual(pId, vId, lotId) {
+  pickManual(pId, vId, lotId, kind) {
+    if (kind === 'A') {   // accessoire : pas de lot ni de DLUO
+      const c = this.accCandidates().find(x => x.pId === pId); if (!c) { U.toast('Accessoire introuvable.', true); return; }
+      const ex = this.basket.find(b => b.kind === 'A' && b.pId === pId);
+      if (ex) ex.qty++;
+      else this.basket.push({ kind: 'A', pId: c.pId, vId: '', lotId: '', name: c.name, meat: '', category: c.category, variant: '', price: c.price, qty: 1, dluo: '', daysLeft: 9999, coeff: c.coeff, lotNumber: '', locked: true });
+      this.addQ = ''; this.addOpen = false; this.render();
+      if (c.avail <= 0) U.toast('🐕 ' + c.name + ' : pas de stock fini (à fabriquer pour la vente).');
+      return;
+    }
     const cands = this.allCandidates();
     const c = cands.find(x => x.pId === pId && x.vId === vId && x.lotId === lotId);
     if (!c) { U.toast('Produit introuvable ou plus en stock.', true); return; }
@@ -1562,8 +1584,8 @@ const Paniers = {
             return `<tr${b.locked ? ' style="background:var(--th-bg);"' : ''}>
               <td><button class="btn-icon" onclick="Paniers.toggleLock(${i})" title="${b.locked ? 'Déverrouiller (sera remplacé à la régénération)' : 'Verrouiller (sera gardé à la régénération)'}">${b.locked ? '🔒' : '🔓'}</button></td>
               <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.concat(b.dog && !dogOpts.includes(b.dog) ? [b.dog] : []).map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
-              <td><span class="tag">${U.esc(b.variant)}</span></td>
-              <td><span class="badge info">${U.esc(b.meat || '—')}</span></td>
+              <td>${b.kind === 'A' ? '<span class="muted">—</span>' : `<span class="tag">${U.esc(b.variant)}</span>`}</td>
+              <td>${b.kind === 'A' ? `<span class="badge info">🐕 ${U.esc(b.category || 'Accessoire')}</span>` : `<span class="badge info">${U.esc(b.meat || '—')}</span>`}</td>
               <td class="num"><input type="number" step="0.1" min="0" value="${(Math.round(U.num(b.price) * 100) / 100)}" style="width:84px;text-align:right;" title="Prix TTC modifiable pour ce panier (le prix du stock ne change pas)" onchange="Paniers.setItemPrice(${i},this.value)"></td>
               <td class="num" style="white-space:nowrap;">
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},-1)">−</button>
@@ -1573,7 +1595,7 @@ const Paniers = {
               <td class="num"><b>${U.eur(b.price * b.qty)}</b></td>
               <td>${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
               <td class="num">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
-              <td style="white-space:nowrap;"><button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button><button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
+              <td style="white-space:nowrap;">${b.kind === 'A' ? '' : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
             </tr>`;
           }).join('')}</tbody>
         </table></div>
@@ -1584,17 +1606,21 @@ const Paniers = {
         ` : '<div class="empty" style="text-align:center;padding:40px;"><span class="big">🧺</span><p class="muted">Clique sur "Générer le panier" pour composer automatiquement,<br>ou ajoute des produits manuellement ci-dessous.</p></div>'}
 
         <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:16px;">
-          <div class="fg mb0" style="min-width:160px;max-width:220px;">
+          <div class="fg mb0" style="flex:0 0 170px;min-width:0;">
+            <label style="white-space:nowrap;">Type</label>
+            ${U.customSelect({ value: this.addKind || 'all', options: [{ v: 'all', l: 'Tout' }, { v: 'M', l: '🥩 Mastication' }, { v: 'A', l: '🐕 Accessoires' }], onPick: 'Paniers.setAddKind' })}
+          </div>
+          ${this.addKind === 'A' ? '' : `<div class="fg mb0" style="min-width:160px;max-width:220px;">
             <label>Variantes</label>
             ${U.multiSelect({ groups: this.addVariantGroups(), selected: this.addVariants, toggle: 'Paniers.toggleAddVariant', setAll: 'Paniers.setAllAddVariant', open: this.addVariantsOpen, onOpen: 'Paniers.setAddVariantsOpen' })}
-          </div>
+          </div>`}
           <div class="fg mb0" style="flex:1;min-width:200px;">
             <label>➕ Ajouter un produit</label>
             <div class="autocomplete" data-onclose="Paniers.closeAddMenu">
               <input id="pan_add_q" type="text" autocomplete="off" placeholder="Chercher un produit…"
                 value="${U.esc(this.addQ)}" oninput="Paniers.setAddQ(this.value)" onfocus="Paniers.openAddMenu()">
             ${this.addOpen && addResults.length ? `<div class="ac-list" style="max-height:250px;overflow:auto;">${addResults.map(c =>
-              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.variant)}</span></span><span class="pp-b">${U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}${c.coeff > 0 ? ` · <span class="sensitive">coeff ${c.coeff.toFixed(2)}</span>` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
+              `<div class="ac-item pp-row" onmousedown="event.preventDefault();Paniers.pickManual('${c.pId}','${c.vId}','${c.lotId}','${c.kind || 'M'}')"><span class="pp-a">${U.esc(c.name)} <span class="pp-v">${U.esc(c.kind === 'A' ? c.width : c.variant)}</span></span><span class="pp-b">${c.kind === 'A' ? '🐕 ' + U.esc(c.category) + (c.avail > 0 ? ' · stock ' + U.qty(c.avail) : ' · sans stock') : U.esc(c.meat)}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}${c.coeff > 0 ? ` · <span class="sensitive">coeff ${c.coeff.toFixed(2)}</span>` : ''}</span><span class="pp-c">${U.eur(c.price)}</span></div>`
             ).join('')}</div>` : ''}
             </div>
           </div>
@@ -1611,7 +1637,8 @@ const Paniers = {
     const hasLocked = this.basket.some(b => b.locked);
     const fd = 1 - this._disc();   // réduction client : le prix encaissé baisse
     const rows = this.basket.map(b => {
-      const sp = Store.state.stockM.find(x => x.id === b.pId);
+      const acc = b.kind === 'A' ? Store.state.catalogA.find(x => x.id === b.pId) : null;   // accessoire : coût de la fiche, cotisations au taux « fait main »
+      const sp = acc ? null : Store.state.stockM.find(x => x.id === b.pId);
       const sv = sp ? sp.variants.find(x => x.id === b.vId) : null;
       const rc = sp && sv ? Stock.refCalc(sp, sv) : null;   // fiche Prix mastication : même rang de palier que partout (avant : rang 0 pour tout)
       let cost = 0, priceHT = 0, priceTTC = 0, coeff = b.coeff;
@@ -1622,11 +1649,11 @@ const Paniers = {
         const vat = U.num(S.vatRate) / 100;
         priceTTC = b.price;
         priceHT = b.price / (1 + vat);
-        cost = U.num(sv ? sv.costUnit : 0);
+        cost = acc ? U.num(Pricing.accCalc(acc).cost) : U.num(sv ? sv.costUnit : 0);
       }
       if (fd < 1) { priceHT *= fd; priceTTC *= fd; }   // réduction client : le prix encaissé baisse, pas le coût
       // Même règle que les autres écrans : bénéfice « assujetti » (hors TVA) pour les totaux ; le gain réel non assujetti vient en plus.
-      const rate = U.num(S.socialTaxRate) / 100;
+      const rate = (acc ? Pricing.socialRateHandmade() : U.num(S.socialTaxRate)) / 100;
       const margin = priceHT - cost, social = priceHT * rate;
       const profit = margin - social;
       const profitActuel = priceTTC - cost - priceTTC * rate;
