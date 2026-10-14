@@ -19,7 +19,7 @@ const Store = {
         portRates: { mastication: 0, matiere: 0, conso: 0 },   // port à l'achat (%) ajouté au coût de revient pour fixer les prix
         vatRate: 20, vatActive: false, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5,
         urssafFreq: 'quarter', comptaExtraServices: 0,   // Compta : déclaration URSSAF mensuelle / trimestrielle ; CA hors application (éducation canine…) de l'année en cours
-        laborRate: 20, thanksConsoId: '', cardConsoId: '', uvInkConsoId: '', labelCost: 0.10, fabHistory: [], bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
+        laborRate: 20, thanksConsoId: '', cardConsoId: '', labelCost: 0.10, fabHistory: [], bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, snapRetentionDays: 30,
         uvCartridgePrice: 42, uvCartridgeVolume: 100, // impression UV : coût encre/ml = prix ÷ volume
         uvMaintPct: 0, // + majoration entretien optionnelle (% du coût encre) — filtres/nettoyage/entretien
         laserWatts: 0, kwhPrice: 0, laserWearPerHour: 0, // gravure laser : puissance (W), prix de l'électricité (€/kWh), usure/entretien du laser (€/h, facultatif)
@@ -43,7 +43,7 @@ const Store = {
           'Autre':           { segments: [{label: 'Extrémité 1', value: 0}, {label: 'Extrémité 2', value: 0}] }
         },
         widths: ['10mm', '16mm', '20mm', '25mm'],
-        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre', 'Autre'],
+        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre UV', 'Nettoyant UV', 'Autre'],
         suppliers: [{ id: 's1', name: 'Cernunos' }, { id: 's2', name: 'Kuaurtikel' }],
         events: [], eventInfo: {}, fuelConsumption: 7, fuelPrice: 1.85,
         sachets: [],   // {id, name, cost, type}
@@ -162,7 +162,23 @@ const Store = {
     this.migrateSuppliers(s);
     this.migrateMatTax(s);
     this.migrateSangleKinds(s);
+    this.migrateUvCategories(s);
     return s;
+  },
+  /* (2026-10-14) Catégories de consommables « Encre UV » et « Nettoyant UV » : l'ancienne « Encre » est renommée (ses consommables suivent),
+     « Nettoyant UV » est ajoutée. UNE fois (flag : si Antho en supprime une, elle ne revient pas). Le coût de l'encre au ml = moyenne des consommables « Encre UV » (`Pricing.uvInkCartridge`). */
+  migrateUvCategories(s) {
+    const S = s.settings; if (!S || S.uvCatsMigrated) return;
+    S.uvCatsMigrated = true;
+    if (!Array.isArray(S.consCategories)) return;
+    const norm = x => String(x || '').trim().toLowerCase();
+    const had = S.consCategories.some(c => norm(c) === 'encre uv');
+    if (S.consCategories.some(c => norm(c) === 'encre')) {
+      S.consCategories = S.consCategories.filter(c => norm(c) !== 'encre');
+      if (!had) S.consCategories.push('Encre UV');
+    } else if (!had) S.consCategories.push('Encre UV');
+    if (!S.consCategories.some(c => norm(c) === 'nettoyant uv')) S.consCategories.push('Nettoyant UV');
+    (s.consumables || []).forEach(c => { if (norm(c.category) === 'encre') c.category = 'Encre UV'; });
   },
   /* (2026-10-03) Une seule liste de fournisseurs avec des types. Les anciens fournisseurs « de produits » reçoivent
      mastication + matières + consommables ; ceux de l'ancienne liste « autres » (suppliersOther) sont repris avec leur id
