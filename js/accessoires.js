@@ -182,7 +182,7 @@ const Accessoires = {
         <div class="card" style="padding:10px 14px;margin:0 0 10px;">
           <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
             <div class="fg mb0" style="flex:0 0 170px;"><label>Coefficient commun ${U.info("Le coefficient de toute la famille : change-le ici et toutes les longueurs qui le suivent se recalculent (prix TTC arrondi comme d'habitude). Une longueur dont tu as tapé le prix ou le coefficient garde son réglage (badge « propre ») : « Aligner » la remet au commun.")}</label><input type="number" step="0.01" min="0.01" value="${gc ? Math.round(gc * 100) / 100 : ''}" onchange="Accessoires.setGroupCoeff('${gid}',this.value)"></div>
-            ${nOwn ? `<button class="btn-ghost btn-sm fit" onclick="Accessoires.alignGroup('${gid}')" title="Remettre les ${nOwn} longueur(s) à réglage propre au coefficient commun">↻ Aligner (${nOwn})</button>` : ''}
+            ${nOwn ? `<button class="btn-ghost btn-sm fit" onclick="Accessoires.alignGroup('${gid}')" title="Remettre les ${nOwn} longueur(s) à réglage propre au coefficient commun">↻ Aligner (${nOwn})</button>` : '<span class="muted fit" style="font-size:.82rem;line-height:38px;white-space:nowrap;">✓ Toutes les longueurs suivent ce coefficient</span>'}
           </div>
         </div>
         ${mem.map(a => this.accCard(a)).join('')}
