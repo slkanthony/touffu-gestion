@@ -516,7 +516,7 @@ const Ventes = {
       ${this.cart.some(c => c.needLot) ? `<div class="badge warn" style="margin-bottom:8px;white-space:normal;">📋 Venant d'un panier — choisis le lot de chaque ligne (vérifie le n° de lot / la DLUO du produit que tu as en main). La validation est bloquée tant qu'un lot manque.</div>` : ''}
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th>DLUO</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
-          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? ' <span class="badge info">conso</span>' : ''}${c.src && c.src !== this.source ? ` <span class="badge warn" title="Cette ligne sera déduite d'un autre stock que le reste du ticket">stock ${c.src === 'event' ? 'événement' : 'général'}</span>` : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
+          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? this._consoDimsTxt(c.pId) + ' <span class="badge info">conso</span>' : ''}${c.src && c.src !== this.source ? ` <span class="badge warn" title="Cette ligne sera déduite d'un autre stock que le reste du ticket">stock ${c.src === 'event' ? 'événement' : 'général'}</span>` : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
           ${(() => { const lp = this._lotParts(c.lotLabel); return `<td>${c.needLot ? this._lotPicker(c, i) : (lp.lots ? lp.lots : '—')}</td><td>${lp.dluos || '—'}</td>`; })()}
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
@@ -763,6 +763,11 @@ const Ventes = {
   _saleConsos(list) {
     const ok = c => /^(cartons?|sacs?)(\s|$)/.test(U.normSearch(c.category || '').trim());
     return list.some(ok) ? list.filter(ok) : list;
+  },
+  /* Dimensions d'un consommable (ex. carton 30×20×10) à côté de son nom dans les tickets et l'historique, pour vérifier le bon emballage (Antho 2026-10-14). */
+  _consoDimsTxt(pId) {
+    const c = pId ? Store.state.consumables.find(x => x.id === pId) : null, d = c ? Stock.consoDims(c) : '';
+    return d ? ` <span class="muted" style="font-size:.85rem;">· ${U.esc(d)}</span>` : '';
   },
   _consoLabel(c) {
     const d = Stock.consoDims(c);
@@ -1302,7 +1307,7 @@ const Ventes = {
           ${this._isRealEvent(s) ? field('Frais en espèces', `<input type="checkbox" ${s.eventFeeCash ? 'checked' : ''} title="Coché : stand, repas et déplacement payés en liquide (ne sortent pas de la banque)" onchange="Ventes.setEventFeeCash('${s.id}',this.checked)">`) : ''}
         </div></td></tr>`;
       const items = s.items.map((i, ix) => `<tr class="sale-open ${s.cancelled ? 'dim' : ''}">
-        <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
+        <td class="col-name" style="text-align:left;"><b>${U.esc(i.name)}</b>${i.kind === 'C' ? this._consoDimsTxt(i.pId) : ''}${U.num(i.pack) >= 2 ? ` <span class="badge info">${U.qty(i.packs)} lot${i.packs > 1 ? 's' : ''} de ${i.pack}</span>` : ''}</td>
         <td>${i.label ? U.esc(i.label) : '—'}</td>
         <td>${i.sku ? `<span class="tag">${U.esc(i.sku)}</span>` : '—'}</td>
         <td>${i.todo === 'open' ? `<span class="badge warn">🧩 à traiter</span>` : i.deducted === false ? `<span class="badge info">${i.todo === 'caOnly' ? '💶 CA seul' : '✔ fait à la main'}</span>` : i.lotLabel ? `<span class="tag">${U.esc(i.lotLabel)}</span>` : '—'}</td>
@@ -1830,7 +1835,7 @@ const Ventes = {
       </div>
       <button class="btn-cta btn-sm" onclick="Ventes.addRetourConso()">＋ Ajouter</button>` : '<p class="muted">Aucun consommable en stock. Ajoute-les dans Stock → Consommables.</p>'}
       ${cons.length ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Consommable</th><th class="num">Qté</th><th class="num">Coût unit.</th><th class="num">Coût total</th><th></th></tr></thead>
-        <tbody>${cons.map((l, i) => `<tr><td class="col-name"><b>${U.esc(l.name)}</b></td><td class="num">${U.qty(l.qty)}</td><td class="num">${U.eur(l.costUnit)}</td><td class="num"><b>${U.eur(l.costUnit * l.qty)}</b></td><td><button class="btn-icon" onclick="Ventes.removeRetourConso(${i})">🗑️</button></td></tr>`).join('')}</tbody>
+        <tbody>${cons.map((l, i) => `<tr><td class="col-name"><b>${U.esc(l.name)}</b>${this._consoDimsTxt(l.consumableId)}</td><td class="num">${U.qty(l.qty)}</td><td class="num">${U.eur(l.costUnit)}</td><td class="num"><b>${U.eur(l.costUnit * l.qty)}</b></td><td><button class="btn-icon" onclick="Ventes.removeRetourConso(${i})">🗑️</button></td></tr>`).join('')}</tbody>
         <tfoot><tr><th colspan="3">Coût total consommables</th><th class="num">${U.eur(totalCost)}</th><th></th></tr></tfoot></table></div>` : ''}
     </div>`;
   },
@@ -2215,7 +2220,7 @@ const Ventes = {
         </div>
         <button class="btn-cta btn-sm" onclick="Ventes.addTicketConso()">＋ Ajouter</button>` : '<p class="muted">Aucun consommable en stock. Ajoute-les dans Stock → Consommables.</p>'}
         ${consoItems.length ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Consommable</th><th class="num">Qté</th><th class="num">Coût</th><th></th></tr></thead>
-          <tbody>${consoItems.map(x => `<tr><td class="col-name"><b>${U.esc(x.it.name)}</b></td><td class="num">${U.qty(x.it.qty)}</td><td class="num">${U.eur(x.it.cost)}</td><td><button class="btn-icon" title="Retirer" onclick="Ventes.removeTicketConso(${x.i})">🗑️</button></td></tr>`).join('')}</tbody>
+          <tbody>${consoItems.map(x => `<tr><td class="col-name"><b>${U.esc(x.it.name)}</b>${this._consoDimsTxt(x.it.pId)}</td><td class="num">${U.qty(x.it.qty)}</td><td class="num">${U.eur(x.it.cost)}</td><td><button class="btn-icon" title="Retirer" onclick="Ventes.removeTicketConso(${x.i})">🗑️</button></td></tr>`).join('')}</tbody>
           <tfoot><tr><th colspan="2">Coût total consommables</th><th class="num">${U.eur(consoCost)}</th><th></th></tr></tfoot></table></div>` : ''}
       </div>
 
