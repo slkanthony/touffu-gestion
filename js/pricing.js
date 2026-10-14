@@ -340,7 +340,7 @@ const Pricing = {
     const laserCost = a.laser ? U.num(a.laserMin) / 60 * this.laserCostPerHour() : 0;   // gravure laser : minutes ÷ 60 × (électricité + usure)/h
     const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost + laserCost;
     const portCost = matCost * this.portRate('matiere');
-    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, portCost, costBase, cost: costBase + portCost };
+    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, persoCost: uvCost + laserCost, portCost, costBase, cost: costBase + portCost };
   },
   /* ---------- SKU automatique ---------- */
   slugify(text) {
@@ -425,14 +425,14 @@ const Pricing = {
     const noise = new Set(['DE', 'D', 'DU', 'DES', 'LE', 'LA', 'LES', 'AU', 'AUX', 'AVEC', 'ET', 'EN']);
     const type = this.slugify(a.category), w = this.slugify(a.mainWidth || (a.strapWidths || [])[0] || '');
     // le séparateur décimal du nom (1,2m / 1.2m) est gardé en « . » dans le SKU : LAISSE-20MM-1.2M (et non 1-2M, qui se lit « 12 M »)
-    let parts = this.slugify(String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|gravure\s+laser))+\s*$/i, '').replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
+    let parts = this.slugify(String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|cr[ée]ation\s+th[èe]me\s+uv|gravure\s+laser))+\s*$/i, '').replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
     const tp = type.split('-').filter(Boolean);
     while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
     parts = parts.filter(x => x !== w);
     // longueur du produit fini (champ « Longueur produit fini ») : ajoutée seulement si le nom n'en cite pas déjà une
     const plen = U.num(a.productLength);
     if (plen > 0 && !/(^|[^A-Za-z0-9.])\d+([.,]\d+)?\s*m(?![A-Za-z])/i.test(String(a.name || '').replace(/\([^)]*\)/g, ' '))) parts.push(String(Math.round(plen * 100) / 100).replace(',', '.') + 'M');
-    return [type, w, parts.join('-'), (a.uv || U.num(a.uvMl) > 0) ? 'UV' : '', a.laser ? 'LASER' : ''].filter(Boolean).join('-');   // impression UV (personnalisation) = SKU à part, suffixe -UV
+    return [type, w, parts.join('-'), (a.uv || a.theme || U.num(a.uvMl) > 0) ? 'UV' : '', a.theme ? 'THEME' : '', a.laser ? 'LASER' : ''].filter(Boolean).join('-');   // impression UV (personnalisation) = SKU à part, suffixe -UV
   },
 
   autoSku(productName, meatType, variantLabel) {
@@ -487,10 +487,16 @@ const Pricing = {
   /* Arrondi du prix TTC calculé d'un accessoire (Paramètres → Accessoires, 0,50 € par défaut : 20 € / 20,50 €). Prix tapé à la main = jamais arrondi. */
   accPriceStep() { const st = U.num(Store.state.settings.accPriceStep); return st > 0 ? st : 0.5; },
   roundAccPrice(x) { const st = this.accPriceStep(); return Math.round(Math.round(x / st) * st * 100) / 100; },
+  /* Supplément de PRIX TTC d'une personnalisation (Antho 2026-10-14, Paramètres → Accessoires) : impression UV, gravure laser, création de thème UV (le thème REMPLACE le supplément UV : il inclut l'impression). Le coût (encre, laser) reste compté comme avant. */
+  persoSupplement(a) {
+    const S = Store.state.settings, uv = (a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) || !!a.theme;
+    return (a.theme ? U.num(S.accPersoTheme) : uv ? U.num(S.accPersoUv) : 0) + (a.laser ? U.num(S.accPersoLaser) : 0);
+  },
   accCalc(a) {
     const S = Store.state.settings;
     const vat = U.num(S.vatRate) / 100;
     const c = this.accCost(a);
+    const sup = this.persoSupplement(a), baseCost = sup > 0 ? c.cost - c.persoCost : c.cost;   // le coefficient s'applique au coût SANS personnalisation ; le supplément s'ajoute ensuite au prix
     const storedCoeff = U.num(a.coefficient) || 2;
     let coeff, priceHT, priceTTC, priceFixed = false;
     if (U.num(a.priceTTCManual) > 0) {
@@ -500,8 +506,8 @@ const Pricing = {
       coeff = c.cost > 0 ? priceHT / c.cost : 0;
     } else {
       coeff = storedCoeff;
-      priceHT = c.cost * coeff;
-      priceTTC = this.roundAccPrice(priceHT * (1 + vat));   // prix « rond » (0,50 € par défaut) quand on passe par le coefficient ; un prix tapé reste exact
+      priceHT = baseCost * coeff;
+      priceTTC = this.roundAccPrice(priceHT * (1 + vat)) + sup;   // prix « rond » (0,50 € par défaut) quand on passe par le coefficient ; un prix tapé reste exact
       priceHT = priceTTC / (1 + vat);
     }
     const margin = priceHT - c.cost;
@@ -512,7 +518,7 @@ const Pricing = {
     const profitActuel = priceTTC - c.cost - socialTTC;
     const effCoeff = c.cost > 0 ? priceHT / c.cost : 0;
     const thr = U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    return { ...c, coeff, storedCoeff, priceFixed, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, critical: effCoeff < thr };
+    return { ...c, coeff, storedCoeff, persoSup: sup, priceFixed, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, critical: effCoeff < thr };
   },
 
   /* Coût de revient TOTAL d'une ligne de vente (pour la marge).

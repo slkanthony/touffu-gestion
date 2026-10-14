@@ -98,6 +98,13 @@ const Params = {
           <div class="fg"><label>Seuil coeff critique ${U.info('Sous ce coefficient, un badge « coeff critique » s\'affiche sur la page Accessoires et Revente pro (accessoires).')}</label><input id="p_acc_thr" type="number" step="0.01" value="${S.accCoeffThreshold || 2}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
 
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:14px 0 6px;">🎨 Suppléments de prix — personnalisation ${U.info("Montant TTC ajouté AUTOMATIQUEMENT au prix d'un accessoire quand tu coches la personnalisation (fiche, ou « Modifier / Dupliquer » une famille) : le prix = prix habituel (coût sans l'encre ni le laser × coefficient, arrondi) + ce supplément. Les coûts d'encre et de laser restent comptés dans le coût de revient. « Création thème UV » = impression UV avec un visuel créé pour le client : son supplément remplace celui de l'impression UV. Changer un montant ici met à jour tous les accessoires concernés.")}</div>
+        <div class="frow" style="gap:12px;align-items:flex-start;justify-content:center;">
+          <div class="fg" style="flex:0 0 190px;min-width:0;"><label style="white-space:nowrap;">Impression UV (€ TTC)</label><input id="p_pers_uv" type="number" step="0.5" min="0" value="${S.accPersoUv ?? 5}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg" style="flex:0 0 190px;min-width:0;"><label style="white-space:nowrap;">Création thème UV (€ TTC)</label><input id="p_pers_th" type="number" step="0.5" min="0" value="${S.accPersoTheme ?? 10}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg" style="flex:0 0 190px;min-width:0;"><label style="white-space:nowrap;">Gravure laser (€ TTC)</label><input id="p_pers_la" type="number" step="0.5" min="0" value="${S.accPersoLaser ?? 3}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+        </div>
+
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:14px 0 6px;">🖨️ Impression UV</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Cartouche d'encre — prix / volume</label>
@@ -729,7 +736,7 @@ const Params = {
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
     if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
     S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
-    S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.accPriceStep = U.numVal('p_acc_step') || 0.5; S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
+    S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.accPriceStep = U.numVal('p_acc_step') || 0.5; S.accPersoUv = U.numVal('p_pers_uv'); S.accPersoTheme = U.numVal('p_pers_th'); S.accPersoLaser = U.numVal('p_pers_la'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
     if (document.getElementById('p_uv_price')) { S.uvCartridgePrice = U.numVal('p_uv_price'); const t = document.getElementById('p_uv_tax'); S.uvCartridgeTax = t && t.dataset.tax === 'HT' ? 'HT' : 'TTC'; }   // absent quand la cartouche est reliée à un consommable
 S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
     S.laserWatts = U.numVal('p_laser_w'); S.kwhPrice = U.numVal('p_kwh'); S.laserWearPerHour = U.numVal('p_laser_wear');
