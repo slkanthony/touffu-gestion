@@ -166,28 +166,113 @@ const Accessoires = {
     const widths = [...new Set(mem.map(a => this._widthOf(a)).filter(Boolean))];
     const nCrit = calcs.filter(c => c.critical).length, nOwn = this._grpMembers(gid).filter(a => !this._follows(a)).length;
     const gc = U.num(first.groupCoeff), open = !!this._grpOpen[gid], name = first.groupName || this._familyName(first);
+    const notes = first.groupNotes ? `<div class="muted" style="font-size:.85rem;margin:0 0 10px;white-space:pre-line;">📝 ${U.esc(first.groupNotes)}</div>` : '';
     return `<details class="fold prod-fold acc-fold acc-group" id="grp-${gid}" ${open ? 'open' : ''} ontoggle="Accessoires.setGrpOpen('${gid}',this.open)">
       <summary>
-        <span><b>${U.esc(name)}</b> <span class="badge info">${mem.length === total ? total : mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</span>${nCrit ? ` <span class="badge bad">${nCrit} coeff critique</span>` : ''}</span>
+        <span><b>${U.esc(name)}</b></span>
         <span class="type-col">${widths.map(w => `<span class="badge">${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(first.category || '')}</span></span>
-        <span class="meta right sensitive">${rng(calcs.map(c => c.cost), U.eur)}</span>
-        <span class="meta right"><b>${rng(calcs.map(c => c.priceTTC), U.eur)}</b></span>
+        <span class="type-col"><span class="badge info">${mem.length === total ? total : mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</span></span>
+        <span class="type-col">${nCrit ? `<span class="badge bad">${nCrit} coeff critique</span>` : ''}</span>
+        <span class="meta right sensitive" style="white-space:nowrap;">${rng(calcs.map(c => c.cost), U.eur)}</span>
+        <span class="meta right" style="white-space:nowrap;"><b>${rng(calcs.map(c => c.priceTTC), U.eur)}</b></span>
       </summary>
       <div class="fold-body">
+        ${notes}
         <div class="card" style="padding:10px 14px;margin:0 0 10px;">
           <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
-            <div class="fg mb0" style="flex:1 1 200px;min-width:170px;"><label>Nom du produit</label><input value="${U.esc(name)}" onchange="Accessoires.renameGroup('${gid}',this.value)"></div>
-            <div class="fg mb0" style="flex:0 0 160px;"><label>Coefficient commun ${U.info("Le coefficient de toute la famille : change-le ici et toutes les longueurs qui le suivent se recalculent (prix TTC arrondi comme d'habitude). Une longueur dont tu as tapé le prix ou le coefficient garde son réglage (badge « propre ») : « Aligner » la remet au commun.")}</label><input type="number" step="0.01" min="0.01" value="${gc ? Math.round(gc * 100) / 100 : ''}" onchange="Accessoires.setGroupCoeff('${gid}',this.value)"></div>
+            <div class="fg mb0" style="flex:0 0 170px;"><label>Coefficient commun ${U.info("Le coefficient de toute la famille : change-le ici et toutes les longueurs qui le suivent se recalculent (prix TTC arrondi comme d'habitude). Une longueur dont tu as tapé le prix ou le coefficient garde son réglage (badge « propre ») : « Aligner » la remet au commun.")}</label><input type="number" step="0.01" min="0.01" value="${gc ? Math.round(gc * 100) / 100 : ''}" onchange="Accessoires.setGroupCoeff('${gid}',this.value)"></div>
             ${nOwn ? `<button class="btn-ghost btn-sm" onclick="Accessoires.alignGroup('${gid}')" title="Remettre les ${nOwn} longueur(s) à réglage propre au coefficient commun">↻ Aligner (${nOwn})</button>` : ''}
-            <button class="btn-cta btn-sm" onclick="Accessoires.addLength('${gid}')">＋ Ajouter une longueur</button>
-            <button class="btn-ghost btn-sm" onclick="Accessoires.groupSkus('${gid}')">✨ SKU de la famille</button>
-            <button class="btn-ghost btn-sm" onclick="Accessoires.ungroup('${gid}')">Dégrouper</button>
           </div>
         </div>
         ${mem.map(a => this.accCard(a)).join('')}
+        <div class="mt">${U.seg([
+          { l: '＋ Ajouter une longueur', tone: 'ok', js: `Accessoires.addLength('${gid}')` },
+          { l: 'Modifier', js: `Accessoires.editGroup('${gid}')` },
+          { l: '✨ SKU', js: `Accessoires.groupSkus('${gid}')` },
+          { l: '📋 Dupliquer', js: `Accessoires.duplicateGroup('${gid}')` },
+          { l: 'Dégrouper', js: `Accessoires.ungroup('${gid}')` },
+          { l: 'Supprimer', tone: 'danger', js: `Accessoires.deleteGroup('${gid}')` }
+        ], { full: true, scroll: true })}</div>
       </div>
     </details>`;
+  },
+  /* « Modifier » une famille : nom, catégorie (appliquée à toutes les longueurs), coefficient commun, notes. */
+  editGroup(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    const f = mem[0], cats = (Store.state.settings.accCategories || []).slice().sort(U.sortFr);
+    if (f.category && !cats.includes(f.category)) cats.push(f.category);
+    U.modal({
+      title: '✏️ Modifier la famille — ' + U.esc(f.groupName || ''), okLabel: 'Enregistrer',
+      body: `<div class="frow"><div class="fg" style="flex:2;"><label>Nom du produit</label><input id="gm_name" value="${U.esc(f.groupName || this._familyName(f))}"></div>
+        <div class="fg"><label>Catégorie ${U.info('Appliquée à toutes les longueurs de la famille (les SKU ne changent pas tout seuls : utilise « ✨ SKU »).')}</label><select id="gm_cat">${cats.map(c => `<option ${c === f.category ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Coefficient commun</label><input id="gm_coef" type="number" step="0.01" min="0.01" value="${U.num(f.groupCoeff) ? Math.round(U.num(f.groupCoeff) * 100) / 100 : ''}"></div></div>
+        <div class="fg"><label>Notes sur ce produit (optionnel)</label><textarea id="gm_notes" rows="3" placeholder="ex : modèle éducation, mousqueton laiton, à proposer avec la poignée…" style="width:100%;resize:vertical;">${U.esc(f.groupNotes || '')}</textarea></div>
+        <p class="muted">${mem.length} longueur${mem.length > 1 ? 's' : ''} dans cette famille.</p>`,
+      onOk: () => {
+        const name = U.val('gm_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
+        const cat = U.val('gm_cat'), v = Math.round(U.numVal('gm_coef') * 100) / 100, notes = U.val('gm_notes').trim();
+        const coefChanged = v > 0 && Math.abs(v - U.num(f.groupCoeff)) > 0.0049;
+        const entry = this._grpTouch(mem, a => {
+          if (coefChanged && this._follows(a)) { a.coefficient = v; a.priceTTCManual = ''; }
+          if (coefChanged) a.groupCoeff = v;
+          a.groupName = name; if (cat) a.category = cat;
+          if (notes) a.groupNotes = notes; else delete a.groupNotes;
+        }, 'Famille modifiée — ' + name);
+        this._grpOpen[gid] = true; U.closeModal(); U.toast('Famille enregistrée.', false, entry.id);
+      }
+    });
+  },
+  /* « Dupliquer » une famille : copie toutes les longueurs (stock à 0, SKU neufs). On peut changer la LARGEUR : les sangles de chaque nomenclature passent à la nouvelle largeur → coûts recalculés ; les prix suivent le coefficient commun. */
+  duplicateGroup(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    const f = mem[0], w0 = this._widthOf(f);
+    const ws = [...new Set([w0, ...(Store.state.settings.widths || [])].filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
+    this._dgW0 = w0; this._dgCur = w0;
+    U.modal({
+      title: '📋 Dupliquer la famille — ' + U.esc(f.groupName || ''), okLabel: 'Dupliquer',
+      body: `<div class="frow"><div class="fg" style="flex:2;"><label>Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
+        <div class="fg"><label>Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
+        <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} seront créées (stock à 0, nouveaux SKU).</p>`,
+      onOk: () => {
+        const name = U.val('dg_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
+        const w1 = U.val('dg_w') || w0, gid2 = U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
+        const taken = this._takenSkus(''), created = []; let missing = 0;
+        mem.forEach(a => {
+          const c = JSON.parse(JSON.stringify(a));
+          c.id = U.uid(); c.groupId = gid2; c.groupName = name; c.stockGeneral = 0; c.stockEvent = 0;
+          if (changed) {
+            c.strapWidths = (c.strapWidths || []).map(w => w === w0 ? w1 : w); c.mainWidth = w1;
+            (c.bom || []).forEach(l => { if (l.familyKey && l.familyKey.endsWith(':' + w0)) { l.familyKey = l.familyKey.slice(0, -w0.length) + w1; if (!this.families().some(x => x.key === l.familyKey)) missing++; } });
+          } else c.name = a.name + ' (copie)';
+          if (gc > 0) { c.coefficient = gc; c.priceTTCManual = ''; }
+          this._autoStrap(c);
+          const base = Pricing.autoSkuAcc(c); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); c.sku = base ? sku : '';
+          created.push(c);
+        });
+        created.forEach(c => Store.state.catalogA.push(c));
+        const entry = Store.log('accessoires', `Famille dupliquée — ${name} (${created.length} fiches)`, { type: 'restoreBatch', data: created.map(c => ({ domain: 'catalogA', id: c.id, before: null })) });
+        Store.save('catalogA'); this._grpOpen[gid2] = true; U.closeModal(); App.rerender();
+        U.toast(`Famille dupliquée (${created.length} fiches).` + (missing ? ` ⚠️ ${missing} ligne(s) de sangle sans référence en ${w1} dans le stock : coût à vérifier.` : ''), missing > 0, entry.id);
+      }
+    });
+  },
+  /* Changer la largeur dans « Dupliquer » : le nom suit (« … 16mm (copie) » → « … 20mm »), « (copie) » revient si on reprend la largeur d'origine. */
+  _dgWidth() {
+    const el = document.getElementById('dg_name'), w1 = U.val('dg_w'), w0 = this._dgW0; if (!el || !w0) return;
+    let v = el.value.replace(/\s*\(copie\)\s*$/, '');
+    const cur = this._dgCur || w0; if (v.includes(cur)) v = v.replace(cur, w1);
+    this._dgCur = w1; el.value = w1 === w0 ? v + ' (copie)' : v;
+  },
+  async deleteGroup(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    const stock = mem.reduce((s, a) => s + U.num(a.stockGeneral) + U.num(a.stockEvent), 0);
+    if (!await U.confirm(`Supprimer la famille « ${mem[0].groupName || ''} » et ses ${mem.length} fiche${mem.length > 1 ? 's' : ''} ?${stock ? `\nIl reste ${U.qty(stock)} pièce(s) en stock fini.` : ''}\nL'historique des ventes est conservé. Tu pourras annuler.`, { title: '🗑️ Supprimer la famille', okLabel: 'Supprimer', danger: true })) return;
+    const snaps = mem.map(a => Store.snapshot('catalogA', a)), ids = new Set(mem.map(a => a.id));
+    Store.state.catalogA = Store.state.catalogA.filter(x => !ids.has(x.id));
+    const entry = Store.log('accessoires', `Famille supprimée — ${mem[0].groupName || ''} (${mem.length} fiches)`, { type: 'restoreBatch', data: snaps });
+    Store.save('catalogA'); App.rerender();
+    U.toast('Famille supprimée.', false, entry.id);
   },
   setAccSort(key) {
     if (this.accSort === key) this.accSortDir = this.accSortDir === 'asc' ? 'desc' : 'asc';
@@ -318,6 +403,7 @@ const Accessoires = {
       switch(this.accSort) {
         case 'name': v = this._cmpAcc(a, b); break;
         case 'cat': v = U.sortFr(a.category||'', b.category||''); break;
+        case 'len': v = this._lenOf(a) - this._lenOf(b); break;
         case 'width': v = this._widthNum(a) - this._widthNum(b); break;
         case 'cost': v = ca.cost - cb.cost; break;
         case 'price': v = ca.priceTTC - cb.priceTTC; break;
@@ -349,6 +435,8 @@ const Accessoires = {
         <span>${sortHead('name', 'Nom du produit')}</span>
         <span>${sortHead('width', 'Largeur')}</span>
         <span>${sortHead('cat', 'Catégorie')}</span>
+        <span>${sortHead('len', 'Longueur')}</span>
+        <span>Alerte</span>
         <span class="right">${sortHead('cost', 'Coût')}</span>
         <span class="right">${sortHead('price', 'Prix TTC')}</span>
       </div>` : ''}
@@ -589,10 +677,12 @@ const Accessoires = {
     const criticalClass = c.critical ? ' acc-critical' : '';
     return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
-        <span><b>${U.esc(a.name)}</b>${c.critical ? ' <span class="badge bad">coeff critique</span>' : ''}${a.groupId && !this._follows(a) ? ' <span class="badge warn" title="Coefficient ou prix propre à cette longueur (différent du coefficient commun de la famille)">propre</span>' : ''}</span>
+        <span><b>${U.esc(a.name)}</b></span>
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
-        <span class="meta right sensitive">${U.eur(c.cost)}</span>
+        <span class="type-col">${this._lenOf(a) > 0 ? U.qty(this._lenOf(a)) + ' m' : '<span class="muted">—</span>'}</span>
+        <span class="type-col">${c.critical ? '<span class="badge bad">coeff critique</span>' : ''}${a.groupId && !this._follows(a) ? ' <span class="badge warn" title="Coefficient ou prix propre à cette longueur (différent du coefficient commun de la famille)">propre</span>' : ''}</span>
+        <span class="meta right sensitive" style="white-space:nowrap;">${U.eur(c.cost)}</span>
         <span class="meta right"><b>${U.eur(c.priceTTC)}</b></span>
       </summary>
       <div class="fold-body">
