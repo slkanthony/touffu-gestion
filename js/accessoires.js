@@ -510,7 +510,7 @@ const Accessoires = {
     const sup = Pricing.persoSupplement(a), cost = U.num(Pricing.accCost(a).cost), k = 1 + U.num(Store.state.settings.vatRate) / 100;   // supplément de personnalisation retiré avant de déduire le coefficient
     if (!(cost > 0)) { a.priceTTCManual = ttc; return; }
     a.coefficient = Math.round((ttc - sup) / k / cost * 1e6) / 1e6;
-    a.priceTTCManual = Math.abs(Pricing.roundAccPrice(cost * a.coefficient * k) + sup - ttc) < 0.005 ? '' : ttc;
+    a.priceTTCManual = Math.abs(Pricing.accAutoTTC(a, { cost }, a.coefficient) - ttc) < 0.005 ? '' : ttc;   // même règle que le prix automatique (arrondi + seuil critique)
   },
 
   /* Maintenir l'appui sur « Profit net » : gain réel avec la TVA conservée (comme « Bénéfice » dans Prix mastication). */

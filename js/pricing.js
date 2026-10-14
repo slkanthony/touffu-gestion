@@ -492,11 +492,20 @@ const Pricing = {
     const S = Store.state.settings, uv = (a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) || !!a.theme;
     return (a.theme ? U.num(S.accPersoTheme) : uv ? U.num(S.accPersoUv) : 0) + (a.laser ? U.num(S.accPersoLaser) : 0);
   },
+  /* Prix TTC AUTOMATIQUE d'un accessoire (coefficient) : tout le coût × coeff × (1+TVA), arrondi au prix rond le plus proche (0,50 € par défaut) + supplément de personnalisation.
+     Règle d'Antho (2026-10-14) : le coefficient est une INDICATION ; si l'arrondi au plus proche fait passer le coefficient réel SOUS le seuil critique des accessoires, le prix monte
+     d'un cran (+0,50 €) quand cela suffit à repasser au-dessus (ex. 26,50 → 27,00) ; un coefficient volontairement très bas n'est pas « remonté ». */
+  accAutoTTC(a, c, coeff) {
+    const S = Store.state.settings, vat = U.num(S.vatRate) / 100, st = this.accPriceStep(), thr = U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
+    let p = this.roundAccPrice(c.cost * coeff * (1 + vat)) + this.persoSupplement(a);
+    if (thr > 0 && c.cost > 0 && p / (1 + vat) / c.cost < thr && (p + st) / (1 + vat) / c.cost >= thr) p = Math.round((p + st) * 100) / 100;
+    return p;
+  },
   accCalc(a) {
     const S = Store.state.settings;
     const vat = U.num(S.vatRate) / 100;
     const c = this.accCost(a);
-    const sup = this.persoSupplement(a), baseCost = c.cost;   // le coefficient s'applique à TOUT le coût (encre et laser compris, décision d'Antho 2026-10-14) ; le supplément choisi s'ajoute ensuite au prix
+    const sup = this.persoSupplement(a);   // le coefficient s'applique à TOUT le coût (encre et laser compris, décision d'Antho 2026-10-14) ; le supplément choisi s'ajoute ensuite au prix
     const storedCoeff = U.num(a.coefficient) || 2;
     let coeff, priceHT, priceTTC, priceFixed = false;
     if (U.num(a.priceTTCManual) > 0) {
@@ -506,8 +515,7 @@ const Pricing = {
       coeff = c.cost > 0 ? priceHT / c.cost : 0;
     } else {
       coeff = storedCoeff;
-      priceHT = baseCost * coeff;
-      priceTTC = this.roundAccPrice(priceHT * (1 + vat)) + sup;   // prix « rond » (0,50 € par défaut) quand on passe par le coefficient ; un prix tapé reste exact
+      priceTTC = this.accAutoTTC(a, c, coeff);   // prix « rond » (0,50 € par défaut) quand on passe par le coefficient ; un prix tapé reste exact
       priceHT = priceTTC / (1 + vat);
     }
     const margin = priceHT - c.cost;
