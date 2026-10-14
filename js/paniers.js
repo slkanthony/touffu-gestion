@@ -820,7 +820,7 @@ const Paniers = {
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
     const no = this._dvCommit();
     const data = this._pendingData(this._dv, name, now);
-    if (rec) Object.assign(rec, data);
+    if (rec) { Object.assign(rec, data); delete rec.ready; }   // contenu modifié → la validation « prêt à traiter » est à refaire
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._pendId = rec.id; this._pendUpd = rec.updated;
     Store.log('panier', `Panier en attente — ${name} (devis ${no})`);
@@ -841,6 +841,27 @@ const Paniers = {
     if (!this._shClient) { U.toast('Indique d\'abord le nom de la cliente (champ « Cliente » à gauche).', true); return; }
     this.savePending();
   },
+  /* ✅ « Prêt à traiter » (Antho 2026-10-14) : le profil ÉQUIPE ne valide pas les ventes (c'est Antho qui fait les sorties de stock) ; quand un panier est d'accord, l'équipe le VALIDE :
+     il reste dans « Paniers en attente » (partagé) avec rec.ready = { by, ts } ; Antho le voit « prêt à traiter » et fait « 🛒 Envoyer en vente » de son côté. Modifier le panier retire la validation. */
+  _setReady(rec, on) {
+    const me = (Store.session && Store.session.user && Store.session.user.email) || 'équipe';
+    if (on) rec.ready = { by: me, ts: Date.now() }; else delete rec.ready;
+    Store.log('panier', `${on ? 'Panier validé — prêt à traiter' : 'Validation retirée'} — ${rec.name}`);
+    Store.save('baskets', 'journal');
+  },
+  toggleReady(id) {
+    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+    this._setReady(rec, !rec.ready); this.render();
+    U.toast(rec.ready ? '✅ Panier validé : Antho le verra « prêt à traiter ».' : 'Validation retirée.');
+  },
+  validateCurrent() {   // profil équipe : « Valider pour la vente » depuis le panier composé = mis en attente + prêt à traiter
+    this._shClient = String(this.client || this._shClient || '').trim();
+    if (!this._shClient) { U.toast('Indique d\'abord le nom de la cliente (champ « Cliente » à gauche).', true); return; }
+    const r = this._storePending(); if (!r) return;
+    this._setReady(r.rec, true);
+    U.toast('✅ Panier validé — devis n° ' + r.no + '. Antho le verra « prêt à traiter » dans « Paniers en attente ».');
+    this.clearBasket(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
   _ageTxt(rec) {
     const d = Math.floor((Date.now() - (rec.updated || rec.ts)) / 86400000);
     return { d, txt: d <= 0 ? 'aujourd\'hui' : d === 1 ? 'depuis 1 jour' : `depuis ${d} jours` };
@@ -859,18 +880,20 @@ const Paniers = {
       const dogs = this._dogsOf(r.name).map(d => d.name + (d.breed ? ' (' + d.breed + ')' : '')).join(', ');
       const exp = r.validUntil && r.validUntil < today;
       return `<tr${this._pendId === r.id ? ' style="background:var(--th-bg);"' : ''}>
-        <td class="col-name"${r.dv && r.dv.v ? ' style="padding-left:26px;"' : ''}>${r.dv && r.dv.v ? '<span class="muted">↳ </span>' : ''}<b>${U.esc(Clients.show(r.name))}</b>${r.dv && r.dv.base ? ` <span class="badge info" title="N° de devis">${Devis.no(r.dv)}</span>` : ''}${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
+        <td class="col-name"${r.dv && r.dv.v ? ' style="padding-left:26px;"' : ''}>${r.dv && r.dv.v ? '<span class="muted">↳ </span>' : ''}<b>${U.esc(Clients.show(r.name))}</b>${r.ready ? ` <span class="badge ok" title="Validé par ${U.esc(r.ready.by)} le ${U.frDateTime(r.ready.ts)}">✅ Prêt à traiter</span>` : ''}${r.dv && r.dv.base ? ` <span class="badge info" title="N° de devis">${Devis.no(r.dv)}</span>` : ''}${r.label ? ` <span class="badge info">${U.esc(r.label)}</span>` : ''}${dogs ? `<div class="muted" style="font-size:.8rem;">🐕 ${U.esc(dogs)}</div>` : ''}${r.note ? `<div class="muted" style="font-size:.8rem;font-style:italic;">📝 ${U.esc(r.note)}</div>` : ''}</td>
         <td><span class="badge ${age.d >= 7 ? 'warn' : ''}">⏳ ${age.txt}</span>${r.validUntil ? `<div class="${exp ? 'warn-txt' : 'muted'}" style="font-size:.8rem;">${exp ? '⚠ expiré le ' : 'valable jusqu\'au '}${U.frDate(r.validUntil)}</div>` : ''}</td>
         <td class="num" style="white-space:nowrap;">${nb} art.<br><b>${U.eur(tot)}</b></td>
         <td style="white-space:nowrap;text-align:right;">
           <button class="btn-ghost btn-sm" onclick="Paniers.resume('${r.id}')" title="Recharger ce panier pour le modifier">✏️ Reprendre</button>
           <button class="btn-ghost btn-sm" onclick="Paniers.makeVariant('${r.id}')" title="Garde ce devis tel quel et crée une variante (n° du devis + -V1, -V2…) pour changer un ou deux produits">🔀 Variante</button>
-          <button class="btn-cta btn-sm" onclick="Paniers.sendToSale('${r.id}')" title="La cliente est d'accord : charge les produits dans le ticket de la page Ventes">🛒 Envoyer en vente</button>
+          ${App.isTeam
+            ? `<button class="${r.ready ? 'btn-ghost' : 'btn-cta'} btn-sm" onclick="Paniers.toggleReady('${r.id}')" title="${r.ready ? 'Retirer la validation (le panier n\'est plus « prêt à traiter »)' : 'La cliente est d\'accord : Antho verra ce panier « prêt à traiter » et fera la sortie de stock'}">${r.ready ? '↩ Retirer la validation' : '✅ Valider pour la vente'}</button>`
+            : `<button class="btn-cta btn-sm" onclick="Paniers.sendToSale('${r.id}')" title="La cliente est d'accord : charge les produits dans le ticket de la page Ventes">🛒 Envoyer en vente</button>`}
           <button class="btn-icon" onclick="Paniers.delPending('${r.id}')" title="Supprimer">🗑️</button>
         </td></tr>`;
     }).join('');
     return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--caramel);">
-      <h2>⏳ Paniers en attente (${list.length})</h2>
+      <h2>⏳ Paniers en attente (${list.length})${list.some(r => r.ready) ? ` <span class="badge ok" style="font-size:.75rem;vertical-align:middle;">✅ ${list.filter(r => r.ready).length} prêt${list.filter(r => r.ready).length > 1 ? 's' : ''} à traiter</span>` : ''}</h2>
       <div class="table-wrap"><table><thead><tr><th class="col-name">Cliente</th><th>En attente</th><th class="num">Panier</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;
   },
@@ -1509,7 +1532,9 @@ const Paniers = {
               </div>
             </div>
             <button class="btn-ghost btn-sm" onclick="Paniers.makeVariant()" title="Crée une variante de ce devis (n° du devis + -V1, -V2…) : tu gardes le panier de base et tu changes un ou deux produits">🔀 Variante</button>
-            <button class="btn-cta btn-sm" onclick="Paniers.sendCurrentToSale()" title="Charge ce panier dans le ticket de la page Ventes (rien n'est déduit tant que tu n'as pas validé la vente)">🛒 Envoyer en vente</button>
+            ${App.isTeam
+              ? `<button class="btn-cta btn-sm" onclick="Paniers.validateCurrent()" title="La cliente est d'accord : range le panier en attente et le marque « prêt à traiter » pour Antho (c'est lui qui fait la sortie de stock)">✅ Valider pour la vente</button>`
+              : `<button class="btn-cta btn-sm" onclick="Paniers.sendCurrentToSale()" title="Charge ce panier dans le ticket de la page Ventes (rien n'est déduit tant que tu n'as pas validé la vente)">🛒 Envoyer en vente</button>`}
             <button class="btn-cta btn-sm" onclick="Paniers.quickPending()" title="Range le devis dans « Paniers en attente » et repart à vide">💾 Mettre en attente</button>
           </div>` : ''}
         </div>
