@@ -193,12 +193,22 @@ const Accessoires = {
     if (focusId) setTimeout(() => { const el = document.getElementById('acc-' + focusId); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
   },
 
+  /* Le prix TTC tapé commande (comme les fiches Prix mastication) : le coefficient s'en déduit et est enregistré.
+     Le prix n'est « forcé » (↺) que s'il n'est pas un multiple de 0,10 € (le calcul auto arrondit à 0,10). */
+  _applyTtc(a, ttc) {
+    if (!(ttc > 0)) { a.priceTTCManual = ''; return; }
+    const cost = U.num(Pricing.accCost(a).cost), k = 1 + U.num(Store.state.settings.vatRate) / 100;
+    if (!(cost > 0)) { a.priceTTCManual = ttc; return; }
+    a.coefficient = Math.round(ttc / k / cost * 1e6) / 1e6;
+    a.priceTTCManual = Math.abs(Math.round(cost * a.coefficient * k * 10) / 10 - ttc) < 0.005 ? '' : ttc;
+  },
+
   setAccInline(id, field, val) {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
     const snap = Store.snapshot('catalogA', a);
     if (field === 'laborMinutes') a.laborMinutes = U.num(val);
     else if (field === 'coefficient') { a.coefficient = U.num(val); a.priceTTCManual = ''; }
-    else if (field === 'priceTTCManual') a.priceTTCManual = U.num(val) || '';
+    else if (field === 'priceTTCManual') this._applyTtc(a, U.num(val));
     Store.commitSnapshot(snap, 'accessoires', 'Accessoire modifié — ' + a.name);
     Store.save('catalogA'); App.rerender();
   },
