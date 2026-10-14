@@ -484,6 +484,9 @@ const Pricing = {
     return v.label || '';
   },
 
+  /* Arrondi du prix TTC calculé d'un accessoire (Paramètres → Accessoires, 0,50 € par défaut : 20 € / 20,50 €). Prix tapé à la main = jamais arrondi. */
+  accPriceStep() { const st = U.num(Store.state.settings.accPriceStep); return st > 0 ? st : 0.5; },
+  roundAccPrice(x) { const st = this.accPriceStep(); return Math.round(Math.round(x / st) * st * 100) / 100; },
   accCalc(a) {
     const S = Store.state.settings;
     const vat = U.num(S.vatRate) / 100;
@@ -498,7 +501,7 @@ const Pricing = {
     } else {
       coeff = storedCoeff;
       priceHT = c.cost * coeff;
-      priceTTC = Math.round(priceHT * (1 + vat) * 10) / 10;
+      priceTTC = this.roundAccPrice(priceHT * (1 + vat));   // prix « rond » (0,50 € par défaut) quand on passe par le coefficient ; un prix tapé reste exact
       priceHT = priceTTC / (1 + vat);
     }
     const margin = priceHT - c.cost;

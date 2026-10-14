@@ -199,13 +199,13 @@ const Accessoires = {
   },
 
   /* Le prix TTC tapé commande (comme les fiches Prix mastication) : le coefficient s'en déduit et est enregistré.
-     Le prix n'est « forcé » (↺) que s'il n'est pas un multiple de 0,10 € (le calcul auto arrondit à 0,10). */
+     Le prix n'est « forcé » (↺) que s'il n'est pas un « prix rond » (multiple de l'arrondi des Paramètres, 0,50 € par défaut) : le calcul auto arrondit ainsi. */
   _applyTtc(a, ttc) {
     if (!(ttc > 0)) { a.priceTTCManual = ''; return; }
     const cost = U.num(Pricing.accCost(a).cost), k = 1 + U.num(Store.state.settings.vatRate) / 100;
     if (!(cost > 0)) { a.priceTTCManual = ttc; return; }
     a.coefficient = Math.round(ttc / k / cost * 1e6) / 1e6;
-    a.priceTTCManual = Math.abs(Math.round(cost * a.coefficient * k * 10) / 10 - ttc) < 0.005 ? '' : ttc;
+    a.priceTTCManual = Math.abs(Pricing.roundAccPrice(cost * a.coefficient * k) - ttc) < 0.005 ? '' : ttc;
   },
 
   /* Maintenir l'appui sur « Profit net » : gain réel avec la TVA conservée (comme « Bénéfice » dans Prix mastication). */
@@ -1231,22 +1231,22 @@ const Accessoires = {
   },
 
   /* fabrication : consomme les matières premières du stock */
-  fabricate(id) {
-    const a = Store.state.catalogA.find(x => x.id === id);
-    if (!a) return;
-    this._fabBom = (a.bom || []).map(l => {
-      const tag = l.strapColor ? '🎨 Couleur ' + l.strapColor + ' — ' + this._colorTitle(a, l.strapColor) : '';
+  /* Construit la liste des matières de la fenêtre « Fabriquer » à partir d'une fiche (ou d'une copie modifiée pour cette seule fabrication). */
+  _fabBuild(src) {
+    this._fabBom = (src.bom || []).map(l => {
+      const tag = l.strapColor ? '🎨 Couleur ' + l.strapColor + ' — ' + this._colorTitle(src, l.strapColor) : '';
       if (l.familyKey) {
         const fam = this.families().find(f => f.key === l.familyKey);
         if (!fam) return { type: 'missing', label: l.familyKey, qty: l.qty };
         const sorted = [...fam.materials].sort((x, y) => U.num(y.qty) - U.num(x.qty));
-        return { type: 'family', fam, materials: sorted, qty: l.qty, selectedId: sorted[0]?.id || '', tag };
+        return { type: 'family', fam, materials: sorted, qty: l.qty, selectedId: sorted[0]?.id || '', tag, color: l.strapColor || 0 };
       }
-      if (l.materialId) { return { type: 'direct', m: Store.material(l.materialId), qty: l.qty, tag }; }
+      if (l.materialId) { return { type: 'direct', m: Store.material(l.materialId), qty: l.qty, tag, color: l.strapColor || 0 }; }
       return null;
     }).filter(Boolean);
-
-    const bomHTML = this._fabBom.map((b, i) => {
+  },
+  _fabBomHTML() {
+    return this._fabBom.map((b, i) => {
       if (b.type === 'family') {
         const unit = b.fam.unit === 'm' ? 'm' : 'PCS';
         const opts = b.materials.map(m =>
@@ -1269,12 +1269,32 @@ const Accessoires = {
       }
       return `<div class="card" style="padding:8px 12px;margin-bottom:6px;color:var(--alerte);">⚠ Famille introuvable : ${U.esc(b.label)}</div>`;
     }).join('');
+  },
+  /* Case « Ces 2 sangles ne sont pas de la même couleur » DANS la fenêtre Fabriquer (Antho 2026-10-14) : pour CETTE fabrication seulement (la fiche ne change pas),
+     bascule entre 2 et 3 couleurs → un bloc de choix de sangle en plus. Les sangles déjà choisies sont gardées par numéro de couleur. */
+  _fabToggleEnds() {
+    const a = this._fabSrcAcc; if (!a) return;
+    const keep = {}; this._fabBom.forEach((b, i) => { if (b.color && b.type === 'family') { const el = document.getElementById('fab_mat_' + i); if (el) keep[b.color] = el.value; } });
+    const c = JSON.parse(JSON.stringify(a)); c.bicolorEnds = !!(document.getElementById('fab_ends') || {}).checked;
+    this._applyColors(c); this._autoStrap(c);
+    this._fabBuild(c);
+    this._fabBom.forEach(b => { if (b.color && b.type === 'family' && keep[b.color] && b.materials.some(m => m.id === keep[b.color])) b.selectedId = keep[b.color]; });
+    const w = document.getElementById('fab_bom_wrap'); if (w) w.innerHTML = this._fabBomHTML() || '<p class="muted">Aucune matière dans la nomenclature.</p>';
+  },
+  fabricate(id) {
+    const a = Store.state.catalogA.find(x => x.id === id);
+    if (!a) return;
+    this._fabSrcAcc = a;
+    this._fabBuild(a);
+    const bomHTML = this._fabBomHTML();
+    const endsBox = a.bicolor && (a.fabSegments || []).length >= 2 ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0 0;font-size:.84rem;text-transform:none;letter-spacing:0;"><input id="fab_ends" type="checkbox" ${a.bicolorEnds ? 'checked' : ''} onchange="Accessoires._fabToggleEnds()"> <span>Ces 2 sangles ne sont pas de la même couleur <span class="muted">(→ 3 couleurs, pour cette fabrication)</span></span></label>` : '';
 
     U.modal({
       title: '🛠 Fabriquer — ' + U.esc(a.name), okLabel: 'Fabriquer',
       body: `<div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1"></div>
         <h2 style="font-size:.95rem;margin-top:12px;">Matières à utiliser</h2>
-        ${bomHTML || '<p class="muted">Aucune matière dans la nomenclature.</p>'}`,
+        ${endsBox}
+        <div id="fab_bom_wrap" style="margin-top:8px;">${bomHTML || '<p class="muted">Aucune matière dans la nomenclature.</p>'}</div>`,
       onOk: () => {
         const n = U.numVal('fab_qty');
         if (n <= 0) return false;

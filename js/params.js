@@ -91,9 +91,10 @@ const Params = {
         </div>
         <div class="fin-block" style="order:${finPos('acc')}">${finTools('acc')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🐕 Accessoires (fait main)</div>
-        <div class="grid c3">
+        <div class="grid c4">
           <div class="fg"><label>Taux main d'œuvre (€/h)</label><input id="p_labor" type="number" step="0.5" value="${S.laborRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Cotisations fait main (%) ${U.info(`Les accessoires cousus main relèvent de l'artisanat (BIC prestation de services, 21,2 % par défaut), pas de la vente de marchandises (${U.pct(S.socialTaxRate)} pour la mastication). Utilisé dans le calcul de prix des accessoires et dans le bénéfice net du Tableau de bord.`)}</label><input id="p_soc_hm" type="number" step="0.1" value="${S.socialTaxRateHandmade ?? S.socialTaxRate}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
+          <div class="fg"><label>Arrondi du prix TTC (€) ${U.info('Quand le prix vient du coefficient, il est arrondi au multiple le plus proche (0,50 = 20 € ou 20,50 €). Un prix que tu tapes toi-même n\'est jamais arrondi : tu gardes la main.')}</label><input id="p_acc_step" type="number" step="0.01" min="0.01" value="${S.accPriceStep ?? 0.5}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg"><label>Seuil coeff critique ${U.info('Sous ce coefficient, un badge « coeff critique » s\'affiche sur la page Accessoires et Revente pro (accessoires).')}</label><input id="p_acc_thr" type="number" step="0.01" value="${S.accCoeffThreshold || 2}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
         </div>
 
@@ -728,7 +729,7 @@ const Params = {
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
     if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
     S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
-    S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
+    S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.accPriceStep = U.numVal('p_acc_step') || 0.5; S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
     if (document.getElementById('p_uv_price')) { S.uvCartridgePrice = U.numVal('p_uv_price'); const t = document.getElementById('p_uv_tax'); S.uvCartridgeTax = t && t.dataset.tax === 'HT' ? 'HT' : 'TTC'; }   // absent quand la cartouche est reliée à un consommable
 S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
     S.laserWatts = U.numVal('p_laser_w'); S.kwhPrice = U.numVal('p_kwh'); S.laserWearPerHour = U.numVal('p_laser_wear');
