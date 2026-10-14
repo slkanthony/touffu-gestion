@@ -507,7 +507,7 @@ const Accessoires = {
      Le prix n'est « forcé » (↺) que s'il n'est pas un « prix rond » (multiple de l'arrondi des Paramètres, 0,50 € par défaut) : le calcul auto arrondit ainsi. */
   _applyTtc(a, ttc) {
     if (!(ttc > 0)) { a.priceTTCManual = ''; return; }
-    const ac = Pricing.accCost(a), sup = Pricing.persoSupplement(a), cost = U.num(sup > 0 ? ac.cost - ac.persoCost : ac.cost), k = 1 + U.num(Store.state.settings.vatRate) / 100;   // supplément de personnalisation retiré avant de déduire le coefficient
+    const sup = Pricing.persoSupplement(a), cost = U.num(Pricing.accCost(a).cost), k = 1 + U.num(Store.state.settings.vatRate) / 100;   // supplément de personnalisation retiré avant de déduire le coefficient
     if (!(cost > 0)) { a.priceTTCManual = ttc; return; }
     a.coefficient = Math.round((ttc - sup) / k / cost * 1e6) / 1e6;
     a.priceTTCManual = Math.abs(Pricing.roundAccPrice(cost * a.coefficient * k) + sup - ttc) < 0.005 ? '' : ttc;
@@ -763,7 +763,7 @@ const Accessoires = {
               <tr><td>Coefficient</td><td class="num sensitive"><input type="number" step="0.01" value="${c.coeff.toFixed(2)}" class="acc-inline-input" onchange="Accessoires.setAccInline('${a.id}','coefficient',this.value)"></td></tr>
               <tr><td>Prix HT</td><td class="num sensitive">${U.eur(c.priceHT)}</td></tr>
               <tr><td><b>Prix TTC</b></td><td class="num">${c.priceFixed ? '<button class="btn-icon" title="Revenir au calcul auto" onclick="Accessoires.setAccInline(\''+a.id+'\',\'priceTTCManual\',0)" style="vertical-align:middle;">↺</button>' : ''}<input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="acc-inline-input" style="font-weight:700;" onchange="Accessoires.setAccInline('${a.id}','priceTTCManual',this.value)"></td></tr>
-              ${c.persoSup > 0 ? `<tr><td>Dont supplément personnalisation <span class="muted help">Ajouté automatiquement au prix (réglé dans Paramètres → Accessoires) : impression UV, création de thème UV et / ou gravure laser. Le coefficient s'applique au coût sans l'encre ni le laser.</span></td><td class="num">+ ${U.eur(c.persoSup)}</td></tr>` : ''}
+              ${c.persoSup > 0 ? `<tr><td>Dont supplément personnalisation <span class="muted help">Ajouté automatiquement au prix (réglé dans Paramètres → Accessoires) : impression UV, création de thème UV et / ou gravure laser. Le coefficient s'applique à tout le coût, encre et laser compris.</span></td><td class="num">+ ${U.eur(c.persoSup)}</td></tr>` : ''}
               <tr><td>Marge</td><td class="num sensitive">${U.eur(c.margin)}</td></tr>
               <tr><td>Cotisations URSSAF <span class="muted">(${U.pct(Pricing.socialRateHandmade())} — fait main)</span></td><td class="num sensitive neg">− ${U.eur(c.social)}</td></tr>
               <tr><td>TVA <span class="muted">${vatOn ? '(reversée)' : '(conservée)'}</span></td><td class="num sensitive ${vatOn ? 'neg' : ''}">${vatOn ? '− ' : ''}${U.eur(c.vatAmt)}</td></tr>

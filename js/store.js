@@ -70,7 +70,7 @@ const Store = {
       catalogA: [],    // accessoires finis : {id,name,category,bom:[{materialId,qty}],laborMinutes,extraCost,coefficient,stockGeneral,stockEvent,low,sku}
       consumables: [], // {id,name,category,unit,qty,low,costUnit}
       sales: [],       // ventes — voir ventes.js
-      baskets: [],     // paniers / devis en attente (admin seulement) : {id,ts,name,label,note,validUntil,items,budget,livraison}
+      baskets: [],     // paniers / devis en attente (admin + équipe, pas le profil visite) : {id,ts,name,label,note,validUntil,items,budget,livraison}
       purchases: [],   // achats (admin seulement) : factures saisies — voir achats.js
       bank: { points: [], moves: [] },   // pointage bancaire (admin seulement) : soldes relevés + mouvements hors appli — voir compta.js
       journal: [],     // {id,ts,action,label,undo}
@@ -404,7 +404,7 @@ const Store = {
 
   /* ---------- sauvegarde ---------- */
   /* Domaines qu'un compte « équipe » a le droit d'enregistrer (stock + journal). */
-  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta', 'clients'],
+  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta', 'clients', 'baskets'],   // baskets = paniers / devis en attente (2026-10-14 : l'équipe en crée) → il faut aussi la règle RLS (supabase_schema.sql)
 
   save(...domains) {
     if (window.App && window.App.isViewer) {

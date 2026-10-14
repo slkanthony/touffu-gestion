@@ -73,7 +73,7 @@ end $fn$;
 revoke all on function public.app_state_safe() from public, anon;
 grant execute on function public.app_state_safe() to authenticated;
 
--- Écriture app_state : admin (aucun rôle) = tout ; équipe ('team') = stock + fiches prix
+-- Écriture app_state : admin (aucun rôle) = tout ; équipe ('team') = stock + fiches prix + clients + paniers en attente (baskets, ajouté le 2026-10-14)
 -- (l'appli ne laisse l'équipe modifier QUE lien / réf. / notes fournisseur des fiches prix) ;
 -- viewer = rien. (Noms des règles = ceux du serveur réel.)
 drop policy if exists "app_state écriture" on public.app_state;
@@ -82,12 +82,12 @@ drop policy if exists "app_state maj" on public.app_state;
 drop policy if exists "app_state suppr" on public.app_state;
 create policy "app_state ecriture" on public.app_state for insert to authenticated
   with check ((auth.jwt()->'app_metadata'->>'role') is null
-    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients')));
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients','baskets')));
 create policy "app_state maj" on public.app_state for update to authenticated
   using ((auth.jwt()->'app_metadata'->>'role') is null
-    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients')))
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients','baskets')))
   with check ((auth.jwt()->'app_metadata'->>'role') is null
-    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients')));
+    or ((auth.jwt()->'app_metadata'->>'role') = 'team' and key in ('stockM','materials','consumables','journal','meta','catalogM','clients','baskets')));
 create policy "app_state suppr" on public.app_state for delete to authenticated
   using ((auth.jwt()->'app_metadata'->>'role') is null);
 drop policy if exists "snapshots écriture" on public.snapshots;

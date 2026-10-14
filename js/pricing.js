@@ -340,7 +340,7 @@ const Pricing = {
     const laserCost = a.laser ? U.num(a.laserMin) / 60 * this.laserCostPerHour() : 0;   // gravure laser : minutes ÷ 60 × (électricité + usure)/h
     const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost + laserCost;
     const portCost = matCost * this.portRate('matiere');
-    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, persoCost: uvCost + laserCost, portCost, costBase, cost: costBase + portCost };
+    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, portCost, costBase, cost: costBase + portCost };
   },
   /* ---------- SKU automatique ---------- */
   slugify(text) {
@@ -487,7 +487,7 @@ const Pricing = {
   /* Arrondi du prix TTC calculé d'un accessoire (Paramètres → Accessoires, 0,50 € par défaut : 20 € / 20,50 €). Prix tapé à la main = jamais arrondi. */
   accPriceStep() { const st = U.num(Store.state.settings.accPriceStep); return st > 0 ? st : 0.5; },
   roundAccPrice(x) { const st = this.accPriceStep(); return Math.round(Math.round(x / st) * st * 100) / 100; },
-  /* Supplément de PRIX TTC d'une personnalisation (Antho 2026-10-14, Paramètres → Accessoires) : impression UV, gravure laser, création de thème UV (le thème REMPLACE le supplément UV : il inclut l'impression). Le coût (encre, laser) reste compté comme avant. */
+  /* Supplément de PRIX TTC d'une personnalisation (Antho 2026-10-14, Paramètres → Accessoires) : impression UV, gravure laser, création de thème UV (le thème REMPLACE le supplément UV : il inclut l'impression). Le coefficient s'applique à TOUT le coût (encre et laser compris) ; le supplément s'y ajoute. */
   persoSupplement(a) {
     const S = Store.state.settings, uv = (a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) || !!a.theme;
     return (a.theme ? U.num(S.accPersoTheme) : uv ? U.num(S.accPersoUv) : 0) + (a.laser ? U.num(S.accPersoLaser) : 0);
@@ -496,7 +496,7 @@ const Pricing = {
     const S = Store.state.settings;
     const vat = U.num(S.vatRate) / 100;
     const c = this.accCost(a);
-    const sup = this.persoSupplement(a), baseCost = sup > 0 ? c.cost - c.persoCost : c.cost;   // le coefficient s'applique au coût SANS personnalisation ; le supplément s'ajoute ensuite au prix
+    const sup = this.persoSupplement(a), baseCost = c.cost;   // le coefficient s'applique à TOUT le coût (encre et laser compris, décision d'Antho 2026-10-14) ; le supplément choisi s'ajoute ensuite au prix
     const storedCoeff = U.num(a.coefficient) || 2;
     let coeff, priceHT, priceTTC, priceFixed = false;
     if (U.num(a.priceTTCManual) > 0) {
