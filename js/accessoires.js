@@ -228,15 +228,22 @@ const Accessoires = {
     const mem = this._grpMembers(gid); if (!mem.length) return;
     const f = mem[0], w0 = this._widthOf(f);
     const ws = [...new Set([w0, ...(Store.state.settings.widths || [])].filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
-    this._dgW0 = w0; this._dgCur = w0;
+    const r0 = this._persoRank(f), uv0 = !!(r0 & 1), la0 = !!(r0 & 2);
+    this._dgW0 = w0; this._dgBase = String(f.groupName || '').replace(/\s*\(copie\)\s*$/, '').replace(this._PERSO_RX, '').trim(); this._dgUv0 = uv0; this._dgLa0 = la0;
+    const lab = 'display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.9rem;margin:0;white-space:nowrap;';
     U.modal({
       title: '📋 Dupliquer la famille — ' + U.esc(f.groupName || ''), okLabel: 'Dupliquer',
       body: `<div class="frow"><div class="fg" style="flex:2;"><label>Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
         <div class="fg"><label>Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
+        <div class="fg"><label>🎨 Personnalisation de la nouvelle famille ${U.info("Coche pour décliner le produit en version personnalisée : toutes les longueurs reçoivent l'impression UV et / ou la gravure laser (coût, nom et SKU mis à jour).")}</label>
+          <div style="display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap;min-height:40px;">
+            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="dg_uv" type="checkbox" style="width:16px;height:16px;" ${uv0 ? 'checked' : ''} onchange="Accessoires._dgWidth()"> Impression UV</label><input id="dg_uvml" type="number" step="0.1" min="0" value="${U.num(f.uvMl) || ''}" placeholder="ml d'encre" style="width:120px;margin:0;"></span>
+            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="dg_la" type="checkbox" style="width:16px;height:16px;" ${la0 ? 'checked' : ''} onchange="Accessoires._dgWidth()"> Gravure laser</label><input id="dg_lamin" type="number" step="0.5" min="0" value="${U.num(f.laserMin) || ''}" placeholder="minutes" style="width:110px;margin:0;"></span></div></div>
         <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} seront créées (stock à 0, nouveaux SKU).</p>`,
       onOk: () => {
         const name = U.val('dg_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
         const w1 = U.val('dg_w') || w0, gid2 = U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
+        const uv1 = U.chk('dg_uv'), la1 = U.chk('dg_la'), uvMl = U.numVal('dg_uvml'), laMin = U.numVal('dg_lamin'), persoChanged = uv1 !== uv0 || la1 !== la0;
         const taken = this._takenSkus(''), created = []; let missing = 0;
         mem.forEach(a => {
           const c = JSON.parse(JSON.stringify(a));
@@ -244,7 +251,10 @@ const Accessoires = {
           if (changed) {
             c.strapWidths = (c.strapWidths || []).map(w => w === w0 ? w1 : w); c.mainWidth = w1;
             (c.bom || []).forEach(l => { if (l.familyKey && l.familyKey.endsWith(':' + w0)) { l.familyKey = l.familyKey.slice(0, -w0.length) + w1; if (!this.families().some(x => x.key === l.familyKey)) missing++; } });
-          } else c.name = a.name + ' (copie)';
+          }
+          c.uv = uv1; c.uvMl = uv1 ? uvMl : 0; c.laser = la1; c.laserMin = la1 ? laMin : 0;
+          if (persoChanged) c.name = this._persoName(c.name, uv1, la1);
+          else if (!changed) c.name = a.name + ' (copie)';
           if (gc > 0) { c.coefficient = gc; c.priceTTCManual = ''; }
           this._autoStrap(c);
           const base = Pricing.autoSkuAcc(c); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); c.sku = base ? sku : '';
@@ -258,11 +268,12 @@ const Accessoires = {
     });
   },
   /* Changer la largeur dans « Dupliquer » : le nom suit (« … 16mm (copie) » → « … 20mm »), « (copie) » revient si on reprend la largeur d'origine. */
-  _dgWidth() {
+  _dgWidth() {   // appelé aussi par les cases UV / laser
     const el = document.getElementById('dg_name'), w1 = U.val('dg_w'), w0 = this._dgW0; if (!el || !w0) return;
-    let v = el.value.replace(/\s*\(copie\)\s*$/, '');
-    const cur = this._dgCur || w0; if (v.includes(cur)) v = v.replace(cur, w1);
-    this._dgCur = w1; el.value = w1 === w0 ? v + ' (copie)' : v;
+    const uv = U.chk('dg_uv'), la = U.chk('dg_la');
+    const same = w1 === w0 && uv === this._dgUv0 && la === this._dgLa0;
+    let base = this._dgBase.includes(w0) ? this._dgBase.replace(w0, w1) : this._dgBase;
+    el.value = this._persoName(base, uv, la) + (same ? ' (copie)' : '');
   },
   async deleteGroup(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
@@ -715,8 +726,8 @@ const Accessoires = {
         <div class="mt">${U.seg([
           { l: '🛠 Fabriquer', tone: 'ok', js: `Accessoires.fabricate('${a.id}')` },
           { l: 'Modifier', js: `Accessoires.editAcc('${a.id}')` },
-          { l: '📋 Dupliquer', js: `Accessoires.duplicateAcc('${a.id}')` },
-          ...((a.bom||[]).some(l => this.bomLineUnit(l) === 'm') ? [{ l: '📐 Sur mesure', js: `Accessoires.customLength('${a.id}')` }] : []),
+          // Plus de « Dupliquer » ni « Sur mesure » (Antho 2026-10-14) : une longueur de plus = « ＋ Ajouter une longueur » de la famille ; pour une fiche pas encore rangée, ce bouton crée la famille
+          ...(!a.groupId && U.num(a.productLength) > 0 && (a.bom||[]).some(l => this.bomLineUnit(l) === 'm') ? [{ l: '＋ Ajouter une longueur', js: `Accessoires.customLength('${a.id}',true)` }] : []),
           { l: 'Supprimer', tone: 'danger', js: `Accessoires.delAcc('${a.id}')` }
         ], { full: true, scroll: true })}</div>
       </div></details>`;
@@ -1121,23 +1132,6 @@ const Accessoires = {
     this.drawBom();
   },
 
-  duplicateAcc(id) {
-    const src = Store.state.catalogA.find(x => x.id === id);
-    if (!src) return;
-    const copy = JSON.parse(JSON.stringify(src));
-    copy.id = U.uid();
-    copy.name = src.name + ' (copie)';
-    { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }   // jamais le même SKU que l'original
-    copy.stockGeneral = 0;
-    copy.stockEvent = 0;
-    Store.state.catalogA.push(copy);
-    const entry = Store.log('accessoires', 'Accessoire dupliqué — ' + copy.name,
-      { type: 'deleteCreated', data: { domain: 'catalogA', id: copy.id } });
-    Store.save('catalogA');
-    App.rerender();
-    U.toast('Copie créée — clique Modifier pour ajuster.', false, entry.id);
-  },
-
   /* ---------- BOM picker (familles) ---------- */
   _bomLabel(l) {
     if (!l) return '';
@@ -1459,9 +1453,17 @@ const Accessoires = {
           ? src.name.replace(lenRx, desired + 'm')
           : src.name + ' — ' + desired + 'm';
         { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }   // SKU propre à cette longueur
+        // fiche pas encore rangée : elle devient une famille (nom = catégorie + largeur + UV/laser) avec sa nouvelle longueur ; un seul « Annuler » défait les deux
+        const snaps = [];
+        if (!src.groupId) {
+          snaps.push(Store.snapshot('catalogA', src));
+          src.groupId = U.uid(); src.groupName = this._familyName(src); src.groupCoeff = U.num(src.coefficient) || 2;
+          copy.groupId = src.groupId; copy.groupName = src.groupName; copy.groupCoeff = src.groupCoeff;
+        }
+        if (copy.groupId) this._grpOpen[copy.groupId] = true;
         Store.state.catalogA.push(copy);
-        const entry = Store.log('accessoires', (asVariant ? 'Longueur ajoutée — ' : 'Sur mesure créé — ') + copy.name,
-          { type: 'deleteCreated', data: { domain: 'catalogA', id: copy.id } });
+        snaps.push({ domain: 'catalogA', id: copy.id, before: null });
+        const entry = Store.log('accessoires', (asVariant ? 'Longueur ajoutée — ' : 'Sur mesure créé — ') + copy.name, { type: 'restoreBatch', data: snaps });
         Store.save('catalogA');
         U.closeModal(); App.rerender();
         U.toast(asVariant ? 'Longueur ajoutée à la famille.' : 'Copie sur mesure créée.', false, entry.id);
