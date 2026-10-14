@@ -79,7 +79,7 @@ const Stats = {
       const conso = items.filter(i => i.kind === 'C').reduce((a, i) => a + Pricing.saleItemCost(i), 0);
       const base = (s.payment === 'sumup' || s.payment === 'stripe') ? ca + U.num(s.shippingFeeCollected) : 0;
       const fee = s.payment === 'sumup' ? base * cardRate : s.payment === 'stripe' ? base * stripeRate : 0;
-      const cotis = caAcc * socHM + (ca - caAcc + U.num(s.shippingFeeCollected)) * socStd;
+      const cotis = (caAcc * socHM + (ca - caAcc + U.num(s.shippingFeeCollected)) * socStd) * Pricing.urssafK();
       const tva = S.vatActive && vr > 0 ? ca * vr / (100 + vr) : 0;
       const stand = U.num(s.eventFee), travel = U.num(s.travelCost), meal = U.num(s.mealFee);
       const tx = (s.sumupRefs && s.sumupRefs.length) || 1;
@@ -1047,7 +1047,7 @@ const Stats = {
     months.forEach(m => {
       m.marge = m.ca - m.cogs; // marge brute (CA − coût de revient des produits vendus)
       m.tva = vatRate > 0 ? m.ca * vatRate / (100 + vatRate) : 0; // TVA contenue dans le CA TTC (taux global, approximation)
-      m.cotis = m.caAcc * socHM + (m.ca - m.caAcc + m.shipFee) * socStd; // accessoires au taux fait main, reste + port au taux marchandises
+      m.cotis = (m.caAcc * socHM + (m.ca - m.caAcc + m.shipFee) * socStd) * Pricing.urssafK(); // assujetti : base HT ; accessoires au taux fait main, reste + port au taux marchandises
       m.uvMaint = uvMaint; // charge fixe machine (filtres + nettoyage + main d'œuvre entretien)
       // Non assujetti : la TVA reste dans le bénéfice (tu la gardes). Assujetti : elle est reversée → déduite.
       const mc = charges.byMonth[m.key]; m.charges = mc ? mc.portBuy + mc.expensed : 0;   // frais de livraison sur achats + frais généraux du mois (comme la Compta)

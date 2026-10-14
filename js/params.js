@@ -100,7 +100,7 @@ const Params = {
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:14px 0 6px;">🖨️ Impression UV</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Cartouche d'encre — prix / volume</label>
-            <div class="cost-split" style="margin:0 auto;"><input id="p_uv_price" type="number" step="0.01" value="${S.uvCartridgePrice ?? 42}" title="Prix de la cartouche (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">€ /</span><input id="p_uv_vol" type="number" step="1" value="${S.uvCartridgeVolume ?? 100}" title="Volume de la cartouche (ml)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">ml</span></div>
+            <div class="cost-split" style="margin:0 auto;"><span class="tax-in" style="display:block;"><input id="p_uv_price" type="number" step="0.01" value="${S.uvCartridgePrice ?? 42}" style="width:112px;padding-right:46px;" title="Prix de la cartouche (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><button type="button" id="p_uv_tax" class="tax-tag" data-tax="${S.uvCartridgeTax === 'HT' ? 'HT' : 'TTC'}" title="Clique pour basculer HT ⇄ TTC : le prix que tu as payé la cartouche" onclick="Params.toggleUvTax()">${S.uvCartridgeTax === 'HT' ? 'HT' : 'TTC'}</button></span><span class="cost-split-sep">€ /</span><input id="p_uv_vol" type="number" step="1" value="${S.uvCartridgeVolume ?? 100}" title="Volume de la cartouche (ml)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">ml</span></div>
           </div>
         </div>
         <p class="muted" style="margin:4px 0 0;text-align:center;">Encre : <b>${U.eur(Pricing.uvInkPerMl())}/ml</b></p>
@@ -621,6 +621,11 @@ const Params = {
 
   /* Case « assujetti à la TVA » : prise en compte IMMÉDIATE (badge + colonne TVA
      des Stats/Tableau de bord basculent tout de suite), sans attendre « Enregistrer ». */
+  /* Prix de la cartouche d'encre UV saisi HT ou TTC (comme les consommables) : bascule la pastille ; la valeur est enregistrée avec « Enregistrer » des réglages. */
+  toggleUvTax() {
+    const b = document.getElementById('p_uv_tax'); if (!b) return;
+    b.dataset.tax = b.dataset.tax === 'TTC' ? 'HT' : 'TTC'; b.textContent = b.dataset.tax;
+  },
   toggleVatActive(checked) {
     Store.state.settings.vatActive = !!checked;
     // Le statut change la base des coûts de revient (TVA d'achat comprise tant que non assujetti) : on recalcule les produits stock reliés au catalogue prix
@@ -723,7 +728,7 @@ const Params = {
     if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
     S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
     S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
-    S.uvCartridgePrice = U.numVal('p_uv_price'); S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
+    S.uvCartridgePrice = U.numVal('p_uv_price'); { const t = document.getElementById('p_uv_tax'); S.uvCartridgeTax = t && t.dataset.tax === 'HT' ? 'HT' : 'TTC'; }S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
     S.laserWatts = U.numVal('p_laser_w'); S.kwhPrice = U.numVal('p_kwh'); S.laserWearPerHour = U.numVal('p_laser_wear');
     S.uvFilterPrice = U.numVal('p_uv_filter_price'); S.uvFilterPerYear = U.numVal('p_uv_filter_year');
     S.uvCleanPrice = U.numVal('p_uv_clean_price'); S.uvCleanPerYear = U.numVal('p_uv_clean_year');

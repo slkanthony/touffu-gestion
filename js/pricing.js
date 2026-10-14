@@ -75,6 +75,8 @@ const Pricing = {
   /* Points d'entrée uniques pour le code NEUF (Revente pro, devis) : statut « assujetti » et taux de TVA de vente (taux de la fiche sinon taux global). */
   vatActive() { return !!Store.state.settings.vatActive; },
   vatRate(p) { const S = Store.state.settings; return U.num(p && p.vatRate !== undefined && p.vatRate !== '' ? p.vatRate : S.vatRate); },
+  /* Base de calcul des cotisations URSSAF : le CA encaissé TTC tant que non assujetti (la TVA reste à Antho, donc cotise), le CA HT une fois assujetti (la TVA est reversée). Multiplier un CA TTC par ce coefficient. */
+  urssafK() { const S = Store.state.settings; return S.vatActive && U.num(S.vatRate) > 0 ? 1 / (1 + U.num(S.vatRate) / 100) : 1; },
   vatK(vatPct) { const S = Store.state.settings; return S.vatActive ? 1 : 1 + U.num(vatPct !== undefined && vatPct !== null && vatPct !== '' ? vatPct : S.vatRate) / 100; },
   /* Sachet / blister dont le coût vient d'un consommable (coût stocké HT) ; un coût saisi à la main est pris tel quel. */
   _packLinked(s) {
@@ -188,7 +190,10 @@ const Pricing = {
   uvInkPerMl() {
     const S = Store.state.settings;
     const vol = U.num(S.uvCartridgeVolume);
-    return vol > 0 ? U.num(S.uvCartridgePrice) / vol : 0;
+    // Prix saisi TTC (défaut) ou HT : le coût compte la TVA d'achat tant que non assujetti (comme les matières et consommables), HT une fois assujetti.
+    const vat = 1 + U.num(S.vatRate) / 100, p = U.num(S.uvCartridgePrice);
+    const price = S.uvCartridgeTax === 'HT' ? p * this.vatK() : (S.vatActive ? p / vat : p);
+    return vol > 0 ? price / vol : 0;
   },
   // Entretien (filtres/nettoyage/main d'œuvre) = simple majoration % du coût encre — pas de données annuelles.
   uvMaintPerMl() {
@@ -272,7 +277,8 @@ const Pricing = {
       M.eventFee += eventFee * mSh; A.eventFee += eventFee * aSh;
       M.tva += tva * mSh; A.tva += tva * aSh;
       // cotisations : port encaissé cotise au taux marchandises (mastication), comme dans la compta globale
-      M.cotis += (mCA + shipFee) * socStd; A.cotis += aCA * socHM;
+      const kU = this.urssafK();   // assujetti : cotisations sur le CA HT
+      M.cotis += (mCA + shipFee) * socStd * kU; A.cotis += aCA * socHM * kU;
     });
     // Charges fixes réparties sur monthsCount mois
     const totCA = M.ca + A.ca, mShT = totCA > 0 ? M.ca / totCA : 0.5, aShT = 1 - mShT;

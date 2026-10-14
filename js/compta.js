@@ -19,7 +19,8 @@ const Compta = {
   _split(s) {   // CA encaissé d'une vente : marchandises (+ port encaissé) / fait main
     let m = 0, a = 0;
     (s.items || []).forEach(i => { const v = U.num(i.price) * U.num(i.qty); if (i.kind === 'A') a += v; else if (i.kind !== 'C') m += v; });
-    return { m: m + U.num(s.shippingFeeCollected), a };
+    const k = Pricing.urssafK();   // assujetti : le CA déclaré à l'URSSAF est HT
+    return { m: (m + U.num(s.shippingFeeCollected)) * k, a: a * k };
   },
   _sum(from, to) {
     const S = Store.state.settings; let m = 0, a = 0, cash = 0, card = 0;

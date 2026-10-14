@@ -460,7 +460,7 @@ const App = {
     const socStd = U.num(S.socialTaxRate) / 100;
     const socHM = Pricing.socialRateHandmade() / 100;
     // Cotisations d'une vente : accessoires au taux fait main, reste (mastication + port encaissé) au taux marchandises.
-    const saleCotis = (accCA, otherCA) => accCA * socHM + otherCA * socStd;
+    const saleCotis = (accCA, otherCA) => (accCA * socHM + otherCA * socStd) * Pricing.urssafK();   // assujetti : base HT
     // Frais de paiement par processeur : SumUp (ventes directes CB + marchés/retour d'événement)
     // et Stripe (ventes en ligne du site WordPress). Virement & espèces = 0 frais.
     // Le port encaissé passe par le même processeur → il subit aussi la commission.
