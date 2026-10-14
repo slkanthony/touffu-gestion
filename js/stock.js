@@ -1953,7 +1953,7 @@ const Stock = {
           </tr>`).join('') + '</tbody>';
           }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun lot pour ces filtres.</td></tr></tbody>'}
         </table></div>
-      </div>`;
+      </div>${this._peremConsoHTML(f, hideExpired)}`;
   },
   setPeremSort(key) {
     if (this.perem.sort === key) this.perem.sortDir = this.perem.sortDir === 'asc' ? 'desc' : 'asc';
@@ -2256,7 +2256,7 @@ const Stock = {
       (!qn || U.has(c.name + ' ' + (c.dimensions || '') + ' ' + (c.ref || ''), qn)) &&
       (!f.cat || f.cat === 'all' || (c.category || 'Autre') === f.cat) &&
       (!todo[f.link] || todo[f.link](c)) &&
-      (f.state === 'low' ? isLow(c) : f.state === 'out' ? U.num(c.qty) <= 0 : f.state === 'replace' ? !!c.toReplace : f.state === 'nodim' ? !this.consoDims(c) : true));
+      (f.state === 'low' ? isLow(c) : f.state === 'out' ? U.num(c.qty) <= 0 : f.state === 'replace' ? !!c.toReplace : f.state === 'dluo' ? this.consoLots(c).some(l => l.days <= 90) : f.state === 'nodim' ? !this.consoDims(c) : true));
     const cats = [...new Set(all.map(c => c.category || 'Autre'))].sort(U.sortFr);
     const cnt = fn => all.filter(fn).length;
     const dir = f.sortDir === 'asc' ? 1 : -1;
@@ -2278,7 +2278,7 @@ const Stock = {
         <div class="fg mb0"><label>Recherche</label><input id="conso_q" placeholder="nom, dimensions, réf…" value="${U.esc(f.q || '')}" oninput="Stock.consoFilters.q=this.value;Stock.renderConso();U.refocus('conso_q')"></div>
         <div class="fg mb0"><label>Catégorie</label>${U.customSelect({ value: f.cat || 'all', options: [{v:'all',l:'Toutes ('+all.length+')'}].concat(cats.map(c=>({v:c,l:c+' ('+cnt(x=>(x.category||'Autre')===c)+')'}))), onPick: 'Stock._setConsoCat' })}</div>
         <div class="fg mb0"><label>À compléter</label>${U.customSelect({ value: f.link, options: [{v:'all',l:'Tous'}].concat([['nourl','Sans lien fournisseur'],['noref','Sans réf. fournisseur'],['noboth','Sans lien ni réf.'],['nocost','Sans prix d\'achat'],['nolow','Sans seuil d\'alerte']].filter(o => !hideSup || !['nourl','noref','noboth'].includes(o[0])).map(o => ({v:o[0],l:o[1]+' ('+cnt(todo[o[0]])+')'}))), onPick: 'Stock._setConsoLink' })}</div>
-        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state || 'all', options: [{v:'all',l:'Tous'},{v:'low',l:'⚠️ Stock bas ('+cnt(isLow)+')'},{v:'out',l:'Rupture ('+cnt(c=>U.num(c.qty)<=0)+')'},{v:'replace',l:'🚩 À ne plus racheter ('+cnt(c=>!!c.toReplace)+')'},{v:'nodim',l:'Sans dimensions ('+cnt(c=>!this.consoDims(c))+')'}], onPick: 'Stock._setConsoState' })}</div>
+        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state || 'all', options: [{v:'all',l:'Tous'},{v:'low',l:'⚠️ Stock bas ('+cnt(isLow)+')'},{v:'out',l:'Rupture ('+cnt(c=>U.num(c.qty)<=0)+')'},{v:'replace',l:'🚩 À ne plus racheter ('+cnt(c=>!!c.toReplace)+')'},{v:'dluo',l:'⏳ DLUO < 3 mois ou périmée ('+cnt(c=>this.consoLots(c).some(l=>l.days<=90))+')'},{v:'nodim',l:'Sans dimensions ('+cnt(c=>!this.consoDims(c))+')'}], onPick: 'Stock._setConsoState' })}</div>
       </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" style="flex:0 0 calc(25% - 9px);" onclick="Stock.editConso()">＋ Nouveau consommable</button>
@@ -2287,7 +2287,7 @@ const Stock = {
       ${list.length ? `<div class="card"><div class="table-wrap"><table>
         <thead><tr><th class="col-name">${sortHead('name','Article')}</th><th>${sortHead('dim','Dimensions')}</th><th>${sortHead('cat','Catégorie')}</th><th style="text-align:center;">${sortHead('qty','En stock')}</th><th style="text-align:center;">${sortHead('low','Seuil')}</th><th style="text-align:center;">${sortHead('cost','Coût / unité')}</th><th></th></tr></thead>
         <tbody>${list.map(c=>{const cTotal=c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit);const cQper=U.num(c.costQtyPer)||1;return `<tr>
-          <td class="col-name"><b>${U.esc(c.name)}</b>${this.replaceBadge(c)}</td>
+          <td class="col-name"><b>${U.esc(c.name)}</b>${this.replaceBadge(c)}${this._consoDluoHTML(c)}</td>
           <td class="muted" style="font-size:1.1rem;font-weight:600;">${this.consoDims(c) ? U.esc(this.consoDims(c)) : '—'}</td>
           <td><span class="badge info">${U.esc(c.category||'Autre')}</span></td>
           <td class="${U.num(c.low)>0&&U.num(c.qty)<=U.num(c.low)?'warn-txt':''}" style="text-align:center;">
@@ -2299,6 +2299,63 @@ const Stock = {
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
             <button class="btn-icon" title="Supprimer" onclick="Stock.delConso('${c.id}')">🗑️</button></span></div></td></tr>`;}).join('')}
         </tbody></table></div></div>` : '<div class="card empty"><span class="big">📦</span>Aucun consommable.</div>'}`;
+  },
+  /* ───── DLUO des consommables (Antho 2026-10-14 : encres, nettoyants… ont une date limite) ─────
+     c.hasDluo = « ce produit a une date limite » ; c.lots = [{id, qty, dluo, lotNumber}] = unités DATÉES. La quantité `c.qty` reste le stock total :
+     ce qui n'est dans aucun lot daté = « sans date » (les achats / ajustements continuent de marcher comme avant). Pas de variantes. */
+  consoLots(c) {
+    if (!c || !c.hasDluo) return [];
+    return (c.lots || []).filter(l => l.dluo && U.num(l.qty) > 0).map(l => ({ ...l, days: U.daysTo(l.dluo) })).sort((a, b) => a.days - b.days);
+  },
+  _consoDluoHTML(c) {
+    if (!c.hasDluo) return '';
+    const all = this.consoLots(c), hide = !!(window.App && App.isViewer), lots = hide ? all.filter(l => l.days >= 0) : all;
+    const dated = all.reduce((s, l) => s + U.num(l.qty), 0), undated = Math.max(0, U.num(c.qty) - dated);
+    const tip = all.map(l => U.qty(l.qty) + ' × ' + U.frDate(l.dluo) + (l.lotNumber ? ' (lot ' + l.lotNumber + ')' : '')).join('\n');
+    const first = lots[0];
+    return `<div style="margin-top:4px;" title="${U.esc(tip)}">${first ? `${U.dluoTag(first.dluo)} <span class="muted" style="font-size:.78rem;">× ${U.qty(first.qty)}${lots.length > 1 ? ` · +${lots.length - 1} autre${lots.length > 2 ? 's' : ''} lot${lots.length > 2 ? 's' : ''}` : ''}</span>` : '<span class="badge warn" style="font-size:.7rem;">📅 aucune DLUO saisie</span>'}${undated > 0 && first ? ` <span class="muted" style="font-size:.78rem;">· ${U.qty(undated)} sans date</span>` : ''}</div>`;
+  },
+  _cLots: [],
+  _consoLotsHTML() {
+    const rows = this._cLots.map((l, i) => `<div class="frow" style="gap:8px;align-items:flex-end;margin-bottom:6px;">
+      <div class="fg mb0" style="flex:0 0 90px;"><label>Qté</label><input id="c_lot_q_${i}" type="number" step="1" min="0" value="${U.num(l.qty)}"></div>
+      <div class="fg mb0" style="flex:1;min-width:150px;"><label>DLUO</label><input id="c_lot_d_${i}" type="date" value="${U.esc(l.dluo || '')}"></div>
+      <div class="fg mb0" style="flex:1;min-width:110px;"><label>N° lot (option)</label><input id="c_lot_n_${i}" value="${U.esc(l.lotNumber || '')}"></div>
+      <button type="button" class="btn-icon" title="Retirer ce lot" onclick="Stock._delConsoLot(${i})">✕</button></div>`).join('');
+    return rows + `<button type="button" class="btn-ghost btn-sm" onclick="Stock._addConsoLot()">＋ Ajouter un lot</button>
+      <span class="muted help">Chaque lot = une quantité et sa DLUO. La « Quantité » du consommable reste le stock total : ce qui n'est dans aucun lot est « sans date ». Si les lots dépassent la quantité, la quantité est relevée.</span>`;
+  },
+  _syncConsoLots() {
+    if (!document.getElementById('c_lots_wrap')) return;
+    this._cLots = this._cLots.map((l, i) => {
+      const q = document.getElementById('c_lot_q_' + i), d = document.getElementById('c_lot_d_' + i), n = document.getElementById('c_lot_n_' + i);
+      return q ? { id: l.id, qty: U.num(q.value), dluo: d ? d.value : l.dluo, lotNumber: n ? n.value.trim() : l.lotNumber } : l;
+    });
+  },
+  _drawConsoLots() { const w = document.getElementById('c_lots_wrap'); if (w) w.innerHTML = this._consoLotsHTML(); },
+  _addConsoLot() { this._syncConsoLots(); this._cLots.push({ id: U.uid(), qty: 1, dluo: '', lotNumber: '' }); this._drawConsoLots(); },
+  _delConsoLot(i) { this._syncConsoLots(); this._cLots.splice(i, 1); this._drawConsoLots(); },
+  _onConsoDluoToggle() {
+    const on = !!(document.getElementById('c_hasDluo') || {}).checked, w = document.getElementById('c_lots_wrap'); if (!w) return;
+    w.style.display = on ? '' : 'none';
+    if (on && !this._cLots.length) this._cLots.push({ id: U.uid(), qty: Math.max(1, U.numVal('c_qty')), dluo: '', lotNumber: '' });
+    this._drawConsoLots();
+  },
+  /* Section « Consommables » de l'onglet Péremptions : mêmes horizons que la mastication (pas de filtre viande / variante / « plusieurs lots »). */
+  _peremConsoHTML(f, hideExpired) {
+    if ((f.meat && f.meat !== 'all') || f.variants.length || f.horizon === 'multi') return '';
+    const all = [];
+    Store.state.consumables.forEach(c => this.consoLots(c).forEach(l => all.push({ c, l })));
+    if (!all.length) return '';
+    const list = all.filter(({ c, l }) => {
+      const d = l.days;
+      if (hideExpired && d < 0) return false;
+      if (f.q && !U.has(c.name, f.q)) return false;
+      return f.horizon === 'expired' ? d < 0 : f.horizon === '1' ? d <= 30 : f.horizon === '3' ? d <= 90 : f.horizon === '6' ? d <= 180 : f.horizon === '9' ? d <= 270 : true;
+    }).sort((a, b) => a.l.days - b.l.days || U.sortFr(a.c.name, b.c.name));
+    return `<div class="card"><h2 style="font-size:1rem;margin:0 0 8px;">🧴 Consommables à date limite <span class="muted" style="font-weight:400;font-size:.85rem;">(${list.length} lot${list.length > 1 ? 's' : ''})</span></h2>
+      <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Catégorie</th><th>N° lot</th><th>Date péremption</th><th class="num">Quantité</th><th>Statut</th></tr></thead>
+      <tbody>${list.map(({ c, l }) => `<tr><td class="col-name"><b>${U.esc(c.name)}</b></td><td><span class="badge info">${U.esc(c.category || 'Autre')}</span></td><td><span class="tag">${U.esc(l.lotNumber || 'sans n°')}</span></td><td>${U.frDate(l.dluo)}</td><td class="num">${U.qty(l.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td><td>${this.dluoStatusBadge(l.days)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun lot pour ces filtres.</td></tr>'}</tbody></table></div></div>`;
   },
   setConsoQty(id,val){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
@@ -2322,6 +2379,7 @@ const Stock = {
     const c=id?Store.state.consumables.find(x=>x.id===id):{id:U.uid(),name:'',category:S.consCategories[0],unit:'PCS',qty:0,low:0,costUnit:0};
     const isBl = c.category === 'Blisters';
     this._editConsoId = c.id;
+    this._cLots = (c.lots || []).map(l => ({ ...l }));
     U.modal({
       title:id?'Modifier':'Nouveau consommable', okLabel:'Enregistrer',
       body:`<div class="frow">
@@ -2345,6 +2403,8 @@ const Stock = {
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20); return U.eur(sh.v) + ' ' + sh.lab; })()} /u</span></div>
       </div>
       <div class="fg" id="c_uvyear_wrap" style="${c.category==='Entretien UV'?'':'display:none'}"><label>Utilisé / remplacé par an (en unités) <span class="muted help">Entretien imprimante UV : nombre d'unités de ce consommable (flacon d'alcool, tampon feutre, tapis adhésif…) que tu utilises sur l'année. Prix unitaire × ce nombre = coût annuel, ajouté à « Entretien imprimante » (Paramètres → Impression UV).</span></label><input id="c_uvyear" type="number" step="0.01" min="0" value="${U.num(c.uvPerYear)||''}" placeholder="ex : 4"></div>
+      <div class="fg" style="margin-top:6px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;"><input type="checkbox" id="c_hasDluo" ${c.hasDluo?'checked':''} onchange="Stock._onConsoDluoToggle()" style="width:auto;"> 📅 Ce produit a une date limite (DLUO)</label>
+        <div id="c_lots_wrap" style="${c.hasDluo?'':'display:none;'}margin-top:6px;">${c.hasDluo ? this._consoLotsHTML() : ''}</div></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="fg" style="margin-top:6px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;"><input type="checkbox" id="c_toReplace" ${c.toReplace?'checked':''} style="width:auto;"> 🚩 À ne plus racheter (à remplacer ou supprimer)</label></div>
@@ -2356,6 +2416,13 @@ const Stock = {
         if(!U.val('c_name').trim()){U.toast('Nom obligatoire',true);return false;}
         const dupMsgs = this.dupWarnings({ url: U.val('c_url'), ref: U.val('c_ref'), self: { kind: 'C', id: c.id } });
         if (!U.dupGate(dupMsgs, () => document.getElementById('modalOk').click())) return false;
+        const hasDluo = !!(document.getElementById('c_hasDluo') || {}).checked;
+        let lotsFinal = [];
+        if (hasDluo) {
+          this._syncConsoLots();
+          if (this._cLots.some(l => U.num(l.qty) > 0 && !l.dluo)) { U.toast('Un lot n\'a pas de DLUO : renseigne la date ou retire le lot.', true); return false; }
+          lotsFinal = this._cLots.filter(l => l.dluo && U.num(l.qty) > 0).map(l => ({ id: l.id || U.uid(), qty: U.num(l.qty), dluo: l.dluo, lotNumber: l.lotNumber || '' }));
+        }
         const snap = id ? Store.snapshot('consumables',c) : null;
         c.name=U.val('c_name').trim();
         c.dimensions=U.val('c_dim').trim();
@@ -2363,6 +2430,8 @@ const Stock = {
         c.costTotal=U.numVal('c_costTotal'); c.costQtyPer=Math.max(0.01,U.numVal('c_costQty'));
         c.costTax=(document.getElementById('c_tax')||{dataset:{}}).dataset.tax||'HT';
         c.costUnit=this.consoUnitCost(c.costTotal,c.costQtyPer,c.costTax);
+        c.hasDluo = hasDluo;
+        if (hasDluo) { c.lots = lotsFinal; const dated = lotsFinal.reduce((a, l) => a + l.qty, 0); if (dated > U.num(c.qty)) c.qty = dated; }   // les lots datés comptent dans le stock total
         if (c.category === 'Entretien UV') c.uvPerYear = U.numVal('c_uvyear'); else delete c.uvPerYear;
         c.url=U.val('c_url').trim();
         c.ref=U.val('c_ref').trim();
