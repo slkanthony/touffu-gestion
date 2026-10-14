@@ -42,6 +42,7 @@ const Paniers = {
   addQ: '',
   addOpen: false,
   addVariants: [],
+  addCat: '', addWidth: '', addPerso: 'all',   // filtres de la liste d'accessoires (catégorie, largeur de sangle, personnalisation)
   addKind: 'all',   // ajout manuel : 'all' | 'M' (mastication) | 'A' (accessoires) — les devis peuvent aussi contenir des accessoires (2026-10-14)
   addVariantsOpen: false,
   proposals: null,
@@ -1187,13 +1188,21 @@ const Paniers = {
     return Store.state.catalogA.map(a => {
       const c = Pricing.accCalc(a), w = a.mainWidth || (a.strapWidths || [])[0] || '';
       return { kind: 'A', pId: a.id, vId: '', lotId: '', name: a.name, meat: '', category: a.category || '', variant: '', width: w, sku: a.sku || '', price: c.priceTTC, coeff: c.effCoeff || 0,
-        avail: U.num(a.stockGeneral) + U.num(a.stockEvent), dluo: '', daysLeft: 9999, tags: {} };
+        avail: U.num(a.stockGeneral) + U.num(a.stockEvent), dluo: '', daysLeft: 9999, tags: {}, rank: Accessoires._persoRank(a) };
     });
   },
   setAddKind(v) { this.addKind = v; this.addOpen = false; this.render(); },
+  setAddFilter(k, v) { this[k] = v; this.addOpen = true; this.render(); },
+  /* Filtres de la liste d'accessoires (mode « Accessoires ») : catégorie, largeur de sangle, personnalisation (sans / UV / thème UV / laser) */
+  _accFilterOk(c) {
+    if (this.addCat && c.category !== this.addCat) return false;
+    if (this.addWidth && c.width !== this.addWidth) return false;
+    const r = c.rank || 0, p = this.addPerso;
+    return p === 'all' || (p === 'none' && r === 0) || (p === 'uv' && (r & 1) && !(r & 4)) || (p === 'theme' && (r & 4)) || (p === 'laser' && (r & 2));
+  },
   manualCandidates() {
     const q = U.normSearch(this.addQ), kind = this.addKind || 'all';
-    const accs = kind === 'M' ? [] : this.accCandidates().filter(c => (q ? U.has(c.name + ' ' + c.category + ' ' + c.width + ' ' + c.sku, q) : kind === 'A')).sort((a, b) => U.sortFr(a.name, b.name)).slice(0, 100);
+    const accs = kind === 'M' ? [] : this.accCandidates().filter(c => (kind !== 'A' || this._accFilterOk(c)) && (q ? U.has(c.name + ' ' + c.category + ' ' + c.width + ' ' + c.sku, q) : kind === 'A')).sort((a, b) => U.sortFr(a.name, b.name)).slice(0, 100);
     if (kind === 'A') return accs;
     return this.allCandidates().filter(c => {
       if (q && !U.has(c.name + ' ' + c.variant + ' ' + c.sku, q)) return false;
@@ -1606,15 +1615,20 @@ const Paniers = {
         ` : '<div class="empty" style="text-align:center;padding:40px;"><span class="big">🧺</span><p class="muted">Clique sur "Générer le panier" pour composer automatiquement,<br>ou ajoute des produits manuellement ci-dessous.</p></div>'}
 
         <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:16px;">
-          <div class="fg mb0" style="flex:0 0 170px;min-width:0;">
+          <div class="fg mb0" style="flex:0 0 150px;min-width:0;">
             <label style="white-space:nowrap;">Type</label>
             ${U.customSelect({ value: this.addKind || 'all', options: [{ v: 'all', l: 'Tout' }, { v: 'M', l: '🥩 Mastication' }, { v: 'A', l: '🐕 Accessoires' }], onPick: 'Paniers.setAddKind' })}
           </div>
-          ${this.addKind === 'A' ? '' : `<div class="fg mb0" style="min-width:160px;max-width:220px;">
+          ${this.addKind === 'A' ? (() => {
+            const accs = Store.state.catalogA, cats = [...new Set(accs.map(a => a.category).filter(Boolean))].sort(U.sortFr), ws = [...new Set(accs.map(a => a.mainWidth || (a.strapWidths || [])[0] || '').filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
+            const sel = (label, key, opts, w) => `<div class="fg mb0" style="flex:0 0 ${w}px;min-width:0;"><label style="white-space:nowrap;">${label}</label>${U.customSelect({ value: this[key], options: opts, onPick: 'Paniers._setAccF_' + key })}</div>`;
+            return sel('Catégorie', 'addCat', [{ v: '', l: 'Toutes' }].concat(cats.map(c => ({ v: c, l: c }))), 120) + sel('Largeur', 'addWidth', [{ v: '', l: 'Toutes' }].concat(ws.map(w => ({ v: w, l: w }))), 100)
+              + sel('Personnalisation', 'addPerso', [{ v: 'all', l: 'Toutes' }, { v: 'none', l: 'Sans' }, { v: 'uv', l: 'Impression UV' }, { v: 'theme', l: 'Création thème UV' }, { v: 'laser', l: 'Gravure laser' }], 165);
+          })() : `<div class="fg mb0" style="min-width:160px;max-width:220px;">
             <label>Variantes</label>
             ${U.multiSelect({ groups: this.addVariantGroups(), selected: this.addVariants, toggle: 'Paniers.toggleAddVariant', setAll: 'Paniers.setAllAddVariant', open: this.addVariantsOpen, onOpen: 'Paniers.setAddVariantsOpen' })}
           </div>`}
-          <div class="fg mb0" style="flex:1;min-width:200px;">
+          <div class="fg mb0" style="flex:${this.addKind === 'A' ? '1 1 100%' : '1'};min-width:200px;">
             <label>➕ Ajouter un produit</label>
             <div class="autocomplete" data-onclose="Paniers.closeAddMenu">
               <input id="pan_add_q" type="text" autocomplete="off" placeholder="Chercher un produit…"
@@ -1732,3 +1746,6 @@ const Paniers = {
 
 /* Valeurs d'origine de la configuration (avant toute valeur mémorisée) : sert à « repartir comme pour un nouveau panier » */
 Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
+
+/* Menus de filtre des accessoires dans « Ajouter un produit » (U.customSelect appelle une fonction globale par son nom) */
+['addCat', 'addWidth', 'addPerso'].forEach(k => { Paniers['_setAccF_' + k] = function (v) { this.setAddFilter(k, v); }; });
