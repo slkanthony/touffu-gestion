@@ -3077,9 +3077,9 @@ const Stock = {
     if (!await U.confirm(`Supprimer le groupe "${key}" et ses ${items.length} matière(s) ?`)) return;
     const snaps = items.map(m => Store.snapshot('materials', m));
     Store.state.materials = Store.state.materials.filter(m => (m.product || m.name) !== key);
-    snaps.forEach(s => Store.commitSnapshot(s, 'stock', 'Matière supprimée (groupe) — ' + s.item.name));
+    const entry = Store.log('stock', `Groupe de matières supprimé — ${key} (${items.length} matière${items.length > 1 ? 's' : ''})`, { type: 'restoreBatch', data: snaps });
     Store.save('materials'); App.rerender();
-    U.toast('Groupe supprimé.');
+    U.toast('Groupe supprimé.', false, entry.id);
   },
 
   openMatLink(id) {
