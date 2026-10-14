@@ -26,6 +26,11 @@ const Accessoires = {
   setAccCatFilter(v) { this.accCatFilter = v; this.renderProducts(); },
   setAccWidthFilter(v) { this.accWidthFilter = v; this.renderProducts(); },
   setAccBicolorFilter(v) { this.accBicolorFilter = v; this.renderProducts(); },
+  /* Tri d'accessoires (Antho 2026-10-14) : nom SANS la longueur finale (« Laisse Classique — 1.2m » et « — 5m » = même nom), puis longueur du produit fini (1,2 m avant 5 m), puis largeur de sangle (16 mm avant 20 mm). */
+  _baseName(a) { return String(a.name || '').replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
+  _lenOf(a) { const l = U.num(a.productLength); if (l > 0) return l; const m = String(a.name || '').match(/(\d+(?:[.,]\d+)?)\s*m\s*$/i); return m ? parseFloat(m[1].replace(',', '.')) : 0; },
+  _widthNum(a) { return parseFloat(String(a.mainWidth || (a.strapWidths || [])[0] || '').replace(',', '.')) || 0; },
+  _cmpAcc(a, b) { return U.sortFr(this._baseName(a), this._baseName(b)) || (this._lenOf(a) - this._lenOf(b)) || (this._widthNum(a) - this._widthNum(b)) || U.sortFr(a.name, b.name); },
   setAccSort(key) {
     if (this.accSort === key) this.accSortDir = this.accSortDir === 'asc' ? 'desc' : 'asc';
     else { this.accSort = key; this.accSortDir = 'asc'; }
@@ -153,13 +158,13 @@ const Accessoires = {
       let v = 0;
       const ca = Pricing.accCalc(a), cb = Pricing.accCalc(b);
       switch(this.accSort) {
-        case 'name': v = U.sortFr(a.name, b.name); break;
+        case 'name': v = this._cmpAcc(a, b); break;
         case 'cat': v = U.sortFr(a.category||'', b.category||''); break;
-        case 'width': v = U.sortFr((a.strapWidths||[]).join(','), (b.strapWidths||[]).join(',')); break;
+        case 'width': v = this._widthNum(a) - this._widthNum(b); break;
         case 'cost': v = ca.cost - cb.cost; break;
         case 'price': v = ca.priceTTC - cb.priceTTC; break;
       }
-      return (v || U.sortFr(a.category + a.name, b.category + b.name)) * dir;
+      return (v || (this.accSort === 'name' ? 0 : this._cmpAcc(a, b))) * dir;
     });
     const sortHead = (key, label) => `<span class="sortable ${this.accSort===key?'active':''}" onclick="Accessoires.setAccSort('${key}')">${label} ${this.accSort===key?(this.accSortDir==='asc'?'▲':'▼'):'⇕'}</span>`;
     const allCats = [...new Set(Store.state.catalogA.map(a => a.category).filter(Boolean))].sort(U.sortFr);
@@ -184,8 +189,8 @@ const Accessoires = {
       <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button></div>
       ${list.length ? `<div class="prod-list-header acc-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
-        <span>${sortHead('cat', 'Catégorie')}</span>
         <span>${sortHead('width', 'Largeur')}</span>
+        <span>${sortHead('cat', 'Catégorie')}</span>
         <span class="right">${sortHead('cost', 'Coût')}</span>
         <span class="right">${sortHead('price', 'Prix TTC')}</span>
       </div>` : ''}
@@ -427,8 +432,8 @@ const Accessoires = {
     return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
         <span><b>${U.esc(a.name)}</b>${c.critical ? ' <span class="badge bad">coeff critique</span>' : ''}</span>
-        <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
+        <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="meta right sensitive">${U.eur(c.cost)}</span>
         <span class="meta right"><b>${U.eur(c.priceTTC)}</b></span>
       </summary>
