@@ -1463,3 +1463,6 @@ details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed
 details.fold.acc-group { border-left: 4px solid var(--caramel) !important; }
 details.fold.acc-group > .fold-body { padding-top: 10px; }
 details.fold.acc-group > .fold-body > details.fold { margin-left: 6px; }
+
+/* Bouton dans une ligne de champs (.frow) : à la taille de sa fonction, posé en bas comme les cases voisines — jamais étiré en barre */
+.frow > .fit { flex: 0 0 auto; min-width: 0; align-self: flex-end; }

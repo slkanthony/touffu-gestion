@@ -182,7 +182,7 @@ const Accessoires = {
         <div class="card" style="padding:10px 14px;margin:0 0 10px;">
           <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
             <div class="fg mb0" style="flex:0 0 170px;"><label>Coefficient commun ${U.info("Le coefficient de toute la famille : change-le ici et toutes les longueurs qui le suivent se recalculent (prix TTC arrondi comme d'habitude). Une longueur dont tu as tapé le prix ou le coefficient garde son réglage (badge « propre ») : « Aligner » la remet au commun.")}</label><input type="number" step="0.01" min="0.01" value="${gc ? Math.round(gc * 100) / 100 : ''}" onchange="Accessoires.setGroupCoeff('${gid}',this.value)"></div>
-            ${nOwn ? `<button class="btn-ghost btn-sm" onclick="Accessoires.alignGroup('${gid}')" title="Remettre les ${nOwn} longueur(s) à réglage propre au coefficient commun">↻ Aligner (${nOwn})</button>` : ''}
+            ${nOwn ? `<button class="btn-ghost btn-sm fit" onclick="Accessoires.alignGroup('${gid}')" title="Remettre les ${nOwn} longueur(s) à réglage propre au coefficient commun">↻ Aligner (${nOwn})</button>` : ''}
           </div>
         </div>
         ${mem.map(a => this.accCard(a)).join('')}
@@ -200,29 +200,36 @@ const Accessoires = {
   /* « Modifier » une famille : nom, catégorie (appliquée à toutes les longueurs), coefficient commun, notes. */
   editGroup(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
-    const f = mem[0], cats = (Store.state.settings.accCategories || []).slice().sort(U.sortFr);
+    const f = mem[0], cats = (Store.state.settings.accCategories || []).slice().sort(U.sortFr), w0 = this._widthOf(f);
     if (f.category && !cats.includes(f.category)) cats.push(f.category);
+    const ws = [...new Set([w0, ...(Store.state.settings.widths || [])].filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
     const r0 = this._persoRank(f), uv0 = !!(r0 & 1), la0 = !!(r0 & 2);
+    this._gmW0 = w0; this._gmCur = w0;
     const lab = 'display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.9rem;margin:0;white-space:nowrap;';
+    const nw = 'white-space:nowrap;';
     U.modal({
       title: '✏️ Modifier la famille — ' + U.esc(f.groupName || ''), okLabel: 'Enregistrer',
-      body: `<div class="frow"><div class="fg" style="flex:2;"><label>Nom du produit</label><input id="gm_name" value="${U.esc(f.groupName || this._familyName(f))}"></div>
-        <div class="fg"><label>Catégorie ${U.info('Appliquée à toutes les longueurs de la famille (les SKU ne changent pas tout seuls : utilise « ✨ SKU »).')}</label><select id="gm_cat">${cats.map(c => `<option ${c === f.category ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}</select></div>
-        <div class="fg"><label>Coefficient commun</label><input id="gm_coef" type="number" step="0.01" min="0.01" value="${U.num(f.groupCoeff) ? Math.round(U.num(f.groupCoeff) * 100) / 100 : ''}"></div></div>
+      body: `<div class="frow" style="align-items:flex-start;">
+          <div class="fg" style="flex:1 1 150px;min-width:0;"><label style="${nw}">Nom du produit</label><input id="gm_name" value="${U.esc(f.groupName || this._familyName(f))}"></div>
+          <div class="fg" style="flex:0 0 130px;min-width:0;"><label style="${nw}">Catégorie ${U.info('Appliquée à toutes les longueurs de la famille ; leurs SKU sont mis à jour.')}</label><select id="gm_cat">${cats.map(c => `<option ${c === f.category ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}</select></div>
+          <div class="fg" style="flex:0 0 100px;min-width:0;"><label style="${nw}">Largeur ${U.info("Change la largeur de sangle de TOUTES les longueurs : les sangles de chaque nomenclature passent à la nouvelle largeur, les coûts se recalculent, les SKU sont mis à jour. Tu n'as plus qu'à vérifier les prix.")}</label><select id="gm_w" onchange="Accessoires._gmName()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div>
+          <div class="fg" style="flex:0 0 115px;min-width:0;"><label style="${nw}">Coeff. commun</label><input id="gm_coef" type="number" step="0.01" min="0.01" value="${U.num(f.groupCoeff) ? Math.round(U.num(f.groupCoeff) * 100) / 100 : ''}"></div></div>
         <div class="fg"><label>🎨 Personnalisation ${U.info("Coche l'impression UV et / ou la gravure laser : elle est ajoutée au nom et au SKU de TOUTES les longueurs de la famille, avec son coût (ml d'encre / minutes). Décoche pour la retirer partout.")}</label>
           <div style="display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap;min-height:40px;">
-            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="gm_uv" type="checkbox" style="width:16px;height:16px;" ${uv0 ? 'checked' : ''} onchange="Accessoires._gmPerso()"> Impression UV</label><input id="gm_uvml" type="number" step="0.1" min="0" value="${U.num(f.uvMl) || ''}" placeholder="ml d'encre" style="width:120px;margin:0;"></span>
-            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="gm_la" type="checkbox" style="width:16px;height:16px;" ${la0 ? 'checked' : ''} onchange="Accessoires._gmPerso()"> Gravure laser</label><input id="gm_lamin" type="number" step="0.5" min="0" value="${U.num(f.laserMin) || ''}" placeholder="minutes" style="width:110px;margin:0;"></span></div></div>
+            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="gm_uv" type="checkbox" style="width:16px;height:16px;" ${uv0 ? 'checked' : ''} onchange="Accessoires._gmName()"> Impression UV</label><input id="gm_uvml" type="number" step="0.1" min="0" value="${U.num(f.uvMl) || ''}" placeholder="ml d'encre" style="width:120px;margin:0;"></span>
+            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="gm_la" type="checkbox" style="width:16px;height:16px;" ${la0 ? 'checked' : ''} onchange="Accessoires._gmName()"> Gravure laser</label><input id="gm_lamin" type="number" step="0.5" min="0" value="${U.num(f.laserMin) || ''}" placeholder="minutes" style="width:110px;margin:0;"></span></div></div>
         <div class="fg"><label>Notes sur ce produit (optionnel)</label><textarea id="gm_notes" rows="3" placeholder="ex : modèle éducation, mousqueton laiton, à proposer avec la poignée…" style="width:100%;resize:vertical;">${U.esc(f.groupNotes || '')}</textarea></div>
         <p class="muted">${mem.length} longueur${mem.length > 1 ? 's' : ''} dans cette famille.</p>`,
       onOk: () => {
         const name = U.val('gm_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
-        const cat = U.val('gm_cat'), v = Math.round(U.numVal('gm_coef') * 100) / 100, notes = U.val('gm_notes').trim();
+        const cat = U.val('gm_cat'), w1 = U.val('gm_w') || w0, v = Math.round(U.numVal('gm_coef') * 100) / 100, notes = U.val('gm_notes').trim();
         const coefChanged = v > 0 && Math.abs(v - U.num(f.groupCoeff)) > 0.0049;
         const uv1 = U.chk('gm_uv'), la1 = U.chk('gm_la'), uvMl = U.numVal('gm_uvml'), laMin = U.numVal('gm_lamin');
-        const persoChanged = uv1 !== uv0 || la1 !== la0, amountChanged = (uv1 && Math.abs(uvMl - U.num(f.uvMl)) > 0.0001) || (la1 && Math.abs(laMin - U.num(f.laserMin)) > 0.0001);
-        const taken = new Set();   // SKU déjà pris ailleurs (hors famille), + ceux attribués ici
-        if (persoChanged) {
+        const persoChanged = uv1 !== uv0 || la1 !== la0, widthChanged = w1 !== w0, catChanged = !!cat && cat !== f.category;
+        const amountChanged = (uv1 && Math.abs(uvMl - U.num(f.uvMl)) > 0.0001) || (la1 && Math.abs(laMin - U.num(f.laserMin)) > 0.0001);
+        const skuChange = persoChanged || widthChanged || catChanged;   // le SKU contient le type, la largeur et la personnalisation
+        const taken = new Set(); let missing = 0;   // SKU déjà pris ailleurs (hors famille), + ceux attribués ici
+        if (skuChange) {
           const ids = new Set(mem.map(a => a.id)); const add = x => { x = String(x || '').trim().toUpperCase(); if (x) taken.add(x); };
           Store.state.catalogA.forEach(x => { if (!ids.has(x.id)) add(x.sku); });
           Store.state.stockM.forEach(p => (p.variants || []).forEach(x => add(x.sku))); Store.state.catalogM.forEach(p => (p.variants || []).forEach(x => add(x.sku)));
@@ -232,21 +239,28 @@ const Accessoires = {
           if (coefChanged) a.groupCoeff = v;
           a.groupName = name; if (cat) a.category = cat;
           if (notes) a.groupNotes = notes; else delete a.groupNotes;
-          if (persoChanged || amountChanged) {
-            a.uv = uv1; a.uvMl = uv1 ? uvMl : 0; a.laser = la1; a.laserMin = la1 ? laMin : 0;
-            if (persoChanged) {   // nom et SKU de chaque longueur suivent la personnalisation
-              a.name = this._persoName(a.name, uv1, la1);
-              const base = Pricing.autoSkuAcc(a); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); a.sku = base ? sku : a.sku;
-            }
+          if (widthChanged) {   // sangles et pièces à la taille de chaque nomenclature : nouvelle largeur ; coûts recalculés
+            a.strapWidths = (a.strapWidths || []).map(w => w === w0 ? w1 : w); a.mainWidth = w1;
+            (a.bom || []).forEach(l => { if (l.familyKey && l.familyKey.endsWith(':' + w0)) { l.familyKey = l.familyKey.slice(0, -w0.length) + w1; if (!this.families().some(x => x.key === l.familyKey)) missing++; } });
+            if (a.name.includes(w0)) a.name = a.name.replace(w0, w1);
+            this._autoStrap(a);
           }
+          if (persoChanged || amountChanged) { a.uv = uv1; a.uvMl = uv1 ? uvMl : 0; a.laser = la1; a.laserMin = la1 ? laMin : 0; }
+          if (persoChanged) a.name = this._persoName(a.name, uv1, la1);
+          if (skuChange) { const base = Pricing.autoSkuAcc(a); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); a.sku = base ? sku : a.sku; }
         }, 'Famille modifiée — ' + name);
-        this._grpOpen[gid] = true; U.closeModal(); U.toast('Famille enregistrée.', false, entry.id);
+        this._grpOpen[gid] = true; U.closeModal();
+        U.toast('Famille enregistrée.' + (skuChange ? ' SKU mis à jour.' : '') + (missing ? ` ⚠️ ${missing} ligne(s) de sangle sans référence en ${w1} dans le stock : coût à vérifier.` : ''), missing > 0, entry.id);
       }
     });
   },
-  _gmPerso() {   // cases UV / laser de « Modifier la famille » : le nom proposé suit
+  /* Nom proposé dans « Modifier la famille » : suit la largeur et les cases UV / laser (« Longe 16mm — Personnalisation UV »). */
+  _gmName() {
     const el = document.getElementById('gm_name'); if (!el) return;
-    el.value = this._persoName(el.value.replace(this._PERSO_RX, '').trim(), U.chk('gm_uv'), U.chk('gm_la'));
+    let base = el.value.replace(this._PERSO_RX, '').trim(); const w1 = U.val('gm_w'), cur = this._gmCur;
+    if (cur && w1 && base.includes(cur)) base = base.replace(cur, w1);
+    this._gmCur = w1 || cur;
+    el.value = this._persoName(base, U.chk('gm_uv'), U.chk('gm_la'));
   },
   /* « Dupliquer » une famille : copie toutes les longueurs (stock à 0, SKU neufs). On peut changer la LARGEUR : les sangles de chaque nomenclature passent à la nouvelle largeur → coûts recalculés ; les prix suivent le coefficient commun. */
   duplicateGroup(gid) {
@@ -258,8 +272,8 @@ const Accessoires = {
     const lab = 'display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.9rem;margin:0;white-space:nowrap;';
     U.modal({
       title: '📋 Dupliquer la famille — ' + U.esc(f.groupName || ''), okLabel: 'Dupliquer',
-      body: `<div class="frow"><div class="fg" style="flex:2;"><label>Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
-        <div class="fg"><label>Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
+      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
+        <div class="fg" style="flex:0 0 150px;"><label style="white-space:nowrap;">Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
         <div class="fg"><label>🎨 Personnalisation de la nouvelle famille ${U.info("Coche pour décliner le produit en version personnalisée : toutes les longueurs reçoivent l'impression UV et / ou la gravure laser (coût, nom et SKU mis à jour).")}</label>
           <div style="display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap;min-height:40px;">
             <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="dg_uv" type="checkbox" style="width:16px;height:16px;" ${uv0 ? 'checked' : ''} onchange="Accessoires._dgWidth()"> Impression UV</label><input id="dg_uvml" type="number" step="0.1" min="0" value="${U.num(f.uvMl) || ''}" placeholder="ml d'encre" style="width:120px;margin:0;"></span>
