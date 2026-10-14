@@ -186,10 +186,14 @@ const Pricing = {
      { bom:[{materialId, qty}], laborMinutes, extraCost, coefficient } */
   /* Coût de l'impression UV au millilitre (tout compris) :
      encre (prix cartouche ÷ volume) + entretien/solvant par ml. */
+  uvInkConso() { const id = Store.state.settings.uvInkConsoId; return id ? ((Store.state.consumables || []).find(x => x.id === id) || null) : null; },
   // Coût encre au ml (prix cartouche ÷ volume).
   uvInkPerMl() {
     const S = Store.state.settings;
     const vol = U.num(S.uvCartridgeVolume);
+    // Cartouche reliée à un consommable du Stock : son coût unitaire (HT, suit les achats) + TVA d'achat tant que non assujetti
+    const lk = this.uvInkConso();
+    if (lk) return vol > 0 ? U.num(lk.costUnit) * this.vatK() / vol : 0;
     // Prix saisi TTC (défaut) ou HT : le coût compte la TVA d'achat tant que non assujetti (comme les matières et consommables), HT une fois assujetti.
     const vat = 1 + U.num(S.vatRate) / 100, p = U.num(S.uvCartridgePrice);
     const price = S.uvCartridgeTax === 'HT' ? p * this.vatK() : (S.vatActive ? p / vat : p);

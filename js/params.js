@@ -100,10 +100,11 @@ const Params = {
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:14px 0 6px;">🖨️ Impression UV</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Cartouche d'encre — prix / volume</label>
-            <div class="cost-split" style="margin:0 auto;"><span class="tax-in" style="display:block;"><input id="p_uv_price" type="number" step="0.01" value="${S.uvCartridgePrice ?? 42}" style="width:112px;padding-right:46px;" title="Prix de la cartouche (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><button type="button" id="p_uv_tax" class="tax-tag" data-tax="${S.uvCartridgeTax === 'HT' ? 'HT' : 'TTC'}" title="Clique pour basculer HT ⇄ TTC : le prix que tu as payé la cartouche" onclick="Params.toggleUvTax()">${S.uvCartridgeTax === 'HT' ? 'HT' : 'TTC'}</button></span><span class="cost-split-sep">€ /</span><input id="p_uv_vol" type="number" step="1" value="${S.uvCartridgeVolume ?? 100}" title="Volume de la cartouche (ml)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">ml</span></div>
+            <div class="cost-split" style="margin:0 auto;">${Pricing.uvInkConso() ? `<span style="padding:0 10px;font-size:.85rem;" title="Prix d'une cartouche = coût du consommable relié (Stock), TVA d'achat comprise tant que non assujetti">${U.eur(U.num(Pricing.uvInkConso().costUnit) * Pricing.vatK())} <span class="badge ok" style="font-size:.7rem;">🔗 auto</span></span>` : `<span class="tax-in" style="display:block;"><input id="p_uv_price" type="number" step="0.01" value="${S.uvCartridgePrice ?? 42}" style="width:112px;padding-right:46px;" title="Prix de la cartouche (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><button type="button" id="p_uv_tax" class="tax-tag" data-tax="${S.uvCartridgeTax === 'HT' ? 'HT' : 'TTC'}" title="Clique pour basculer HT ⇄ TTC : le prix que tu as payé la cartouche" onclick="Params.toggleUvTax()">${S.uvCartridgeTax === 'HT' ? 'HT' : 'TTC'}</button></span>`}<span class="cost-split-sep">€ /</span><input id="p_uv_vol" type="number" step="1" value="${S.uvCartridgeVolume ?? 100}" title="Volume de la cartouche (ml)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">ml</span></div>
           </div>
         </div>
         <p class="muted" style="margin:4px 0 0;text-align:center;">Encre : <b>${U.eur(Pricing.uvInkPerMl())}/ml</b></p>
+        ${this.uvInkLinkHTML()}
 
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;margin-top:12px;">
           <div class="fg" style="margin:0;flex:0 0 auto;width:230px;text-align:center;"><label>+ Majoration entretien (%) ${U.info('Pourcentage ajouté au coût de l\'encre pour couvrir filtres, nettoyage et entretien. 0 = encre seule.')}</label><input id="p_uv_maint_pct" type="number" step="1" min="0" value="${U.num(S.uvMaintPct) || ''}" placeholder="0" style="text-align:center;" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
@@ -728,7 +729,8 @@ const Params = {
     if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
     S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
     S.b2bCoeffThreshold = U.numVal('p_thr'); S.accCoeffThreshold = U.numVal('p_acc_thr'); S.dluoAlertDays = U.numVal('p_dluo'); S.vatActive = U.chk('p_vatActive');
-    S.uvCartridgePrice = U.numVal('p_uv_price'); { const t = document.getElementById('p_uv_tax'); S.uvCartridgeTax = t && t.dataset.tax === 'HT' ? 'HT' : 'TTC'; }S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
+    if (document.getElementById('p_uv_price')) { S.uvCartridgePrice = U.numVal('p_uv_price'); const t = document.getElementById('p_uv_tax'); S.uvCartridgeTax = t && t.dataset.tax === 'HT' ? 'HT' : 'TTC'; }   // absent quand la cartouche est reliée à un consommable
+S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
     S.laserWatts = U.numVal('p_laser_w'); S.kwhPrice = U.numVal('p_kwh'); S.laserWearPerHour = U.numVal('p_laser_wear');
     S.uvFilterPrice = U.numVal('p_uv_filter_price'); S.uvFilterPerYear = U.numVal('p_uv_filter_year');
     S.uvCleanPrice = U.numVal('p_uv_clean_price'); S.uvCleanPerYear = U.numVal('p_uv_clean_year');
@@ -1580,6 +1582,14 @@ const Params = {
       <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">💌 Cartes ${U.info("Crée d'abord tes cartes dans Stock → Consommables (prix d'achat et quantité : l'appli divise pour avoir le coût d'une carte), puis relie-les ici.<br><br>● Carte de remerciement : case « 💌 incluse » cochée par défaut dans chaque ticket de vente (Click & Collect, livraison).<br>● Carte de visite : tu saisis le nombre distribué au retour d'événement.<br><br>Leur coût entre dans « Cartons & consommables » et le stock baisse ; s'il tombe à 0, le coût est compté quand même et tu es prévenu de recommander.")}</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;">${one('thanksConsoId', '💌 Carte de remerciement', 'Choisis le consommable correspondant.')}${one('cardConsoId', '🪪 Carte de visite', 'Choisis le consommable correspondant.')}</div>
     </div>`;
+  },
+  /* Cartouche d'encre UV reliée à un consommable (Antho 2026-10-14) : `settings.uvInkConsoId`. Le prix d'une cartouche = coût du consommable (suit les achats, pastille HT/TTC du Stock) ; le volume reste ici. Le stock de la cartouche n'est PAS décompté. */
+  uvInkLinkHTML() {
+    const S = Store.state.settings, id = S.uvInkConsoId, all = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name));
+    const isInk = x => /encre|uv|cartouche/.test(U.normSearch((x.category || '') + ' ' + (x.name || '')));
+    const ink = all.filter(isInk), cons = ink.length ? all.filter(x => isInk(x) || x.id === id) : all;
+    return `<div class="fg" style="margin:10px auto 0;max-width:340px;text-align:center;"><label>🔗 Relier à un consommable ${U.info("Crée la cartouche dans Stock → Consommables (prix d'achat HT ou TTC avec la pastille, quantité 1), puis choisis-la ici : le coût de l'encre au ml suit tes achats (prix ÷ volume ci-dessus). Le stock de cartouches n'est pas décompté à chaque impression. « aucun » = tu saisis le prix à la main.")}</label>
+      <select onchange="Params.setCardConso('uvInkConsoId',this.value)"><option value="">— aucun (prix saisi à la main) —</option>${cons.map(x => `<option value="${x.id}" ${x.id === id ? 'selected' : ''}>${U.esc(x.name)}</option>`).join('')}</select></div>`;
   },
   setCardConso(key, val) { Store.state.settings[key] = val || ''; Store.save('settings'); App.rerender(); },
   setLabelType(id, field, val) {
