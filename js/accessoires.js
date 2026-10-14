@@ -43,6 +43,13 @@ const Accessoires = {
   _grpMembers(gid) { return Store.state.catalogA.filter(x => x.groupId === gid).sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name)); },
   _follows(a) { const gc = U.num(a.groupCoeff); return gc > 0 && Math.abs(U.num(a.coefficient) - gc) < 0.0005 && !(U.num(a.priceTTCManual) > 0); },
   _widthOf(a) { return a.mainWidth || (a.strapWidths || [])[0] || ''; },
+  /* Nom d'une famille = même logique que les fiches : catégorie (type) + largeur de sangle principale + personnalisation (UV / laser) → « Longe 16mm », « Longe 16mm — Personnalisation UV ». Si le nom de la fiche précise un modèle (« Laisse Classique — 5m »), il est gardé : « Laisse Classique 20mm ». */
+  _familyName(a) {
+    let base = this._baseName(a); const cat = String(a.category || '').trim();
+    if (cat && !U.normSearch(base).includes(U.normSearch(cat))) base = (cat + ' ' + base).trim();
+    const r = this._persoRank(a), w = this._widthOf(a);
+    return this._persoName((base + (w ? ' ' + w : '')).trim(), !!(r & 1), !!(r & 2));
+  },
   /* Applique `fn` à des fiches avec UN seul « Annuler » ; renvoie l'entrée de journal. */
   _grpTouch(list, fn, label) {
     const snaps = list.map(a => Store.snapshot('catalogA', a));
@@ -55,12 +62,12 @@ const Accessoires = {
   _proposeGroups() {
     const map = {};
     Store.state.catalogA.filter(a => !a.groupId).forEach(a => {
-      const k = U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a);
+      const k = U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a) + '|' + this._persoRank(a);   // UV / laser = une autre famille
       (map[k] = map[k] || []).push(a);
     });
     return Object.values(map).filter(g => g.length >= 2).map(g => {
       g.sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name));
-      return { name: this._baseName(g[0]), category: g[0].category || '', width: this._widthOf(g[0]), members: g };
+      return { name: this._familyName(g[0]), category: g[0].category || '', width: this._widthOf(g[0]), members: g };
     }).sort((x, y) => U.sortFr(x.name, y.name) || (parseFloat(x.width) - parseFloat(y.width)));
   },
   openRegroup() {
@@ -74,7 +81,7 @@ const Accessoires = {
       </div>`).join('');
     U.modal({
       title: '🗂 Regrouper mes accessoires', okLabel: 'Créer les familles',
-      body: `<p class="muted" style="margin-top:0;">Voici ce que je propose : les fiches qui ne diffèrent que par la <b>longueur</b> (ou la personnalisation). Décoche une famille ou une fiche pour la laisser seule, corrige le nom si besoin. <b>Aucun prix, SKU ni stock ne change</b> ; tu pourras tout annuler.</p>${body}`,
+      body: `<p class="muted" style="margin-top:0;">Voici ce que je propose : les fiches qui ne diffèrent que par la <b>longueur</b>. Le nom reprend la catégorie + la largeur de sangle (+ UV / laser) ; tu peux le corriger. Décoche une famille ou une fiche pour la laisser seule, corrige le nom si besoin. <b>Aucun prix, SKU ni stock ne change</b> ; tu pourras tout annuler.</p>${body}`,
       onOk: () => {
         const touched = [], made = [];
         props.forEach((g, gi) => {
@@ -158,7 +165,7 @@ const Accessoires = {
     const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' – ' + f(hi); };
     const widths = [...new Set(mem.map(a => this._widthOf(a)).filter(Boolean))];
     const nCrit = calcs.filter(c => c.critical).length, nOwn = this._grpMembers(gid).filter(a => !this._follows(a)).length;
-    const gc = U.num(first.groupCoeff), open = !!this._grpOpen[gid], name = first.groupName || this._baseName(first);
+    const gc = U.num(first.groupCoeff), open = !!this._grpOpen[gid], name = first.groupName || this._familyName(first);
     return `<details class="fold prod-fold acc-fold acc-group" id="grp-${gid}" ${open ? 'open' : ''} ontoggle="Accessoires.setGrpOpen('${gid}',this.open)">
       <summary>
         <span><b>${U.esc(name)}</b> <span class="badge info">${mem.length === total ? total : mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</span>${nCrit ? ` <span class="badge bad">${nCrit} coeff critique</span>` : ''}</span>
