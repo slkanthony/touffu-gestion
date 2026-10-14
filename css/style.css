@@ -1458,3 +1458,8 @@ details.fold.ref-row .fold-body { padding: 8px 12px 12px; border-top: 1px dashed
 /* Prix au kilo et pièces au kilo dans l'en-tête d'une fiche prix : un peu de marron pour ressortir (plus discret que Coeff / Décote) — 2026-10-07 */
 .kg-hl { color: var(--caramel); font-weight: 700; background: color-mix(in srgb, var(--caramel) 14%, transparent); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
 .tabs-seg { margin-bottom: 16px; }
+
+/* Famille d'accessoires (un produit, plusieurs longueurs) — Antho 2026-10-14 */
+details.fold.acc-group { border-left: 4px solid var(--caramel) !important; }
+details.fold.acc-group > .fold-body { padding-top: 10px; }
+details.fold.acc-group > .fold-body > details.fold { margin-left: 6px; }

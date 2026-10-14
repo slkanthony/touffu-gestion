@@ -27,10 +27,161 @@ const Accessoires = {
   setAccWidthFilter(v) { this.accWidthFilter = v; this.renderProducts(); },
   setAccBicolorFilter(v) { this.accBicolorFilter = v; this.renderProducts(); },
   /* Tri d'accessoires (Antho 2026-10-14) : nom SANS la longueur finale (« Laisse Classique — 1.2m » et « — 5m » = même nom), puis longueur du produit fini (1,2 m avant 5 m), puis largeur de sangle (16 mm avant 20 mm). */
-  _baseName(a) { return String(a.name || '').replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
+  _baseName(a) { return String(a.name || '').replace(this._PERSO_RX, '').replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
+  _persoRank(a) { return ((a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) ? 1 : 0) + (a.laser ? 2 : 0); },
   _lenOf(a) { const l = U.num(a.productLength); if (l > 0) return l; const m = String(a.name || '').match(/(\d+(?:[.,]\d+)?)\s*m\s*$/i); return m ? parseFloat(m[1].replace(',', '.')) : 0; },
   _widthNum(a) { return parseFloat(String(a.mainWidth || (a.strapWidths || [])[0] || '').replace(',', '.')) || 0; },
-  _cmpAcc(a, b) { return U.sortFr(this._baseName(a), this._baseName(b)) || (this._lenOf(a) - this._lenOf(b)) || (this._widthNum(a) - this._widthNum(b)) || U.sortFr(a.name, b.name); },
+  _cmpAcc(a, b) { return U.sortFr(this._baseName(a), this._baseName(b)) || (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || (this._widthNum(a) - this._widthNum(b)) || U.sortFr(a.name, b.name); },
+
+  /* ───── FAMILLES D'ACCESSOIRES (Antho 2026-10-14) ─────
+     Un PRODUIT (famille) = même nom + même catégorie + même largeur de sangle principale ; ses déclinaisons = les longueurs (et la personnalisation UV / laser).
+     Chaque déclinaison reste une fiche à part entière (même id, SKU, stock, historique de ventes : rien ne casse) ; la famille se lit sur les fiches :
+     a.groupId, a.groupName (nom de la famille), a.groupCoeff (coefficient commun). Une fiche « suit » la famille si son coefficient = le commun et qu'elle n'a pas de prix forcé ;
+     sinon elle a un réglage PROPRE (badge « propre »). Tout changement de famille = un seul « Annuler » (restoreBatch sur les fiches). */
+  _grpOpen: {},
+  setGrpOpen(gid, v) { this._grpOpen[gid] = !!v; },
+  _grpMembers(gid) { return Store.state.catalogA.filter(x => x.groupId === gid).sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name)); },
+  _follows(a) { const gc = U.num(a.groupCoeff); return gc > 0 && Math.abs(U.num(a.coefficient) - gc) < 0.0005 && !(U.num(a.priceTTCManual) > 0); },
+  _widthOf(a) { return a.mainWidth || (a.strapWidths || [])[0] || ''; },
+  /* Applique `fn` à des fiches avec UN seul « Annuler » ; renvoie l'entrée de journal. */
+  _grpTouch(list, fn, label) {
+    const snaps = list.map(a => Store.snapshot('catalogA', a));
+    list.forEach(fn);
+    const entry = Store.log('accessoires', label, { type: 'restoreBatch', data: snaps });
+    Store.save('catalogA'); App.rerender();
+    return entry;
+  },
+  /* Propositions de familles pour les fiches pas encore rangées : même nom (sans longueur ni personnalisation) + catégorie + largeur, au moins 2 fiches. */
+  _proposeGroups() {
+    const map = {};
+    Store.state.catalogA.filter(a => !a.groupId).forEach(a => {
+      const k = U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a);
+      (map[k] = map[k] || []).push(a);
+    });
+    return Object.values(map).filter(g => g.length >= 2).map(g => {
+      g.sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name));
+      return { name: this._baseName(g[0]), category: g[0].category || '', width: this._widthOf(g[0]), members: g };
+    }).sort((x, y) => U.sortFr(x.name, y.name) || (parseFloat(x.width) - parseFloat(y.width)));
+  },
+  openRegroup() {
+    const props = this._proposeGroups();
+    if (!props.length) { U.toast('Aucun regroupement à proposer : toutes tes fiches sont déjà rangées ou n\'ont pas de « jumelles ».'); return; }
+    this._rgProps = props;
+    const body = props.map((g, gi) => `<div class="card" style="padding:10px 14px;margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;"><input type="checkbox" id="rg_g_${gi}" checked style="width:auto;"> <b>Créer cette famille</b> <span class="badge info">${U.esc(g.category)}</span> <span class="badge">${U.esc(g.width || '—')}</span></label>
+        <div class="fg" style="margin:8px 0;"><label>Nom du produit</label><input id="rg_n_${gi}" value="${U.esc(g.name)}"></div>
+        ${g.members.map((a, mi) => `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.88rem;margin:2px 0;"><input type="checkbox" id="rg_m_${gi}_${mi}" checked style="width:auto;"> <span>${U.esc(a.name)}</span> <span class="muted">· ${U.eur(Pricing.accCalc(a).priceTTC)}${a.sku ? ' · ' + U.esc(a.sku) : ''}</span></label>`).join('')}
+      </div>`).join('');
+    U.modal({
+      title: '🗂 Regrouper mes accessoires', okLabel: 'Créer les familles',
+      body: `<p class="muted" style="margin-top:0;">Voici ce que je propose : les fiches qui ne diffèrent que par la <b>longueur</b> (ou la personnalisation). Décoche une famille ou une fiche pour la laisser seule, corrige le nom si besoin. <b>Aucun prix, SKU ni stock ne change</b> ; tu pourras tout annuler.</p>${body}`,
+      onOk: () => {
+        const touched = [], made = [];
+        props.forEach((g, gi) => {
+          if (!document.getElementById('rg_g_' + gi) || !document.getElementById('rg_g_' + gi).checked) return;
+          const mem = g.members.filter((a, mi) => { const c = document.getElementById('rg_m_' + gi + '_' + mi); return c && c.checked; });
+          if (mem.length < 2) return;
+          const name = (U.val('rg_n_' + gi) || g.name).trim() || g.name;
+          const cnt = {}; mem.forEach(a => { const k = Math.round(U.num(a.coefficient) * 1000) / 1000; cnt[k] = (cnt[k] || 0) + 1; });
+          const gc = Number(Object.keys(cnt).sort((p, q) => cnt[q] - cnt[p] || Number(p) - Number(q))[0]) || 2;   // coefficient le plus répandu
+          made.push({ gid: U.uid(), name, gc, mem });
+          mem.forEach(a => touched.push(a));
+        });
+        if (!made.length) { U.toast('Rien de coché : aucune famille créée.', true); return false; }
+        const entry = this._grpTouch(touched, a => { const m = made.find(x => x.mem.includes(a)); a.groupId = m.gid; a.groupName = m.name; a.groupCoeff = m.gc; }, `Familles d'accessoires créées (${made.length}) — ${touched.length} fiches rangées`);
+        made.forEach(m => { this._grpOpen[m.gid] = false; });
+        U.closeModal();
+        U.toast(`${made.length} famille${made.length > 1 ? 's' : ''} créée${made.length > 1 ? 's' : ''} (${touched.length} fiches).`, false, entry.id);
+      }
+    });
+  },
+  renameGroup(gid, val) {
+    const name = String(val || '').trim(), mem = this._grpMembers(gid); if (!name || !mem.length) return;
+    this._grpOpen[gid] = true;
+    this._grpTouch(mem, a => { a.groupName = name; }, 'Famille renommée — ' + name);
+  },
+  /* Coefficient commun : met à jour les longueurs qui le SUIVENT ; celles à réglage propre sont gardées (badge « propre », bouton « Aligner »). */
+  setGroupCoeff(gid, val) {
+    const v = Math.round(U.num(val) * 100) / 100, mem = this._grpMembers(gid); if (!(v > 0) || !mem.length) return;
+    let upd = 0, kept = 0;
+    this._grpOpen[gid] = true;
+    const entry = this._grpTouch(mem, a => { if (this._follows(a)) { a.coefficient = v; a.priceTTCManual = ''; upd++; } else kept++; a.groupCoeff = v; }, `Coefficient commun ${v} — ${mem[0].groupName || ''}`);
+    U.toast(`Coefficient commun ${v} : ${upd} longueur${upd > 1 ? 's' : ''} mise${upd > 1 ? 's' : ''} à jour${kept ? `, ${kept} gardent leur réglage propre` : ''}.`, false, entry.id);
+  },
+  async alignGroup(gid) {
+    const mem = this._grpMembers(gid).filter(a => !this._follows(a)); if (!mem.length) return;
+    const gc = U.num(mem[0].groupCoeff);
+    if (!await U.confirm(`Mettre ${mem.length} longueur${mem.length > 1 ? 's' : ''} au coefficient commun ${gc} ? Leur coefficient / prix propre est remplacé et leur prix TTC est recalculé.`, { title: '↻ Aligner la famille', okLabel: 'Aligner' })) return;
+    this._grpOpen[gid] = true;
+    const entry = this._grpTouch(mem, a => { a.coefficient = gc; a.priceTTCManual = ''; }, `Famille alignée sur le coefficient ${gc} (${mem.length})`);
+    U.toast('Famille alignée.', false, entry.id);
+  },
+  async ungroup(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    if (!await U.confirm(`Dégrouper « ${mem[0].groupName || 'cette famille'} » ? Les ${mem.length} fiches redeviennent des produits séparés (rien d'autre ne change).`, { title: 'Dégrouper', okLabel: 'Dégrouper' })) return;
+    const entry = this._grpTouch(mem, a => { delete a.groupId; delete a.groupName; delete a.groupCoeff; }, 'Famille dégroupée — ' + (mem[0].groupName || ''));
+    U.toast('Famille dégroupée.', false, entry.id);
+  },
+  /* « ＋ Ajouter une longueur » : même fenêtre que « Sur mesure », à partir d'une fiche de la famille ; la nouvelle fiche suit le coefficient commun. */
+  addLength(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    const ref = mem.find(a => !this._persoRank(a)) || mem[0];
+    this._grpOpen[gid] = true;
+    this.customLength(ref.id, true);
+  },
+  /* SKU de la famille : TYPE-LARGEUR-NOM-LONGUEUR[-UV][-LASER] pour chaque longueur (Pricing.autoSkuAcc), à valider ligne par ligne. */
+  groupSkus(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    const taken = new Set(); Store.state.catalogA.filter(x => x.groupId !== gid).forEach(x => { if (x.sku) taken.add(String(x.sku).trim().toUpperCase()); });
+    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => { if (v.sku) taken.add(String(v.sku).trim().toUpperCase()); }));
+    Store.state.catalogM.forEach(p => (p.variants || []).forEach(v => { if (v.sku) taken.add(String(v.sku).trim().toUpperCase()); }));
+    const rows = mem.map(a => { const base = Pricing.autoSkuAcc(a); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); return { a, now: String(a.sku || ''), next: sku }; });
+    this._skuRows = rows;
+    const changed = rows.filter(r => r.next && r.next !== r.now).length;
+    U.modal({
+      title: '✨ SKU de la famille — ' + U.esc(mem[0].groupName || ''), okLabel: 'Appliquer',
+      body: `<p class="muted" style="margin-top:0;">Format <b>TYPE-LARGEUR-NOM-LONGUEUR</b> (+ -UV / -LASER). Coche les lignes à changer. ⚠️ Un SKU modifié doit l'être aussi dans SumUp et sur le site si tu les utilises.</p>
+        <div class="table-wrap"><table><thead><tr><th></th><th>Fiche</th><th>SKU actuel</th><th>SKU proposé</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><input type="checkbox" id="sk_${i}" ${r.next && r.next !== r.now ? 'checked' : ''} ${r.next && r.next !== r.now ? '' : 'disabled'} style="width:auto;"></td><td>${U.esc(r.a.name)}</td><td class="muted">${U.esc(r.now || '—')}</td><td><b>${U.esc(r.next || '—')}</b>${r.next === r.now ? ' <span class="muted">(déjà bon)</span>' : ''}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted">${changed ? changed + ' SKU à mettre à jour.' : 'Tous les SKU de la famille sont déjà au bon format.'}</p>`,
+      onOk: () => {
+        const sel = rows.filter((r, i) => { const c = document.getElementById('sk_' + i); return c && c.checked && !c.disabled; });
+        if (!sel.length) { U.toast('Rien de coché.', true); return false; }
+        const entry = this._grpTouch(sel.map(r => r.a), a => { a.sku = sel.find(r => r.a === a).next; }, `SKU de la famille mis à jour — ${mem[0].groupName || ''} (${sel.length})`);
+        U.closeModal(); U.toast(`${sel.length} SKU mis à jour.`, false, entry.id);
+      }
+    });
+  },
+  groupCard(shown) {
+    const first = shown[0], gid = first.groupId, total = Store.state.catalogA.filter(x => x.groupId === gid).length;
+    const mem = shown.slice().sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name));
+    const calcs = mem.map(a => Pricing.accCalc(a));
+    const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' – ' + f(hi); };
+    const widths = [...new Set(mem.map(a => this._widthOf(a)).filter(Boolean))];
+    const nCrit = calcs.filter(c => c.critical).length, nOwn = this._grpMembers(gid).filter(a => !this._follows(a)).length;
+    const gc = U.num(first.groupCoeff), open = !!this._grpOpen[gid], name = first.groupName || this._baseName(first);
+    return `<details class="fold prod-fold acc-fold acc-group" id="grp-${gid}" ${open ? 'open' : ''} ontoggle="Accessoires.setGrpOpen('${gid}',this.open)">
+      <summary>
+        <span><b>${U.esc(name)}</b> <span class="badge info">${mem.length === total ? total : mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</span>${nCrit ? ` <span class="badge bad">${nCrit} coeff critique</span>` : ''}</span>
+        <span class="type-col">${widths.map(w => `<span class="badge">${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
+        <span class="type-col"><span class="badge info">${U.esc(first.category || '')}</span></span>
+        <span class="meta right sensitive">${rng(calcs.map(c => c.cost), U.eur)}</span>
+        <span class="meta right"><b>${rng(calcs.map(c => c.priceTTC), U.eur)}</b></span>
+      </summary>
+      <div class="fold-body">
+        <div class="card" style="padding:10px 14px;margin:0 0 10px;">
+          <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="fg mb0" style="flex:1 1 200px;min-width:170px;"><label>Nom du produit</label><input value="${U.esc(name)}" onchange="Accessoires.renameGroup('${gid}',this.value)"></div>
+            <div class="fg mb0" style="flex:0 0 160px;"><label>Coefficient commun ${U.info("Le coefficient de toute la famille : change-le ici et toutes les longueurs qui le suivent se recalculent (prix TTC arrondi comme d'habitude). Une longueur dont tu as tapé le prix ou le coefficient garde son réglage (badge « propre ») : « Aligner » la remet au commun.")}</label><input type="number" step="0.01" min="0.01" value="${gc ? Math.round(gc * 100) / 100 : ''}" onchange="Accessoires.setGroupCoeff('${gid}',this.value)"></div>
+            ${nOwn ? `<button class="btn-ghost btn-sm" onclick="Accessoires.alignGroup('${gid}')" title="Remettre les ${nOwn} longueur(s) à réglage propre au coefficient commun">↻ Aligner (${nOwn})</button>` : ''}
+            <button class="btn-cta btn-sm" onclick="Accessoires.addLength('${gid}')">＋ Ajouter une longueur</button>
+            <button class="btn-ghost btn-sm" onclick="Accessoires.groupSkus('${gid}')">✨ SKU de la famille</button>
+            <button class="btn-ghost btn-sm" onclick="Accessoires.ungroup('${gid}')">Dégrouper</button>
+          </div>
+        </div>
+        ${mem.map(a => this.accCard(a)).join('')}
+      </div>
+    </details>`;
+  },
   setAccSort(key) {
     if (this.accSort === key) this.accSortDir = this.accSortDir === 'asc' ? 'desc' : 'asc';
     else { this.accSort = key; this.accSortDir = 'asc'; }
@@ -145,7 +296,7 @@ const Accessoires = {
     if (needSave) Store.save('catalogA');
     U.syncFilters('accessoires', this, ['accQ', 'accCatFilter', 'accWidthFilter', 'accBicolorFilter', 'accSort', 'accSortDir']);
     const focusId = this.focusId; this.focusId = null;
-    if (focusId) { this.accQ = ''; this.accCatFilter = ''; this.accWidthFilter = ''; this.accBicolorFilter = ''; this._accOpen[focusId] = true; }
+    if (focusId) { this.accQ = ''; this.accCatFilter = ''; this.accWidthFilter = ''; this.accBicolorFilter = ''; this._accOpen[focusId] = true; const _fa = Store.state.catalogA.find(x => x.id === focusId); if (_fa && _fa.groupId) this._grpOpen[_fa.groupId] = true; }
     let list = [...Store.state.catalogA];
     const q = this.accQ.toLowerCase();
     if (q) list = list.filter(a => U.has(a.name, q));
@@ -186,7 +337,7 @@ const Accessoires = {
           <option value="no" ${this.accBicolorFilter === 'no' ? 'selected' : ''}>Non bicolor</option>
         </select></div>
       </div>
-      <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button></div>
+      <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button>${(() => { const n = this._proposeGroups().length; return n ? `<button class="btn-ghost" onclick="Accessoires.openRegroup()" title="Plusieurs fiches ne diffèrent que par la longueur : les ranger dans un seul produit">🗂 Regrouper les longueurs (${n})</button>` : ''; })()}</div>
       ${list.length ? `<div class="prod-list-header acc-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
         <span>${sortHead('width', 'Largeur')}</span>
@@ -194,7 +345,7 @@ const Accessoires = {
         <span class="right">${sortHead('cost', 'Coût')}</span>
         <span class="right">${sortHead('price', 'Prix TTC')}</span>
       </div>` : ''}
-      ${list.map(a => this.accCard(a)).join('') || '<div class="card empty"><span class="big">🐕</span>Aucun accessoire. Crée ta première fiche : matières + temps de fabrication, et le prix se calcule tout seul.</div>'}`;
+      ${(() => { const seen = new Set(); return list.map(a => { if (!a.groupId) return this.accCard(a); if (seen.has(a.groupId)) return ''; seen.add(a.groupId); return this.groupCard(list.filter(x => x.groupId === a.groupId)); }).join(''); })() || '<div class="card empty"><span class="big">🐕</span>Aucun accessoire. Crée ta première fiche : matières + temps de fabrication, et le prix se calcule tout seul.</div>'}`;
     if (focusId) setTimeout(() => { const el = document.getElementById('acc-' + focusId); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
   },
 
@@ -431,7 +582,7 @@ const Accessoires = {
     const criticalClass = c.critical ? ' acc-critical' : '';
     return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
-        <span><b>${U.esc(a.name)}</b>${c.critical ? ' <span class="badge bad">coeff critique</span>' : ''}</span>
+        <span><b>${U.esc(a.name)}</b>${c.critical ? ' <span class="badge bad">coeff critique</span>' : ''}${a.groupId && !this._follows(a) ? ' <span class="badge warn" title="Coefficient ou prix propre à cette longueur (différent du coefficient commun de la famille)">propre</span>' : ''}</span>
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="meta right sensitive">${U.eur(c.cost)}</span>
@@ -1166,7 +1317,7 @@ const Accessoires = {
     }
   },
 
-  customLength(id) {
+  customLength(id, asVariant) {
     const src = Store.state.catalogA.find(x => x.id === id);
     if (!src) return;
     const sangleIdx = (src.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
@@ -1183,7 +1334,7 @@ const Accessoires = {
     const fixedTotal = segs.reduce((sum, s) => sum + U.num(s.value), 0);
     this._clSrc = { prodLen, interneVal, fixedTotal, src };
     U.modal({
-      title: '📐 Sur mesure — ' + U.esc(src.name), okLabel: 'Créer la copie',
+      title: (asVariant ? '＋ Ajouter une longueur — ' : '📐 Sur mesure — ') + U.esc(src.name), okLabel: asVariant ? 'Ajouter la longueur' : 'Créer la copie',
       body: `<p>Sangle actuelle : <b>${U.qty(currentStrap)} m</b> | Produit : <b>${U.qty(prodLen)} m</b></p>
         ${hasSegs || interneVal > 0 ? `<div class="card" style="padding:8px 12px;background:var(--th-bg);margin-bottom:12px;">
           ${segs.filter(s => s.value > 0).map(s => `<div>${U.esc(s.label)} : <b>${U.lenTxt(s.value)}</b></div>`).join('')}
@@ -1201,6 +1352,8 @@ const Accessoires = {
         if (newStrap <= 0) { U.toast('Longueur trop courte (sangle négative)', true); return false; }
         const copy = JSON.parse(JSON.stringify(src));
         copy.id = U.uid();
+        copy.stockGeneral = 0; copy.stockEvent = 0;   // une nouvelle longueur démarre sans stock (la copie gardait celui de l'original)
+        if (copy.groupId && U.num(copy.groupCoeff) > 0) { copy.coefficient = copy.groupCoeff; copy.priceTTCManual = ''; }   // elle suit le coefficient commun de la famille
         copy.productLength = desired;
         copy.internalLength = newInterne;
         this._autoStrap(copy);
@@ -1210,11 +1363,11 @@ const Accessoires = {
           : src.name + ' — ' + desired + 'm';
         { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }   // SKU propre à cette longueur
         Store.state.catalogA.push(copy);
-        const entry = Store.log('accessoires', 'Sur mesure créé — ' + copy.name,
+        const entry = Store.log('accessoires', (asVariant ? 'Longueur ajoutée — ' : 'Sur mesure créé — ') + copy.name,
           { type: 'deleteCreated', data: { domain: 'catalogA', id: copy.id } });
         Store.save('catalogA');
         U.closeModal(); App.rerender();
-        U.toast('Copie sur mesure créée.', false, entry.id);
+        U.toast(asVariant ? 'Longueur ajoutée à la famille.' : 'Copie sur mesure créée.', false, entry.id);
       }
     });
     setTimeout(() => this._updateCustomPreview(), 50);
