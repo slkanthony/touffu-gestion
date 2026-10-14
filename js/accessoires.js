@@ -203,6 +203,11 @@ const Accessoires = {
     a.priceTTCManual = Math.abs(Math.round(cost * a.coefficient * k * 10) / 10 - ttc) < 0.005 ? '' : ttc;
   },
 
+  /* Maintenir l'appui sur « Profit net » : gain réel avec la TVA conservée (comme « Bénéfice » dans Prix mastication). */
+  peekBenef(id, active) {
+    document.querySelectorAll('.acc-benef-cell').forEach(td => { if (td.dataset.acc !== id) return; const b = td.querySelector('b'); if (b) b.textContent = active ? td.dataset.peek : td.dataset.normal; });
+  },
+
   setAccInline(id, field, val) {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
     const snap = Store.snapshot('catalogA', a);
@@ -448,8 +453,8 @@ const Accessoires = {
               <tr><td><b>Prix TTC</b></td><td class="num">${c.priceFixed ? '<button class="btn-icon" title="Revenir au calcul auto" onclick="Accessoires.setAccInline(\''+a.id+'\',\'priceTTCManual\',0)" style="vertical-align:middle;">↺</button>' : ''}<input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="acc-inline-input" style="font-weight:700;" onchange="Accessoires.setAccInline('${a.id}','priceTTCManual',this.value)"></td></tr>
               <tr><td>Marge</td><td class="num sensitive">${U.eur(c.margin)}</td></tr>
               <tr><td>Cotisations URSSAF <span class="muted">(${U.pct(Pricing.socialRateHandmade())} — fait main)</span></td><td class="num sensitive neg">− ${U.eur(c.social)}</td></tr>
-              <tr><td><b>Profit net</b> <span class="muted help">Marge moins cotisations, TVA non comptée (c'est le bénéfice que tu auras une fois assujetti).</span></td><td class="num sensitive ${netProfit >= 0 ? 'pos' : 'neg'}"><b>${U.eur(netProfit)}</b></td></tr>
-              ${vatOn ? '' : `<tr><td>Gain réel aujourd'hui <span class="muted help">Non assujetti : tu gardes la TVA (${U.eur(c.vatAmt)}) et les cotisations se calculent sur le prix TTC encaissé. C'est le même chiffre que dans les Stats.</span></td><td class="num sensitive ${c.profitActuel >= 0 ? 'pos' : 'neg'}">${U.eur(c.profitActuel)}</td></tr>`}
+              <tr><td>TVA <span class="muted">${vatOn ? '(reversée)' : '(conservée)'}</span></td><td class="num sensitive ${vatOn ? 'neg' : ''}">${vatOn ? '− ' : ''}${U.eur(c.vatAmt)}</td></tr>
+              <tr class="acc-benef-row" ${vatOn ? '' : `style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir le gain avec la TVA conservée" onmousedown="Accessoires.peekBenef('${a.id}',true)" onmouseup="Accessoires.peekBenef('${a.id}',false)" onmouseleave="Accessoires.peekBenef('${a.id}',false)" ontouchstart="event.preventDefault();Accessoires.peekBenef('${a.id}',true)" ontouchend="Accessoires.peekBenef('${a.id}',false)" ontouchcancel="Accessoires.peekBenef('${a.id}',false)"`}><td><b>Profit net</b> <span class="muted help">Marge moins cotisations, TVA non comptée (le bénéfice que tu auras une fois assujetti).${vatOn ? '' : ' Maintiens l’appui sur cette ligne pour voir le gain réel d’aujourd’hui : tu gardes la TVA et les cotisations se calculent sur le prix TTC encaissé (même chiffre que dans les Stats).'}</span></td><td class="num sensitive acc-benef-cell ${netProfit >= 0 ? 'pos' : 'neg'}" data-acc="${a.id}" data-normal="${U.eur(netProfit)}" data-peek="${U.eur(vatOn ? netProfit : c.profitActuel)}"><b>${U.eur(netProfit)}</b></td></tr>
             </tbody></table></div>
           </div>
         </div>
