@@ -246,7 +246,10 @@ const Pricing = {
     const filters = (fk.n ? fk.avg : U.num(S.uvFilterPrice)) * U.num(S.uvFilterPerYear);
     const clean = (ck.n ? ck.avg : U.num(S.uvCleanPrice)) * U.num(S.uvCleanPerYear);
     const labor = U.num(S.uvMaintHoursPerYear) * U.num(S.laborRate);
-    return { filters, clean, labor, total: filters + clean + labor };
+    // autres consommables d'entretien (alcool, tampons feutre, tapis adhésif…) : coût unitaire × nombre utilisé par an (`c.uvPerYear`, saisi dans la fiche du consommable)
+    const items = (Store.state.consumables || []).filter(c => U.normSearch(c.category || '').trim() === 'entretien uv' && U.num(c.uvPerYear) > 0);
+    const other = items.reduce((a, c) => a + U.num(c.costUnit) * this.vatK() * U.num(c.uvPerYear), 0);
+    return { filters, clean, labor, other, otherN: items.length, total: filters + clean + other + labor };
   },
   uvMaintenanceMonthly() {
     return this.uvMaintenanceAnnual().total / 12;

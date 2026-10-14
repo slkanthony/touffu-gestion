@@ -2344,6 +2344,7 @@ const Stock = {
         <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20); return U.eur(sh.v) + ' ' + sh.lab; })()} /u</span></div>
       </div>
+      <div class="fg" id="c_uvyear_wrap" style="${c.category==='Entretien UV'?'':'display:none'}"><label>Utilisé / remplacé par an (en unités) <span class="muted help">Entretien imprimante UV : nombre d'unités de ce consommable (flacon d'alcool, tampon feutre, tapis adhésif…) que tu utilises sur l'année. Prix unitaire × ce nombre = coût annuel, ajouté à « Entretien imprimante » (Paramètres → Impression UV).</span></label><input id="c_uvyear" type="number" step="0.01" min="0" value="${U.num(c.uvPerYear)||''}" placeholder="ex : 4"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="c_ref" value="${U.esc(c.ref||'')}" placeholder="ex : G-23012, 6784…"></div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien fournisseur (page produit, optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="c_url" value="${U.esc(c.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('c_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="fg" style="margin-top:6px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;"><input type="checkbox" id="c_toReplace" ${c.toReplace?'checked':''} style="width:auto;"> 🚩 À ne plus racheter (à remplacer ou supprimer)</label></div>
@@ -2362,6 +2363,7 @@ const Stock = {
         c.costTotal=U.numVal('c_costTotal'); c.costQtyPer=Math.max(0.01,U.numVal('c_costQty'));
         c.costTax=(document.getElementById('c_tax')||{dataset:{}}).dataset.tax||'HT';
         c.costUnit=this.consoUnitCost(c.costTotal,c.costQtyPer,c.costTax);
+        if (c.category === 'Entretien UV') c.uvPerYear = U.numVal('c_uvyear'); else delete c.uvPerYear;
         c.url=U.val('c_url').trim();
         c.ref=U.val('c_ref').trim();
         c.toReplace = !!(document.getElementById('c_toReplace')||{}).checked;
@@ -2391,6 +2393,7 @@ const Stock = {
     const isBl = cat === 'Blisters';
     const bl = document.getElementById('c_blister_fields');
     const dw = document.getElementById('c_dim_wrap');
+    const uy = document.getElementById('c_uvyear_wrap'); if (uy) uy.style.display = cat === 'Entretien UV' ? '' : 'none';
     if (bl) bl.style.display = isBl ? '' : 'none';
     if (dw) dw.style.display = isBl ? 'none' : '';
     const ql = document.getElementById('c_qty_lbl'); if (ql) ql.textContent = isBl ? 'En stock (longueur restante)' : 'Quantité';

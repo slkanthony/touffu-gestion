@@ -43,7 +43,7 @@ const Store = {
           'Autre':           { segments: [{label: 'Extrémité 1', value: 0}, {label: 'Extrémité 2', value: 0}] }
         },
         widths: ['10mm', '16mm', '20mm', '25mm'],
-        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre UV', 'Nettoyant UV', 'Filtre UV', 'Autre'],
+        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre UV', 'Nettoyant UV', 'Filtre UV', 'Entretien UV', 'Autre'],
         suppliers: [{ id: 's1', name: 'Cernunos' }, { id: 's2', name: 'Kuaurtikel' }],
         events: [], eventInfo: {}, fuelConsumption: 7, fuelPrice: 1.85,
         sachets: [],   // {id, name, cost, type}
@@ -173,6 +173,10 @@ const Store = {
     if (!S.uvFilterCatMigrated) {   // « Filtre UV » (filtre charbon) ajoutée une fois, 2026-10-14
       S.uvFilterCatMigrated = true;
       if (Array.isArray(S.consCategories) && !S.consCategories.some(c => norm(c) === 'filtre uv')) S.consCategories.push('Filtre UV');
+    }
+    if (!S.uvEntretienCatMigrated) {   // « Entretien UV » (alcool, tampons, tapis…) ajoutée une fois, 2026-10-14
+      S.uvEntretienCatMigrated = true;
+      if (Array.isArray(S.consCategories) && !S.consCategories.some(c => norm(c) === 'entretien uv')) S.consCategories.push('Entretien UV');
     }
     if (S.uvCatsMigrated) return;
     S.uvCatsMigrated = true;
