@@ -202,26 +202,51 @@ const Accessoires = {
     const mem = this._grpMembers(gid); if (!mem.length) return;
     const f = mem[0], cats = (Store.state.settings.accCategories || []).slice().sort(U.sortFr);
     if (f.category && !cats.includes(f.category)) cats.push(f.category);
+    const r0 = this._persoRank(f), uv0 = !!(r0 & 1), la0 = !!(r0 & 2);
+    const lab = 'display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.9rem;margin:0;white-space:nowrap;';
     U.modal({
       title: '✏️ Modifier la famille — ' + U.esc(f.groupName || ''), okLabel: 'Enregistrer',
       body: `<div class="frow"><div class="fg" style="flex:2;"><label>Nom du produit</label><input id="gm_name" value="${U.esc(f.groupName || this._familyName(f))}"></div>
         <div class="fg"><label>Catégorie ${U.info('Appliquée à toutes les longueurs de la famille (les SKU ne changent pas tout seuls : utilise « ✨ SKU »).')}</label><select id="gm_cat">${cats.map(c => `<option ${c === f.category ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}</select></div>
         <div class="fg"><label>Coefficient commun</label><input id="gm_coef" type="number" step="0.01" min="0.01" value="${U.num(f.groupCoeff) ? Math.round(U.num(f.groupCoeff) * 100) / 100 : ''}"></div></div>
+        <div class="fg"><label>🎨 Personnalisation ${U.info("Coche l'impression UV et / ou la gravure laser : elle est ajoutée au nom et au SKU de TOUTES les longueurs de la famille, avec son coût (ml d'encre / minutes). Décoche pour la retirer partout.")}</label>
+          <div style="display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap;min-height:40px;">
+            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="gm_uv" type="checkbox" style="width:16px;height:16px;" ${uv0 ? 'checked' : ''} onchange="Accessoires._gmPerso()"> Impression UV</label><input id="gm_uvml" type="number" step="0.1" min="0" value="${U.num(f.uvMl) || ''}" placeholder="ml d'encre" style="width:120px;margin:0;"></span>
+            <span style="display:flex;align-items:center;gap:10px;"><label style="${lab}"><input id="gm_la" type="checkbox" style="width:16px;height:16px;" ${la0 ? 'checked' : ''} onchange="Accessoires._gmPerso()"> Gravure laser</label><input id="gm_lamin" type="number" step="0.5" min="0" value="${U.num(f.laserMin) || ''}" placeholder="minutes" style="width:110px;margin:0;"></span></div></div>
         <div class="fg"><label>Notes sur ce produit (optionnel)</label><textarea id="gm_notes" rows="3" placeholder="ex : modèle éducation, mousqueton laiton, à proposer avec la poignée…" style="width:100%;resize:vertical;">${U.esc(f.groupNotes || '')}</textarea></div>
         <p class="muted">${mem.length} longueur${mem.length > 1 ? 's' : ''} dans cette famille.</p>`,
       onOk: () => {
         const name = U.val('gm_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
         const cat = U.val('gm_cat'), v = Math.round(U.numVal('gm_coef') * 100) / 100, notes = U.val('gm_notes').trim();
         const coefChanged = v > 0 && Math.abs(v - U.num(f.groupCoeff)) > 0.0049;
+        const uv1 = U.chk('gm_uv'), la1 = U.chk('gm_la'), uvMl = U.numVal('gm_uvml'), laMin = U.numVal('gm_lamin');
+        const persoChanged = uv1 !== uv0 || la1 !== la0, amountChanged = (uv1 && Math.abs(uvMl - U.num(f.uvMl)) > 0.0001) || (la1 && Math.abs(laMin - U.num(f.laserMin)) > 0.0001);
+        const taken = new Set();   // SKU déjà pris ailleurs (hors famille), + ceux attribués ici
+        if (persoChanged) {
+          const ids = new Set(mem.map(a => a.id)); const add = x => { x = String(x || '').trim().toUpperCase(); if (x) taken.add(x); };
+          Store.state.catalogA.forEach(x => { if (!ids.has(x.id)) add(x.sku); });
+          Store.state.stockM.forEach(p => (p.variants || []).forEach(x => add(x.sku))); Store.state.catalogM.forEach(p => (p.variants || []).forEach(x => add(x.sku)));
+        }
         const entry = this._grpTouch(mem, a => {
           if (coefChanged && this._follows(a)) { a.coefficient = v; a.priceTTCManual = ''; }
           if (coefChanged) a.groupCoeff = v;
           a.groupName = name; if (cat) a.category = cat;
           if (notes) a.groupNotes = notes; else delete a.groupNotes;
+          if (persoChanged || amountChanged) {
+            a.uv = uv1; a.uvMl = uv1 ? uvMl : 0; a.laser = la1; a.laserMin = la1 ? laMin : 0;
+            if (persoChanged) {   // nom et SKU de chaque longueur suivent la personnalisation
+              a.name = this._persoName(a.name, uv1, la1);
+              const base = Pricing.autoSkuAcc(a); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); a.sku = base ? sku : a.sku;
+            }
+          }
         }, 'Famille modifiée — ' + name);
         this._grpOpen[gid] = true; U.closeModal(); U.toast('Famille enregistrée.', false, entry.id);
       }
     });
+  },
+  _gmPerso() {   // cases UV / laser de « Modifier la famille » : le nom proposé suit
+    const el = document.getElementById('gm_name'); if (!el) return;
+    el.value = this._persoName(el.value.replace(this._PERSO_RX, '').trim(), U.chk('gm_uv'), U.chk('gm_la'));
   },
   /* « Dupliquer » une famille : copie toutes les longueurs (stock à 0, SKU neufs). On peut changer la LARGEUR : les sangles de chaque nomenclature passent à la nouvelle largeur → coûts recalculés ; les prix suivent le coefficient commun. */
   duplicateGroup(gid) {
