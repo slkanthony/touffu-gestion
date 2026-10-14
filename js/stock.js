@@ -1953,7 +1953,7 @@ const Stock = {
           </tr>`).join('') + '</tbody>';
           }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun lot pour ces filtres.</td></tr></tbody>'}
         </table></div>
-      </div>${this._peremConsoHTML(f, hideExpired)}`;
+      </div>`;
   },
   setPeremSort(key) {
     if (this.perem.sort === key) this.perem.sortDir = this.perem.sortDir === 'asc' ? 'desc' : 'asc';
@@ -2235,7 +2235,7 @@ const Stock = {
     },
 
   /* ───── CONSOMMABLES ───── */
-  consoFilters: { q: '', cat: 'all', link: 'all', state: 'all', sort: 'name', sortDir: 'asc' },
+  consoFilters: { q: '', cat: 'all', link: 'all', state: 'all', sort: 'name', sortDir: 'asc', view: 'list', pm: 'up' },
   setConsoSort(key) {
     const f = this.consoFilters;
     if (f.sort === key) f.sortDir = f.sortDir === 'asc' ? 'desc' : 'asc';
@@ -2282,9 +2282,10 @@ const Stock = {
       </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" style="flex:0 0 calc(25% - 9px);" onclick="Stock.editConso()">＋ Nouveau consommable</button>
+          <button class="${f.view === 'perem' ? 'btn-cta' : 'btn-ghost'} btn-sm" style="flex:0 0 auto;" title="${f.view === 'perem' ? 'Revenir à la liste des consommables' : 'Voir les dates limites (DLUO) des consommables'}" onclick="Stock.setConsoView('${f.view === 'perem' ? 'list' : 'perem'}')">${f.view === 'perem' ? '← Liste' : '⏳ Péremptions (' + all.reduce((n, c) => n + this.consoLots(c).length, 0) + ')'}</button>
           <span class="muted" style="margin-left:auto;flex:0 0 auto;">${list.length !== all.length ? `${list.length} / ${all.length}` : all.length} consommable(s)${list.length !== all.length ? ' affiché(s)' : ''}</span>
         </div></div>
-      ${list.length ? `<div class="card"><div class="table-wrap"><table>
+      ${f.view === 'perem' ? this._consoPeremHTML(list) : list.length ? `<div class="card"><div class="table-wrap"><table>
         <thead><tr><th class="col-name">${sortHead('name','Article')}</th><th>${sortHead('dim','Dimensions')}</th><th>${sortHead('cat','Catégorie')}</th><th style="text-align:center;">${sortHead('qty','En stock')}</th><th style="text-align:center;">${sortHead('low','Seuil')}</th><th style="text-align:center;">${sortHead('cost','Coût / unité')}</th><th></th></tr></thead>
         <tbody>${list.map(c=>{const cTotal=c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit);const cQper=U.num(c.costQtyPer)||1;return `<tr>
           <td class="col-name"><b>${U.esc(c.name)}</b>${this.replaceBadge(c)}${this._consoDluoHTML(c)}</td>
@@ -2341,21 +2342,23 @@ const Stock = {
     if (on && !this._cLots.length) this._cLots.push({ id: U.uid(), qty: Math.max(1, U.numVal('c_qty')), dluo: '', lotNumber: '' });
     this._drawConsoLots();
   },
-  /* Section « Consommables » de l'onglet Péremptions : mêmes horizons que la mastication (pas de filtre viande / variante / « plusieurs lots »). */
-  _peremConsoHTML(f, hideExpired) {
-    if ((f.meat && f.meat !== 'all') || f.variants.length || f.horizon === 'multi') return '';
+  /* Vue « ⏳ Péremptions » de l'onglet Consommables (Antho 2026-10-14 : ne pas mélanger avec les péremptions de la mastication). `list` = consommables déjà filtrés
+     (recherche / catégorie…) ; choix : à venir · périmés · tout, triés par date. Viewer : jamais les lots périmés. */
+  setConsoView(v) { this.consoFilters.view = v; this.renderConso(); },
+  setConsoPm(v) { this.consoFilters.pm = v; this.renderConso(); },
+  _consoPeremHTML(list) {
+    const f = this.consoFilters, hide = !!(window.App && App.isViewer);
+    if (hide && f.pm === 'exp') f.pm = 'up';
     const all = [];
-    Store.state.consumables.forEach(c => this.consoLots(c).forEach(l => all.push({ c, l })));
-    if (!all.length) return '';
-    const list = all.filter(({ c, l }) => {
-      const d = l.days;
-      if (hideExpired && d < 0) return false;
-      if (f.q && !U.has(c.name, f.q)) return false;
-      return f.horizon === 'expired' ? d < 0 : f.horizon === '1' ? d <= 30 : f.horizon === '3' ? d <= 90 : f.horizon === '6' ? d <= 180 : f.horizon === '9' ? d <= 270 : true;
-    }).sort((a, b) => a.l.days - b.l.days || U.sortFr(a.c.name, b.c.name));
-    return `<div class="card"><h2 style="font-size:1rem;margin:0 0 8px;">🧴 Consommables à date limite <span class="muted" style="font-weight:400;font-size:.85rem;">(${list.length} lot${list.length > 1 ? 's' : ''})</span></h2>
-      <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Catégorie</th><th>N° lot</th><th>Date péremption</th><th class="num">Quantité</th><th>Statut</th></tr></thead>
-      <tbody>${list.map(({ c, l }) => `<tr><td class="col-name"><b>${U.esc(c.name)}</b></td><td><span class="badge info">${U.esc(c.category || 'Autre')}</span></td><td><span class="tag">${U.esc(l.lotNumber || 'sans n°')}</span></td><td>${U.frDate(l.dluo)}</td><td class="num">${U.qty(l.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td><td>${this.dluoStatusBadge(l.days)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Aucun lot pour ces filtres.</td></tr>'}</tbody></table></div></div>`;
+    list.forEach(c => this.consoLots(c).forEach(l => all.push({ c, l })));
+    const nUp = all.filter(x => x.l.days >= 0).length, nExp = hide ? 0 : all.filter(x => x.l.days < 0).length;
+    const rows = all.filter(x => f.pm === 'exp' ? x.l.days < 0 : f.pm === 'all' ? !(hide && x.l.days < 0) : x.l.days >= 0)
+      .sort((a, b) => a.l.days - b.l.days || U.sortFr(a.c.name, b.c.name));
+    const seg = U.seg([{ l: `⏳ À venir (${nUp})`, on: f.pm === 'up', js: "Stock.setConsoPm('up')" }].concat(hide ? [] : [{ l: `⚠️ Périmés (${nExp})`, on: f.pm === 'exp', js: "Stock.setConsoPm('exp')" }, { l: `Tout (${nUp + nExp})`, on: f.pm === 'all', js: "Stock.setConsoPm('all')" }]), { sm: true });
+    return `<div class="card"><div style="margin-bottom:10px;">${seg}</div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Catégorie</th><th>N° lot</th><th>Date péremption</th><th class="num">Quantité</th><th>Statut</th></tr></thead>
+      <tbody>${rows.map(({ c, l }) => `<tr><td class="col-name"><b>${U.esc(c.name)}</b></td><td><span class="badge info">${U.esc(c.category || 'Autre')}</span></td><td><span class="tag">${U.esc(l.lotNumber || 'sans n°')}</span></td><td>${U.frDate(l.dluo)}</td><td class="num">${U.qty(l.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}</td><td>${this.dluoStatusBadge(l.days)}</td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty" style="padding:18px;text-align:center;"><span class="big">⏳</span>${all.length ? 'Aucun lot pour ce choix.' : 'Aucun lot avec DLUO. Coche « Ce produit a une date limite » dans la fiche d\'un consommable.'}</div>`}</div>`;
   },
   setConsoQty(id,val){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
