@@ -188,8 +188,10 @@ const Pricing = {
      encre (prix cartouche ÷ volume) + entretien/solvant par ml. */
   /* Cartouches d'encre UV = consommables de catégorie « Encre UV » (Stock → Consommables). Coût d'une cartouche = MOYENNE de leurs coûts unitaires
      (couleurs différentes, prix différents), TVA d'achat comprise tant que non assujetti. n = 0 → prix saisi à la main (Paramètres). */
-  uvInkCartridge() {
-    const list = (Store.state.consumables || []).filter(c => U.normSearch(c.category || '').trim() === 'encre uv');
+  uvInkCartridge() { return this.uvCatAvg('encre uv'); },
+  /* Même principe pour « Filtre UV » (filtre charbon…) et « Nettoyant UV » de l'entretien imprimante. `cat` = nom de catégorie normalisé (minuscules, sans accents). */
+  uvCatAvg(cat) {
+    const list = (Store.state.consumables || []).filter(c => U.normSearch(c.category || '').trim() === cat);
     const avg = list.length ? list.reduce((a, c) => a + U.num(c.costUnit), 0) / list.length * this.vatK() : 0;
     return { n: list.length, avg, names: list.map(c => c.name) };
   },
@@ -240,8 +242,9 @@ const Pricing = {
   // Charge fixe machine : déduite du bénéfice net mensuel (÷12), JAMAIS du prix d'un accessoire.
   uvMaintenanceAnnual() {
     const S = Store.state.settings;
-    const filters = U.num(S.uvFilterPrice) * U.num(S.uvFilterPerYear);
-    const clean = U.num(S.uvCleanPrice) * U.num(S.uvCleanPerYear);
+    const fk = this.uvCatAvg('filtre uv'), ck = this.uvCatAvg('nettoyant uv');   // consommables de la catégorie → prix moyen ; sinon prix saisi
+    const filters = (fk.n ? fk.avg : U.num(S.uvFilterPrice)) * U.num(S.uvFilterPerYear);
+    const clean = (ck.n ? ck.avg : U.num(S.uvCleanPrice)) * U.num(S.uvCleanPerYear);
     const labor = U.num(S.uvMaintHoursPerYear) * U.num(S.laborRate);
     return { filters, clean, labor, total: filters + clean + labor };
   },

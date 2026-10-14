@@ -120,13 +120,13 @@ const Params = {
         <p style="margin:8px 0 0;text-align:center;font-size:1.02rem;">Coût laser tout compris : <b>${U.eur(Pricing.laserCostPerHour())}/h</b> <span class="muted">(${U.eur(Pricing.laserCostPerHour() / 60)} / minute · électricité ${U.eur(Pricing.laserElecPerHour())}/h${U.num(S.laserWearPerHour) ? ` + usure ${U.eur(U.num(S.laserWearPerHour))}/h` : ''})</span></p>
 
         ${(() => { const ma = Pricing.uvMaintenanceAnnual(); const _mh = U.num(S.uvMaintHoursPerYear); const _h = Math.floor(_mh); const _min = Math.round((_mh - _h) * 60); return `
-        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:16px 0 6px;">🛠️ Entretien imprimante (charges annuelles) ${U.info("Charge fixe de la machine, déduite du <b>bénéfice net mensuel</b> (Tableau de bord → CA par mois, ligne « Entretien matériel »), pas du prix de chaque accessoire.<br><br>Main d'œuvre = temps total sur l'année. L'<b>amortissement</b> du matériel se règle dans « 🛠️ Amortissement du matériel ».")}</div>
+        <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin:16px 0 6px;">🛠️ Entretien imprimante (charges annuelles) ${U.info("Charge fixe de la machine, déduite du <b>bénéfice net mensuel</b> (Tableau de bord → CA par mois, ligne « Entretien matériel »), pas du prix de chaque accessoire.<br><br>Filtre / Nettoyage : si tu as des consommables en catégorie « Filtre UV » / « Nettoyant UV » (Stock → Consommables), leur prix MOYEN est utilisé (🔗 moyenne) ; sinon tape le prix. Reste à saisir : le nombre de changements par an.<br><br>Main d'œuvre = temps total sur l'année. L'<b>amortissement</b> du matériel se règle dans « 🛠️ Amortissement du matériel ».")}</div>
         <div class="frow" style="gap:28px;align-items:flex-end;flex-wrap:wrap;justify-content:center;">
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Filtre — prix × changements/an</label>
-            <div class="cost-split" style="margin:0 auto;"><input id="p_uv_filter_price" type="number" step="0.01" min="0" value="${U.num(S.uvFilterPrice) || ''}" placeholder="0" title="Prix d'un filtre (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">€ ×</span><input id="p_uv_filter_year" type="number" step="1" min="0" value="${U.num(S.uvFilterPerYear) || ''}" placeholder="0" title="Nombre de changements par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">/an</span></div>
+            <div class="cost-split" style="margin:0 auto;">${this._uvAvgPrice('filtre uv', 'p_uv_filter_price', S.uvFilterPrice, "Prix d'un filtre (€)")}<span class="cost-split-sep">€ ×</span><input id="p_uv_filter_year" type="number" step="1" min="0" value="${U.num(S.uvFilterPerYear) || ''}" placeholder="0" title="Nombre de changements par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">/an</span></div>
           </div>
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Nettoyage — prix × changements/an</label>
-            <div class="cost-split" style="margin:0 auto;"><input id="p_uv_clean_price" type="number" step="0.01" min="0" value="${U.num(S.uvCleanPrice) || ''}" placeholder="0" title="Prix d'une cartouche de nettoyage (€)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">€ ×</span><input id="p_uv_clean_year" type="number" step="1" min="0" value="${U.num(S.uvCleanPerYear) || ''}" placeholder="0" title="Nombre de changements par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">/an</span></div>
+            <div class="cost-split" style="margin:0 auto;">${this._uvAvgPrice('nettoyant uv', 'p_uv_clean_price', S.uvCleanPrice, "Prix d'une cartouche de nettoyage (€)")}<span class="cost-split-sep">€ ×</span><input id="p_uv_clean_year" type="number" step="1" min="0" value="${U.num(S.uvCleanPerYear) || ''}" placeholder="0" title="Nombre de changements par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">/an</span></div>
           </div>
           <div class="fg" style="margin:0;flex:0 0 auto;text-align:center;"><label>Main d'œuvre entretien / an (× ${U.eur(U.num(S.laborRate))}/h)</label>
             <div class="cost-split" style="margin:0 auto;"><input id="p_uv_maint_h" type="number" step="1" min="0" value="${_h || ''}" placeholder="0" title="Heures par an" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">h</span><input id="p_uv_maint_min" type="number" step="5" min="0" max="59" value="${_min || ''}" placeholder="0" title="Minutes par an (en plus des heures)" onkeydown="if(event.key==='Enter')Params.saveSettings()"><span class="cost-split-sep">min</span></div>
@@ -732,8 +732,8 @@ const Params = {
     if (document.getElementById('p_uv_price')) { S.uvCartridgePrice = U.numVal('p_uv_price'); const t = document.getElementById('p_uv_tax'); S.uvCartridgeTax = t && t.dataset.tax === 'HT' ? 'HT' : 'TTC'; }   // absent quand la cartouche est reliée à un consommable
 S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_pct');
     S.laserWatts = U.numVal('p_laser_w'); S.kwhPrice = U.numVal('p_kwh'); S.laserWearPerHour = U.numVal('p_laser_wear');
-    S.uvFilterPrice = U.numVal('p_uv_filter_price'); S.uvFilterPerYear = U.numVal('p_uv_filter_year');
-    S.uvCleanPrice = U.numVal('p_uv_clean_price'); S.uvCleanPerYear = U.numVal('p_uv_clean_year');
+    if (document.getElementById('p_uv_filter_price')) S.uvFilterPrice = U.numVal('p_uv_filter_price'); S.uvFilterPerYear = U.numVal('p_uv_filter_year');   // champ prix absent quand des consommables « Filtre UV » existent (moyenne)
+    if (document.getElementById('p_uv_clean_price')) S.uvCleanPrice = U.numVal('p_uv_clean_price'); S.uvCleanPerYear = U.numVal('p_uv_clean_year');
     S.uvMaintHoursPerYear = U.numVal('p_uv_maint_h') + U.numVal('p_uv_maint_min') / 60;
     // L'amortissement matériel (S.uvEquip) est édité en direct dans sa liste (addUvEquip/setUvEquip/delUvEquip), pas ici.
     S.shippingCost = U.numVal('p_shipping'); S.freeShippingThreshold = U.numVal('p_freethr');
@@ -1597,6 +1597,12 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
   },
   /* Encre UV (Antho 2026-10-14) : plus de lien à choisir — le coût d'une cartouche est la MOYENNE des consommables de catégorie « Encre UV » (Stock → Consommables ; couleurs différentes, prix différents).
      Aucun consommable dans la catégorie → prix saisi à la main. Le volume (ml) reste ici. Le stock de cartouches n'est PAS décompté à chaque impression. */
+  /* Champ « prix » de l'entretien (filtre / nettoyant) : si des consommables de la catégorie existent → prix moyen affiché « 🔗 moyenne » ; sinon champ à saisir. */
+  _uvAvgPrice(cat, id, val, title) {
+    const k = Pricing.uvCatAvg(cat);
+    if (k.n) return `<span style="padding:0 10px;font-size:.85rem;white-space:nowrap;" title="Prix moyen de ${k.n} consommable${k.n > 1 ? 's' : ''} « ${U.esc(cat.replace(/^./, c => c.toUpperCase()))} » du Stock (${U.esc(k.names.join(', '))}), TVA d'achat comprise tant que non assujetti">${U.eur(k.avg)} <span class="badge ok" style="font-size:.7rem;">🔗 moyenne</span></span>`;
+    return `<input id="${id}" type="number" step="0.01" min="0" value="${U.num(val) || ''}" placeholder="0" title="${U.esc(title)}" onkeydown="if(event.key==='Enter')Params.saveSettings()">`;
+  },
   uvInkLinkHTML() {
     const k = Pricing.uvInkCartridge();
     const info = U.info("Dans Stock → Consommables, mets tes cartouches (une par couleur) dans la catégorie « Encre UV » : le coût de l'encre au ml est calculé avec la MOYENNE de leurs prix (prix d'une cartouche ÷ volume ci-dessus) et suit tes achats. Sans aucune cartouche dans cette catégorie, c'est le prix saisi à la main qui compte. Le stock de cartouches n'est pas décompté à chaque impression.");

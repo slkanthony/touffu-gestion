@@ -43,7 +43,7 @@ const Store = {
           'Autre':           { segments: [{label: 'Extrémité 1', value: 0}, {label: 'Extrémité 2', value: 0}] }
         },
         widths: ['10mm', '16mm', '20mm', '25mm'],
-        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre UV', 'Nettoyant UV', 'Autre'],
+        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre UV', 'Nettoyant UV', 'Filtre UV', 'Autre'],
         suppliers: [{ id: 's1', name: 'Cernunos' }, { id: 's2', name: 'Kuaurtikel' }],
         events: [], eventInfo: {}, fuelConsumption: 7, fuelPrice: 1.85,
         sachets: [],   // {id, name, cost, type}
@@ -168,10 +168,15 @@ const Store = {
   /* (2026-10-14) Catégories de consommables « Encre UV » et « Nettoyant UV » : l'ancienne « Encre » est renommée (ses consommables suivent),
      « Nettoyant UV » est ajoutée. UNE fois (flag : si Antho en supprime une, elle ne revient pas). Le coût de l'encre au ml = moyenne des consommables « Encre UV » (`Pricing.uvInkCartridge`). */
   migrateUvCategories(s) {
-    const S = s.settings; if (!S || S.uvCatsMigrated) return;
+    const S = s.settings; if (!S) return;
+    const norm = x => String(x || '').trim().toLowerCase();
+    if (!S.uvFilterCatMigrated) {   // « Filtre UV » (filtre charbon) ajoutée une fois, 2026-10-14
+      S.uvFilterCatMigrated = true;
+      if (Array.isArray(S.consCategories) && !S.consCategories.some(c => norm(c) === 'filtre uv')) S.consCategories.push('Filtre UV');
+    }
+    if (S.uvCatsMigrated) return;
     S.uvCatsMigrated = true;
     if (!Array.isArray(S.consCategories)) return;
-    const norm = x => String(x || '').trim().toLowerCase();
     const had = S.consCategories.some(c => norm(c) === 'encre uv');
     if (S.consCategories.some(c => norm(c) === 'encre')) {
       S.consCategories = S.consCategories.filter(c => norm(c) !== 'encre');
