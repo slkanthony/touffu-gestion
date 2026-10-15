@@ -1617,7 +1617,6 @@ const Paniers = {
 
       <div class="card">
         ${this.proposals ? this._renderProposals() : `
-        <div class="pan-mob pan-mob-bar"><button class="btn-cta btn-sm" onclick="Paniers.openPicker()">➕ Ajouter un produit</button><button class="btn-ghost btn-sm" onclick="Paniers.generate()" title="Compose un panier automatiquement avec les réglages ci-dessous">🎲 Générer</button><button class="btn-ghost btn-sm" aria-label="Réglages du panier" title="Aller aux réglages (budget, filtres…)" onclick="document.getElementById('pan_cfg').scrollIntoView({behavior:'smooth',block:'start'})">⚙️</button></div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
           <h2 style="margin:0;">🧺 Panier composé${this.nbChiens > 1 ? ` <span class="muted">(${this.nbChiens} chiens)</span>` : ''}</h2>
           ${this.basket.length ? `<div class="pan-actions" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">

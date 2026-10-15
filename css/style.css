@@ -1472,10 +1472,8 @@ details.fold.acc-group > .fold-body > details.fold { margin-left: 6px; }
 .pan-mob { display: none; }
 @media (max-width: 960px) {
   .pan-mob { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .pan-mob-bar { margin-bottom: 12px; }
   .pan-add-desk { display: none !important; }
   .pan-actions { justify-content: flex-start !important; }
-  .paniers-layout > .card:nth-child(2) { order: -1; }
   .paniers-layout .frow { align-items: flex-start; }
 }
 .pan-picker { position: fixed; inset: 0; z-index: 150; display: flex; flex-direction: column; background: var(--creme); }
