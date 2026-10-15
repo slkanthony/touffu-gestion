@@ -43,7 +43,7 @@ const Store = {
           'Autre':           { segments: [{label: 'Extrémité 1', value: 0}, {label: 'Extrémité 2', value: 0}] }
         },
         widths: ['10mm', '16mm', '20mm', '25mm'],
-        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Encre UV', 'Nettoyant UV', 'Filtre UV', 'Entretien UV', 'Autre'],
+        consCategories: ['Cartons', 'Sachets', 'Blisters', 'Étiquettes', 'Étiquettes d\'envoi', 'Encre UV', 'Nettoyant UV', 'Filtre UV', 'Entretien UV', 'Autre'],
         suppliers: [{ id: 's1', name: 'Cernunos' }, { id: 's2', name: 'Kuaurtikel' }],
         events: [], eventInfo: {}, fuelConsumption: 7, fuelPrice: 1.85,
         sachets: [],   // {id, name, cost, type}
@@ -177,6 +177,10 @@ const Store = {
     if (!S.uvEntretienCatMigrated) {   // « Entretien UV » (alcool, tampons, tapis…) ajoutée une fois, 2026-10-14
       S.uvEntretienCatMigrated = true;
       if (Array.isArray(S.consCategories) && !S.consCategories.some(c => norm(c) === 'entretien uv')) S.consCategories.push('Entretien UV');
+    }
+    if (!S.shipLabelCatMigrated) {   // « Étiquettes d'envoi » (étiquette collée sur les colis) ajoutée une fois, 2026-10-15, juste après « Étiquettes »
+      S.shipLabelCatMigrated = true;
+      if (Array.isArray(S.consCategories) && !S.consCategories.some(c => norm(c) === "étiquettes d'envoi")) { const i = S.consCategories.findIndex(c => norm(c) === 'étiquettes'); S.consCategories.splice(i >= 0 ? i + 1 : S.consCategories.length, 0, "Étiquettes d'envoi"); }
     }
     if (S.uvCatsMigrated) return;
     S.uvCatsMigrated = true;

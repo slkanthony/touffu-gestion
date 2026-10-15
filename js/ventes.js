@@ -620,6 +620,10 @@ const Ventes = {
     this.render();
     U.toast(`Sortie enregistrée : ${U.eur(sale.total)} · stock à jour.`, false, entry.id);
     if (shortfalls.length) this._alertShortfalls(shortfalls);
+    if (delivery === 'livraison' && !shipLbl) {   // lien cassé (étiquette supprimée) → toast à chaque livraison ; aucun lien → une seule fois par session
+      if (Store.state.settings.shipLabelConsoId) setTimeout(() => U.toast('📦 Étiquette d\'envoi introuvable : aucune étiquette ajoutée à cette livraison. Relie-en une dans Paramètres.', true), 1500);
+      else if (!this._shipLblWarned) { this._shipLblWarned = true; setTimeout(() => U.toast('📦 Aucune étiquette d\'envoi reliée : son coût n\'est pas compté (Paramètres → Réglages financiers → Consommables).'), 1500); }
+    }
     if (shipLbl) { const t3 = Store.state.consumables.find(x => x.id === shipLbl.id); if (t3 && U.num(t3.qty) <= 0) setTimeout(() => U.toast('📦 Plus d\'étiquettes d\'envoi en stock : pense à en recommander.', true), 1500); }
     if (thanks) { const t2 = Store.state.consumables.find(x => x.id === thanks.id); if (t2 && U.num(t2.qty) <= 0) setTimeout(() => U.toast('💌 Plus de cartes de remerciement en stock : pense à en recommander.', true), 900); }
   },

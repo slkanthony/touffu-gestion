@@ -1608,19 +1608,23 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
   shipLabelHTML() {
     const S = Store.state.settings, all = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name)), id = S.shipLabelConsoId, c = id ? all.find(x => x.id === id) : null;
     const isLab = x => /etiquet/.test(U.normSearch(x.category || '') + ' ' + U.normSearch(x.name || ''));
-    const labs = all.filter(isLab), cons = labs.length ? all.filter(x => isLab(x) || x.id === id) : all;
+    const ships = all.filter(x => this.isShipLabelCat(x)), labs = all.filter(isLab);   // catégorie « Étiquettes d'envoi » : si elle contient des consommables, seuls eux sont proposés
+    const cons = ships.length ? all.filter(x => this.isShipLabelCat(x) || x.id === id) : labs.length ? all.filter(x => isLab(x) || x.id === id) : all;
+    const broken = !!id && !c;
     const past = c ? this.shipLabelPastCount() : 0;
     return `<div class="mt" style="padding-top:10px;border-top:1px dashed var(--card-border);">
       <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Étiquette d'envoi ${U.info("Crée d'abord ton étiquette d'envoi dans Stock → Consommables (catégorie Étiquettes : prix d'achat ÷ quantité = coût d'une étiquette), puis relie-la ici.<br><br>Dès qu'une vente est validée en <b>Livraison</b> (en ligne ou en direct), <b>1 étiquette</b> est ajoutée automatiquement : son coût entre dans les coûts de la vente (bénéfice, statistiques) et elle est déduite du stock. Si tu envoies deux colis, modifie la quantité dans la vente (Ventes → Modifier). Pas d'étiquette pour un Click & Collect.")}</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
         <div class="fg" style="margin:0;flex:1 1 250px;min-width:230px;"><label>📦 Étiquette d'envoi (1 par colis expédié)</label>
           <select onchange="Params.setCardConso('shipLabelConsoId',this.value)"><option value="">— aucune —</option>${cons.map(x => `<option value="${x.id}" ${x.id === id ? 'selected' : ''}>${U.esc(x.name)}</option>`).join('')}</select>
-          <div class="muted" style="font-size:.8rem;margin-top:3px;">${c ? `Coût d'une étiquette : <b>${U.eur(U.num(c.costUnit) * Pricing.vatK())}</b> <span class="badge ok" style="font-size:.7rem;">🔗 auto</span>${Pricing.vatK() > 1 ? ' <span class="muted">(TVA d\'achat comprise)</span>' : ''} · stock : ${U.qty(c.qty)}` : 'Choisis le consommable correspondant.'}</div></div>
+          <div class="muted" style="font-size:.8rem;margin-top:3px;">${c ? `Coût d'une étiquette : <b>${U.eur(U.num(c.costUnit) * Pricing.vatK())}</b> <span class="badge ok" style="font-size:.7rem;">🔗 auto</span>${Pricing.vatK() > 1 ? ' <span class="muted">(TVA d\'achat comprise)</span>' : ''} · stock : ${U.qty(c.qty)}` : broken ? '<b class="neg">⚠ L\'étiquette d\'envoi reliée n\'existe plus</b> : plus aucune étiquette n\'est ajoutée aux livraisons. Choisis-en une.' : 'Choisis le consommable correspondant.'}</div></div>
         ${c ? `<div class="fg" style="margin:0;flex:1 1 250px;min-width:230px;"><label>Ventes déjà livrées</label>
           <button class="btn-ghost btn-sm fit" ${past ? '' : 'disabled'} onclick="Params.applyShipLabelPast()" title="Ajoute 1 étiquette (coût seulement, le stock ne bouge pas) à chaque vente en livraison qui n'en a pas encore">${past ? '↺ Appliquer aux ' + past + ' envoi(s) passé(s)' : '✓ Tous les envois passés ont leur étiquette'}</button></div>` : ''}
       </div>
     </div>`;
   },
+  /* Consommable rangé dans la catégorie « Étiquettes d'envoi » (jamais proposé comme étiquette de conditionnement) */
+  isShipLabelCat(c) { const k = U.normSearch(c.category || ''); return /etiquet/.test(k) && /envoi/.test(k); },
   /* Ventes en livraison (non annulées) sans ligne « étiquette d'envoi » */
   shipLabelPastSales() {
     const id = Store.state.settings.shipLabelConsoId; if (!id) return [];
@@ -1666,8 +1670,9 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     const all = Store.state.consumables;
     if (!all.length) { U.toast('Aucun consommable en stock — ajoute d\'abord tes étiquettes dans Stock > Consommables.', true); return; }
     const shipId = Store.state.settings.shipLabelConsoId;   // l'étiquette d'envoi a son propre réglage : jamais proposée ici
-    const consos = all.filter(c => c.id !== shipId && /etiquet/.test(U.normSearch(c.category || '') + ' ' + U.normSearch(c.name || '')));
-    const list = consos.length ? consos : all.filter(c => c.id !== shipId);
+    const notShip = c => c.id !== shipId && !this.isShipLabelCat(c);
+    const consos = all.filter(c => notShip(c) && /etiquet/.test(U.normSearch(c.category || '') + ' ' + U.normSearch(c.name || '')));
+    const list = consos.length ? consos : all.filter(notShip);
     const picker = this._consoPickList('lab_conso', list, t.consumableId || '', (c, u) => `${U.eur(c.costUnit)} / ${U.esc(u)}`, '🏷️ Étiquettes' + (consos.length ? '' : ' (tous les consommables)'));
     U.modal({
       title: 'Lier « ' + t.name + ' » au consommable', okLabel: 'Enregistrer',

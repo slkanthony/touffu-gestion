@@ -2590,7 +2590,8 @@ const Stock = {
   },
   async delConso(id){
     const c=Store.state.consumables.find(x=>x.id===id); if(!c) return;
-    if(!await U.confirm(`Supprimer le consommable « ${c.name} » ?`)) return;
+    const isShip = Store.state.settings.shipLabelConsoId === id;   // étiquette d'envoi reliée aux livraisons : on prévient avant
+    if(!await U.confirm(isShip ? `« ${c.name} » est ton ÉTIQUETTE D'ENVOI : elle est ajoutée automatiquement à chaque livraison.\n\nSi tu la supprimes, plus aucune étiquette ne sera ajoutée (tu pourras en relier une autre dans Paramètres). Les ventes déjà enregistrées gardent leur ligne.\n\nSupprimer quand même ?` : `Supprimer le consommable « ${c.name} » ?`, isShip ? { danger: true, okLabel: 'Supprimer quand même' } : undefined)) return;
     const snap=Store.snapshot('consumables',c);
     Store.state.consumables=Store.state.consumables.filter(x=>x.id!==id);
     const entry=Store.commitSnapshot(snap,'stock','Consommable supprimé — '+c.name);
