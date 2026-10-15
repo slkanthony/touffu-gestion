@@ -419,6 +419,7 @@ const Ventes = {
     U.toast('Ajouté au ticket.');
   },
 
+  _shipLabelConso() { const id = Store.state.settings.shipLabelConsoId; return id ? (Store.state.consumables.find(x => x.id === id) || null) : null; },   // étiquette d'envoi : ajoutée toute seule à chaque livraison (Réglages → Étiquette d'envoi)
   _thanksConso() { const id = Store.state.settings.thanksConsoId; return id ? (Store.state.consumables.find(x => x.id === id) || null) : null; },
   _pushConsoIfSelected() {
     if (!this.consoId) return false;
@@ -593,7 +594,10 @@ const Ventes = {
     // Carte de remerciement (case cochée par défaut) : 1 carte = 1 ligne consommable, coût compté même si le stock est à 0 (alerte pour recommander)
     const thanks = this.thanksOn ? this._thanksConso() : null;
     if (thanks && !lines.some(c => c.kind === 'C' && c.pId === thanks.id)) lines = lines.concat([{ key: 'C|' + thanks.id, kind: 'C', pId: thanks.id, vId: '', lotId: '', lotLabel: '', name: thanks.name, label: (!thanks.unit || thanks.unit === 'pc') ? 'PCS' : thanks.unit, sku: '', price: 0, qty: 1 }]);
-    const shortfalls = this._deductSale(sale, lines, this.source);
+    // Étiquette d'envoi : 1 par vente en livraison (en ligne ou en direct), même sans carton saisi ; modifiable ensuite dans la vente. Pas d'alerte « stock insuffisant » pour elle (simple rappel de recommander).
+    const shipLbl = delivery === 'livraison' ? this._shipLabelConso() : null;
+    if (shipLbl && !lines.some(c => c.kind === 'C' && c.pId === shipLbl.id)) lines = lines.concat([{ key: 'C|' + shipLbl.id, kind: 'C', pId: shipLbl.id, vId: '', lotId: '', lotLabel: '', name: shipLbl.name, label: (!shipLbl.unit || shipLbl.unit === 'pc') ? 'PCS' : shipLbl.unit, sku: '', price: 0, qty: 1, auto: 'shipLabel' }]);
+    const shortfalls = this._deductSale(sale, lines, this.source).filter(sf => !(shipLbl && sf.name === shipLbl.name));
     if (pct > 0) { const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = pct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; if (String(this.discCode || '').trim()) sale.discountCode = String(this.discCode).trim(); }
     const ba = this._balApplied(sale.total);
     if (ba) { sale.balanceApplied = ba; Clients.adjustBalance(sale.customerName, -ba, (ba > 0 ? 'Avoir utilisé' : 'Solde réglé') + ' — vente du ' + U.frDate(new Date().toISOString().slice(0, 10))); }
@@ -616,6 +620,7 @@ const Ventes = {
     this.render();
     U.toast(`Sortie enregistrée : ${U.eur(sale.total)} · stock à jour.`, false, entry.id);
     if (shortfalls.length) this._alertShortfalls(shortfalls);
+    if (shipLbl) { const t3 = Store.state.consumables.find(x => x.id === shipLbl.id); if (t3 && U.num(t3.qty) <= 0) setTimeout(() => U.toast('📦 Plus d\'étiquettes d\'envoi en stock : pense à en recommander.', true), 1500); }
     if (thanks) { const t2 = Store.state.consumables.find(x => x.id === thanks.id); if (t2 && U.num(t2.qty) <= 0) setTimeout(() => U.toast('💌 Plus de cartes de remerciement en stock : pense à en recommander.', true), 900); }
   },
 
@@ -672,7 +677,7 @@ const Ventes = {
           if (c.qty - take > 0) shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: c.qty - take, src: source });
         }
       }
-      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(missing > 0 ? { missing } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
+      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(c.auto ? { auto: c.auto } : {}), ...(missing > 0 ? { missing } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
       sale.total += c.price * c.qty;
     }
     touched.forEach(v => { v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0); });

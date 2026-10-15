@@ -1601,7 +1601,42 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     return `<div class="mt" style="padding-top:10px;border-top:1px dashed var(--card-border);">
       <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">💌 Cartes ${U.info("Crée d'abord tes cartes dans Stock → Consommables (prix d'achat et quantité : l'appli divise pour avoir le coût d'une carte), puis relie-les ici.<br><br>● Carte de remerciement : case « 💌 incluse » cochée par défaut dans chaque ticket de vente (Click & Collect, livraison).<br>● Carte de visite : tu saisis le nombre distribué au retour d'événement.<br><br>Leur coût entre dans « Cartons & consommables » et le stock baisse ; s'il tombe à 0, le coût est compté quand même et tu es prévenu de recommander.")}</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;">${one('thanksConsoId', '💌 Carte de remerciement', 'Choisis le consommable correspondant.')}${one('cardConsoId', '🪪 Carte de visite', 'Choisis le consommable correspondant.')}</div>
+    </div>${this.shipLabelHTML()}`;
+  },
+  /* Étiquette d'envoi collée sur chaque colis (Antho 2026-10-15) : liée à un consommable de la catégorie « Étiquettes » ; AJOUTÉE AUTOMATIQUEMENT (1) à chaque vente en livraison, que le carton soit saisi ou non
+     (carton de récupération). Elle n'est plus proposée comme étiquette de conditionnement (linkLabelConso). */
+  shipLabelHTML() {
+    const S = Store.state.settings, all = Store.state.consumables.slice().sort((a, b) => U.sortFr(a.name, b.name)), id = S.shipLabelConsoId, c = id ? all.find(x => x.id === id) : null;
+    const isLab = x => /etiquet/.test(U.normSearch(x.category || '') + ' ' + U.normSearch(x.name || ''));
+    const labs = all.filter(isLab), cons = labs.length ? all.filter(x => isLab(x) || x.id === id) : all;
+    const past = c ? this.shipLabelPastCount() : 0;
+    return `<div class="mt" style="padding-top:10px;border-top:1px dashed var(--card-border);">
+      <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">📦 Étiquette d'envoi ${U.info("Crée d'abord ton étiquette d'envoi dans Stock → Consommables (catégorie Étiquettes : prix d'achat ÷ quantité = coût d'une étiquette), puis relie-la ici.<br><br>Dès qu'une vente est validée en <b>Livraison</b> (en ligne ou en direct), <b>1 étiquette</b> est ajoutée automatiquement : son coût entre dans les coûts de la vente (bénéfice, statistiques) et elle est déduite du stock. Si tu envoies deux colis, modifie la quantité dans la vente (Ventes → Modifier). Pas d'étiquette pour un Click & Collect.")}</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
+        <div class="fg" style="margin:0;flex:1 1 250px;min-width:230px;"><label>📦 Étiquette d'envoi (1 par colis expédié)</label>
+          <select onchange="Params.setCardConso('shipLabelConsoId',this.value)"><option value="">— aucune —</option>${cons.map(x => `<option value="${x.id}" ${x.id === id ? 'selected' : ''}>${U.esc(x.name)}</option>`).join('')}</select>
+          <div class="muted" style="font-size:.8rem;margin-top:3px;">${c ? `Coût d'une étiquette : <b>${U.eur(U.num(c.costUnit) * Pricing.vatK())}</b> <span class="badge ok" style="font-size:.7rem;">🔗 auto</span>${Pricing.vatK() > 1 ? ' <span class="muted">(TVA d\'achat comprise)</span>' : ''} · stock : ${U.qty(c.qty)}` : 'Choisis le consommable correspondant.'}</div></div>
+        ${c ? `<div class="fg" style="margin:0;flex:1 1 250px;min-width:230px;"><label>Ventes déjà livrées</label>
+          <button class="btn-ghost btn-sm fit" ${past ? '' : 'disabled'} onclick="Params.applyShipLabelPast()" title="Ajoute 1 étiquette (coût seulement, le stock ne bouge pas) à chaque vente en livraison qui n'en a pas encore">${past ? '↺ Appliquer aux ' + past + ' envoi(s) passé(s)' : '✓ Tous les envois passés ont leur étiquette'}</button></div>` : ''}
+      </div>
     </div>`;
+  },
+  /* Ventes en livraison (non annulées) sans ligne « étiquette d'envoi » */
+  shipLabelPastSales() {
+    const id = Store.state.settings.shipLabelConsoId; if (!id) return [];
+    return Store.state.sales.filter(s => s.delivery === 'livraison' && !s.cancelled && !(s.items || []).some(i => i.kind === 'C' && i.pId === id));
+  },
+  shipLabelPastCount() { return this.shipLabelPastSales().length; },
+  async applyShipLabelPast() {
+    const S = Store.state.settings, co = Store.state.consumables.find(x => x.id === S.shipLabelConsoId); if (!co) return;
+    const sales = this.shipLabelPastSales(); if (!sales.length) return;
+    const cost = U.num(co.costUnit) * Pricing.vatK(), tot = Math.round(cost * sales.length * 100) / 100;
+    if (!await U.confirm(`Ajouter 1 « ${co.name} » à ${sales.length} vente(s) déjà livrée(s) ?\n\nCoût ajouté : ${U.eur(cost)} par envoi, soit ${U.eur(tot)} au total (il baisse d'autant le bénéfice de ces ventes).\nLe stock d'étiquettes ne bouge pas (compte-le dans Stock). Tu pourras annuler.`, { okLabel: 'Appliquer' })) return;
+    const snaps = sales.map(s => Store.snapshot('sales', s));
+    sales.forEach(s => { s.items = s.items || []; s.items.push({ kind: 'C', pId: co.id, vId: '', name: co.name, label: (!co.unit || co.unit === 'pc') ? 'PCS' : co.unit, sku: '', lotLabel: '', qty: 1, price: 0, cost, auto: 'shipLabel' }); });
+    const entry = Store.log('paramètres', `Étiquette d'envoi ajoutée aux envois passés : ${sales.length} vente(s), ${U.eur(tot)}`, { type: 'restoreBatch', data: snaps });
+    Store.save('sales'); App.rerender();
+    U.toast(`📦 Étiquette ajoutée à ${sales.length} vente(s) (${U.eur(tot)}).`, false, entry.id);
   },
   /* Encre UV (Antho 2026-10-14) : plus de lien à choisir — le coût d'une cartouche est la MOYENNE des consommables de catégorie « Encre UV » (Stock → Consommables ; couleurs différentes, prix différents).
      Aucun consommable dans la catégorie → prix saisi à la main. Le volume (ml) reste ici. Le stock de cartouches n'est PAS décompté à chaque impression. */
@@ -1630,8 +1665,9 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     const t = Store.labelType(id); if (!t) return;
     const all = Store.state.consumables;
     if (!all.length) { U.toast('Aucun consommable en stock — ajoute d\'abord tes étiquettes dans Stock > Consommables.', true); return; }
-    const consos = all.filter(c => /etiquet/.test(U.normSearch(c.category || '') + ' ' + U.normSearch(c.name || '')));
-    const list = consos.length ? consos : all;
+    const shipId = Store.state.settings.shipLabelConsoId;   // l'étiquette d'envoi a son propre réglage : jamais proposée ici
+    const consos = all.filter(c => c.id !== shipId && /etiquet/.test(U.normSearch(c.category || '') + ' ' + U.normSearch(c.name || '')));
+    const list = consos.length ? consos : all.filter(c => c.id !== shipId);
     const picker = this._consoPickList('lab_conso', list, t.consumableId || '', (c, u) => `${U.eur(c.costUnit)} / ${U.esc(u)}`, '🏷️ Étiquettes' + (consos.length ? '' : ' (tous les consommables)'));
     U.modal({
       title: 'Lier « ' + t.name + ' » au consommable', okLabel: 'Enregistrer',
