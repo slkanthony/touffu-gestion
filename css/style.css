@@ -1523,3 +1523,27 @@ body.pan-picker-open { overflow: hidden; }
   table.stk.pan-tbl td.pl-coef { color: var(--gris); font-size: .8rem; }
   table.stk.pan-tbl td.pl-price input { width: 84px; }
 }
+
+/* ---------- Péremptions : fiches sur téléphone + bouton « 🧺 » par lot (2026-10-15) ---------- */
+.perem-mob { display: none; }
+@media screen and (max-width: 700px) {
+  .perem-desk { display: none; }
+  .perem-mob { display: block; }
+}
+.pm-sort { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pm-sort label { margin: 0; white-space: nowrap; font-size: .75rem; }
+.pm-sort select { flex: 1 1 auto; min-width: 0; }
+.pm-card { border: 1px solid var(--card-border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+.pm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--th-bg); }
+.pm-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-top: 1px solid var(--card-border); }
+.pm-row.off { opacity: .5; }
+.pm-row input[type="checkbox"] { width: 20px; height: 20px; margin: 0; }
+.pm-sub { color: var(--gris); font-size: .82rem; margin-top: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.pm-add { white-space: nowrap; }
+
+/* ---------- Téléphone : onglets en boutons sur plusieurs lignes + tableaux non empilables défilables ---------- */
+@media (max-width: 700px) {
+  .seg.full, .seg.full.scroll { flex-wrap: wrap; overflow: visible; }
+  .seg.full > * { flex: 1 1 auto; padding: 8px 10px; }
+  .table-wrap:has(> table:not(.stk)) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}

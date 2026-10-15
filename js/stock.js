@@ -1936,8 +1936,9 @@ const Stock = {
         </div>
       </div>
       <div class="card">
-        <div class="table-wrap"><table>
-          <thead><tr><th class="no-print"><input type="checkbox" ${allChecked?'checked':''} onchange="Stock.peremSetAllSel(this.checked)"></th><th class="col-name">${sortHead('name','Produit')}</th><th>${sortHead('meat','Type viande')}</th><th>${sortHead('variant','Variante')}</th><th>N° lot</th><th>${sortHead('days','Date péremption')}</th><th class="num">${sortHead('stock','Stock ('+viewLabel+')')}</th><th>${sortHead('status','Statut')}</th></tr></thead>
+        <div class="perem-mob no-print">${this._peremMobHTML(groups, viewQty, viewLabel)}</div>
+        <div class="table-wrap perem-desk"><table>
+          <thead><tr><th class="no-print"><input type="checkbox" ${allChecked?'checked':''} onchange="Stock.peremSetAllSel(this.checked)"></th><th class="col-name">${sortHead('name','Produit')}</th><th>${sortHead('meat','Type viande')}</th><th>${sortHead('variant','Variante')}</th><th>N° lot</th><th>${sortHead('days','Date péremption')}</th><th class="num">${sortHead('stock','Stock ('+viewLabel+')')}</th><th>${sortHead('status','Statut')}</th><th class="no-print"></th></tr></thead>
           ${groups.map((g, gi) => {
             const rs = g.rows.map(r => { const key = this.peremKey(r); return { r, key, on: !f.excluded.includes(key) }; });
             let first = rs.findIndex(x => x.on); if (first < 0) first = 0;   // le nom fusionné est porté par la 1re ligne COCHÉE (les lignes décochées ne s'impriment pas)
@@ -1950,11 +1951,39 @@ const Stock = {
             <td>${U.frDate(x.r.l.dluo)}</td>
             <td class="num">${U.qty(viewQty(x.r))}</td>
             <td>${this.dluoStatusBadge(x.r.days)}</td>
+            <td class="no-print" style="white-space:nowrap;">${this._peremAddBtn(x.r)}</td>
           </tr>`).join('') + '</tbody>';
-          }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun lot pour ces filtres.</td></tr></tbody>'}
+          }).join('') || '<tbody><tr><td colspan="9" class="muted">Aucun lot pour ces filtres.</td></tr></tbody>'}
         </table></div>
       </div>`;
   },
+  /* Bouton « 🧺 » d'une ligne : envoie CE lot dans le panier en cours de la page Paniers (le nombre déjà ajouté s'affiche à côté) */
+  _peremInBasket(r) { return (Paniers.basket || []).filter(b => b.pId === r.p.id && b.vId === r.v.id && b.lotId === r.l.id).reduce((a, b) => a + U.num(b.qty), 0); },
+  _peremAddBtn(r) {
+    const n = this._peremInBasket(r);
+    return `<button class="btn-ghost btn-sm pm-add" data-pk="${this.peremKey(r)}" onclick="Stock.peremToBasket('${r.p.id}','${r.v.id}','${r.l.id}')" title="Ajouter ce lot au panier en cours (page Paniers)">🧺 +${n ? ` <b>×${U.qty(n)}</b>` : ''}</button>`;
+  },
+  peremToBasket(pId, vId, lId) {
+    Paniers._draft();   // charge d'abord le brouillon enregistré (client, budget…) pour ne pas l'écraser
+    Paniers.pickManual(pId, vId, lId, 'M', true);
+    const row = this._peremRowsCache.find(r => r.p.id === pId && r.v.id === vId && r.l.id === lId);
+    if (!row) return;
+    const n = this._peremInBasket(row), key = this.peremKey(row);
+    if (n) document.querySelectorAll('.pm-add').forEach(b => { if (b.dataset.pk === key) b.innerHTML = '🧺 + <b>×' + U.qty(n) + '</b>'; });
+    U.toast('🧺 ' + row.p.name + ' ' + row.label + ' ajouté au panier (' + (Paniers.basket || []).reduce((a, b) => a + U.num(b.qty), 0) + ' article(s)).');
+  },
+  /* Téléphone : une fiche par produit, une ligne par lot (le tableau à cellules fusionnées ne tient pas sur 375 px) */
+  _peremMobHTML(groups, viewQty, viewLabel) {
+    const ex = this.perem.excluded || [];
+    if (!groups.length) return '<p class="muted">Aucun lot pour ces filtres.</p>';
+    const so = [['days', 'Date de péremption'], ['name', 'Produit'], ['meat', 'Type de viande'], ['variant', 'Variante'], ['stock', 'Stock']];
+    return `<div class="pm-sort"><label>Trier par</label><select onchange="Stock.setPeremSortTo(this.value)">${so.map(([k, l]) => `<option value="${k}" ${this.perem.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn-ghost btn-sm fit" onclick="Stock.setPeremSort(Stock.perem.sort)" title="Inverser l'ordre">${this.perem.sortDir === 'asc' ? '▲' : '▼'}</button></div>` + groups.map(g => `<div class="pm-card"><div class="pm-head"><b>${U.esc(g.p.name)}</b><span class="badge info">${U.esc(g.p.meatType || '—')}</span></div>${g.rows.map(r => {
+      const key = this.peremKey(r), on = !ex.includes(key);
+      return `<div class="pm-row${on ? '' : ' off'}"><input type="checkbox" ${on ? 'checked' : ''} onchange="Stock.peremToggleSel('${key}')" aria-label="Inclure dans l'impression">
+        <div class="pm-main"><div><b>${U.esc(r.label)}</b> <span class="tag">${U.esc(r.l.lotNumber || 'sans n°')}</span></div><div class="pm-sub">${U.frDate(r.l.dluo)} · stock ${viewLabel} ${U.qty(viewQty(r))} ${this.dluoStatusBadge(r.days)}</div></div>${this._peremAddBtn(r)}</div>`;
+    }).join('')}</div>`).join('');
+  },
+  setPeremSortTo(key) { this.perem.sort = key; this.perem.sortDir = 'asc'; this.renderPeremptions(); },
   setPeremSort(key) {
     if (this.perem.sort === key) this.perem.sortDir = this.perem.sortDir === 'asc' ? 'desc' : 'asc';
     else { this.perem.sort = key; this.perem.sortDir = 'asc'; }
