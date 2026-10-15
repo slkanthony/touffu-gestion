@@ -934,7 +934,13 @@ document.addEventListener('keydown', (e) => {
    (1re colonne figée). Exclus : historique des ventes, emballages, comparaisons SumUp, tableaux déjà compacts. */
 (function () {
   const SKIP = 'table.sales-hist, table.pack-tbl, table.pack-table, table.sumup-table, table.sale-sum, table.keep-table, .modal table';
-  function label(th) { return (th.textContent || '').replace(/[▲▼⇕↑↓]/g, '').replace(/\s+/g, ' ').trim(); }
+  function label(th) {
+    const c = th.cloneNode(true);   // sans les bulles ⓘ (leur texte d'aide s'ajoutait au titre) et avec un espace à la place des <br>
+    c.querySelectorAll('.info-tip, .help').forEach(e => e.remove());
+    c.querySelectorAll('.b2b-sfx').forEach(e => e.prepend(' '));
+    c.querySelectorAll('br').forEach(e => e.replaceWith(' '));
+    return (c.textContent || '').replace(/[▲▼⇕↑↓]/g, '').replace(/\s+/g, ' ').trim();
+  }
   function prep(t) {
     if (t.matches(SKIP) || t.closest('table.sales-hist')) return;
     if (!t.dataset.stk) {

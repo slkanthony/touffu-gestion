@@ -137,7 +137,7 @@ body.visit-mode .topnav-brand .visit-eye { opacity: .75; }
 .topnav-inner .sync-state { font-size: 0.78rem; color: var(--gris); padding: 10px 12px; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
 .topnav-inner .sync-state.ok { color: #9dc3a8; }
 
-.main { flex: 1; padding: 22px clamp(12px, 3vw, 36px) 90px; max-width: 1760px; margin: 0 auto; width: 100%; min-width: 0; }
+main.main { flex: 1; padding: 22px clamp(12px, 3vw, 36px) 90px; max-width: 1760px; margin: 0 auto; width: 100%; min-width: 0; }
 .view-title { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
 .view-title h1 { font-family: 'Berkshire Swash', cursive; font-weight: 400; font-size: 1.9rem; }
 .view-title .sub { color: var(--gris); font-size: 0.9rem; }
@@ -605,7 +605,7 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
   .nav-item { flex-direction: column; padding: 7px 4px; font-size: 0.6rem; gap: 2px; min-width: 52px; }
   .nav-item .lbl { display: block; font-size: 0.6rem; line-height: 1.05; text-align: center; white-space: normal; max-width: 58px; color: inherit; }
   .nav-item .ico { font-size: 1.15rem; }
-  .main { padding-bottom: 40px; }
+  main.main { padding-bottom: 40px; }
   .view-title h1 { font-size: 1.5rem; }
   td, th { padding: 7px 6px; }
   .cart { bottom: 16px; }
@@ -658,7 +658,7 @@ th .sortable { white-space: nowrap; }
   body.print-light, body.print-light *, body.print-focus, body.print-focus * { color: #000 !important; background: #fff !important; box-shadow: none !important; filter: none !important; }
   body.print-focus a { text-decoration: none; }
   .topnav, .toolbar, .seg, button, #toast { display: none !important; }
-  .main { padding: 0; max-width: none; }
+  main.main { padding: 0; max-width: none; }
   .card { box-shadow: none; border: 1px solid #ccc; }
   tr.excluded-from-print, .no-print { display: none !important; }
 }
@@ -1374,7 +1374,7 @@ th.ctr, td.ctr { text-align: center; }
 .frow > * { min-width: min(100%, 130px); }
 .paniers-layout > *, .card, .fold-body { min-width: 0; }
 @media (max-width: 700px) {
-  .main { padding-left: 10px; padding-right: 10px; }
+  main.main { padding-left: 10px; padding-right: 10px; }
   .card { padding: 14px 12px; }
   .table-wrap { overflow-x: visible; }
   .table-wrap table.stk-wide { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1547,3 +1547,67 @@ body.pan-picker-open { overflow: hidden; }
   .seg.full > * { flex: 1 1 auto; padding: 8px 10px; }
   .table-wrap:has(> table:not(.stk)) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
+
+/* ---------- Téléphone : fiches produit compactes (Stock · Revente pro · Prix mastication) — 2026-10-15 ----------
+   En-tête : nom / pastilles / fournisseurs / ligne de chiffres / actions, chacun sur sa ligne (plus de bloc géant) ; corps : cases en grille serrée au lieu d'une pile « libellé au-dessus de la valeur ». */
+@media (max-width: 700px) {
+  details.fold:is(.prod-fold, .b2b-fold) > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; position: relative; padding: 12px 10px 12px 30px; min-height: 0; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary::before { position: absolute; left: 11px; top: 16px; margin: 0; }
+  details.fold:is(.prod-fold, .b2b-fold)[open] > summary::before { margin: 0; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary > :is(b, .b2b-name) { flex: 1 1 100%; font-size: 1.02rem; line-height: 1.25; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary > span { flex: 0 0 auto; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary > span:empty { display: none; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary .sup-badges { flex: 1 1 100%; align-self: auto; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary .sup-badge { white-space: nowrap; }
+  details.fold:is(.prod-fold, .b2b-fold) > summary .meta { flex: 1 1 100%; text-align: left; }
+  details.fold.prod-fold > summary .px-date { position: absolute; top: 4px; right: 8px; }
+  details.fold.prod-fold > summary .cat-head-inputs { flex: 1 1 auto; justify-content: flex-start; }
+  details.fold.prod-fold > summary .prod-actions { flex: 1 1 100%; justify-content: flex-end; }
+  details.fold.prod-fold > summary .prod-actions.act-grid, table.stk .act-grid { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; }
+  details.fold:is(.prod-fold, .b2b-fold) .fold-body { padding: 4px 8px 12px; }
+
+  /* Stock : une fiche par variante — nom / SKU / 4 stocks / 4 chiffres / actions */
+  .prod-fold .fold-body table.stk:not(.lots-table) > tbody > tr:not(.lots-row) { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; padding: 10px; }
+  .prod-fold table.stk:not(.lots-table) td.var-cell { order: 1; }
+  .prod-fold table.stk:not(.lots-table) td.v-sku { order: 2; }
+  .prod-fold table.stk:not(.lots-table) td.v-stg { order: 3; } .prod-fold table.stk:not(.lots-table) td.v-ste { order: 4; }
+  .prod-fold table.stk:not(.lots-table) td.v-tot { order: 5; } .prod-fold table.stk:not(.lots-table) td.v-nb { order: 6; }
+  .prod-fold table.stk:not(.lots-table) td.v-ming { order: 7; } .prod-fold table.stk:not(.lots-table) td.v-mine { order: 8; }
+  .prod-fold table.stk:not(.lots-table) td.v-pa { order: 9; } .prod-fold table.stk:not(.lots-table) td.v-pv { order: 10; }
+  .prod-fold table.stk:not(.lots-table) td.v-act { order: 11; }
+  .prod-fold table.stk:not(.lots-table) td.v-sku .sku-input { max-width: 260px; }
+  .prod-fold table.stk td.v-ming input, .prod-fold table.stk td.v-mine input { width: 100%; max-width: 70px; }
+  .prod-fold tr.lots-row > td { padding: 0 !important; }
+  .lots-box { padding: 8px 8px 10px; margin: 2px 0 4px; }
+
+  /* Stock : une fiche par lot — n° · péremption / stock gén. ⇄ stock évén. / total · actions */
+  table.stk.lots-table > tbody > tr { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px 10px; align-items: end; }
+  table.stk.lots-table td.l-no { grid-column: 1; }
+  table.stk.lots-table td.l-dl { grid-column: 2 / -1; align-items: flex-end; text-align: right; }
+  table.stk.lots-table td.l-g { grid-column: 1; } table.stk.lots-table td.l-e { grid-column: 3; }
+  table.stk.lots-table td.l-tr { grid-column: 2; flex-direction: row; justify-content: center; align-items: center; gap: 6px; padding-bottom: 4px; }
+  table.stk.lots-table td.l-tot { grid-column: 1; }
+  table.stk.lots-table td.l-act { grid-column: 2 / -1; }
+  table.stk.lots-table td.l-g input, table.stk.lots-table td.l-e input { width: 100%; max-width: 110px; }
+  table.stk.lots-table td[data-l="N° lot"]::before, table.stk.lots-table td[data-l="Péremption"]::before { display: none; }
+
+  /* Revente pro : 3 chiffres par ligne, valeurs alignées en bas de chaque case */
+  details.fold.b2b-fold .fold-body table.b2b-vtbl.stk > tbody > tr, details.fold.cat-fold .fold-body table.cat-vtbl.stk > tbody > tr { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; padding: 10px; }
+  table.b2b-vtbl.stk td, table.cat-vtbl.stk td { justify-content: space-between; }
+  table.b2b-vtbl.stk td:last-child, table.cat-vtbl.stk td:last-child { grid-column: auto; flex-direction: column; justify-content: space-between; align-items: flex-start; }
+  table.b2b-vtbl.stk td.col-name, table.cat-vtbl.stk td.col-name { grid-column: 1 / -1; font-weight: 700; font-size: 1rem; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+  table.b2b-vtbl.stk td .badge { white-space: normal; }
+  table.cat-vtbl.stk td input[type="number"] { width: 100%; max-width: 92px; }
+}
+@media (max-width: 700px) {
+  .prod-fold table.stk td[data-l]::before { white-space: nowrap; letter-spacing: 0; font-size: .62rem; }
+  table.b2b-vtbl.stk td[data-l]::before, table.cat-vtbl.stk td[data-l]::before { letter-spacing: 0; font-size: .62rem; line-height: 1.15; }
+  table.b2b-vtbl.stk td.col-name::before, table.cat-vtbl.stk td.col-name::before { display: none; }
+  .prod-fold table.stk td.var-cell::before, .prod-fold table.stk td.l-no::before, .prod-fold table.stk td.l-dl::before { display: none; }
+  .prod-fold td.var-cell .vc-ind:empty { display: none; }
+  .prod-fold table.stk td.v-stg, .prod-fold table.stk td.v-ste, .prod-fold table.stk td.v-tot, .prod-fold table.stk td.v-nb { justify-content: flex-start; }
+}
+@media (max-width: 700px) {
+  table.b2b-vtbl.stk td[style*="border-left"] { padding-left: 8px; }
+}
+@media (max-width: 700px) { .grid.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

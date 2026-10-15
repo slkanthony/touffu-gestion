@@ -351,16 +351,16 @@ const Stock = {
           <tbody>${lots.length ? lots.map(l => {
             const tot = U.num(l.qtyGeneral)+U.num(l.qtyEvent);
             return `<tr class="${tot<=0?'dim':''}">
-              <td class="col-name"><span class="tag">${U.esc(l.lotNumber||'sans n°')}</span></td>
-              <td ondblclick="Stock.editReminder('${p.id}','${v.id}','${l.id}')" title="Double-clic : ajouter / modifier un rappel (pense-bête)" style="cursor:pointer;">${l.dluo?U.dluoTag(l.dluo):'<span class="muted">—</span>'}${this.reminderTag(l)}</td>
-              <td class="num"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyGeneral}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyGeneral',this.value)"></td>
-              <td class="right" style="white-space:nowrap;">
+              <td class="col-name l-no"><span class="tag">${U.esc(l.lotNumber||'sans n°')}</span></td>
+              <td class="l-dl" ondblclick="Stock.editReminder('${p.id}','${v.id}','${l.id}')" title="Double-clic : ajouter / modifier un rappel (pense-bête)" style="cursor:pointer;">${l.dluo?U.dluoTag(l.dluo):'<span class="muted">—</span>'}${this.reminderTag(l)}</td>
+              <td class="num l-g"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyGeneral}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyGeneral',this.value)"></td>
+              <td class="right l-tr" style="white-space:nowrap;">
                 <button class="btn-transfer" style="background:var(--ok);" title="Transférer vers Événement" onclick="Stock.transferLot('${p.id}','${v.id}','${l.id}','ge')">→</button>
                 <button class="btn-transfer" style="background:#3b6fa0;" title="Retour vers Stock Général" onclick="Stock.transferLot('${p.id}','${v.id}','${l.id}','eg')">←</button>
               </td>
-              <td class="num"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyEvent}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyEvent',this.value)"></td>
-              <td class="num muted">${U.qty(tot)}</td>
-              <td class="right"><div class="act-grid"><span class="act-row">
+              <td class="num l-e"><input type="number" step="${isVrac?'0.001':'1'}" min="0" value="${l.qtyEvent}" style="width:80px;" onchange="Stock.setLotQty('${p.id}','${v.id}','${l.id}','qtyEvent',this.value)"></td>
+              <td class="num muted l-tot">${U.qty(tot)}</td>
+              <td class="right l-act"><div class="act-grid"><span class="act-row">
                 ${isVrac?`<button class="btn-ghost btn-sm" onclick="Stock.conditionner('${p.id}','${v.id}','${l.id}')">🎁 Conditionner</button>`:''}
                 ${l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
                 </span><span class="act-row">
@@ -377,16 +377,16 @@ const Stock = {
       const vq = this.virtualQty(p, v);
       return `<tr class="virt-row">
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind"><span class="muted" title="Déclinaison sans stock propre de ${U.esc(Pricing.labelVariant(vq.par))}">↳</span></span><span style="width:22px;display:inline-block;"></span><b class="vc-name">${U.esc(label)}</b><span class="vc-badges"> <span class="badge info" style="font-size:.65rem;cursor:help;" title="Pas de stock propre : chaque vente retire ${vq.n} pièces de ${U.esc(Pricing.labelVariant(vq.par))}. Stock affiché = stock de ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}.">pris sur ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}</span>${!v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="La fiche prix n'a pas de ligne « Lot de ${vq.n} pc » (prix du lot à saisir ici)">⚠ prix non lié</span>` : ''}</span></div></td>
-      <td><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU du lot')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
-      <td class="num muted" title="Les alertes de stock bas sont sur la variante principale">—</td>
-      <td class="num muted" title="Les alertes de stock bas sont sur la variante principale">—</td>
-      <td class="num" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
-      <td class="num" title="Lots disponibles en stock événement (calculé)">${U.qty(vq.e)} <span class="muted" style="font-size:.72rem;">lots</span></td>
-      <td class="num muted" title="Lots disponibles au total (calculé)"><b>${U.qty(vq.t)}</b></td>
-      <td class="num sensitive muted" title="Coût d'un lot = coût de la pièce × ${vq.n} (fiche Prix mastication, frais de port d'achat estimés inclus)">${U.eur((this.refCalc(p, vq.par) ? this.refCalc(p, vq.par).calc.cost : U.num(vq.par.costUnit)) * vq.n)}</td>
+      <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU du lot')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
+      <td class="num muted v-ming" title="Les alertes de stock bas sont sur la variante principale">—</td>
+      <td class="num muted v-mine" title="Les alertes de stock bas sont sur la variante principale">—</td>
+      <td class="num v-stg" title="Lots disponibles en stock général (calculé)"><b>${U.qty(vq.g)}</b> <span class="muted" style="font-size:.72rem;">lots</span></td>
+      <td class="num v-ste" title="Lots disponibles en stock événement (calculé)">${U.qty(vq.e)} <span class="muted" style="font-size:.72rem;">lots</span></td>
+      <td class="num muted v-tot" title="Lots disponibles au total (calculé)"><b>${U.qty(vq.t)}</b></td>
+      <td class="num sensitive muted v-pa" title="Coût d'un lot = coût de la pièce × ${vq.n} (fiche Prix mastication, frais de port d'achat estimés inclus)">${U.eur((this.refCalc(p, vq.par) ? this.refCalc(p, vq.par).calc.cost : U.num(vq.par.costUnit)) * vq.n)}</td>
       ${this._refPriceCell(p, v, 'Prix de vente TTC du lot')}
-      <td class="num muted">—</td>
-      <td class="right"><div class="act-grid"><span class="act-row">
+      <td class="num muted v-nb">—</td>
+      <td class="right v-act"><div class="act-grid"><span class="act-row">
         <button class="btn-icon" title="Monter" ${vi<=0?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${vi>=sib.length-1?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',1)">↓</button>
         </span><span class="act-row">
@@ -396,16 +396,16 @@ const Stock = {
     }
     return `<tr>
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
-      <td><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
-      <td class="num"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"></td>
-      <td class="num"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
-      <td class="num ${lowCls}"><b>${U.qty(qg)}</b></td>
-      <td class="num">${U.qty(qe)}${lowE>0&&qe<=lowE?` <span class="warn-txt" style="font-size:.75rem;">(min ${lowE})</span>`:''}</td>
-      <td class="num muted" title="Stock gén. + Stock évén. — tout ce que tu possèdes physiquement pour cette variante"><b>${U.qty(qg+qe)}</b></td>
+      <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
+      <td class="num v-ming"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"></td>
+      <td class="num v-mine"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
+      <td class="num v-stg ${lowCls}"><b>${U.qty(qg)}</b></td>
+      <td class="num v-ste">${U.qty(qe)}${lowE>0&&qe<=lowE?` <span class="warn-txt" style="font-size:.75rem;">(min ${lowE})</span>`:''}</td>
+      <td class="num muted v-tot" title="Stock gén. + Stock évén. — tout ce que tu possèdes physiquement pour cette variante"><b>${U.qty(qg+qe)}</b></td>
       ${this._refCostCell(p, v)}
       ${this._refPriceCell(p, v, 'Prix de vente TTC')}
-      <td class="num muted">${lots.length}</td>
-      <td class="right"><div class="act-grid"><span class="act-row">
+      <td class="num muted v-nb">${lots.length}</td>
+      <td class="right v-act"><div class="act-grid"><span class="act-row">
         <button class="btn-icon" title="Monter" ${vi<=0?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',-1)">↑</button>
         <button class="btn-icon" title="Descendre" ${vi>=sib.length-1?'disabled':''} onclick="Stock.moveVariant('${p.id}','${v.id}',1)">↓</button>
         </span><span class="act-row">
@@ -456,13 +456,13 @@ const Stock = {
      NON reliée (aucune fiche d'où la prendre) → champ modifiable comme avant. */
   _refPriceCell(p, v, label) {
     const rc = this.refCalc(p, v);
-    if (rc) return `<td class="num" title="${label} — vient de la fiche Prix mastication (non modifiable ici)">${U.eur(rc.calc.priceTTC)}</td>`;
-    return `<td class="num"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="${label} (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>`;
+    if (rc) return `<td class="num v-pv" title="${label} — vient de la fiche Prix mastication (non modifiable ici)">${U.eur(rc.calc.priceTTC)}</td>`;
+    return `<td class="num v-pv"><input type="number" step="0.01" value="${U.num(v.priceTTC).toFixed(2)}" style="width:72px;" title="${label} (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarPrice('${p.id}','${v.id}',this.value)"></td>`;
   },
   _refCostCell(p, v) {
     const rc = this.refCalc(p, v);
-    if (rc) return `<td class="num sensitive" title="Coût de revient de la fiche Prix mastication (frais de port d'achat estimés inclus) — non modifiable ici">${U.eur(rc.calc.cost)}</td>`;
-    return `<td class="num sensitive"><input type="number" step="0.01" value="${U.num(v.costUnit).toFixed(2)}" style="width:78px;" title="Prix d'achat / coût unitaire (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>`;
+    if (rc) return `<td class="num sensitive v-pa" title="Coût de revient de la fiche Prix mastication (frais de port d'achat estimés inclus) — non modifiable ici">${U.eur(rc.calc.cost)}</td>`;
+    return `<td class="num sensitive v-pa"><input type="number" step="0.01" value="${U.num(v.costUnit).toFixed(2)}" style="width:78px;" title="Prix d'achat / coût unitaire (variante non reliée à une fiche Prix mastication)" onchange="Stock.setVarCost('${p.id}','${v.id}',this.value)"></td>`;
   },
   setVarPrice(pId, vId, val) {
     const p=Store.state.stockM.find(x=>x.id===pId); const v=p?.variants.find(x=>x.id===vId); if(!v) return;

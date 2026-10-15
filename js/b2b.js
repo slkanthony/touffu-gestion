@@ -404,7 +404,7 @@ const B2B = {
       </summary>
       <div class="fold-body">
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — cliquer à nouveau pour revenir au principal</div>' : ''}
-        <div class="table-wrap"><table>
+        <div class="table-wrap"><table class="b2b-vtbl">
           <thead><tr><th class="col-name">Variante</th><th class="num">Coût revient</th><th class="num">Coeff public</th><th class="num">${B2B._lbl().pub}</th>
           <th class="num${B2B._hl('ent')}" style="border-left:2px solid var(--caramel);">${B2B._lbl().ent}</th><th class="num${B2B._hl('ent')}">${B2B._lbl().ce}</th><th class="num">${B2B._hdSfx('Marge B2B')}</th><th class="num">${B2B._hdSfx('Cotisations B2B')}</th><th class="num">${B2B._hdSfx('Bénéfice B2B')}</th><th class="num${B2B._hl('micro')}">${B2B._lbl().micro}</th><th class="num${B2B._hl('micro')}">${B2B._lbl().cm}</th></tr></thead>
           <tbody>${rows.map(r => `<tr>
