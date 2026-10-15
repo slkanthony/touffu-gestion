@@ -1466,3 +1466,62 @@ details.fold.acc-group > .fold-body > details.fold { margin-left: 6px; }
 
 /* Bouton dans une ligne de champs (.frow) : à la taille de sa fonction, posé en bas comme les cases voisines — jamais étiré en barre */
 .frow > .fit { flex: 0 0 auto; min-width: 0; align-self: flex-end; }
+
+/* ---------- Paniers sur téléphone / tablette (2026-10-15) ----------
+   Le panier passe AVANT la configuration ; « Ajouter un produit » ouvre une feuille plein écran (Paniers.openPicker) ; chaque ligne du panier devient une petite fiche compacte. */
+.pan-mob { display: none; }
+@media (max-width: 960px) {
+  .pan-mob { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pan-mob-bar { margin-bottom: 12px; }
+  .pan-add-desk { display: none !important; }
+  .pan-actions { justify-content: flex-start !important; }
+  .paniers-layout > .card:nth-child(2) { order: -1; }
+  .paniers-layout .frow { align-items: flex-start; }
+}
+.pan-picker { position: fixed; inset: 0; z-index: 150; display: flex; flex-direction: column; background: var(--creme); }
+body.pan-picker-open { overflow: hidden; }
+.pk-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--card-bg); border-bottom: 2px solid var(--caramel); }
+.pk-head .muted { font-size: .78rem; }
+.pk-top { padding: 10px 14px 8px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); }
+.pk-top input[type="search"] { width: 100%; height: 44px; font-size: 16px; }
+.pk-filters { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 8px; }
+.pk-f { display: flex; flex-direction: column; gap: 2px; flex: 1 1 120px; min-width: 0; margin: 0; }
+.pk-f > span { font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; color: var(--gris); white-space: nowrap; }
+.pk-f select { width: 100%; height: 40px; font-size: 16px; }
+.pk-list { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-bottom: 24px; }
+.pk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; min-height: 58px; padding: 8px 14px; border-bottom: 1px solid var(--card-border); cursor: pointer; }
+.pk-row:active { background: rgba(166, 113, 83, .2); }
+.pk-row.in { background: rgba(74, 124, 89, .12); }
+.pk-name { font-weight: 700; line-height: 1.25; }
+.pk-v { color: var(--caramel); margin-left: 4px; }
+.pk-sub { color: var(--gris); font-size: .8rem; margin-top: 2px; }
+.pk-price { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk-add { display: flex; align-items: center; gap: 6px; min-width: 44px; justify-content: flex-end; }
+.pk-plus { width: 36px; height: 36px; border-radius: 50%; background: var(--caramel); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 700; line-height: 1; }
+.pk-n { min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--ok); color: #fff; font-size: .8rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.pk-empty { padding: 30px 14px; text-align: center; }
+
+/* Lignes du panier : nom + actions / pastilles / prix · quantité · sous-total */
+@media (max-width: 700px) {
+  table.stk.pan-tbl > tbody > tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 10px; }
+  table.stk.pan-tbl > tbody > tr::before { content: ''; order: 4; flex: 0 0 100%; height: 0; }
+  table.stk.pan-tbl > tbody > tr::after { content: ''; order: 9; flex: 0 0 100%; height: 0; }
+  table.stk.pan-tbl td { flex: 0 0 auto; padding: 0; }
+  table.stk.pan-tbl td.pl-lk { order: 1; }
+  table.stk.pan-tbl td.col-name { order: 2; flex: 1 1 0; min-width: 0 !important; font-weight: 700; }
+  table.stk.pan-tbl td.pl-ac { order: 3; flex-direction: row; justify-content: flex-end; }
+  table.stk.pan-tbl td.pl-var { order: 5; }
+  table.stk.pan-tbl td.pl-meat { order: 6; }
+  table.stk.pan-tbl td.pl-dluo { order: 7; }
+  table.stk.pan-tbl td.pl-coef { order: 8; }
+  table.stk.pan-tbl td.pl-price { order: 10; }
+  table.stk.pan-tbl td.pl-qty { order: 11; margin-left: auto; }
+  table.stk.pan-tbl td.pl-sub { order: 12; min-width: 70px; align-items: flex-end; }
+  table.stk.pan-tbl td.pl-none { display: none; }
+  table.stk.pan-tbl td:is(.pl-lk, .col-name, .pl-ac, .pl-var, .pl-meat, .pl-dluo, .pl-coef)::before { display: none; }
+  table.stk.pan-tbl td:is(.pl-price, .pl-qty, .pl-sub) { align-self: flex-start; }
+  table.stk.pan-tbl td.pl-sub b { display: flex; align-items: center; height: 38px; }
+  table.stk.pan-tbl td.pl-coef[data-l]::before { display: inline; content: 'coeff '; text-transform: none; letter-spacing: 0; }
+  table.stk.pan-tbl td.pl-coef { color: var(--gris); font-size: .8rem; }
+  table.stk.pan-tbl td.pl-price input { width: 84px; }
+}

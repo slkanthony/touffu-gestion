@@ -331,9 +331,12 @@ const App = {
   rerender() {
     // Prix du Stock = copie de la fiche Prix mastication : remise à jour AUTOMATIQUEMENT à chaque affichage (jamais besoin du bouton 🔄).
     try { Stock.refreshPrices(); } catch (e) { console.error(e); }
+    // Vider puis redessiner ramenait la page tout en haut (rechargement automatique au retour sur l'appli, synchro d'un autre appareil…) : on garde la position
+    const y = window.scrollY;
     document.getElementById('main').innerHTML = '';
     const r = this.renderers[this.current];
     if (r) r();
+    if (y > 0) window.scrollTo(0, y);
   },
   mount(html) { const m = document.getElementById('main'); m.innerHTML = html; return m; },
 

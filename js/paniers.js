@@ -1200,14 +1200,14 @@ const Paniers = {
     const r = c.rank || 0, p = this.addPerso;
     return p === 'all' || (p === 'none' && r === 0) || (p === 'uv' && (r & 1) && !(r & 4)) || (p === 'theme' && (r & 4)) || (p === 'laser' && (r & 2));
   },
-  manualCandidates() {
+  manualCandidates(browse) {   // browse = sélecteur du téléphone : sans recherche ni filtre, on propose quand même la liste (limitée à 100 lignes)
     const q = U.normSearch(this.addQ), kind = this.addKind || 'all';
-    const accs = kind === 'M' ? [] : this.accCandidates().filter(c => (kind !== 'A' || this._accFilterOk(c)) && (q ? U.has(c.name + ' ' + c.category + ' ' + c.width + ' ' + c.sku, q) : kind === 'A')).sort((a, b) => U.sortFr(a.name, b.name)).slice(0, 100);
+    const accs = kind === 'M' ? [] : this.accCandidates().filter(c => (kind !== 'A' || this._accFilterOk(c)) && (q ? U.has(c.name + ' ' + c.category + ' ' + c.width + ' ' + c.sku, q) : (kind === 'A' || browse))).filter(() => kind === 'A' || !this.addVariants.length).sort((a, b) => U.sortFr(a.name, b.name)).slice(0, 100);
     if (kind === 'A') return accs;
     return this.allCandidates().filter(c => {
       if (q && !U.has(c.name + ' ' + c.variant + ' ' + c.sku, q)) return false;
       if (this.addVariants.length && !this.addVariants.includes(c.variant)) return false;
-      if (!q && !this.addVariants.length) return false;
+      if (!q && !this.addVariants.length && !browse) return false;
       return true;
     }).filter((c, _i, arr) => !arr.some(o => o !== c && o.pId === c.pId && o.vId === c.vId && (o.daysLeft < c.daysLeft || (o.daysLeft === c.daysLeft && arr.indexOf(o) < arr.indexOf(c)))))   // une seule ligne par variante : le lot à la DLUO la plus courte (comme en vente)
       .sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).slice(0, 100).concat(accs);
@@ -1236,13 +1236,15 @@ const Paniers = {
     if (document.activeElement && document.activeElement.id === 'pan_add_q') return;
     this.addOpen = false; this.render();
   },
-  pickManual(pId, vId, lotId, kind) {
+  /* silent = depuis le sélecteur plein écran du téléphone : on ajoute sans redessiner la page (elle l'est une seule fois à la fermeture) */
+  pickManual(pId, vId, lotId, kind, silent) {
+    const done = () => { if (silent) this._draft(); else { this.addQ = ''; this.addOpen = false; this.render(); } };
     if (kind === 'A') {   // accessoire : pas de lot ni de DLUO
       const c = this.accCandidates().find(x => x.pId === pId); if (!c) { U.toast('Accessoire introuvable.', true); return; }
       const ex = this.basket.find(b => b.kind === 'A' && b.pId === pId);
       if (ex) ex.qty++;
       else this.basket.push({ kind: 'A', pId: c.pId, vId: '', lotId: '', name: c.name, meat: '', category: c.category, variant: '', price: c.price, qty: 1, dluo: '', daysLeft: 9999, coeff: c.coeff, lotNumber: '', locked: true });
-      this.addQ = ''; this.addOpen = false; this.render();
+      done();
       if (c.avail <= 0) U.toast('🐕 ' + c.name + ' : pas de stock fini (à fabriquer pour la vente).');
       return;
     }
@@ -1260,10 +1262,76 @@ const Paniers = {
         coeff: c.coeff, lotNumber: c.lotNumber, locked: true
       });
     }
-    this.addQ = ''; this.addOpen = false;
-    this.render();
+    done();
     this._stockWarn(pId, vId);
     Clients.conflicts(this.client, { kind: 'M', type: c.meat, name: c.name }).forEach(t => U.toast('🐕 ' + c.name + ' : ' + t, true));
+  },
+
+  /* ---------- Sélecteur plein écran (téléphone / tablette) ----------
+     L'ancienne liste déroulante redessinait toute la page à chaque lettre et à chaque clic : écran qui saute, clavier qui se ferme.
+     Ici : une feuille plein écran dont seule la liste change ; le champ de recherche n'est jamais recréé ; la page derrière n'est redessinée qu'à « Terminé ». */
+  openPicker() {
+    if (document.getElementById('panPicker')) return;
+    if (this.addVariants.length > 1) this.addVariants = [];   // le sélecteur n'a qu'une variante à la fois
+    this.addOpen = false; this.addVariantsOpen = false;
+    const bg = document.createElement('div');
+    bg.id = 'panPicker'; bg.className = 'pan-picker';
+    bg.innerHTML = `<div class="pk-head"><div><b>➕ Ajouter au panier</b><div class="muted"><span id="pk_count">${this.basket.reduce((a, b) => a + U.num(b.qty), 0)}</span> article(s) dans le panier</div></div><button class="btn-cta btn-sm fit" onclick="Paniers.closePicker()">✓ Terminé</button></div>
+      <div class="pk-top"><input id="pk_q" type="search" autocomplete="off" enterkeyhint="search" placeholder="Chercher un produit…" value="${U.esc(this.addQ)}" oninput="Paniers.pkQ(this.value)"><div id="pk_filters" class="pk-filters"></div></div>
+      <div id="pk_list" class="pk-list"></div>`;
+    document.body.appendChild(bg);
+    document.body.classList.add('pan-picker-open');
+    this._pickerFill();
+  },
+  closePicker() {
+    const bg = document.getElementById('panPicker'); if (!bg) return;
+    bg.remove(); document.body.classList.remove('pan-picker-open');
+    this.addQ = ''; this.addOpen = false;
+    const y = window.scrollY; this.render(); window.scrollTo(0, y);
+    if (typeof Store !== 'undefined' && Store._afterModal) Store._afterModal();   // rattrape une synchro reportée pendant que la feuille était ouverte
+  },
+  _pickerFill() {
+    const f = document.getElementById('pk_filters'); if (!f) return;
+    const kind = this.addKind || 'all';
+    const sel = (key, label, opts, cur) => `<label class="pk-f"><span>${label}</span><select onchange="Paniers.pkSet('${key}',this.value)">${opts.map(o => `<option value="${U.esc(o.v)}" ${o.v === cur ? 'selected' : ''}>${U.esc(o.l)}</option>`).join('')}</select></label>`;
+    let h = sel('addKind', 'Type', [{ v: 'all', l: 'Tout' }, { v: 'M', l: '🥩 Mastication' }, { v: 'A', l: '🐕 Accessoires' }], kind);
+    if (kind === 'A') {
+      const accs = Store.state.catalogA, cats = [...new Set(accs.map(a => a.category).filter(Boolean))].sort(U.sortFr), ws = [...new Set(accs.map(a => a.mainWidth || (a.strapWidths || [])[0] || '').filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
+      h += sel('addCat', 'Catégorie', [{ v: '', l: 'Toutes' }].concat(cats.map(c => ({ v: c, l: c }))), this.addCat)
+        + sel('addWidth', 'Largeur', [{ v: '', l: 'Toutes' }].concat(ws.map(w => ({ v: w, l: w }))), this.addWidth)
+        + sel('addPerso', 'Personnalisation', [{ v: 'all', l: 'Toutes' }, { v: 'none', l: 'Sans' }, { v: 'uv', l: 'Impression UV' }, { v: 'theme', l: 'Création thème UV' }, { v: 'laser', l: 'Gravure laser' }], this.addPerso);
+    } else {
+      h += sel('addVariant', 'Variante', [{ v: '', l: 'Toutes' }].concat(Stock.allVariantLabels().map(l => ({ v: l, l }))), this.addVariants[0] || '');
+    }
+    f.innerHTML = h;
+    this._pickerList();
+  },
+  _pickerList() {
+    const box = document.getElementById('pk_list'); if (!box) return;
+    const rows = this.manualCandidates(true);
+    box.innerHTML = rows.length ? rows.map(c => {
+      const inB = this.basket.filter(b => b.pId === c.pId && (c.kind === 'A' ? b.kind === 'A' : (b.vId === c.vId && b.lotId === c.lotId && b.kind !== 'A'))).reduce((a, b) => a + U.num(b.qty), 0);
+      const sub = c.kind === 'A' ? '🐕 ' + U.esc(c.category) + (c.avail > 0 ? ' · stock ' + U.qty(c.avail) : ' · sans stock') : U.esc(c.meat) + (c.avail > 0 ? ' · stock ' + U.qty(c.avail) : '');
+      return `<div class="pk-row${inB ? ' in' : ''}" onclick="Paniers.pkAdd('${c.pId}','${c.vId}','${c.lotId}','${c.kind || 'M'}')">
+        <div class="pk-main"><div class="pk-name">${U.esc(c.name)} <span class="pk-v">${U.esc(c.kind === 'A' ? c.width : c.variant)}</span></div>
+        <div class="pk-sub">${sub}${c.dluo ? ` · DLUO ${U.frDate(c.dluo)}` : ''}${c.coeff > 0 ? ` · <span class="sensitive">coeff ${c.coeff.toFixed(2)}</span>` : ''}</div></div>
+        <div class="pk-price">${U.eur(c.price)}</div>
+        <div class="pk-add">${inB ? '<span class="pk-n">' + U.qty(inB) + '</span>' : ''}<span class="pk-plus">+</span></div>
+      </div>`;
+    }).join('') : `<div class="pk-empty muted">Aucun résultat. Change la recherche ou un filtre.</div>`;
+  },
+  pkQ(v) { this.addQ = v; this._pickerList(); },
+  pkSet(key, v) {
+    if (key === 'addVariant') this.addVariants = v ? [v] : [];
+    else this[key] = v;
+    this._pickerFill();
+  },
+  pkAdd(pId, vId, lotId, kind) {
+    const list = document.getElementById('pk_list'), top = list ? list.scrollTop : 0;
+    this.pickManual(pId, vId, lotId, kind, true);
+    this._pickerList();
+    if (list) list.scrollTop = top;   // la liste reste où elle était : on enchaîne les ajouts
+    const n = document.getElementById('pk_count'); if (n) n.textContent = this.basket.reduce((a, b) => a + U.num(b.qty), 0);
   },
 
   /* ---------- Filtres ---------- */
@@ -1435,7 +1503,7 @@ const Paniers = {
       ${this._pendingCard()}
       <div class="paniers-layout">
 
-      <div class="card">
+      <div class="card" id="pan_cfg">
         <h2>⚙️ Configuration</h2>
 
         <div class="fg" style="margin-bottom:12px;"><label>🐕 Cliente (option)</label>
@@ -1452,7 +1520,7 @@ const Paniers = {
               ${U.seg([{ l: '0 €', on: this.livraison === 0, js: 'Paniers.setLivraisonQuick(0)' }, { l: U.eur(Store.state.settings.shippingCost ?? 6.8), on: this.livraison === (Store.state.settings.shippingCost ?? 6.8), js: `Paniers.setLivraisonQuick(${Store.state.settings.shippingCost ?? 6.8})` }], { sm: true })}
             </div>
           </div>
-          <div class="fg"><label>🏷️ Réduction (%) · code</label>
+          <div class="fg"><label>🏷️ Réduction % · code</label>
             <div style="display:flex;gap:6px;"><input type="number" id="pan_red" step="0.5" min="0" max="99" value="${this.reduction || ''}" placeholder="0" style="flex:0 0 76px;min-width:0;" oninput="Paniers.setReduction(this.value)" title="Réduction du client : le budget restant et la génération en tiennent compte (remplie toute seule si la fiche du client a une réduction habituelle)"><input type="text" id="pan_redcode" value="${U.esc(this.reductionCode || '')}" placeholder="code" style="flex:1 1 70px;min-width:0;" onchange="Paniers.setReductionCode(this.value)" title="Code utilisé (information pour toi : il n'apparaît pas sur le devis du client)"></div>
           </div>
           <div class="fg"><label>🐕 Chiens</label>
@@ -1549,9 +1617,10 @@ const Paniers = {
 
       <div class="card">
         ${this.proposals ? this._renderProposals() : `
+        <div class="pan-mob pan-mob-bar"><button class="btn-cta btn-sm" onclick="Paniers.openPicker()">➕ Ajouter un produit</button><button class="btn-ghost btn-sm" onclick="Paniers.generate()" title="Compose un panier automatiquement avec les réglages ci-dessous">🎲 Générer</button><button class="btn-ghost btn-sm" aria-label="Réglages du panier" title="Aller aux réglages (budget, filtres…)" onclick="document.getElementById('pan_cfg').scrollIntoView({behavior:'smooth',block:'start'})">⚙️</button></div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
           <h2 style="margin:0;">🧺 Panier composé${this.nbChiens > 1 ? ` <span class="muted">(${this.nbChiens} chiens)</span>` : ''}</h2>
-          ${this.basket.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
+          ${this.basket.length ? `<div class="pan-actions" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
             <div style="position:relative;display:inline-block;">
               <button class="btn-ghost btn-sm" onclick="Paniers.toggleShareMenu(event)" title="Copier ou enregistrer l'image du devis, copier le texte, régler ce qui s'affiche">📤 Partager ▾</button>
               <div id="pan_sharemenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;z-index:60;min-width:220px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
@@ -1580,7 +1649,7 @@ const Paniers = {
         </div>
 
         ${this.basket.length ? `
-        <div class="table-wrap"><table>
+        <div class="table-wrap"><table class="pan-tbl">
           <thead><tr>
             <th></th><th class="col-name">Produit</th><th>Variante</th><th>Viande</th>
             <th class="num">Prix TTC</th><th class="num">Qté</th><th class="num">Sous-total</th>
@@ -1591,20 +1660,20 @@ const Paniers = {
             const daysLeft = U.daysTo(b.dluo);
             const dluoClass = daysLeft !== null && daysLeft < 0 ? 'bad' : daysLeft !== null && daysLeft <= 30 ? 'warn' : '';
             return `<tr${b.locked ? ' style="background:var(--th-bg);"' : ''}>
-              <td><button class="btn-icon" onclick="Paniers.toggleLock(${i})" title="${b.locked ? 'Déverrouiller (sera remplacé à la régénération)' : 'Verrouiller (sera gardé à la régénération)'}">${b.locked ? '🔒' : '🔓'}</button></td>
+              <td class="pl-lk"><button class="btn-icon" onclick="Paniers.toggleLock(${i})" title="${b.locked ? 'Déverrouiller (sera remplacé à la régénération)' : 'Verrouiller (sera gardé à la régénération)'}">${b.locked ? '🔒' : '🔓'}</button></td>
               <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.concat(b.dog && !dogOpts.includes(b.dog) ? [b.dog] : []).map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
-              <td>${b.kind === 'A' ? '<span class="muted">—</span>' : `<span class="tag">${U.esc(b.variant)}</span>`}</td>
-              <td>${b.kind === 'A' ? `<span class="badge info">🐕 ${U.esc(b.category || 'Accessoire')}</span>` : `<span class="badge info">${U.esc(b.meat || '—')}</span>`}</td>
-              <td class="num"><input type="number" step="0.1" min="0" value="${(Math.round(U.num(b.price) * 100) / 100)}" style="width:84px;text-align:right;" title="Prix TTC modifiable pour ce panier (le prix du stock ne change pas)" onchange="Paniers.setItemPrice(${i},this.value)"></td>
-              <td class="num" style="white-space:nowrap;">
+              <td class="pl-var${b.kind === 'A' || !b.variant ? ' pl-none' : ''}">${b.kind === 'A' ? '<span class="muted">—</span>' : `<span class="tag">${U.esc(b.variant)}</span>`}</td>
+              <td class="pl-meat">${b.kind === 'A' ? `<span class="badge info">🐕 ${U.esc(b.category || 'Accessoire')}</span>` : `<span class="badge info">${U.esc(b.meat || '—')}</span>`}</td>
+              <td class="num pl-price"><input type="number" step="0.1" min="0" value="${(Math.round(U.num(b.price) * 100) / 100)}" style="width:84px;text-align:right;" title="Prix TTC modifiable pour ce panier (le prix du stock ne change pas)" onchange="Paniers.setItemPrice(${i},this.value)"></td>
+              <td class="num pl-qty" style="white-space:nowrap;">
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},-1)">−</button>
                 <input type="text" inputmode="numeric" value="${b.qty}" style="width:52px;text-align:center;font-weight:700;" title="Quantité : tape un nombre (0 = retirer du panier)" onfocus="this.select()" onchange="Paniers.setQty(${i},this.value)">
                 <button class="btn-icon" onclick="Paniers.changeQty(${i},1)">+</button>
               </td>
-              <td class="num"><b>${U.eur(b.price * b.qty)}</b></td>
-              <td>${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
-              <td class="num">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
-              <td style="white-space:nowrap;">${b.kind === 'A' ? '' : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
+              <td class="num pl-sub"><b>${U.eur(b.price * b.qty)}</b></td>
+              <td class="pl-dluo${b.dluo ? '' : ' pl-none'}">${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
+              <td class="num pl-coef${b.coeff > 0 ? '' : ' pl-none'}">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
+              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? '' : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
             </tr>`;
           }).join('')}</tbody>
         </table></div>
@@ -1612,9 +1681,10 @@ const Paniers = {
         ${remaining < 0 ? '<p class="warn-txt" style="margin-top:8px;">⚠️ Le panier dépasse le budget disponible.</p>' : ''}
 
         ${this._renderFinanceSummary()}
-        ` : '<div class="empty" style="text-align:center;padding:40px;"><span class="big">🧺</span><p class="muted">Clique sur "Générer le panier" pour composer automatiquement,<br>ou ajoute des produits manuellement ci-dessous.</p></div>'}
+        ` : '<div class="empty" style="text-align:center;padding:40px;"><span class="big">🧺</span><p class="muted">Clique sur "Générer le panier" pour composer automatiquement,<br>ou ajoute des produits avec « Ajouter un produit ».</p></div>'}
 
-        <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:16px;">
+        <div class="pan-mob" style="margin-top:12px;"><button class="btn-cta btn-sm" onclick="Paniers.openPicker()">➕ Ajouter un produit</button></div>
+        <div class="pan-add-desk" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:16px;">
           <div class="fg mb0" style="flex:0 0 150px;min-width:0;">
             <label style="white-space:nowrap;">Type</label>
             ${U.customSelect({ value: this.addKind || 'all', options: [{ v: 'all', l: 'Tout' }, { v: 'M', l: '🥩 Mastication' }, { v: 'A', l: '🐕 Accessoires' }], onPick: 'Paniers.setAddKind' })}
