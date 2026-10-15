@@ -962,8 +962,8 @@ const Paniers = {
     const units = Ventes.units(), merged = new Map(), warns = [], general = [];
     (rec.items || []).forEach(b => {
       const key = b.kind === 'A' ? 'A|' + b.pId : 'M|' + b.pId + '|' + b.vId;
-      if (merged.has(key)) merged.get(key).qty += U.num(b.qty);
-      else merged.set(key, { key, name: b.name, variant: b.variant, price: U.num(b.price), qty: U.num(b.qty) });
+      if (merged.has(key)) { const m = merged.get(key); m.qty += U.num(b.qty); if (m.lotId !== (b.lotId || '')) m.lotId = ''; }   // plusieurs lots différents du même produit : le lot se choisit dans le ticket
+      else merged.set(key, { key, name: b.name, variant: b.variant, price: U.num(b.price), qty: U.num(b.qty), lotId: b.kind === 'A' ? '' : (b.lotId || '') });
     });
     const lines = [];
     merged.forEach(m => {
@@ -972,9 +972,9 @@ const Paniers = {
       if (u.kind === 'A' && U.num(u.availE) + U.num(u.availG) < m.qty) warns.push(`🐕 <b>${U.esc(m.name)}</b> : stock fini insuffisant (${U.qty(m.qty)} demandé, ${U.qty(U.num(u.availE) + U.num(u.availG))} en stock) — à fabriquer.`);
       // Règle : toujours le stock ÉVÉNEMENT d'abord ; le manquant vient du stock général (confirmé dans la fenêtre)
       const e = Math.min(m.qty, Math.max(0, U.num(u.availE))), g = m.qty - e;
-      if (e > 0) lines.push({ u, qty: e, price: m.price, src: 'event' });
+      if (e > 0) lines.push({ u, qty: e, price: m.price, src: 'event', lotId: m.lotId });
       if (g > 0) {
-        lines.push({ u, qty: g, price: m.price, src: 'general' });
+        lines.push({ u, qty: g, price: m.price, src: 'general', lotId: m.lotId });
         general.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : ${e > 0 ? `${U.qty(e)} en événement + ` : ''}<b>${U.qty(g)} en stock général</b>`);
         if (g > U.num(u.availG)) warns.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : stock général insuffisant (${U.qty(g)} à prendre, ${U.qty(u.availG)} dispo).`);
       }

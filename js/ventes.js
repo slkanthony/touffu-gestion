@@ -451,12 +451,12 @@ const Ventes = {
     </div>`;
   },
 
-  /* Panier / devis en attente → ticket. Aucun lot n'est rempli : c'est toi qui choisis, ligne par ligne
-     (le lot à la DLUO la plus courte est seulement suggéré). Rien n'est déduit ni compté en stats tant que
+  /* Panier / devis en attente → ticket. Le lot choisi dans le panier (ex. bouton 🧺 de Péremptions) est repris s'il a du stock dans la source de la ligne ;
+     sinon c'est toi qui choisis, ligne par ligne (le lot à la DLUO la plus courte est seulement suggéré). Rien n'est déduit ni compté en stats tant que
      le ticket n'est pas validé. */
   loadFromBasket(rec, lines) {
     this.source = lines.some(l => l.src === 'event') ? 'event' : 'general'; this.kind = 'M';
-    this.cart = lines.map(({ u, qty, price, src }) => ({ key: u.key, kind: u.kind || 'M', pId: u.pId, vId: u.vId, lotId: '', lotLabel: u.vLots ? 'pris sur la variante principale' : '', name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: u.kind !== 'A' && !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }));
+    this.cart = lines.map(({ u, qty, price, src, lotId }) => { const lot = lotId && !u.vLots ? (u.lots || []).find(l => l.id === lotId && this.lotQtyS(l, src) > 0) : null; return ({ key: u.key, kind: u.kind || 'M', pId: u.pId, vId: u.vId, lotId: lot ? lot.id : '', lotLabel: lot ? (lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') : (u.vLots ? 'pris sur la variante principale' : ''), name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: u.kind !== 'A' && !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }); });
     this._basketOthers = rec.others || []; this._fromComposer = !!rec.fromComposer;
     this.customerName = rec.name; this._basketId = rec.id; this._pro = rec.kind === 'pro'; this.balOn = rec.balOn !== false; this._devisNo = Devis.no(rec.dv);
     const rp = U.num(rec.reduction); this.discOn = rp > 0; if (rp > 0) this.discPct = rp; this.discCode = rec.reductionCode || ''; this._discAuto = false; this._discFor = Clients.key(rec.name);   // réduction (+ code) du panier → réduction du ticket
