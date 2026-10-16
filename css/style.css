@@ -1628,10 +1628,6 @@ table.cl-ord-tbl tbody tr.cl-ord.sel td { background: var(--caramel) !important;
 .pt-code .btn-icon { flex: 0 0 auto; }
 .pt-due { font-size: 1.15rem; font-weight: 700; color: var(--caramel); }
 @media (max-width: 700px) { .pt-code .fg { flex: 1 1 100% !important; } .pt-code .pt-del { margin-left: auto; } }
-.pt-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.pt-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--card-border); font-size: .82rem; font-weight: 600; cursor: pointer; }
-.pt-chip:hover { border-color: var(--caramel); }
-.pt-chip.on { background: var(--caramel); border-color: var(--caramel); color: #fff; }
 tr.pt-ord { cursor: pointer; }
 table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
 #clCombo .cb-pct { margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(166, 113, 83, .18); color: var(--caramel); font-size: .8rem; font-weight: 700; }

@@ -133,8 +133,8 @@ const Partners = {
       }
     });
   },
-  _codeF: {},   // filtre par code dans la liste d'un partenaire : { pid: code }
-  setCodeFilter(pid, code) { this._codeF[pid] = this._codeF[pid] === code ? '' : code; Stats.render(); },
+  _code: '',   // filtre par code (toutes les listes) : '' = tous
+  setCodeF(v) { this._code = v; Stats.render(); },
   /* Clic sur une commande → fiche du client (Stats → Clients), commande sélectionnée */
   goSale(id) {
     const s = (Store.state.sales || []).find(x => x.id === id); if (!s) return;
@@ -183,34 +183,40 @@ const Partners = {
     if (App.isViewer || App.isTeam) { App.mount('<div class="empty"><span class="big">🔒</span>Page réservée à l\'administrateur.</div>'); return; }
     const idx = this._index(), entries = [...idx.values()];
     const months = [...new Set(entries.map(e => e.month).concat([Compta.mk(Date.now())]))].sort().reverse();
-    if (!months.includes(this._month)) this._month = months[0];
-    const cur = entries.filter(e => e.month === this._month).sort((a, b) => U.sortFr(a.name, b.name));
-    const pending = entries.filter(e => e.month !== this._month && e.due > 0 && this._rest(e).rest > 0.005).sort((a, b) => a.month < b.month ? 1 : -1);
+    if (this._month !== 'all' && !months.includes(this._month)) this._month = months[0];
+    const allM = this._month === 'all', codeF = this._ck(this._code);
+    const allCodes = this.list().flatMap(p => (p.codes || []).filter(c => c.code).map(c => ({ code: c.code, pname: p.name }))).sort((x, y) => U.sortFr(x.code, y.code));
+    if (this._code && !allCodes.some(c => this._ck(c.code) === codeF)) this._code = '';
+    // entrées affichées : le mois choisi (ou tous), limitées au code choisi
+    const cur = entries.filter(e => allM || e.month === this._month).map(e => ({ ...e, sales: e.sales.filter(x => !codeF || this._ck(x.code) === codeF) })).filter(e => e.sales.length)
+      .sort((a, b) => allM && a.month !== b.month ? (a.month < b.month ? 1 : -1) : U.sortFr(a.name, b.name));
+    const pending = allM ? [] : entries.filter(e => e.month !== this._month && e.due > 0 && this._rest(e).rest > 0.005).sort((a, b) => a.month < b.month ? 1 : -1);
     const totalRest = entries.reduce((a, e) => a + Math.max(0, this._rest(e).rest), 0);
     const block = e => {
       const r = this._rest(e), p = this.list().find(x => x.id === e.pid), affil = e.sales.some(x => x.pct > 0);
+      const full = e.sales.length === (idx.get(e.pid + '|' + e.month) || e).sales.length, due = e.sales.reduce((a, x) => a + x.amt, 0);   // full = pas de filtre qui masque des commandes
       const state = !affil ? '<span class="badge info">Code sans affiliation : rien à reverser</span>'
+        : !full ? '<span class="badge info">Filtre par code : retire-le pour pointer le reversement</span>'
         : r.done && Math.abs(r.rest) < 0.005 ? `<span class="badge ok">${U.num(((p || {}).paid || {})[e.month] && p.paid[e.month].avoirAmt) > 0 ? '✔ Passé en avoir' : '✔ Reversé'} (${U.eur(r.paid)})</span>`
         : r.done ? `<span class="badge warn">Reversé ${U.eur(r.paid)} · reste ${U.eur(r.rest)}</span>` : '<span class="badge warn">À reverser</span>';
-      const codes = [...new Set(e.sales.map(x => x.code))], cf = codes.includes(this._codeF[e.pid]) ? this._codeF[e.pid] : '';
-      const shown = e.sales.filter(x => !cf || x.code === cf).sort((a, b) => a.s.ts - b.s.ts);
-      const chips = codes.length > 1 || cf ? `<div class="pt-chips">${codes.map(c => `<span class="pt-chip ${c === cf ? 'on' : ''}" title="Clique pour ne voir que ce code" onclick="Partners.setCodeFilter('${e.pid}','${U.esc(c).replace(/'/g, '&#39;')}')">🏷️ ${U.esc(c)} · ${e.sales.filter(x => x.code === c).length}</span>`).join('')}</div>` : '';
+      const shown = e.sales.slice().sort((a, b) => a.s.ts - b.s.ts), act = affil && p && full;
       return `<div class="pt-card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
-          <div><b>🤝 ${U.esc(e.name)}</b> <span class="muted">· ${e.sales.length} commande${e.sales.length > 1 ? 's' : ''}</span></div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">${affil ? `<span class="pt-due sensitive">${U.eur(e.due)}</span>` : ''}${state}
-            ${affil && p && this._client(p) && r.rest > 0.005 ? `<button class="btn-ghost btn-sm fit" title="Ajoute ${U.eur(r.rest)} d'avoir sur la fiche de ${U.esc(this._client(p).name)} (déduit de sa prochaine commande)" onclick="Partners.passAvoir('${e.pid}','${e.month}')">💶 Passer en avoir</button>` : ''}
-            ${affil && p ? `<button class="${r.done && Math.abs(r.rest) < 0.005 ? 'btn-ghost' : 'btn-cta'} btn-sm fit" onclick="Partners.togglePaid('${e.pid}','${e.month}')">${r.done && Math.abs(r.rest) < 0.005 ? '↩ Décocher' : '✔ Marquer reversé'}</button>` : ''}</div></div>
-        ${chips}<div class="table-wrap mt"><table class="pt-tbl"><thead><tr><th style="text-align:left;">Date</th><th style="text-align:left;">Client · code</th><th class="num" title="Articles après réduction, livraison exclue : la base du reversement">Commande</th><th class="num">À reverser</th></tr></thead><tbody>${shown.map(x => `<tr class="pt-ord" title="Ouvrir la commande dans la fiche du client" onclick="Partners.goSale('${x.s.id}')"><td style="text-align:left;white-space:nowrap;">${new Date(x.s.ts).toLocaleDateString('fr-FR')}</td><td style="text-align:left;">${U.esc(Clients.show(x.s.customerName || '') || '—')}<br><span class="muted" style="font-size:.78rem;">${U.esc(x.code)}${x.pct ? ' · ' + U.qty(x.pct) + ' %' : ' · sans affiliation'}</span></td><td class="num sensitive">${U.eur(x.base)}</td><td class="num sensitive">${x.amt ? U.eur(x.amt) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
+          <div><b>🤝 ${U.esc(e.name)}</b> <span class="muted">${allM ? '· ' + Compta.monthLabel(e.month) + ' ' : ''}· ${e.sales.length} commande${e.sales.length > 1 ? 's' : ''}</span></div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">${affil ? `<span class="pt-due sensitive">${U.eur(due)}</span>` : ''}${state}
+            ${act && this._client(p) && r.rest > 0.005 ? `<button class="btn-ghost btn-sm fit" title="Ajoute ${U.eur(r.rest)} d'avoir sur la fiche de ${U.esc(this._client(p).name)} (déduit de sa prochaine commande)" onclick="Partners.passAvoir('${e.pid}','${e.month}')">💶 Passer en avoir</button>` : ''}
+            ${act ? `<button class="${r.done && Math.abs(r.rest) < 0.005 ? 'btn-ghost' : 'btn-cta'} btn-sm fit" onclick="Partners.togglePaid('${e.pid}','${e.month}')">${r.done && Math.abs(r.rest) < 0.005 ? '↩ Décocher' : '✔ Marquer reversé'}</button>` : ''}</div></div>
+        <div class="table-wrap mt"><table class="pt-tbl"><thead><tr><th style="text-align:left;">Date</th><th style="text-align:left;">Client · code</th><th class="num" title="Articles après réduction, livraison exclue : la base du reversement">Commande</th><th class="num">À reverser</th></tr></thead><tbody>${shown.map(x => `<tr class="pt-ord" title="Ouvrir la commande dans la fiche du client" onclick="Partners.goSale('${x.s.id}')"><td style="text-align:left;white-space:nowrap;">${new Date(x.s.ts).toLocaleDateString('fr-FR')}</td><td style="text-align:left;">${U.esc(Clients.show(x.s.customerName || '') || '—')}<br><span class="muted" style="font-size:.78rem;">${U.esc(x.code)}${x.pct ? ' · ' + U.qty(x.pct) + ' %' : ' · sans affiliation'}</span></td><td class="num sensitive">${U.eur(x.base)}</td><td class="num sensitive">${x.amt ? U.eur(x.amt) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
     };
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">partenaires &amp; codes</span></div>
       ${Stats.tabBar()}
       <div class="card"><h2>💶 Reversements ${U.info("Chaque commande faite avec le code d'un partenaire lui rapporte un pourcentage, calculé sur les articles APRÈS réduction (la livraison est exclue). Ex : panier 40 € −5 % = 38 € de produits ; à 5 % tu reverses 1,90 €. C'est une charge : elle baisse ton bénéfice net, mais pas tes cotisations URSSAF (calculées sur le chiffre d'affaires encaissé). Les ventes annulées ne comptent pas.")}</h2>
         <div class="frow" style="align-items:flex-end;gap:12px;flex-wrap:wrap;">
-          <div class="fg" style="max-width:220px;margin:0;"><label>Mois</label><select onchange="Partners.setMonth(this.value)">${months.map(m => `<option value="${m}" ${m === this._month ? 'selected' : ''}>${Compta.monthLabel(m)}</option>`).join('')}</select></div>
+          <div class="fg" style="max-width:220px;margin:0;"><label>Mois</label><select onchange="Partners.setMonth(this.value)"><option value="all" ${allM ? 'selected' : ''}>Tous les mois</option>${months.map(m => `<option value="${m}" ${m === this._month ? 'selected' : ''}>${Compta.monthLabel(m)}</option>`).join('')}</select></div>
+          <div class="fg" style="max-width:260px;margin:0;"><label>Code</label><select onchange="Partners.setCodeF(this.value)"><option value="">Tous les codes</option>${allCodes.map(c => `<option value="${U.esc(c.code)}" ${this._ck(c.code) === codeF ? 'selected' : ''}>${U.esc(c.code)} · ${U.esc(c.pname)}</option>`).join('')}</select></div>
           <div class="kpi ${totalRest > 0.005 ? 'warn' : 'good'} sensitive" style="flex:0 0 auto;min-width:200px;"><div class="v">${U.eur(totalRest)}</div><div class="l">Reste à reverser (tous mois)</div></div>
         </div>
-        ${cur.length ? cur.map(block).join('') : `<p class="muted mt">Aucune commande avec un code partenaire en ${Compta.monthLabel(this._month)}.</p>`}
+        ${cur.length ? cur.map(block).join('') : `<p class="muted mt">Aucune commande avec ${this._code ? 'le code « ' + U.esc(this._code) + ' »' : 'un code partenaire'} ${allM ? 'pour le moment' : 'en ' + Compta.monthLabel(this._month)}.</p>`}
         ${pending.length ? `<div class="mt"><div class="muted" style="font-size:.82rem;margin-bottom:4px;">Autres mois pas encore soldés</div><table class="pack-tbl"><tbody>${pending.map(e => `<tr style="cursor:pointer;" onclick="Partners.setMonth('${e.month}')"><td style="text-align:left;">${Compta.monthLabel(e.month)}</td><td style="text-align:left;">${U.esc(e.name)}</td><td class="num sensitive">${U.eur(this._rest(e).rest)}</td></tr>`).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="card sensitive"><div class="chart-head" style="min-height:0;align-items:center;"><h2>📈 Évolution sur 12 mois</h2>
