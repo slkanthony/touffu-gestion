@@ -1354,7 +1354,7 @@ const Paniers = {
   setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._redAuto = false; this._updateKPI(); },
   setReductionCode(v) {
     this.reductionCode = String(v || '').trim();
-    const m = Partners.byCode(this.reductionCode);   // code partenaire : sa réduction se remplit toute seule
+    const m = Partners.byCode(this.reductionCode); if (m) this.reductionCode = m.c.code;   // code partenaire : sa réduction se remplit toute seule
     if (m && U.num(m.c.discPct) > 0) { this.reduction = U.num(m.c.discPct); this._redAuto = false; this.render(); U.toast(`🤝 Code ${m.p.name} : −${U.qty(this.reduction)} %.`); }
   },
   setBudget(v) { this.budget = U.num(v); this._updateKPI(); },
@@ -1525,7 +1525,7 @@ const Paniers = {
             </div>
           </div>
           <div class="fg"><label>🏷️ Réduction % · code</label>
-            <div style="display:flex;gap:6px;"><input type="number" id="pan_red" step="0.5" min="0" max="99" value="${this.reduction || ''}" placeholder="0" style="flex:0 0 76px;min-width:0;" oninput="Paniers.setReduction(this.value)" title="Réduction du client : le budget restant et la génération en tiennent compte (remplie toute seule si la fiche du client a une réduction habituelle)"><input type="text" id="pan_redcode" value="${U.esc(this.reductionCode || '')}" placeholder="code" style="flex:1 1 70px;min-width:0;" onchange="Paniers.setReductionCode(this.value)" title="Code utilisé (information pour toi : il n'apparaît pas sur le devis du client)"></div>
+            <div style="display:flex;gap:6px;"><input type="number" id="pan_red" step="0.5" min="0" max="99" value="${this.reduction || ''}" placeholder="0" style="flex:0 0 76px;min-width:0;" oninput="Paniers.setReduction(this.value)" title="Réduction du client : le budget restant et la génération en tiennent compte (remplie toute seule si la fiche du client a une réduction habituelle)"><input type="text" id="pan_redcode" value="${U.esc(this.reductionCode || '')}" placeholder="code" data-clcombo="codes" autocomplete="off" style="flex:1 1 70px;min-width:0;" onchange="Paniers.setReductionCode(this.value)" title="Code utilisé (information pour toi : il n'apparaît pas sur le devis du client)"></div>
           </div>
           <div class="fg"><label>🐕 Chiens</label>
             <input type="number" id="pan_chiens" min="1" max="10" value="${this.nbChiens}" oninput="Paniers.setNbChiens(this.value)">

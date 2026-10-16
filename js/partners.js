@@ -79,6 +79,17 @@ const Partners = {
     this._save(); this._rerender();
   },
   setMonth(m) { this._month = m; Stats.render(); },
+  _codeF: {},   // filtre par code dans la liste d'un partenaire : { pid: code }
+  setCodeFilter(pid, code) { this._codeF[pid] = this._codeF[pid] === code ? '' : code; Stats.render(); },
+  /* Clic sur une commande → fiche du client (Stats → Clients), commande sélectionnée */
+  goSale(id) {
+    const s = (Store.state.sales || []).find(x => x.id === id); if (!s) return;
+    const c = Clients.find(s.customerName);
+    if (!c) { U.toast('Cette commande n\'a pas de client enregistré : rien à ouvrir.', true); return; }
+    Clients._open[c.id] = true; Clients._ord[c.id] = s.id; Clients._q = '';
+    Stats.setTab('clients');
+    setTimeout(() => { const f = document.querySelector('#clf_' + c.id + ' .cl-cols') || document.getElementById('clf_' + c.id); if (f) f.scrollIntoView({ block: 'center' }); }, 80);
+  },
 
   /* ---------- calculs : index « partenaire|mois » → { p, month, sales:[{s, base, amt, code}], due, uses } ---------- */
   _index() {
@@ -126,11 +137,14 @@ const Partners = {
       const state = !affil ? '<span class="badge info">Code sans affiliation : rien à reverser</span>'
         : r.done && Math.abs(r.rest) < 0.005 ? `<span class="badge ok">✔ Reversé (${U.eur(r.paid)})</span>`
         : r.done ? `<span class="badge warn">Reversé ${U.eur(r.paid)} · reste ${U.eur(r.rest)}</span>` : '<span class="badge warn">À reverser</span>';
+      const codes = [...new Set(e.sales.map(x => x.code))], cf = codes.includes(this._codeF[e.pid]) ? this._codeF[e.pid] : '';
+      const shown = e.sales.filter(x => !cf || x.code === cf).sort((a, b) => a.s.ts - b.s.ts);
+      const chips = codes.length > 1 || cf ? `<div class="pt-chips">${codes.map(c => `<span class="pt-chip ${c === cf ? 'on' : ''}" title="Clique pour ne voir que ce code" onclick="Partners.setCodeFilter('${e.pid}','${U.esc(c).replace(/'/g, '&#39;')}')">🏷️ ${U.esc(c)} · ${e.sales.filter(x => x.code === c).length}</span>`).join('')}</div>` : '';
       return `<div class="pt-card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
-          <div><b>🤝 ${U.esc(e.name)}</b> <span class="muted">· ${e.sales.length} commande${e.sales.length > 1 ? 's' : ''} · produits vendus ${U.eur(e.base)}</span></div>
+          <div><b>🤝 ${U.esc(e.name)}</b> <span class="muted">· ${e.sales.length} commande${e.sales.length > 1 ? 's' : ''}</span></div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">${affil ? `<span class="pt-due sensitive">${U.eur(e.due)}</span>` : ''}${state}
             ${affil && p ? `<button class="${r.done && Math.abs(r.rest) < 0.005 ? 'btn-ghost' : 'btn-cta'} btn-sm fit" onclick="Partners.togglePaid('${e.pid}','${e.month}')">${r.done && Math.abs(r.rest) < 0.005 ? '↩ Décocher' : '✔ Marquer reversé'}</button>` : ''}</div></div>
-        <div class="table-wrap mt"><table class="pt-tbl"><thead><tr><th style="text-align:left;">Date</th><th style="text-align:left;">Client · code</th><th class="num">Produits</th><th class="num">À reverser</th></tr></thead><tbody>${e.sales.sort((a, b) => a.s.ts - b.s.ts).map(x => `<tr><td style="text-align:left;white-space:nowrap;">${new Date(x.s.ts).toLocaleDateString('fr-FR')}</td><td style="text-align:left;">${U.esc(Clients.show(x.s.customerName || '') || '—')}<br><span class="muted" style="font-size:.78rem;">${U.esc(x.code)}${x.pct ? ' · ' + U.qty(x.pct) + ' %' : ' · sans affiliation'}</span></td><td class="num sensitive">${U.eur(x.base)}</td><td class="num sensitive">${x.amt ? U.eur(x.amt) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
+        ${chips}<div class="table-wrap mt"><table class="pt-tbl"><thead><tr><th style="text-align:left;">Date</th><th style="text-align:left;">Client · code</th><th class="num" title="Articles après réduction, livraison exclue : la base du reversement">Commande</th><th class="num">À reverser</th></tr></thead><tbody>${shown.map(x => `<tr class="pt-ord" title="Ouvrir la commande dans la fiche du client" onclick="Partners.goSale('${x.s.id}')"><td style="text-align:left;white-space:nowrap;">${new Date(x.s.ts).toLocaleDateString('fr-FR')}</td><td style="text-align:left;">${U.esc(Clients.show(x.s.customerName || '') || '—')}<br><span class="muted" style="font-size:.78rem;">${U.esc(x.code)}${x.pct ? ' · ' + U.qty(x.pct) + ' %' : ' · sans affiliation'}</span></td><td class="num sensitive">${U.eur(x.base)}</td><td class="num sensitive">${x.amt ? U.eur(x.amt) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
     };
     App.mount(`
       <div class="view-title"><h1>Statistiques</h1><span class="sub">partenaires &amp; codes</span></div>

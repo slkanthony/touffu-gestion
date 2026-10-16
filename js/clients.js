@@ -18,17 +18,22 @@ const Clients = {
      Recherche par mots (accents ignorés) sur le nom du client ET le nom de ses chiens. Le choix remplit le champ puis déclenche input + change :
      les onchange / oninput existants des champs font le reste. Le nom tapé librement (nouveau client) reste accepté. */
   _cb: null,
-  _cbRows(q) {
+  _cbRows(q, mode) {
+    if (mode === 'codes') {   // codes des partenaires : on montre la réduction du client, jamais le % reversé au partenaire
+      if (this.ro()) return [];
+      return Partners.list().flatMap(p => (p.codes || []).filter(c => c.code).map(c => ({ show: c.code, pname: p.name, disc: U.num(c.discPct) })))
+        .filter(r => !q || U.has(r.show + ' ' + r.pname, q)).sort((a, b) => U.sortFr(a.show, b.show));
+    }
     const dogsOf = n => { const c = this.find(n); return c ? (c.dogs || []).map(d => String(d.name || '').trim()).filter(Boolean) : []; };
     return this.names().map(n => ({ n, show: this.show(n), dogs: dogsOf(n) }))
       .filter(r => !q || U.has(r.show + ' ' + r.dogs.join(' '), q));
   },
   _cbOpen(inp) {
     const cb = this._cb && this._cb.inp === inp ? this._cb : (this.cbClose(), this._cb = { inp, i: -1, rows: [] });
-    const q = inp.value.trim(); cb.rows = this._cbRows(q).slice(0, 60); cb.i = -1;
+    const mode = inp.dataset.clcombo || '', q = inp.value.trim(); cb.rows = this._cbRows(q, mode).slice(0, 60); cb.i = -1;
     let el = document.getElementById('clCombo');
     if (!el) { el = document.createElement('div'); el.id = 'clCombo'; el.className = 'ac-list'; el.onmousedown = e => e.preventDefault(); document.body.appendChild(el); }
-    el.innerHTML = cb.rows.length ? cb.rows.map((r, k) => {
+    el.innerHTML = mode === 'codes' ? (cb.rows.length ? cb.rows.map((r, k) => `<div class="ac-item cb-row" data-k="${k}" onclick="Clients._cbPick(${k})"><span class="cb-n">🏷️ ${U.esc(r.show)}${r.disc ? ` <span class="cb-pct">−${U.qty(r.disc)} %</span>` : ''}</span><span class="cb-d">🤝 ${U.esc(r.pname)}</span></div>`).join('') : `<div class="ac-item muted">${q ? 'Aucun code partenaire ne correspond : « ' + U.esc(q) + ' » sera gardé comme simple note (sans réduction automatique).' : 'Aucun code partenaire créé (Statistiques → Partenaires).'}</div>`) : cb.rows.length ? cb.rows.map((r, k) => {
       const dm = q ? r.dogs.filter(d => U.has(d, q)) : [];   // chiens qui correspondent à la recherche : mis en avant
       const dogTxt = r.dogs.map(d => `<span class="${dm.includes(d) ? 'cb-hit' : ''}">🐕 ${U.esc(d)}</span>`).join(' · ');
       return `<div class="ac-item cb-row" data-k="${k}" onclick="Clients._cbPick(${k})"><span class="cb-n">👤 ${U.esc(r.show)}</span>${dogTxt ? `<span class="cb-d">${dogTxt}</span>` : ''}</div>`;
@@ -403,7 +408,7 @@ const Clients = {
       (selSale.items || []).filter(i => i.kind !== 'C').forEach(i => { const pk = i.name + (i.label ? ' ' + i.label : ''); const p = pm[pk] || (pm[pk] = { qty: 0, last: selSale.ts }); p.qty += U.num(i.qty); });
       prods = Object.entries(pm).sort((x, y) => y[1].qty - x[1].qty);
     }
-    return `<tr class="cl-fiche"><td colspan="6"><div class="cl-body">
+    return `<tr class="cl-fiche" id="clf_${c.id}"><td colspan="6"><div class="cl-body">
       ${this.ro() ? '' : `<div class="cl-id">${inp('firstName', 'Prénom', '')}${inp('lastName', 'Nom', '')}${inp('phone', 'Téléphone', '', 'tel')}${inp('email', 'Email', '', 'email')}${inp('note', 'Note', 'ex : rencontré au marché de…')}</div>
       <div class="cl-id mt">
         <div class="fg"><label>Commandes en ligne (stock général)</label><select onchange="Clients.setField('${c.id}','delivery',this.value)">${[['', '— ?'], ['clickcollect', '🏬 Click & Collect'], ['livraison', '📦 Livraison']].map(o => `<option value="${o[0]}" ${(c.delivery || '') === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>
