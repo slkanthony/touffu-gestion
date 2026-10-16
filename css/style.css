@@ -1630,6 +1630,7 @@ table.cl-ord-tbl tbody tr.cl-ord.sel td { background: var(--caramel) !important;
 @media (max-width: 700px) { .pt-code .fg { flex: 1 1 100% !important; } .pt-code .pt-del { margin-left: auto; } }
 tr.pt-ord { cursor: pointer; }
 table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
+.nsel-panel.pt-codes .pp-row:not(.active) .pp-c { color: var(--caramel-2); font-weight: 700; }
 #clCombo .cb-pct { margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(166, 113, 83, .18); color: var(--caramel); font-size: .8rem; font-weight: 700; }
 #clCombo .cb-row.active .cb-pct { background: rgba(255,255,255,.25); color: #fff; }
 

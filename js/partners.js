@@ -186,7 +186,7 @@ const Partners = {
     const months = [...new Set(entries.map(e => e.month).concat([Compta.mk(Date.now())]))].sort().reverse();
     if (this._month !== 'all' && !months.includes(this._month)) this._month = months[0];
     const allM = this._month === 'all', codeF = this._ck(this._code);
-    const allCodes = this.list().flatMap(p => (p.codes || []).filter(c => c.code).map(c => ({ code: c.code, pname: p.name }))).sort((x, y) => U.sortFr(x.code, y.code));
+    const allCodes = this.list().flatMap(p => (p.codes || []).filter(c => c.code).map(c => ({ code: c.code, pname: p.name }))).sort((x, y) => U.sortFr(x.pname, y.pname) || U.sortFr(x.code, y.code));
     if (this._code && !allCodes.some(c => this._ck(c.code) === codeF)) this._code = '';
     // entrées affichées : le mois choisi (ou tous), limitées au code choisi
     const cur = entries.filter(e => allM || e.month === this._month).map(e => ({ ...e, sales: e.sales.filter(x => !codeF || this._ck(x.code) === codeF) })).filter(e => e.sales.length)
@@ -214,7 +214,7 @@ const Partners = {
       <div class="card"><h2>💶 Reversements ${U.info("Chaque commande faite avec le code d'un partenaire lui rapporte un pourcentage, calculé sur les articles APRÈS réduction (la livraison est exclue). Ex : panier 40 € −5 % = 38 € de produits ; à 5 % tu reverses 1,90 €. C'est une charge : elle baisse ton bénéfice net, mais pas tes cotisations URSSAF (calculées sur le chiffre d'affaires encaissé). Les ventes annulées ne comptent pas.")}</h2>
         <div class="frow" style="align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div class="fg" style="max-width:220px;margin:0;"><label>Mois</label><select onchange="Partners.setMonth(this.value)"><option value="all" ${allM ? 'selected' : ''}>Tous les mois</option>${months.map(m => `<option value="${m}" ${m === this._month ? 'selected' : ''}>${Compta.monthLabel(m)}</option>`).join('')}</select></div>
-          <div class="fg" style="max-width:260px;margin:0;"><label>Code</label><select onchange="Partners.setCodeF(this.value)"><option value="">Tous les codes</option>${allCodes.map(c => `<option value="${U.esc(c.code)}" ${this._ck(c.code) === codeF ? 'selected' : ''}>${U.esc(c.code)} · ${U.esc(c.pname)}</option>`).join('')}</select></div>
+          <div class="fg" style="max-width:260px;margin:0;"><label>Code</label><select data-panel-class="pt-codes" onchange="Partners.setCodeF(this.value)"><option value="">Tous les codes</option>${allCodes.map(c => `<option value="${U.esc(c.code)}" data-a="${U.esc(c.pname)}" data-c="${U.esc(c.code)}" ${this._ck(c.code) === codeF ? 'selected' : ''}>${U.esc(c.pname)} · ${U.esc(c.code)}</option>`).join('')}</select></div>
           <div class="kpi ${totalRest > 0.005 ? 'warn' : 'good'} sensitive" style="flex:0 0 auto;min-width:200px;"><div class="v">${U.eur(totalRest)}</div><div class="l">Reste à reverser (tous mois)</div></div>
         </div>
         ${cur.length ? cur.map(block).join('') : `<p class="muted mt">Aucune commande avec ${this._code ? 'le code « ' + U.esc(this._code) + ' »' : 'un code partenaire'} ${allM ? 'pour le moment' : 'en ' + Compta.monthLabel(this._month)}.</p>`}

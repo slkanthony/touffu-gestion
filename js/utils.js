@@ -643,7 +643,7 @@ U.nsel = {
     const opts = items.filter(x => x.o && !x.o.hidden);
     const cols3 = opts.some(x => { const p = this.parts(x.o); return p[1] && p[2]; });
     const p = document.createElement('div');
-    p.className = 'nsel-panel' + (cols3 ? ' c3' : '');
+    p.className = 'nsel-panel' + (cols3 ? ' c3' : '') + (sel.dataset.panelClass ? ' ' + sel.dataset.panelClass : '');   // data-panel-class : style propre à un menu (ex. codes partenaires)
     p.innerHTML = (opts.length > 10 ? `<input class="nsel-q" placeholder="Rechercher…" autocomplete="off">` : '') + `<div class="nsel-list">${items.map(x => {
       if (x.head) return `<div class="pp-head">${U.esc(x.head)}</div>`;
       if (x.o.hidden) return '';
