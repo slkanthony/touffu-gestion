@@ -69,14 +69,46 @@ const Partners = {
     if (!await U.confirm(`Supprimer le code « ${c.code || '(vide)'} » ?`, { okLabel: 'Supprimer' })) return;
     p.codes = p.codes.filter(x => x.id !== cid); this._save(); this._rerender();
   },
-  togglePaid(pid, month) {
+  async togglePaid(pid, month) {
     const p = this.list().find(x => x.id === pid); if (!p) return;
     p.paid = p.paid || {};
     const due = this._index().get(pid + '|' + month);
     const cur = p.paid[month], amt = due ? Math.round(due.due * 100) / 100 : 0;
-    if (cur && Math.abs(U.num(cur.amount) - amt) < 0.005) { delete p.paid[month]; U.toast('Reversement décoché.'); }   // déjà soldé : un clic = annuler
-    else { p.paid[month] = { amount: amt, ts: Date.now() }; U.toast(`✔ ${U.eur(amt)} pointé comme reversé à ${p.name}.`); }
+    if (cur && Math.abs(U.num(cur.amount) - amt) < 0.005) {   // déjà soldé : un clic = annuler (et retirer l'avoir de la fiche client s'il y en a un)
+      if (U.num(cur.avoirAmt) > 0 && !await this._undoAvoir(p, cur, month)) return;
+      delete p.paid[month]; U.toast('Reversement décoché.');
+    } else { p.paid[month] = { ...(cur || {}), amount: amt, ts: Date.now() }; U.toast(`✔ ${U.eur(amt)} pointé comme reversé à ${p.name}.`); }
     this._save(); this._rerender();
+  },
+  /* Partenaire aussi client : le reversement du mois passe en AVOIR sur sa fiche (déduit tout seul de sa prochaine commande). */
+  _client(p) { return p && p.clientId ? Clients.list().find(x => x.id === p.clientId) || null : null; },
+  setClient(pid, name) {
+    const p = this.list().find(x => x.id === pid); if (!p) return;
+    name = String(name || '').trim();
+    if (!name) { delete p.clientId; this._save(); this._rerender(); return; }
+    Clients._sync();
+    const c = Clients.find(name);
+    if (!c) { U.toast('Client introuvable : choisis-le dans la liste (ou crée sa fiche dans Statistiques → Clients).', true); this._rerender(); return; }
+    p.clientId = c.id; this._save(); this._rerender(); U.toast(`👤 ${p.name} est relié à la fiche de ${c.name}.`);
+  },
+  passAvoir(pid, month) {
+    const p = this.list().find(x => x.id === pid), c = this._client(p); if (!p) return;
+    if (!c) { U.toast('Relie d\'abord ce partenaire à sa fiche client (bloc « Mes partenaires »).', true); return; }
+    const e = this._index().get(pid + '|' + month), cur = (p.paid || {})[month];
+    const delta = Math.round(((e ? e.due : 0) - U.num(cur && cur.amount)) * 100) / 100;
+    if (!(delta > 0.005)) { U.toast('Rien à ajouter : ce mois est déjà soldé.', true); return; }
+    Clients.adjustBalance(c.name, delta, `Reversement partenaire · ${p.name} · ${Compta.monthLabel(month)}`);
+    const id = c.balanceLog[0].id;
+    p.paid = p.paid || {};
+    p.paid[month] = { ...(cur || {}), amount: Math.round(((e ? e.due : 0)) * 100) / 100, ts: Date.now(), clientId: c.id, avoirIds: [...((cur && cur.avoirIds) || []), id], avoirAmt: Math.round((U.num(cur && cur.avoirAmt) + delta) * 100) / 100 };
+    this._save(); this._rerender();
+    U.toast(`💶 ${U.eur(delta)} d'avoir ajouté sur la fiche de ${c.name}.`);
+  },
+  async _undoAvoir(p, cur, month) {
+    const c = Clients.list().find(x => x.id === cur.clientId);
+    if (c && !await U.confirm(`Retirer aussi l'avoir de ${U.eur(cur.avoirAmt)} de la fiche de ${c.name} ?\n\nS'il a déjà été déduit d'une commande, son solde passera en dette du même montant.`, { okLabel: 'Décocher et retirer l\'avoir' })) return false;
+    if (c) { const ids = new Set(cur.avoirIds || []); c.balanceLog = (c.balanceLog || []).filter(l => !ids.has(l.id)); Clients._recalc(c); Store.save('clients'); }
+    return true;
   },
   setMonth(m) { this._month = m; Stats.render(); },
   _codeF: {},   // filtre par code dans la liste d'un partenaire : { pid: code }
@@ -120,6 +152,7 @@ const Partners = {
   _partnerCard(p) {
     return `<div class="pt-card"><div class="frow" style="align-items:flex-end;gap:10px;margin-bottom:8px;">
         <div class="fg" style="margin:0;max-width:300px;"><label>🤝 Partenaire</label><input value="${U.esc(p.name)}" onchange="Partners.setName('${p.id}',this.value)"></div>
+        <div class="fg" style="margin:0;max-width:300px;"><label title="Si ce partenaire est aussi un de tes clients : le reversement du mois pourra passer en avoir sur sa fiche">👤 Fiche client liée (option)</label><input data-clcombo autocomplete="off" value="${U.esc((this._client(p) || {}).name || '')}" placeholder="si c'est aussi un client…" onchange="Partners.setClient('${p.id}',this.value)"></div>
         <button class="btn-danger btn-sm fit" onclick="Partners.delPartner('${p.id}')">🗑 Supprimer</button></div>
       ${(p.codes || []).map(c => this._codeRow(p, c)).join('')}
       <button class="btn-ghost btn-sm fit" onclick="Partners.addCode('${p.id}')">＋ Ajouter un code</button></div>`;
@@ -135,7 +168,7 @@ const Partners = {
     const block = e => {
       const r = this._rest(e), p = this.list().find(x => x.id === e.pid), affil = e.sales.some(x => x.pct > 0);
       const state = !affil ? '<span class="badge info">Code sans affiliation : rien à reverser</span>'
-        : r.done && Math.abs(r.rest) < 0.005 ? `<span class="badge ok">✔ Reversé (${U.eur(r.paid)})</span>`
+        : r.done && Math.abs(r.rest) < 0.005 ? `<span class="badge ok">${U.num(((p || {}).paid || {})[e.month] && p.paid[e.month].avoirAmt) > 0 ? '✔ Passé en avoir' : '✔ Reversé'} (${U.eur(r.paid)})</span>`
         : r.done ? `<span class="badge warn">Reversé ${U.eur(r.paid)} · reste ${U.eur(r.rest)}</span>` : '<span class="badge warn">À reverser</span>';
       const codes = [...new Set(e.sales.map(x => x.code))], cf = codes.includes(this._codeF[e.pid]) ? this._codeF[e.pid] : '';
       const shown = e.sales.filter(x => !cf || x.code === cf).sort((a, b) => a.s.ts - b.s.ts);
@@ -143,6 +176,7 @@ const Partners = {
       return `<div class="pt-card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
           <div><b>🤝 ${U.esc(e.name)}</b> <span class="muted">· ${e.sales.length} commande${e.sales.length > 1 ? 's' : ''}</span></div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">${affil ? `<span class="pt-due sensitive">${U.eur(e.due)}</span>` : ''}${state}
+            ${affil && p && this._client(p) && r.rest > 0.005 ? `<button class="btn-ghost btn-sm fit" title="Ajoute ${U.eur(r.rest)} d'avoir sur la fiche de ${U.esc(this._client(p).name)} (déduit de sa prochaine commande)" onclick="Partners.passAvoir('${e.pid}','${e.month}')">💶 Passer en avoir</button>` : ''}
             ${affil && p ? `<button class="${r.done && Math.abs(r.rest) < 0.005 ? 'btn-ghost' : 'btn-cta'} btn-sm fit" onclick="Partners.togglePaid('${e.pid}','${e.month}')">${r.done && Math.abs(r.rest) < 0.005 ? '↩ Décocher' : '✔ Marquer reversé'}</button>` : ''}</div></div>
         ${chips}<div class="table-wrap mt"><table class="pt-tbl"><thead><tr><th style="text-align:left;">Date</th><th style="text-align:left;">Client · code</th><th class="num" title="Articles après réduction, livraison exclue : la base du reversement">Commande</th><th class="num">À reverser</th></tr></thead><tbody>${shown.map(x => `<tr class="pt-ord" title="Ouvrir la commande dans la fiche du client" onclick="Partners.goSale('${x.s.id}')"><td style="text-align:left;white-space:nowrap;">${new Date(x.s.ts).toLocaleDateString('fr-FR')}</td><td style="text-align:left;">${U.esc(Clients.show(x.s.customerName || '') || '—')}<br><span class="muted" style="font-size:.78rem;">${U.esc(x.code)}${x.pct ? ' · ' + U.qty(x.pct) + ' %' : ' · sans affiliation'}</span></td><td class="num sensitive">${U.eur(x.base)}</td><td class="num sensitive">${x.amt ? U.eur(x.amt) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
     };
