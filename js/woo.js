@@ -990,7 +990,7 @@ const Woo = {
     // les reconnaît automatiquement (pas de mapping manuel de colonnes à faire).
     const head = ['UGS'];
     if (this.includePrice) head.push('Tarif régulier');
-    if (this.includeStock) { head.push('Stock'); head.push('En stock ?'); }
+    if (this.includeStock) { head.push('Stock'); head.push('En stock ?'); }   // espace INSÉCABLE : celle de l'export du site, seule reconnue par l'importateur
     const rows = [head];
     linked.forEach(l => {
       const r = [l.sku];
@@ -1004,7 +1004,9 @@ const Woo = {
       }
       rows.push(r);
     });
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    // Guillemets SEULEMENT si nécessaire (virgule, guillemet, saut de ligne) : un BOM suivi de « "UGS" » faisait lire le titre avec ses guillemets → colonne UGS non reconnue par l'importateur
+    const q = c => { c = String(c); return /[",\r\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c; };
+    const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     U.download(`woocommerce-touffu-${U.today()}.csv`, '\ufeff' + csv, 'text/csv');
     U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.`);
   }
