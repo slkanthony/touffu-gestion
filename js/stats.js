@@ -45,6 +45,7 @@ const Stats = {
     const t = this.tab || 'price';
     const tabs = [['price', '📊 Prix &amp; marges'], ['sales', '🛒 Ventes'], ['ca', '💶 Chiffre d&#39;affaires'], ['pack', '📦 Emballages'], ['events', '🎪 Événements']];
     if (!App.isViewer) tabs.push(['clients', '👤 Clients']);
+    if (!App.isViewer && !App.isTeam) tabs.push(['partners', '🤝 Partenaires']);
     return `<div class="card">${U.seg(tabs.map(([k, l]) => ({ l, on: t === k, js: `Stats.setTab('${k}')` })), { full: true, scroll: true, label: 'Statistiques' })}</div>`;
   },
 
@@ -54,6 +55,7 @@ const Stats = {
     if (this.tab === 'pack') return this.renderPack();
     if (this.tab === 'events') return this.renderEvents();
     if (this.tab === 'clients' && !App.isViewer) return this.renderClients();
+    if (this.tab === 'partners' && !App.isViewer && !App.isTeam) return Partners.render();
     return this.renderPrice();
   },
 
@@ -1000,9 +1002,9 @@ const Stats = {
       const ch = this._saleChannelLabel(s);
       const mo = new Date(s.ts).getMonth();
       const mk = new Date(s.ts).toISOString().slice(0, 7);
-      const my = monthMap[mk] || (monthMap[mk] = { key: mk, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0 });
+      const my = monthMap[mk] || (monthMap[mk] = { key: mk, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0, partner: 0 });
       my.ca += U.num(s.total); my.nSales++;
-      my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += Pricing.eventCost(s);
+      my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += Pricing.eventCost(s); my.partner += Pricing.partnerCost(s);
       (s.items || []).forEach(i => {
         if (i.kind === 'C') { my.boxCost += Pricing.saleItemCost(i); return; } // consommables (carton…) : coût compté à part, pas en produit vendu
         if (!keep(i)) return;
@@ -1040,7 +1042,7 @@ const Stats = {
     // Un mois sans vente mais avec une facture reste affiché, pour que le total soit celui de la Compta.
     const range = { from: period === 'all' ? 0 : period === '12m' ? cut : yearStart, to: now };
     const charges = Compta.chargesPeriod(range.from, range.to);
-    Object.keys(charges.byMonth).forEach(k => { if (!monthMap[k]) monthMap[k] = { key: k, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0 }; });
+    Object.keys(charges.byMonth).forEach(k => { if (!monthMap[k]) monthMap[k] = { key: k, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0, partner: 0 }; });
     const months = Object.values(monthMap).sort((a, b) => a.key < b.key ? -1 : 1);
     const vatRate = U.num(S.vatRate);
     const uvMaint = Pricing.fixedOverheadMonthly(); // entretien UV + amortissement de tout le matériel, réparti par mois (0 si non renseigné)
@@ -1051,7 +1053,7 @@ const Stats = {
       m.uvMaint = uvMaint; // charge fixe machine (filtres + nettoyage + main d'œuvre entretien)
       // Non assujetti : la TVA reste dans le bénéfice (tu la gardes). Assujetti : elle est reversée → déduite.
       const mc = charges.byMonth[m.key]; m.charges = mc ? mc.portBuy + mc.expensed : 0;   // frais de livraison sur achats + frais généraux du mois (comme la Compta)
-      m.net = m.ca - m.cogs + m.shipFee - m.fee - m.shipping - m.boxCost - m.eventFee - m.cotis - m.uvMaint - m.charges - (S.vatActive ? m.tva : 0);
+      m.net = m.ca - m.cogs + m.shipFee - m.fee - m.shipping - m.boxCost - m.eventFee - m.partner - m.cotis - m.uvMaint - m.charges - (S.vatActive ? m.tva : 0);
     });
     const nSales = kind === 'all' ? sales.length : sales.filter(s => (s.items || []).some(i => i.kind !== 'C' && keep(i))).length;
     return { charges, nSales, articles, ca, products, byChannelCA, byCatCA, byMeatCA, accType, accWidth, byMonthQty, byMonthCA, months, dormant, sales };
@@ -1080,6 +1082,7 @@ const Stats = {
         ${line('Frais paiement', 'fee', '-')}
         ${line('Frais d\'envoi réel', 'shipping', '-')}
         ${line('Stand, repas & déplacement', 'eventFee', '-')}
+        ${M.partner || A.partner ? line('Reversements partenaires', 'partner', '-') : ''}
         ${line('Coût cartons', 'box', '-')}
         ${line('Cotisations URSSAF', 'cotis', '-')}
         ${va ? line('TVA (reversée)', 'tva', '-') : ''}
@@ -1150,7 +1153,7 @@ const Stats = {
         ${(() => {
           const va = Store.state.settings.vatActive;
           const uvM = Pricing.fixedOverheadMonthly(); // entretien UV + amortissement matériel / mois (0 si non renseigné)
-          const T = agg.months.reduce((a, m) => ({ ch: a.ch + m.charges, n: a.n + m.nSales, ca: a.ca + m.ca, cogs: a.cogs + m.cogs, shipFee: a.shipFee + m.shipFee, fee: a.fee + m.fee, shipping: a.shipping + m.shipping, box: a.box + m.boxCost, ev: a.ev + m.eventFee, uv: a.uv + m.uvMaint, cotis: a.cotis + m.cotis, tva: a.tva + m.tva, net: a.net + m.net }), { ch: 0, n: 0, ca: 0, cogs: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, ev: 0, uv: 0, cotis: 0, tva: 0, net: 0 });
+          const T = agg.months.reduce((a, m) => ({ ch: a.ch + m.charges, n: a.n + m.nSales, ca: a.ca + m.ca, cogs: a.cogs + m.cogs, shipFee: a.shipFee + m.shipFee, fee: a.fee + m.fee, shipping: a.shipping + m.shipping, box: a.box + m.boxCost, ev: a.ev + m.eventFee, pt: a.pt + m.partner, uv: a.uv + m.uvMaint, cotis: a.cotis + m.cotis, tva: a.tva + m.tva, net: a.net + m.net }), { ch: 0, n: 0, ca: 0, cogs: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, ev: 0, pt: 0, uv: 0, cotis: 0, tva: 0, net: 0 });
           T.marge = T.ca - T.cogs;
           const cell = (v, cls) => `<td class="num sensitive ${cls || ''}">${v ? (cls === 'neg' ? '− ' : cls === 'pos' ? '+ ' : '') + U.eur(v) : '—'}</td>`;
           const margeCell = (v) => `<td class="num sensitive ${v >= 0 ? 'pos' : 'neg'}">${U.eur(v)}</td>`;
@@ -1159,13 +1162,13 @@ const Stats = {
           const tvaCell = (v) => va ? `<td class="num sensitive neg" title="TVA reversée — déduite du bénéfice (assujetti)">${v ? '− ' + U.eur(v) : '—'}</td>` : `<td class="num sensitive pos" title="TVA contenue dans le CA — conservée dans ton bénéfice (non assujetti)">${v ? U.eur(v) : '—'}</td>`;
           const chCell = (v) => `<td class="num sensitive neg" title="Frais de livraison sur achats + frais généraux (mêmes que la Compta)">${v ? '− ' + U.eur(v) : '—'}</td>`;
           const uvCell = (v) => uvM ? `<td class="num sensitive neg" title="Entretien imprimante UV + amortissement de tout le matériel (imprimante, extracteur, scelleuse…) réparti par mois">− ${U.eur(v)}</td>` : '';
-          const row = (label, m) => `<tr><td class="col-name"><b>${label}</b></td><td class="num">${m.nSales}</td><td class="num sensitive">${U.eur(m.ca)}</td>${cell(m.cogs, 'neg')}${margeCell(m.marge)}${cell(m.shipFee, 'pos')}${cell(m.fee, 'neg')}${cell(m.shipping, 'neg')}${cell(m.eventFee, 'neg')}${cell(m.boxCost, 'neg')}${uvCell(m.uvMaint)}${chCell(m.charges)}<td class="num sensitive neg">− ${U.eur(m.cotis)}</td>${tvaCell(m.tva)}<td class="num sensitive ${m.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(m.net)}</b></td></tr>`;
+          const row = (label, m) => `<tr><td class="col-name"><b>${label}</b></td><td class="num">${m.nSales}</td><td class="num sensitive">${U.eur(m.ca)}</td>${cell(m.cogs, 'neg')}${margeCell(m.marge)}${cell(m.shipFee, 'pos')}${cell(m.fee, 'neg')}${cell(m.shipping, 'neg')}${cell(m.eventFee, 'neg')}${Partners.active() ? cell(m.partner, 'neg') : ''}${cell(m.boxCost, 'neg')}${uvCell(m.uvMaint)}${chCell(m.charges)}<td class="num sensitive neg">− ${U.eur(m.cotis)}</td>${tvaCell(m.tva)}<td class="num sensitive ${m.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(m.net)}</b></td></tr>`;
           return U.fold('months', agg.months.length, `<div class="table-wrap mt"><table>
-            <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Stand, repas & déplac.</th><th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num" title="Frais de livraison facturés par tes fournisseurs (factures Achats) + outillage, frais généraux et investissements non amortis : comme en Compta">Livraison &amp; frais généraux</th><th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
-            <tbody>${agg.months.slice().reverse().map(m => row(this._monthKeyLabel(m.key), m)).join('') || `<tr><td colspan="${uvM ? 15 : 14}" class="muted">Aucune vente.</td></tr>`}</tbody>
-            <tfoot><tr><td class="col-name"><b>Total</b></td><td class="num">${T.n}</td><td class="num sensitive">${U.eur(T.ca)}</td>${cell(T.cogs, 'neg')}${margeCell(T.marge)}${cell(T.shipFee, 'pos')}${cell(T.fee, 'neg')}${cell(T.shipping, 'neg')}${cell(T.ev, 'neg')}${cell(T.box, 'neg')}${uvCell(T.uv)}${chCell(T.ch)}<td class="num sensitive neg">− ${U.eur(T.cotis)}</td>${tvaCell(T.tva)}<td class="num sensitive ${T.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(T.net)}</b></td></tr></tfoot>
+            <thead><tr><th class="col-name">Mois</th><th class="num">Ventes</th><th class="num">CA</th><th class="num">Coût revient</th><th class="num">Marge brute</th><th class="num">Port encaissé</th><th class="num">Frais paiement</th><th class="num">Frais d'envoi</th><th class="num">Stand, repas & déplac.</th>${Partners.active() ? '<th class="num" title="Pourcentage reversé aux partenaires (codes affiliés)">Reversements partenaires</th>' : ''}<th class="num">Coût cartons</th>${uvM ? '<th class="num">Entretien matériel</th>' : ''}<th class="num" title="Frais de livraison facturés par tes fournisseurs (factures Achats) + outillage, frais généraux et investissements non amortis : comme en Compta">Livraison &amp; frais généraux</th><th class="num">Cotisations URSSAF</th><th class="num">TVA ${va ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice net</th></tr></thead>
+            <tbody>${agg.months.slice().reverse().map(m => row(this._monthKeyLabel(m.key), m)).join('') || `<tr><td colspan="${(uvM ? 15 : 14) + (Partners.active() ? 1 : 0)}" class="muted">Aucune vente.</td></tr>`}</tbody>
+            <tfoot><tr><td class="col-name"><b>Total</b></td><td class="num">${T.n}</td><td class="num sensitive">${U.eur(T.ca)}</td>${cell(T.cogs, 'neg')}${margeCell(T.marge)}${cell(T.shipFee, 'pos')}${cell(T.fee, 'neg')}${cell(T.shipping, 'neg')}${cell(T.ev, 'neg')}${Partners.active() ? cell(T.pt, 'neg') : ''}${cell(T.box, 'neg')}${uvCell(T.uv)}${chCell(T.ch)}<td class="num sensitive neg">− ${U.eur(T.cotis)}</td>${tvaCell(T.tva)}<td class="num sensitive ${T.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(T.net)}</b></td></tr></tfoot>
           </table></div>`, { h: 440, unit: 'mois' }) + `
-          <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand/repas/déplacement − coût cartons − entretien/amortissement matériel − frais de livraison sur achats & frais généraux (outillage…) − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
+          <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Marge brute » = CA − coût de revient des produits vendus. « Bénéfice net » = marge brute + port encaissé − frais paiement − frais d'envoi − frais stand/repas/déplacement − reversements aux partenaires − coût cartons − entretien/amortissement matériel − frais de livraison sur achats & frais généraux (outillage…) − cotisations URSSAF${va ? ' − TVA reversée' : ''}. ${va ? 'TVA <b>reversée</b> (assujetti) : déduite du bénéfice.' : 'TVA <b>conservée</b> dans ton bénéfice (non assujetti) — la colonne TVA montre le montant contenu dans le CA ; elle sera déduite automatiquement le jour où tu coches « assujetti à la TVA » dans Paramètres → Réglages financiers.'} Coût de revient <b>exact</b> pour les ventes récentes (figé à la vente), <b>estimé</b> au coût actuel pour les ventes antérieures.</p>`;
         })()}
       </div>
 
@@ -1261,7 +1264,7 @@ const Stats = {
         type: 'line',
         data: { labels: tl.map(m => this._monthKeyLabel(m.key)), datasets: [
           line('CA', C[4], m => m.ca), line('Coût de revient', C[2], m => m.cogs), line('Marge brute', C[1], m => m.marge),
-          line('Frais', C[3], m => m.fee + m.shipping + m.eventFee + m.uvMaint + m.charges), line('Coût cartons', C[5], m => m.boxCost),
+          line('Frais', C[3], m => m.fee + m.shipping + m.eventFee + m.partner + m.uvMaint + m.charges), line('Coût cartons', C[5], m => m.boxCost),
           line('Cotisations URSSAF', C[7], m => m.cotis, { hidden: true }), line('Bénéfice net', C[0], m => m.net, { borderWidth: 4, pointRadius: 4 })
         ] },
         options: {

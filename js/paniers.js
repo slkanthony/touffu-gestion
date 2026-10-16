@@ -1352,7 +1352,11 @@ const Paniers = {
   _disc() { return Math.min(99, Math.max(0, U.num(this.reduction))) / 100; },
   _avail() { return (this.budget - this.livraison) / (1 - this._disc()); },   // budget utilisable, exprimé en prix publics (avant réduction)
   setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._redAuto = false; this._updateKPI(); },
-  setReductionCode(v) { this.reductionCode = String(v || '').trim(); },
+  setReductionCode(v) {
+    this.reductionCode = String(v || '').trim();
+    const m = Partners.byCode(this.reductionCode);   // code partenaire : sa réduction se remplit toute seule
+    if (m && U.num(m.c.discPct) > 0) { this.reduction = U.num(m.c.discPct); this._redAuto = false; this.render(); U.toast(`🤝 Code ${m.p.name} : −${U.qty(this.reduction)} %.`); }
+  },
   setBudget(v) { this.budget = U.num(v); this._updateKPI(); },
   setLivraison(v) { this.livraison = U.num(v); this._updateKPI(); },
   setNbChiens(v) { this.nbChiens = Math.max(1, U.num(v)); this._updateKPI(); },

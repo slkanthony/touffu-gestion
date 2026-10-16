@@ -1621,3 +1621,10 @@ table.cl-ord-tbl tbody tr.cl-ord.sel td { background: var(--caramel) !important;
 #clCombo .cb-d { font-size: .8rem; font-weight: 500; color: var(--gris); }
 #clCombo .cb-d .cb-hit { color: var(--caramel); font-weight: 700; }
 #clCombo .cb-row.active .cb-d, #clCombo .cb-row.active .cb-d .cb-hit { color: #fff !important; }
+
+/* Partenaires & codes (Statistiques → 🤝 Partenaires) */
+.pt-card { border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+.pt-code { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 8px; }
+.pt-code .btn-icon { flex: 0 0 auto; }
+.pt-due { font-size: 1.15rem; font-weight: 700; color: var(--caramel); }
+@media (max-width: 700px) { .pt-code .fg { flex: 1 1 100% !important; } .pt-code .pt-del { margin-left: auto; } }

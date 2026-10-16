@@ -115,6 +115,7 @@ const Pricing = {
   /* Coûts d'un événement portés par une vente : frais de stand + déplacement + repas (2026-09-27,
      repas ajouté le 2026-09-30 — Antho paie le repas de midi pour lui + sa compagne qui l'aide
      sur les événements, coût variable selon ce qu'ils trouvent à manger). */
+  partnerCost(s) { return typeof Partners !== 'undefined' ? Partners.cost(s) : 0; },   // reversement au partenaire (code affilié) : charge de la vente, hors cotisations
   eventCost(s) { return U.num(s && s.eventFee) + U.num(s && s.travelCost) + U.num(s && s.mealFee); },
 
   /* Taux « port à l'achat » (Paramètres → Réglages financiers → 🚚) par catégorie : mastication · matiere · conso (en %, 0 par défaut).
@@ -269,7 +270,7 @@ const Pricing = {
     const socHM = (U.num(S.socialTaxRateHandmade) || U.num(S.socialTaxRate)) / 100;
     const vatRate = U.num(S.vatRate), vatActive = S.vatActive;
     const cardRate = U.num(S.cardFeeRate) / 100, stripeRate = U.num(S.stripeFeeRate) / 100;
-    const blank = () => ({ ca: 0, cogs: 0, fee: 0, shipFee: 0, shipping: 0, eventFee: 0, box: 0, cotis: 0, tva: 0, fixed: 0, charges: 0 });
+    const blank = () => ({ ca: 0, cogs: 0, fee: 0, shipFee: 0, shipping: 0, eventFee: 0, partner: 0, box: 0, cotis: 0, tva: 0, fixed: 0, charges: 0 });
     const M = blank(), A = blank();
     (sales || []).forEach(s => {
       if (s.cancelled) return;
@@ -281,7 +282,7 @@ const Pricing = {
       });
       const ca = mCA + aCA;
       const mSh = ca > 0 ? mCA / ca : 0.5, aSh = 1 - mSh;
-      const shipFee = U.num(s.shippingFeeCollected), shipping = U.num(s.shippingCost), eventFee = Pricing.eventCost(s);
+      const shipFee = U.num(s.shippingFeeCollected), shipping = U.num(s.shippingCost), eventFee = Pricing.eventCost(s), partner = Pricing.partnerCost(s);
       const cardBase = (s.payment === 'sumup' || s.payment === 'stripe') ? ca + shipFee : 0;
       const fee = s.payment === 'sumup' ? cardBase * cardRate : s.payment === 'stripe' ? cardBase * stripeRate : 0;
       const tva = vatRate > 0 ? ca * vatRate / (100 + vatRate) : 0;
@@ -291,6 +292,7 @@ const Pricing = {
       M.shipFee += shipFee * mSh; A.shipFee += shipFee * aSh;
       M.shipping += shipping * mSh; A.shipping += shipping * aSh;
       M.eventFee += eventFee * mSh; A.eventFee += eventFee * aSh;
+      M.partner += partner * mSh; A.partner += partner * aSh;
       M.tva += tva * mSh; A.tva += tva * aSh;
       // cotisations : port encaissé cotise au taux marchandises (mastication), comme dans la compta globale
       const kU = this.urssafK();   // assujetti : cotisations sur le CA HT
@@ -316,7 +318,7 @@ const Pricing = {
     }
     [M, A].forEach(x => {
       x.marge = x.ca - x.cogs;
-      x.net = x.ca - x.cogs + x.shipFee - x.fee - x.shipping - x.box - x.eventFee - x.cotis - x.fixed - x.charges - (vatActive ? x.tva : 0);
+      x.net = x.ca - x.cogs + x.shipFee - x.fee - x.shipping - x.box - x.eventFee - x.partner - x.cotis - x.fixed - x.charges - (vatActive ? x.tva : 0);
     });
     return { masti: M, acc: A };
   },
@@ -326,7 +328,7 @@ const Pricing = {
     const r = this.activityPnL([s], 0), M = r.masti, A = r.acc;
     const sum = k => U.num(M[k]) + U.num(A[k]);
     const S = Store.state.settings;
-    return { ca: sum('ca'), cogs: sum('cogs'), marge: sum('ca') - sum('cogs'), shipFee: sum('shipFee'), fee: sum('fee'), shipping: sum('shipping'), box: sum('box'), eventFee: sum('eventFee'), cotis: sum('cotis'), tva: sum('tva'), tvaActive: !!S.vatActive, net: sum('net') };
+    return { ca: sum('ca'), cogs: sum('cogs'), marge: sum('ca') - sum('cogs'), shipFee: sum('shipFee'), fee: sum('fee'), shipping: sum('shipping'), box: sum('box'), eventFee: sum('eventFee'), partner: sum('partner'), cotis: sum('cotis'), tva: sum('tva'), tvaActive: !!S.vatActive, net: sum('net') };
   },
 
   accCost(a) {

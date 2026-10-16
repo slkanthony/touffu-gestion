@@ -525,7 +525,7 @@ const Ventes = {
           <td><button class="btn-icon" onclick="Ventes.cart.splice(${i},1);Ventes.render()">🗑️</button></td></tr>`).join('')}</tbody>
         <tfoot>${this.discOn ? `<tr><th colspan="5">Sous-total</th><th class="num">${U.eur(gross)}</th><th></th></tr><tr><th colspan="5">Réduction (${U.qty(pct)} %)</th><th class="num">− ${U.eur(disc)}</th><th></th></tr>` : ''}<tr><th colspan="5">Total</th><th class="num">${U.eur(total)}</th><th></th></tr>${ba ? `<tr><th colspan="5">${ba > 0 ? 'Avoir déduit' : 'Solde à régler'}</th><th class="num">${ba > 0 ? '−' : '+'} ${U.eur(Math.abs(ba))}</th><th></th></tr><tr><th colspan="5">À payer</th><th class="num">${U.eur(total - ba)}</th><th></th></tr>` : ''}</tfoot></table></div>
       <div class="fg mt" style="max-width:420px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${this.discOn ? 'checked' : ''} onchange="Ventes.discOn=this.checked;Ventes.render()"> 🏷️ Réduction sur la commande (client partenaire…)</label>
-        ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span><input id="v_disc_code" type="text" value="${U.esc(this.discCode || '')}" placeholder="code (option)" style="width:170px;" onchange="Ventes.discCode=this.value.trim()" title="Code utilisé (information : gardé dans l'historique de la vente)"></div>` : ''}</div>
+        ${this.discOn ? `<div class="frow" style="align-items:center;gap:6px;margin-top:6px;"><input id="v_disc" type="number" step="0.5" min="0" max="100" value="${U.esc(String(this.discPct))}" style="width:90px;" onchange="Ventes.discPct=U.num(this.value);Ventes.render()"> <span>% sur tout le ticket</span><input id="v_disc_code" type="text" value="${U.esc(this.discCode || '')}" placeholder="code (option)" style="width:170px;" onchange="Ventes.setDiscCode(this.value)" title="Code utilisé (information : gardé dans l'historique de la vente)"></div>` : ''}</div>
       <div class="fg mt" style="max-width:320px;"><label>Client (optionnel)</label>${U.autocomplete({ id: 'v_customer', value: this.customerName || '', placeholder: 'nom du client…', options: this.custOpen ? this._custSuggestions() : [], open: this.custOpen, onInput: 'Ventes.setCust', onPick: 'Ventes.pickCust', onClose: 'Ventes.closeCustMenu' })}</div>
       ${bal ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--caramel);border-radius:8px;"><input type="checkbox" ${this.balOn ? 'checked' : ''} onchange="Ventes.balOn=this.checked;Ventes.render()"> 💶 ${bal > 0 ? 'Déduire l\'avoir de ' + U.eur(bal) : 'Ajouter le solde dû de ' + U.eur(-bal)}</label>` : ''}
       ${(() => { const co = this._thanksConso(); return co ? `<label class="mt" style="display:flex;align-items:center;gap:8px;cursor:pointer;max-width:420px;padding:8px 10px;border:1px solid var(--card-border);border-radius:8px;"><input type="checkbox" ${this.thanksOn ? 'checked' : ''} onchange="Ventes.thanksOn=this.checked"> 💌 Carte de remerciement incluse <span class="muted">(coût ${U.eur(U.num(co.costUnit) * Pricing.vatK())})</span></label>` : '<p class="muted mt" style="font-size:.82rem;">💌 Pour compter ta carte de remerciement dans chaque commande, relie-la à un consommable : Paramètres → Réglages financiers → Consommables.</p>'; })()}
@@ -599,6 +599,7 @@ const Ventes = {
     if (shipLbl && !lines.some(c => c.kind === 'C' && c.pId === shipLbl.id)) lines = lines.concat([{ key: 'C|' + shipLbl.id, kind: 'C', pId: shipLbl.id, vId: '', lotId: '', lotLabel: '', name: shipLbl.name, label: (!shipLbl.unit || shipLbl.unit === 'pc') ? 'PCS' : shipLbl.unit, sku: '', price: 0, qty: 1, auto: 'shipLabel' }]);
     const shortfalls = this._deductSale(sale, lines, this.source).filter(sf => !(shipLbl && sf.name === shipLbl.name));
     if (pct > 0) { const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = pct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; if (String(this.discCode || '').trim()) sale.discountCode = String(this.discCode).trim(); }
+    Partners.stamp(sale);   // code partenaire reconnu → lien et % de reversement figés sur la vente
     const ba = this._balApplied(sale.total);
     if (ba) { sale.balanceApplied = ba; Clients.adjustBalance(sale.customerName, -ba, (ba > 0 ? 'Avoir utilisé' : 'Solde réglé') + ' — vente du ' + U.frDate(new Date().toISOString().slice(0, 10))); }
     if (delivery === 'livraison') {
@@ -845,6 +846,7 @@ const Ventes = {
       ${line('− Frais d\'envoi réels (transporteur)', neg(r.shipping))}
       ${line('− Cartons & consommables', neg(r.box))}
       ${r.eventFee ? line('− Stand, repas & déplacement', neg(r.eventFee)) : ''}
+      ${r.partner ? (pl => line('− Reversement partenaire' + (pl ? ' · ' + U.esc(pl.name) + ' ' + U.qty(pl.pct) + ' %' : ''), neg(r.partner)))(Partners.link(s)) : ''}
       ${line('− Cotisations URSSAF', neg(r.cotis))}
       ${r.tvaActive && r.tva ? line('− TVA reversée', neg(r.tva)) : ''}
       <tr class="sale-sum-net"><td><b>Bénéfice net de cette commande</b></td><td class="num ${netCls}"><b>${U.eur(r.net)}</b></td></tr>
@@ -882,11 +884,18 @@ const Ventes = {
   },
   /* Réduction ajoutée / corrigée / retirée après coup : les prix des articles (hors consommables) sont
      recalculés depuis leur prix avant réduction ; total et stats suivent. Le stock n'est pas touché. */
+  /* Code saisi sur le ticket : s'il correspond à un partenaire, sa réduction se remplit toute seule. */
+  setDiscCode(v) {
+    this.discCode = String(v || '').trim(); this._discAuto = false;
+    const m = Partners.byCode(this.discCode);
+    if (m && U.num(m.c.discPct) > 0) { this.discOn = true; this.discPct = U.num(m.c.discPct); U.toast(`🤝 Code ${m.p.name} : −${U.qty(this.discPct)} %${U.num(m.c.affPct) > 0 ? ' (reversement ' + U.qty(m.c.affPct) + ' % au partenaire)' : ''}.`); this.render(); }
+  },
   setDiscountCode(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s || !s.discountPct) return;
     const v = String(val || '').trim(); if (v === String(s.discountCode || '')) return;
     const snap = Store.snapshot('sales', s);
     if (v) s.discountCode = v; else delete s.discountCode;
+    Partners.stamp(s);
     const entry = Store.commitSnapshot(snap, 'vente', `Code de réduction — ${U.frDateTime(s.ts)} : ${v || '(retiré)'}`);
     Store.save('sales'); U.toast('Code enregistré.', false, entry.id);
     this.render();
