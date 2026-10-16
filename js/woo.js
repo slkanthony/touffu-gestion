@@ -27,7 +27,7 @@ const Woo = {
   /* Filtres (recherche + type de viande) + sélection par produit — pour n'exporter
      que certains produits (test sur 2-3, ou mise à jour ciblée). Même patron que
      Stock (filtres) et Revente pro (sélection par cases). Clé de sélection = SKU. */
-  filters: { q: '', meat: 'all', sort: 'name', sortDir: 'asc' },
+  filters: { q: '', meat: 'all', accCat: 'all', accWidth: 'all', accBic: 'all', sort: 'name', sortDir: 'asc' },
   _sel: {},
   _setSearch(v) { this.filters.q = v; this.render(); U.refocus('woo_q'); },
   _setMeat(v) { this.filters.meat = v; this.render(); },
@@ -36,15 +36,61 @@ const Woo = {
     else { this.filters.sort = key; this.filters.sortDir = 'asc'; }
     this.render();
   },
+  /* Filtres COMMUNS à Exporter et Comparer (Antho 2026-10-17, même esprit que Stock mastication / Accessoires) : Catégorie (Tous | Mastication | Accessoires, partagée avec SumUp),
+     puis selon la catégorie — mastication : type de viande + variantes (format) ; accessoires : catégorie, largeur de sangle, bicolor. Une ligne = { kind:'Mastication'|'Accessoires', meat, accCat, width, bicolor }. */
+  _k(l) { return l.kind === 'Accessoires' ? 'A' : 'M'; },
+  _pass(l) {
+    const f = this.filters, k = this._k(l);
+    if (!this._inCat(k)) return false;
+    if (k === 'A') {
+      if (this.cat === 'all') return f.meat === 'all';   // une viande choisie = on ne regarde que la mastication
+      if (f.accCat !== 'all' && (l.accCat || '') !== f.accCat) return false;
+      if (f.accWidth !== 'all' && (l.width || '') !== f.accWidth) return false;
+      if (f.accBic === 'yes' && !l.bicolor) return false;
+      if (f.accBic === 'no' && l.bicolor) return false;
+      return true;
+    }
+    if (f.meat !== 'all' && (l.meat || '') !== f.meat) return false;
+    // une ligne « site seul » n'a pas de format de l'appli : on lit la fin de son SKU (…-250G) ; un format que l'appli ne connaît pas ne la masque pas
+    const fm = l._site ? this._fmtKey(String(l.sku || '').split('-').pop()) : this._fmtOfName(l.name);
+    if ((!l._site || (this._siteFmtList || []).includes(fm)) && !this._siteFmtSel().includes(fm)) return false;
+    return true;
+  },
+  /* Options des filtres + remise à « tous » d'un choix qui n'existe plus. */
+  _opts(linked) {
+    const M = linked.filter(l => this._k(l) === 'M'), A = linked.filter(l => this._k(l) === 'A'), f = this.filters;
+    this._siteFmtList = [...new Set(M.map(l => this._fmtOfName(l.name)))];
+    const meatCounts = {}; M.forEach(l => { if (l.meat) meatCounts[l.meat] = (meatCounts[l.meat] || 0) + 1; });
+    const uniq = a => [...new Set(a.filter(Boolean))].sort(U.sortFr);
+    const accCats = uniq(A.map(l => l.accCat)), widths = uniq(A.map(l => l.width));
+    if (f.meat !== 'all' && !meatCounts[f.meat]) f.meat = 'all';
+    if (f.accCat === undefined || (f.accCat !== 'all' && !accCats.includes(f.accCat))) f.accCat = 'all';
+    if (f.accWidth === undefined || (f.accWidth !== 'all' && !widths.includes(f.accWidth))) f.accWidth = 'all';
+    if (!['all', 'yes', 'no'].includes(f.accBic)) f.accBic = 'all';
+    return {
+      meatOpts: [{ v: 'all', l: `Tous (${M.length})` }].concat(Object.keys(meatCounts).sort(U.sortFr).map(m => ({ v: m, l: `${m} (${meatCounts[m]})` }))),
+      accOpts: [{ v: 'all', l: `Toutes (${A.length})` }].concat(accCats.map(c => ({ v: c, l: `${c} (${A.filter(l => l.accCat === c).length})` }))),
+      widthOpts: [{ v: 'all', l: 'Toutes' }].concat(widths.map(w => ({ v: w, l: `${w} (${A.filter(l => l.width === w).length})` }))),
+      bicOpts: [{ v: 'all', l: 'Tous' }, { v: 'yes', l: 'Bicolor' }, { v: 'no', l: 'Non bicolor' }]
+    };
+  },
+  /* Cases de filtre selon la catégorie choisie (HTML des .fg, à poser dans une grille). */
+  _ctrls(o) {
+    const f = this.filters, fg = (l, h) => `<div class="fg"><label>${l}</label>${h}</div>`;
+    if (this.cat === 'A') return [
+      fg('Catégorie', U.customSelect({ value: f.accCat, options: o.accOpts, onPick: 'Woo._setAccCat' })),
+      fg('Largeur', U.customSelect({ value: f.accWidth, options: o.widthOpts, onPick: 'Woo._setAccW' })),
+      fg('Bicolor', U.customSelect({ value: f.accBic, options: o.bicOpts, onPick: 'Woo._setAccBic' }))];
+    return [
+      fg('Type de viande', U.customSelect({ value: f.meat, options: o.meatOpts, onPick: 'Woo._setMeat' })),
+      fg('Variantes (format)', U.multiSelect({ groups: this._fmtGroups(this._siteFmtList || []), selected: this._siteFmtSel(), toggle: 'Woo._siteFmtToggle', setAll: 'Woo._siteFmtAll', open: f.fmtOpen, onOpen: 'Woo._siteFmtOpen' }))];
+  },
+  _setAccCat(v) { this.filters.accCat = v; this.render(); },
+  _setAccW(v) { this.filters.accWidth = v; this.render(); },
+  _setAccBic(v) { this.filters.accBic = v; this.render(); },
   _visible(linked) {
     const q = (this.filters.q || '').toLowerCase().trim();
-    const meat = this.filters.meat;
-    return linked.filter(l => {
-      if (meat !== 'all' && (l.meat || '') !== meat) return false;
-      if (!this._siteFmtSel().includes(this._fmtOfName(l.name))) return false;
-      if (q && !U.has((l.name || '') + ' ' + (l.sku || ''), q)) return false;
-      return true;
-    });
+    return linked.filter(l => this._pass(l) && (!q || U.has((l.name || '') + ' ' + (l.sku || ''), q)));
   },
   _selCount(linked) { return linked.filter(l => this._sel[l.sku]).length; },
   toggleSel(sku, checked) { this._sel[sku] = !!checked; this._refreshSelInfo(); },
@@ -104,23 +150,34 @@ const Woo = {
       const iStock = this._cmpCol(head, ['Stock', 'stock']);
       if (iSku < 0) { U.toast('Colonne UGS/SKU introuvable dans ce fichier.', true); return; }
       const num = (v) => { const n = parseFloat(String(v || '').replace(',', '.').replace(/[^\d.-]/g, '')); return isFinite(n) ? n : null; };
+      // Catégories du site (colonne « Catégories », celles d'une variation = celles de son produit parent « id:N ») → rangent les lignes « site seul » en mastication / accessoires + viande.
+      const iCat = this._cmpCol(head, ['Catégories', 'Categories']), iId = this._cmpCol(head, ['ID', 'Id']), iPar = this._cmpCol(head, ['Parent']);
+      const catById = new Map();
+      if (iCat >= 0 && iId >= 0) rows.slice(1).forEach(r => { if (r[iId] && r[iCat]) catById.set(String(r[iId]).trim(), r[iCat]); });
+      const siteKind = r => {
+        let c = iCat >= 0 ? (r[iCat] || '') : '';
+        if (!c && iPar >= 0) c = catById.get(String(r[iPar] || '').replace(/^id:/i, '').trim()) || '';
+        const m = c.split(', ').find(x => /Type de viande > /.test(x));
+        return { kind: /accessoires/i.test(c) ? 'Accessoires' : 'Mastication', meat: m ? m.split(' > ').pop().trim() : '' };
+      };
       const site = new Map(); let siteNoSku = 0;
       rows.slice(1).filter(r => r.length > 1).forEach(r => {
         const sku = (r[iSku] || '').trim();
         if (!sku) { siteNoSku++; return; }
-        site.set(sku, { sku, name: iName >= 0 ? r[iName] : '', price: iPrice >= 0 ? num(r[iPrice]) : null, stock: iStock >= 0 ? num(r[iStock]) : null });
+        site.set(sku, { sku, name: iName >= 0 ? r[iName] : '', price: iPrice >= 0 ? num(r[iPrice]) : null, stock: iStock >= 0 ? num(r[iStock]) : null, ...siteKind(r) });
       });
       const app = new Map();
       this.lines().filter(l => l.sku).forEach(l => app.set(l.sku, l));
       const matched = [], appOnly = [], siteOnly = [];
+      const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
       app.forEach((l, sku) => {
         const s = site.get(sku);
-        if (!s) { appOnly.push({ sku, name: l.name }); return; }
+        if (!s) { appOnly.push({ sku, name: l.name, ...meta(l) }); return; }
         const priceDiff = (l.price != null && s.price != null) ? +(l.price - s.price).toFixed(2) : null;
         const stockDiff = (l.stock != null && s.stock != null) ? (l.stock - s.stock) : null;
-        matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff });
+        matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, ...meta(l) });
       });
-      site.forEach((s, sku) => { if (!app.has(sku)) siteOnly.push({ sku, name: s.name }); });
+      site.forEach((s, sku) => { if (!app.has(sku)) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
       this._cmp = { siteRows: site.size, siteNoSku, matched, appOnly, siteOnly };
       this.render();
       U.toast(`Comparaison : ${matched.length} reliés, ${appOnly.length} appli seule, ${siteOnly.length} site seul.`);
@@ -630,11 +687,12 @@ const Woo = {
   },
   _renderCompare() {
     const c = this._cmp, W = ['sku', 'price', 'stock'].includes(this.cmpWhat) ? this.cmpWhat : 'all';
+    const opts = this._opts(this.lines().filter(l => l.sku));   // aussi : remet à jour la liste des formats utilisée par _pass
     const all = [
       ...c.matched.map(m => ({ ...m, st: 'matched', priceOk: m.priceDiff == null ? null : Math.abs(m.priceDiff) < 0.01, stockOk: m.stockDiff == null ? null : m.stockDiff === 0 })),
       ...c.appOnly.map(m => ({ ...m, st: 'appOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null })),
       ...c.siteOnly.map(m => ({ ...m, st: 'siteOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null }))
-    ];
+    ].filter(m => this._pass(m));
     const matched = m => m.st === 'matched';
     const isOk = m => matched(m) && m.priceOk !== false && m.stockOk !== false;
     const bad = '⚠️ À corriger', app = { l: '⚠️ Absent du site', f: m => m.st === 'appOnly' }, site = { l: 'ℹ️ Absent de l\'appli', f: m => m.st === 'siteOnly' };
@@ -680,6 +738,8 @@ const Woo = {
     return `
       ${c.siteRows === 0 ? '<p class="warn-txt mt">Aucune ligne du site n\'a de SKU (UGS) rempli — impossible de comparer tant que tu n\'as pas mis les SKU sur ton site.</p>' : ''}
       ${this._whatSeg(W, 'Woo._setCmpWhat')}
+      ${this._catSeg()}
+      <div class="grid c3 mt">${this._ctrls(opts).join('')}</div>
       <div class="sumup-filters mt">
         ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
         ${c.siteNoSku ? `<span class="muted" style="align-self:center;font-size:.82rem;">· ${c.siteNoSku} ligne(s) du site sans SKU (non comparables)</span>` : ''}
@@ -699,7 +759,7 @@ const Woo = {
   /* Met à jour le compteur + le libellé du bouton d'export SANS re-render
      (snappy quand on coche/décoche plein de cases). */
   _refreshSelInfo() {
-    const linked = this.lines().filter(l => l.sku);
+    const linked = this.lines().filter(l => l.sku && this._inCat(this._k(l)));
     const n = this._selCount(linked);
     const info = document.getElementById('woo_selinfo');
     if (info) info.textContent = n > 0 ? `${n} produit(s) sélectionné(s)` : 'Aucune sélection → tout est exporté';
@@ -708,18 +768,18 @@ const Woo = {
   },
 
   /* Construit les lignes exportables { sku, name, price, stock, kind }, clé = SKU.
-     UNIQUEMENT la mastication (stockM pour stock/prix/SKU + catalogM pour affiner le prix).
-     Accessoires / matières / consommables volontairement exclus (voir plus bas). */
+     Mastication (stockM pour stock/prix/SKU + catalogM pour affiner le prix) + accessoires ayant un SKU (catalogA).
+     Matières / consommables volontairement exclus (voir plus bas). */
   lines() {
     const map = new Map();
-    const add = (sku, name, price, stock, kind, meat) => {
+    const add = (sku, name, price, stock, kind, meat, extra) => {
       sku = String(sku || '').trim(); if (!sku) return;
       const ex = map.get(sku);
       if (ex) {
         if (stock !== null) ex.stock = (ex.stock === null ? 0 : ex.stock) + stock;
         if (price) ex.price = price;
         if (!ex.meat && meat) ex.meat = meat;
-      } else map.set(sku, { sku, name, price: price || 0, stock, kind, meat: meat || '' });
+      } else map.set(sku, { sku, name, price: price || 0, stock, kind, meat: meat || '', ...(extra || {}) });
     };
     // 1) Stock mastication (quantités + prix de vente + SKU)
     Store.state.stockM.forEach(p => p.variants.forEach(v => {
@@ -736,10 +796,13 @@ const Woo = {
         if (v.sku) add(v.sku, `${p.name} — ${Pricing.labelVariant(v)}`, c.priceTTC, null, 'Mastication', p.meatType || '');
       });
     });
-    // Les ACCESSOIRES (catalogA) sont volontairement EXCLUS de l'export/comparaison :
-    // ce sont des modèles de calcul, pas les fiches produit finies mises en ligne, et ils
-    // n'ont pas de SKU. (Décision explicite d'Antho — ne pas les réintroduire ici.)
-    // Matières premières et consommables ne sont pas non plus des produits vendus → jamais inclus.
+    // 3) ACCESSOIRES (catalogA) : seulement ceux qui ont un SKU (Antho 2026-10-17 : ses fiches accessoires reçoivent leurs SKU un par un, la catégorie
+    //    « Accessoires » du filtre les isole). Stock = stock fini (général + événement). Avant cette date ils étaient exclus faute de SKU.
+    // Matières premières et consommables ne sont pas des produits vendus → jamais inclus.
+    Store.state.catalogA.forEach(a => {
+      const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
+      add(a.sku, a.name, Pricing.accCalc(a).priceTTC, U.num(a.stockGeneral) + U.num(a.stockEvent), 'Accessoires', '', { accCat: a.category || '', width: String(width || ''), bicolor: !!a.bicolor });
+    });
     return [...map.values()].sort((a, b) => U.sortFr(a.name, b.name));
   },
 
@@ -749,8 +812,7 @@ const Woo = {
     const all = this.lines();
     const linked = all.filter(l => l.sku);
     const missing = all.filter(l => !l.sku);
-    const siteFmts = [...new Set(linked.map(l => this._fmtOfName(l.name)))];
-    this._siteFmtList = siteFmts;
+    const opts = this._opts(linked);
     const visible = this._visible(linked);
     // Tri cliquable (même patron que Stock : clic = trie, re-clic = inverse le sens)
     const f = this.filters;
@@ -764,15 +826,11 @@ const Woo = {
       return r * dir;
     });
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Woo.setSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
-    const selCount = this._selCount(linked.filter(l => !this._isExcluded(l.sku)));
-    // Options « type de viande » construites à partir des lignes réellement liées
-    const meatCounts = {};
-    linked.forEach(l => { if (l.meat) meatCounts[l.meat] = (meatCounts[l.meat] || 0) + 1; });
-    const meatOpts = [{ v: 'all', l: `Tous (${linked.length})` }]
-      .concat(Object.keys(meatCounts).sort(U.sortFr).map(m => ({ v: m, l: `${m} (${meatCounts[m]})` })));
+    const inCat = linked.filter(l => this._inCat(this._k(l)));   // le « tout est exporté » est borné par la catégorie choisie
+    const selCount = this._selCount(inCat.filter(l => !this._isExcluded(l.sku)));
     const allVisSel = visible.length > 0 && visible.filter(l => !this._isExcluded(l.sku)).every(l => this._sel[l.sku]) && visible.some(l => !this._isExcluded(l.sku));
-    const excludedCount = linked.filter(l => this._isExcluded(l.sku)).length;
-    const exportable = linked.length - excludedCount;
+    const excludedCount = inCat.filter(l => this._isExcluded(l.sku)).length;
+    const exportable = inCat.length - excludedCount;
     const exportLabel = selCount > 0 ? `⬇️ Exporter le CSV (${selCount} sélectionné(s))` : `⬇️ Exporter le CSV pour WooCommerce (${exportable} produit${exportable > 1 ? 's' : ''})`;
 
     App.mount(`
@@ -795,10 +853,10 @@ const Woo = {
           <label class="opt-check"><input type="checkbox" ${this.includePrice ? 'checked' : ''} onchange="Woo.includePrice=this.checked"> Envoyer les prix (TTC public)</label>
           <label class="opt-check"><input type="checkbox" ${this.includeStock ? 'checked' : ''} onchange="Woo.includeStock=this.checked"> Envoyer les quantités de stock</label>
         </div>
-        <div class="grid c3 mt">
+        ${this._catSeg()}
+        <div class="grid c${this.cat === 'A' ? 4 : 3} mt">
           <div class="fg"><label>Recherche</label><input id="woo_q" value="${U.esc(this.filters.q)}" placeholder="nom du produit ou SKU…" oninput="Woo._setSearch(this.value)"></div>
-          <div class="fg"><label>Type de viande</label>${U.customSelect({ value: this.filters.meat, options: meatOpts, onPick: 'Woo._setMeat' })}</div>
-          <div class="fg"><label>Variantes (format)</label>${U.multiSelect({ groups: this._fmtGroups(siteFmts), selected: this._siteFmtSel(), toggle: 'Woo._siteFmtToggle', setAll: 'Woo._siteFmtAll', open: this.filters.fmtOpen, onOpen: 'Woo._siteFmtOpen' })}</div>
+          ${this._ctrls(opts).join('')}
         </div>
         <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
           <label class="ms-opt" style="flex:0 0 auto;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.selectAllVisible(this.checked)"> Tout sélectionner (${visible.length} affiché(s))</label>
@@ -810,7 +868,7 @@ const Woo = {
         <p class="muted help mt">Sur ton site : menu <b>Produits</b> (l'entrée à part, <u>pas</u> le menu WooCommerce) → <b>Tous les produits</b> → bouton <b>Importer</b> en haut de la page → choisir le fichier → cocher <b>« Mettre à jour les produits existants »</b>. WooCommerce retrouve chaque produit par son SKU.</p>
         <p class="pos mb0" style="margin-top:4px;">✓ Le fichier ne contient que <b>SKU + prix + stock</b> : tes <b>descriptions, catégories, étiquettes et images</b> sur le site ne sont <b>jamais touchées</b>.</p>
         <p class="muted help mb0" style="margin-top:4px;">Les colonnes sont au <b>format français de ton site</b> (UGS, Tarif régulier, Stock, En stock ?) → WooCommerce les reconnaît sans mapping manuel. <b>Fais un essai sur 2-3 produits d'abord</b> et vérifie que le prix affiché est bien le bon (ni ×100, ni ÷100).</p>
-        <p class="muted help mb0" style="margin-top:4px;">Seule la <b>mastication</b> est envoyée. Les <b>accessoires</b> (modèles de calcul, sans SKU), <b>matières premières</b> et <b>consommables</b> ne sont <b>jamais</b> exportés ni comparés — ce ne sont pas des produits vendus en ligne. Pour un produit mastication que tu gardes dans l'appli mais ne vends pas en ligne (événement-only, test…), clique <b>🚫</b> dans la colonne « Envoi site » : il sera <b>exclu définitivement</b> de l'export.</p>
+        <p class="muted help mb0" style="margin-top:4px;">Sont envoyés la <b>mastication</b> et les <b>accessoires qui ont un SKU</b> (choisis la catégorie au-dessus : sans sélection, « tout » = la catégorie affichée ; le stock d'un accessoire = son stock fini). Les <b>matières premières</b> et <b>consommables</b> ne sont <b>jamais</b> exportés ni comparés. Pour un produit mastication que tu gardes dans l'appli mais ne vends pas en ligne (événement-only, test…), clique <b>🚫</b> dans la colonne « Envoi site » : il sera <b>exclu définitivement</b> de l'export.</p>
       </div>
 
 ` : ''}
@@ -860,12 +918,12 @@ const Woo = {
         <h2>👁 Aperçu de l'export (${visible.length}${visible.length !== linked.length ? ` sur ${linked.length}` : ''} ligne(s))</h2>
         <div class="table-wrap"><table><thead><tr>
           <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.selectAllVisible(this.checked)" title="Tout sélectionner"></th>
-          <th>${sortHead('sku', 'SKU')}</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Viande')}</th><th class="num">${sortHead('price', 'Prix TTC')}</th><th class="num">${sortHead('stock', 'Stock')}</th><th>${sortHead('excluded', 'Envoi site')}</th></tr></thead>
+          <th>${sortHead('sku', 'SKU')}</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Type')}</th><th class="num">${sortHead('price', 'Prix TTC')}</th><th class="num">${sortHead('stock', 'Stock')}</th><th>${sortHead('excluded', 'Envoi site')}</th></tr></thead>
           <tbody>${visible.slice(0, 200).map(l => { const excl = this._isExcluded(l.sku); const skuJs = String(l.sku).replace(/'/g, "\\'"); return `<tr${excl ? ' style="opacity:.45;"' : ''}>
             <td><input type="checkbox" ${excl ? 'disabled' : (this._sel[l.sku] ? 'checked' : '')} onchange="Woo.toggleSel('${skuJs}',this.checked)"></td>
             <td><span class="tag">${U.esc(l.sku)}</span></td>
             <td class="col-name">${U.esc(l.name)}${excl ? ' <span class="badge">exclu</span>' : ''}</td>
-            <td>${l.meat ? `<span class="badge info">${U.esc(l.meat)}</span>` : '—'}</td>
+            <td>${l.meat || l.accCat ? `<span class="badge info">${U.esc(l.meat || l.accCat)}</span>` : '—'}</td>
             <td class="num">${this.includePrice ? U.eur(l.price) : '—'}</td>
             <td class="num">${this.includeStock ? (l.stock === null ? '<span class="muted">pas de stock lié</span>' : U.qty(l.stock)) : '—'}</td>
             <td>${excl ? `<button class="btn-ghost btn-sm" onclick="Woo.toggleExclude('${skuJs}')">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure ce produit du site (ne jamais l'envoyer)" onclick="Woo.toggleExclude('${skuJs}')">🚫</button>`}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun produit ne correspond au filtre.</td></tr>'}</tbody></table>
@@ -881,7 +939,7 @@ const Woo = {
 
   exportCsv() {
     // Les produits exclus du site (réglage persistant) ne sont JAMAIS exportés.
-    const allLinked = this.lines().filter(l => l.sku && !this._isExcluded(l.sku));
+    const allLinked = this.lines().filter(l => l.sku && !this._isExcluded(l.sku) && this._inCat(this._k(l)));   // « tout » = la catégorie choisie (Tous | Mastication | Accessoires)
     if (!allLinked.length) { U.toast('Aucun produit à exporter (tous sans SKU ou exclus).', true); return; }
     // Sélection active → on n'exporte QUE les produits cochés ; sinon tout.
     const selCount = this._selCount(allLinked);
