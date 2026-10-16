@@ -4,7 +4,7 @@
    Le lien avec les ventes se fait par le NOM (sale.customerName, casse/espaces ignorés) : renommer un client met à jour ses ventes.
    Affiché dans Statistiques → 👤 Clients (admin seulement : données personnelles). */
 const Clients = {
-  _open: {}, _dogOpen: {}, _balOpen: {}, _q: '', _sort: { k: 'name', dir: 'asc' },
+  _open: {}, _dogOpen: {}, _balOpen: {}, _ord: {}, _q: '', _sort: { k: 'name', dir: 'asc' },
   key(n) { return String(n || '').trim().toLowerCase(); },
   list() { return Store.state.clients || (Store.state.clients = []); },
   find(name) { const k = this.key(name); return k ? this.list().find(c => this.key(c.name) === k) : null; },
@@ -14,7 +14,62 @@ const Clients = {
     (Store.state.sales || []).forEach(s => { const n = (s.customerName || '').trim(); if (n && !set.has(this.key(n))) set.set(this.key(n), n); });
     return [...set.values()].sort((a, b) => a.localeCompare(b, 'fr'));
   },
-  datalist() { return `<datalist id="dl_clients">${this.names().map(n => `<option value="${U.esc(this.show(n))}">`).join('')}</datalist>`; },
+  /* Menu de suggestions des champs « client » (remplace le <datalist> du navigateur) : mettre `data-clcombo autocomplete="off"` sur l'<input>.
+     Recherche par mots (accents ignorés) sur le nom du client ET le nom de ses chiens. Le choix remplit le champ puis déclenche input + change :
+     les onchange / oninput existants des champs font le reste. Le nom tapé librement (nouveau client) reste accepté. */
+  _cb: null,
+  _cbRows(q) {
+    const dogsOf = n => { const c = this.find(n); return c ? (c.dogs || []).map(d => String(d.name || '').trim()).filter(Boolean) : []; };
+    return this.names().map(n => ({ n, show: this.show(n), dogs: dogsOf(n) }))
+      .filter(r => !q || U.has(r.show + ' ' + r.dogs.join(' '), q));
+  },
+  _cbOpen(inp) {
+    const cb = this._cb && this._cb.inp === inp ? this._cb : (this.cbClose(), this._cb = { inp, i: -1, rows: [] });
+    const q = inp.value.trim(); cb.rows = this._cbRows(q).slice(0, 60); cb.i = -1;
+    let el = document.getElementById('clCombo');
+    if (!el) { el = document.createElement('div'); el.id = 'clCombo'; el.className = 'ac-list'; el.onmousedown = e => e.preventDefault(); document.body.appendChild(el); }
+    el.innerHTML = cb.rows.length ? cb.rows.map((r, k) => {
+      const dm = q ? r.dogs.filter(d => U.has(d, q)) : [];   // chiens qui correspondent à la recherche : mis en avant
+      const dogTxt = r.dogs.map(d => `<span class="${dm.includes(d) ? 'cb-hit' : ''}">🐕 ${U.esc(d)}</span>`).join(' · ');
+      return `<div class="ac-item cb-row" data-k="${k}" onclick="Clients._cbPick(${k})"><span class="cb-n">👤 ${U.esc(r.show)}</span>${dogTxt ? `<span class="cb-d">${dogTxt}</span>` : ''}</div>`;
+    }).join('') : `<div class="ac-item muted">${q ? 'Aucun client ni chien trouvé : « ' + U.esc(q) + ' » sera créé comme nouveau client.' : 'Aucun client pour l\'instant.'}</div>`;
+    this._cbPlace();
+  },
+  _cbPlace() {
+    const cb = this._cb, el = document.getElementById('clCombo'); if (!cb || !el) return;
+    if (!cb.inp.isConnected) { this.cbClose(); return; }
+    const r = cb.inp.getBoundingClientRect(), w = Math.min(Math.max(r.width, 260), window.innerWidth - 16);
+    const below = window.innerHeight - r.bottom, up = below < 200 && r.top > below;
+    el.style.cssText = `position:fixed;z-index:400;left:${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px;width:${w}px;min-width:0;max-width:none;right:auto;max-height:${Math.max(120, Math.min(300, (up ? r.top : below) - 12))}px;overflow-y:auto;overscroll-behavior:contain;` + (up ? `bottom:${window.innerHeight - r.top + 4}px;top:auto;` : `top:${r.bottom + 4}px;`);
+  },
+  cbClose() { const el = document.getElementById('clCombo'); if (el) el.remove(); this._cb = null; },
+  _cbHi() {
+    const el = document.getElementById('clCombo'), cb = this._cb; if (!el || !cb) return;
+    el.querySelectorAll('.cb-row').forEach(x => x.classList.toggle('active', +x.dataset.k === cb.i));
+    const a = el.querySelector('.cb-row.active'); if (a) a.scrollIntoView({ block: 'nearest' });
+  },
+  _cbPick(k) {
+    const cb = this._cb; if (!cb || !cb.rows[k]) return;
+    const inp = cb.inp; inp.value = cb.rows[k].show;
+    inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
+    this.cbClose();   // après les événements (l'événement input rouvrirait le menu)
+  },
+  _cbInit() {
+    if (this._cbDone) return; this._cbDone = true;
+    const is = e => e.target && e.target.matches && e.target.matches('input[data-clcombo]');
+    document.addEventListener('focusin', e => { if (is(e)) this._cbOpen(e.target); else if (this._cb) this.cbClose(); });
+    document.addEventListener('input', e => { if (is(e)) this._cbOpen(e.target); });
+    document.addEventListener('mousedown', e => { if (this._cb && !e.target.closest('#clCombo') && e.target !== this._cb.inp) this.cbClose(); });   // fermeture par clic extérieur (jamais onblur)
+    document.addEventListener('keydown', e => {
+      const cb = this._cb; if (!cb || e.target !== cb.inp) return;
+      if (e.key === 'Escape') { this.cbClose(); return; }
+      if (e.key === 'Tab') { this.cbClose(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!cb.rows.length) return; cb.i = (cb.i + (e.key === 'ArrowDown' ? 1 : -1) + cb.rows.length) % cb.rows.length; this._cbHi(); }
+      else if (e.key === 'Enter' && cb.i >= 0) { e.preventDefault(); this._cbPick(cb.i); }
+    });
+    window.addEventListener('resize', () => this._cbPlace());
+    document.addEventListener('scroll', () => this._cbPlace(), true);
+  },
   ro() { return !!App.isViewer || (!!App.visitMode && !App.isTeam); },   // profil visite OU mode « masquer » de l'admin : comme si un visiteur regardait l'écran   // profil visite : lecture seule, prénom uniquement, pas de coordonnées
   split(name) { const t = String(name || '').trim(), i = t.indexOf(' '); return i < 0 ? { first: t, last: '' } : { first: t.slice(0, i), last: t.slice(i + 1).trim() }; },
   show(name) {   // nom affiché : complet, ou prénom seul pour le profil visite
@@ -141,6 +196,8 @@ const Clients = {
 
   /* ---------- actions ---------- */
   toggle(id) { this._open[id] = !this._open[id]; Stats.render(); },
+  /* Fiche client : clic sur une commande → seuls les produits de CETTE commande sont listés ; re-clic (ou ✕) → tous les achats. */
+  pickOrder(cid, sid) { this._ord[cid] = this._ord[cid] === sid ? '' : sid; Stats.render(); },
   setQ(v) { this._q = v; Stats.render(); U.refocus('cl_q'); },
   setSort(k) { this._sort = this._sort.k === k ? { k, dir: this._sort.dir === 'asc' ? 'desc' : 'asc' } : { k, dir: k === 'name' ? 'asc' : 'desc' }; Stats.render(); },
   create() {
@@ -338,8 +395,14 @@ const Clients = {
   },
   _fiche(c, a) {
     const inp = (f, lbl, ph, type) => f === 'note' ? `<div class="fg"><label>${lbl}</label><textarea class="note-area" rows="1" placeholder="${ph || ''}" onchange="Clients.setField('${c.id}','${f}',this.value)">${U.esc(c[f] || '')}</textarea></div>` : `<div class="fg"><label>${lbl}</label><input ${type ? `type="${type}"` : ''} value="${U.esc(c[f] || '')}" placeholder="${ph || ''}" onchange="Clients.setField('${c.id}','${f}',this.value)"></div>`;
-    const prods = a ? Object.entries(a.prods).sort((x, y) => y[1].qty - x[1].qty) : [];
     const orders = a ? a.sales.slice().sort((x, y) => y.ts - x.ts) : [];
+    const selSale = orders.find(s => s.id === this._ord[c.id]) || null;   // commande choisie (sinon : tous les achats)
+    let prods = a ? Object.entries(a.prods).sort((x, y) => y[1].qty - x[1].qty) : [];
+    if (selSale) {
+      const pm = {};
+      (selSale.items || []).filter(i => i.kind !== 'C').forEach(i => { const pk = i.name + (i.label ? ' ' + i.label : ''); const p = pm[pk] || (pm[pk] = { qty: 0, last: selSale.ts }); p.qty += U.num(i.qty); });
+      prods = Object.entries(pm).sort((x, y) => y[1].qty - x[1].qty);
+    }
     return `<tr class="cl-fiche"><td colspan="6"><div class="cl-body">
       ${this.ro() ? '' : `<div class="cl-id">${inp('firstName', 'Prénom', '')}${inp('lastName', 'Nom', '')}${inp('phone', 'Téléphone', '', 'tel')}${inp('email', 'Email', '', 'email')}${inp('note', 'Note', 'ex : rencontré au marché de…')}</div>
       <div class="cl-id mt">
@@ -357,8 +420,8 @@ const Clients = {
       ${this.ro() ? '' : `<button class="btn-cta btn-sm" onclick="Clients.addDog('${c.id}')">＋ Ajouter un chien</button>`}
       <h3 class="mt">🛒 Achats</h3>
       ${a ? `<div class="cl-cols">
-        <div><div class="muted" style="font-size:.82rem;margin-bottom:4px;">Produits achetés (quantité totale)</div><table class="pack-tbl"><tbody>${prods.map(([n, p]) => `<tr><td class="col-name" style="text-align:left;">${U.esc(n)}</td><td class="num">×${p.qty}</td><td class="num muted">${new Date(p.last).toLocaleDateString('fr-FR')}</td></tr>`).join('')}</tbody></table></div>
-        <div><div class="muted" style="font-size:.82rem;margin-bottom:4px;">Commandes</div><table class="pack-tbl"><tbody>${orders.map(s => `<tr><td class="col-name" style="text-align:left;">${new Date(s.ts).toLocaleDateString('fr-FR')}${s.eventName ? ' · 🎪 ' + U.esc(s.eventName) : ''}</td><td class="num sensitive">${U.eur(s.total)}</td></tr>`).join('')}</tbody></table></div>
+        <div><div class="muted" style="font-size:.82rem;margin-bottom:4px;">${selSale ? `Produits de la commande du <b>${new Date(selSale.ts).toLocaleDateString('fr-FR')}</b> <button class="btn-ghost btn-sm fit" onclick="Clients.pickOrder('${c.id}','${selSale.id}')" title="Revenir à tous les achats">✕ Tout afficher</button>` : 'Produits achetés (quantité totale)'}</div><table class="pack-tbl"><tbody>${prods.map(([n, p]) => `<tr><td class="col-name" style="text-align:left;">${U.esc(n)}</td><td class="num">×${p.qty}</td><td class="num muted">${new Date(p.last).toLocaleDateString('fr-FR')}</td></tr>`).join('')}</tbody></table></div>
+        <div><div class="muted" style="font-size:.82rem;margin-bottom:4px;">Commandes <span class="muted">· clique une date</span></div><table class="pack-tbl cl-ord-tbl"><tbody>${orders.map(s => `<tr class="cl-ord ${selSale && selSale.id === s.id ? 'sel' : ''}" onclick="Clients.pickOrder('${c.id}','${s.id}')"><td class="col-name" style="text-align:left;">${new Date(s.ts).toLocaleDateString('fr-FR')}${s.eventName ? ' · 🎪 ' + U.esc(s.eventName) : ''}</td><td class="num sensitive">${U.eur(s.total)}</td></tr>`).join('')}</tbody></table></div>
       </div>` : '<p class="muted">Aucune commande pour ce client.</p>'}
       ${this.ro() ? '' : `<div class="mt"><button class="btn-danger btn-sm" onclick="Clients.remove('${c.id}')">🗑 Supprimer ce client</button></div>`}
     </div></td></tr>`;
@@ -393,3 +456,4 @@ const Clients = {
       </div>`);
   }
 };
+Clients._cbInit();

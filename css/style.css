@@ -1611,3 +1611,13 @@ body.pan-picker-open { overflow: hidden; }
   table.b2b-vtbl.stk td[style*="border-left"] { padding-left: 8px; }
 }
 @media (max-width: 700px) { .grid.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Fiche client : commandes cliquables (filtre des produits) + menu de suggestions client/chien (Clients._cb*) */
+.cl-ord-tbl tr.cl-ord { cursor: pointer; }
+table.cl-ord-tbl tbody tr.cl-ord:hover td { background: rgba(166, 113, 83, .22); }
+table.cl-ord-tbl tbody tr.cl-ord.sel td { background: var(--caramel) !important; color: #fff; font-weight: 700; }
+.cl-ord-tbl tr.cl-ord.sel td .sensitive { color: #fff; }
+#clCombo .cb-row { display: flex; flex-direction: column; gap: 1px; }
+#clCombo .cb-d { font-size: .8rem; font-weight: 500; color: var(--gris); }
+#clCombo .cb-d .cb-hit { color: var(--caramel); font-weight: 700; }
+#clCombo .cb-row.active .cb-d, #clCombo .cb-row.active .cb-d .cb-hit { color: #fff !important; }

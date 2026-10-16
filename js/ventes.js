@@ -872,7 +872,6 @@ const Ventes = {
     if (e.target.closest('button,input,select,a,label,textarea,.badge[onclick]')) return;
     this.toggleHistOpen(id);
   },
-  clientsDatalist() { return Clients.datalist(); },
   setCustomerName(id, val) {
     const s = Store.state.sales.find(x => x.id === id); if (!s) return;
     const snap = Store.snapshot('sales', s);
@@ -1302,7 +1301,7 @@ const Ventes = {
       const detail = `<tr class="sale-detail sale-open ${s.cancelled ? 'dim' : ''}"><td colspan="9"><div class="sh-info">
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
-          ${field('Client', `<input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}`)}
+          ${field('Client', `<input type="text" data-clcombo autocomplete="off" placeholder="client ou chien…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">`)}
           ${s.devisNo ? field('Devis n°', U.esc(s.devisNo)) : ''}${s.pro ? field('Vente', '🏢 pro (revente)') : ''}
           ${s.cancelled ? '' : field('Paiement', this.paySelect(s))}
           ${field('Remise', this.deliveryLabel(s))}
@@ -2198,7 +2197,7 @@ const Ventes = {
       <div class="card">
         <h2>👤 Client &amp; paiement</h2>
         ${s.cancelled ? '' : `<div class="fg" style="max-width:360px;margin-bottom:10px;"><label>Moyen de paiement <span class="muted help">Le client change d'avis après coup (virement → espèces…) : change-le ici. Les frais de paiement (SumUp / Stripe) se recalculent tout seuls dans la compta.</span></label>${this.paySelect(s)}</div>`}
-        <div class="fg" style="max-width:360px;"><label>Nom du client (optionnel)</label><input type="text" list="dl_clients" placeholder="nom du client…" value="${U.esc(Clients.show(s.customerName || ''))}" onchange="Ventes.setCustomerName('${s.id}',this.value)">${this.clientsDatalist()}</div>
+        <div class="fg" style="max-width:360px;"><label>Nom du client (optionnel)</label><input type="text" data-clcombo autocomplete="off" placeholder="nom du client ou du chien…" value="${U.esc(Clients.show(s.customerName || ''))}" onchange="Ventes.setCustomerName('${s.id}',this.value)"></div>
       </div>
       ${isEv ? `
       <div class="card">

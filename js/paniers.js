@@ -794,7 +794,7 @@ const Paniers = {
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--card-border);">
         <div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:6px;">⏳ Mettre en attente (en attendant l'accord de la cliente)</div>
         <div class="grid c2" style="gap:10px;">
-          ${fld('Nom de la cliente', `<input type="text" list="dl_clients" value="${U.esc(this._shClient)}" placeholder="nom de la cliente…" oninput="Paniers._shSet('Client',this.value)">${Clients.datalist()}`)}
+          ${fld('Nom de la cliente', `<input type="text" data-clcombo autocomplete="off" value="${U.esc(this._shClient)}" placeholder="nom de la cliente ou du chien…" oninput="Paniers._shSet('Client',this.value)">`)}
           ${fld('Valable jusqu\'au (option)', `<input type="date" value="${U.esc(this._shValid)}" onchange="Paniers._shSet('Valid',this.value)">`)}
           ${fld('Intitulé (option)', `<input type="text" value="${U.esc(this._shLabel)}" placeholder="ex : version 2, sans le sprat…" oninput="Paniers._shLabel=this.value">`)}
           ${fld('Note interne (jamais affichée à la cliente)', `<input type="text" value="${U.esc(this._shNote)}" placeholder="ex : retrait samedi" oninput="Paniers._shNote=this.value">`)}
@@ -1507,7 +1507,7 @@ const Paniers = {
         <h2>⚙️ Configuration</h2>
 
         <div class="fg" style="margin-bottom:12px;"><label>🐕 Cliente (option)</label>
-          <input type="text" list="dl_clients" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente…" onchange="Paniers.setClient(this.value)">${Clients.datalist()}
+          <input type="text" data-clcombo autocomplete="off" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente ou du chien…" onchange="Paniers.setClient(this.value)">
           <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div></div>
 
         <div class="frow" style="gap:12px;">
