@@ -904,7 +904,7 @@ const Woo = {
           ${excludedCount > 0 ? `<span class="tag" style="border-color:var(--alerte);">🚫 ${excludedCount} exclu(s) du site</span>` : ''}
           ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSel()">Vider la sélection</button>` : ''}
         </div>
-        <button id="woo_export_btn" class="btn-cta mt" onclick="Woo.exportCsv()">${exportLabel}</button>
+        <div class="frow mt" style="gap:10px;align-items:center;flex-wrap:wrap;"><button id="woo_export_btn" class="btn-cta fit" onclick="Woo.exportCsv()">${exportLabel}</button><button class="btn-ghost btn-sm fit" onclick="Woo.showGuide()">📖 Guide d'import</button></div>
         <p class="muted help mt">Sur ton site : menu <b>Produits</b> (l'entrée à part, <u>pas</u> le menu WooCommerce) → <b>Tous les produits</b> → bouton <b>Importer</b> en haut de la page → choisir le fichier → cocher <b>« Mettre à jour les produits existants »</b>. WooCommerce retrouve chaque produit par son SKU.</p>
         <p class="pos mb0" style="margin-top:4px;">✓ Le fichier ne contient que <b>SKU + prix + stock</b> : tes <b>descriptions, catégories, étiquettes et images</b> sur le site ne sont <b>jamais touchées</b>.</p>
         <p class="muted help mb0" style="margin-top:4px;">Les colonnes sont au <b>format français de ton site</b> (UGS, Tarif régulier, Stock, En stock ?) → WooCommerce les reconnaît sans mapping manuel. <b>Fais un essai sur 2-3 produits d'abord</b> et vérifie que le prix affiché est bien le bon (ni ×100, ni ÷100).</p>
@@ -1007,7 +1007,35 @@ const Woo = {
     // Guillemets SEULEMENT si nécessaire (virgule, guillemet, saut de ligne) : un BOM suivi de « "UGS" » faisait lire le titre avec ses guillemets → colonne UGS non reconnue par l'importateur
     const q = c => { c = String(c); return /[",\r\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c; };
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
-    U.download(`woocommerce-touffu-${U.today()}.csv`, '\ufeff' + csv, 'text/csv');
+    const fname = `woocommerce-touffu-${U.today()}.csv`;
+    U.download(fname, '﻿' + csv, 'text/csv');
     U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.`);
+    // Produits à contrôler sur le site après l'import : tous si ≤ 3, sinon 3 au hasard
+    const pool = linked.slice(), pick = [];
+    while (pick.length < Math.min(3, pool.length)) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    this._lastExport = { file: fname, n: linked.length, price: this.includePrice, stock: this.includeStock, sample: pick.map(l => ({ sku: l.sku, name: l.name, price: l.price, stock: l.stock })) };
+    if (!this.guideOff()) setTimeout(() => this.showGuide(), 400);
+  },
+
+  /* ───── Guide d'import WooCommerce (Antho 2026-10-17) : s'ouvre après chaque export (sauf « ne plus afficher »), revoir via « 📖 Guide d'import » ─────
+     Fenêtre qui reste ouverte (seul « Fermer » la ferme) pendant qu'Antho fait l'import sur son site dans un autre onglet. Étapes à cocher + valeurs attendues du dernier export. */
+  guideOff() { try { return localStorage.getItem('touffu_wooGuideOff') === '1'; } catch (e) { return false; } },
+  setGuideOff(on) { try { localStorage.setItem('touffu_wooGuideOff', on ? '1' : '0'); } catch (e) {} },
+  showGuide() {
+    const x = this._lastExport, step = (n, h) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.95rem;font-weight:400;color:var(--texte);"><input type="checkbox" style="margin-top:4px;flex:0 0 auto;"><span><b>${n}.</b> ${h}</span></label>`;
+    const cols = ['UGS → UGS'].concat(!x || x.price ? ['Tarif régulier → Tarif régulier'] : [], !x || x.stock ? ['Stock → Stock', 'En stock ? → En stock ?'] : []);
+    const checks = x ? x.sample.map(s => `<li><b>${U.esc(s.name)}</b> (${U.esc(s.sku)}) : ${x.price ? U.eur(s.price) : ''}${x.price && x.stock && s.stock !== null ? ' · ' : ''}${x.stock && s.stock !== null ? 'stock ' + U.qty(s.stock) : ''}</li>`).join('') : '';
+    U.modal({
+      title: '📖 Guide d\'import sur ton site', wide: true, hideOk: true,
+      body: `<p class="muted" style="margin-top:0;">Garde cette fenêtre ouverte, passe sur ton site (autre onglet) et coche chaque étape.</p>
+        ${step(1, x ? `Le fichier <b>${U.esc(x.file)}</b> (${x.n} produit${x.n > 1 ? 's' : ''}) est enregistré dans tes Téléchargements.` : 'Exporte d\'abord ton fichier (bouton « Exporter le CSV »).')}
+        ${step(2, 'Sur ton site : menu <b>Produits</b> (pas WooCommerce) → <b>Tous les produits</b> → bouton <b>Importer</b> en haut.')}
+        ${step(3, 'Clique « Choisir un fichier », prends le fichier ci-dessus, <b>coche « Mettre à jour les produits existants »</b>, puis <b>Continuer</b>.')}
+        ${step(4, `Écran « Mapper les champs » : chaque colonne de gauche doit avoir <b>le même nom à droite</b> :<br><span class="muted">${cols.join(' · ')}</span><br><b style="color:var(--alerte);">Si une ligne affiche « Ne pas importer » : ne lance pas l'import</b> (ferme, refais l'export, ou choisis le bon champ à la main).`)}
+        ${step(5, 'Clique <b>Lancer l\'importation</b> et attends « Terminé ».')}
+        ${step(6, `Contrôle : ouvre ${x && x.sample.length > 1 ? 'ces fiches' : 'la fiche'} sur le site${x && x.n > x.sample.length ? ' (quelques produits pris au hasard dans ton export)' : ''} :${checks ? `<ul style="margin:6px 0 0 18px;">${checks}</ul>` : ''}`)}
+        ${step(7, 'Dernier pas : exporte à nouveau tes produits depuis le site (<b>Produits → Tous les produits → Exporter</b>), puis ici <b>Synchro → Site → Comparer → Rafraîchir la référence</b> : les produits envoyés doivent passer en ✅.')}
+        <label class="opt-check" style="margin-top:6px;text-transform:none;letter-spacing:0;font-size:.9rem;"><input type="checkbox" ${this.guideOff() ? 'checked' : ''} onchange="Woo.setGuideOff(this.checked)"> Ne plus afficher ce guide après un export <span class="muted">(le bouton « 📖 Guide d'import » le rouvre)</span></label>`
+    });
   }
 };
