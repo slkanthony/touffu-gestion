@@ -111,6 +111,28 @@ const Partners = {
     return true;
   },
   setMonth(m) { this._month = m; Stats.render(); },
+  _chartP: '',   // partenaire affiché dans la courbe ('' = tous)
+  setChartP(v) { this._chartP = v; Stats.render(); },
+  /* Courbe des 12 derniers mois : commandes avec un code (axe de droite) et montant reversé (axe de gauche). Existe dès le départ, même à zéro. */
+  _draw() {
+    const cv = document.getElementById('partnersChart'); if (!cv || typeof Chart === 'undefined') return;
+    if (Stats._charts.partners) { Stats._charts.partners.destroy(); delete Stats._charts.partners; }
+    const now = new Date(), keys = [];
+    for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); keys.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+    const n = {}, due = {}; keys.forEach(k => { n[k] = 0; due[k] = 0; });
+    this._index().forEach(e => { if (this._chartP && e.pid !== this._chartP) return; if (e.month in n) { n[e.month] += e.sales.length; due[e.month] += e.due; } });
+    const dark = Theme.get() === 'dark', tc = dark ? '#eee3d3' : '#1c2b33', C = U.CHART_COLORS;
+    const ds = (label, data, color, yAxisID, extra) => ({ label, data, yAxisID, borderColor: color, backgroundColor: color, pointBackgroundColor: color, borderWidth: 3, pointRadius: 4, pointHoverRadius: 7, tension: .3, ...extra });
+    Stats._charts.partners = new Chart(cv, {
+      type: 'line',
+      data: { labels: keys.map(k => Compta.monthLabel(k)), datasets: [ds('Montant reversé (€)', keys.map(k => Math.round(due[k] * 100) / 100), C[0], 'y'), ds('Commandes avec un code', keys.map(k => n[k]), C[4], 'y1', { borderDash: [6, 4] })] },
+      options: {
+        maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom', labels: { color: tc, usePointStyle: true, pointStyle: 'circle', boxWidth: 15, boxHeight: 15, padding: 18, font: { family: 'Quicksand', size: 14, weight: '700' } } }, tooltip: { callbacks: { label: c => c.datasetIndex === 0 ? ' Reversé : ' + U.eur(c.parsed.y) : ' ' + c.parsed.y + ' commande' + (c.parsed.y > 1 ? 's' : '') + ' avec un code' } } },
+        scales: { y: { beginAtZero: true, suggestedMax: 5, position: 'left', ticks: { color: tc, callback: v => v + ' €' } }, y1: { beginAtZero: true, suggestedMax: 5, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: tc, precision: 0, stepSize: 1 } }, x: { ticks: { color: tc, maxRotation: 60, font: { size: 11 } } } }
+      }
+    });
+  },
   _codeF: {},   // filtre par code dans la liste d'un partenaire : { pid: code }
   setCodeFilter(pid, code) { this._codeF[pid] = this._codeF[pid] === code ? '' : code; Stats.render(); },
   /* Clic sur une commande → fiche du client (Stats → Clients), commande sélectionnée */
@@ -191,11 +213,17 @@ const Partners = {
         ${cur.length ? cur.map(block).join('') : `<p class="muted mt">Aucune commande avec un code partenaire en ${Compta.monthLabel(this._month)}.</p>`}
         ${pending.length ? `<div class="mt"><div class="muted" style="font-size:.82rem;margin-bottom:4px;">Autres mois pas encore soldés</div><table class="pack-tbl"><tbody>${pending.map(e => `<tr style="cursor:pointer;" onclick="Partners.setMonth('${e.month}')"><td style="text-align:left;">${Compta.monthLabel(e.month)}</td><td style="text-align:left;">${U.esc(e.name)}</td><td class="num sensitive">${U.eur(this._rest(e).rest)}</td></tr>`).join('')}</tbody></table></div>` : ''}
       </div>
+      <div class="card sensitive"><div class="chart-head" style="min-height:0;align-items:center;"><h2>📈 Évolution sur 12 mois</h2>
+          <div class="fg" style="margin:0;max-width:240px;"><label>Partenaire</label><select onchange="Partners.setChartP(this.value)"><option value="">Tous</option>${this.list().map(p => `<option value="${p.id}" ${p.id === this._chartP ? 'selected' : ''}>${U.esc(p.name)}</option>`).join('')}</select></div></div>
+        <div style="position:relative;height:280px;"><canvas id="partnersChart"></canvas></div>
+        <p class="muted help" style="margin:6px 0 0;font-size:.82rem;">Montant reversé aux partenaires (courbe pleine, axe de gauche) et nombre de commandes passées avec un code (pointillés, axe de droite).${entries.length ? '' : ' Pas encore de commande avec un code : la courbe reste à zéro, puis se remplira toute seule.'}</p>
+      </div>
       <div class="card"><h2>🤝 Mes partenaires &amp; codes ${U.info("Un partenaire peut avoir plusieurs codes. « Réduction client % » = ce que le client économise : elle se remplit toute seule quand tu tapes le code dans Paniers ou Ventes. « Reversé au partenaire % » = ce que TU lui reverses (laisse vide ou 0 pour un code de réduction sans affiliation). Le pourcentage est figé sur chaque vente au moment de la commande.")}</h2>
         <div class="frow" style="align-items:flex-end;gap:10px;flex-wrap:wrap;">
           <div class="fg" style="max-width:280px;margin:0;"><label>Nouveau partenaire</label><input id="pt_new" placeholder="nom du partenaire" onkeydown="if(event.key==='Enter')Partners.addPartner()"></div>
           <button class="btn-cta fit" onclick="Partners.addPartner()">＋ Créer</button></div>
         ${this.list().map(p => this._partnerCard(p)).join('') || '<p class="muted mt">Aucun partenaire pour l\'instant.</p>'}
       </div>`);
+    this._draw();
   }
 };
