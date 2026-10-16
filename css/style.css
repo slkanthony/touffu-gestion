@@ -1636,3 +1636,8 @@ tr.pt-ord { cursor: pointer; }
 table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
 #clCombo .cb-pct { margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(166, 113, 83, .18); color: var(--caramel); font-size: .8rem; font-weight: 700; }
 #clCombo .cb-row.active .cb-pct { background: rgba(255,255,255,.25); color: #fff; }
+
+/* Titres des graphiques de distribution des coefficients : même hauteur d'en-tête (Public / B2B) pour aligner titres et courbes */
+.chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.chart-head h2 { margin: 0; }
+@media (min-width: 701px) { .chart-head { min-height: 84px; flex-wrap: nowrap; } }

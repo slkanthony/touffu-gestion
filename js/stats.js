@@ -546,13 +546,13 @@ const Stats = {
         <div class="card"><h2>🏬 Répartition par fournisseur</h2><div style="position:relative;height:260px;">${products.length ? '<canvas id="statsChartSupplier"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div></div>
       </div>
       <div class="grid c2 mt">
-        <div class="card sensitive"><h2>📊 Distribution des coefficients (Public)</h2><div style="position:relative;height:260px;">${products.length ? '<canvas id="statsChartCoeff"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div></div>
+        <div class="card sensitive"><div class="chart-head"><h2>📊 Distribution des coefficients (Public)</h2></div><div style="position:relative;height:250px;">${products.length ? '<canvas id="statsChartCoeff"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div></div>
         <div class="card sensitive" style="border-left:4px solid var(--caramel);">
-          <div class="frow" style="justify-content:space-between;align-items:center;">
-            <h2 style="margin:0;">🤝 Distribution des coefficients (B2B)</h2>
+          <div class="chart-head">
+            <h2>🤝 Distribution des coefficients (B2B)</h2>
             <div class="fg" style="max-width:150px;margin:0;"><label>Remise globale ${B2B._client() === 'ent' ? 'entreprise' : 'micro'} (%)</label><input type="number" step="0.1" value="${B2B._pct1(B2B._discView(B2B.discount, Pricing.vatRate(), B2B._client()))}" onchange="Stats.setB2BDiscount(this.value)"></div>
           </div>
-          <div style="position:relative;height:230px;">${products.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div>
+          <div style="position:relative;height:250px;">${products.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : '<p class="muted">Aucun produit.</p>'}</div>
         </div>
       </div>
       <div id="coeffList" class="mt print-target">${this._coeffListHTML('mast')}</div>
@@ -706,13 +706,13 @@ const Stats = {
           <p class="muted" style="font-size:.78rem;margin:6px 0 0;">Un accessoire proposé en plusieurs largeurs est compté dans chacune.</p></div>
       </div>
       <div class="grid c2 mt">
-        <div class="card sensitive"><h2>📊 Distribution des coefficients (Public)</h2><div style="position:relative;height:260px;">${items.length ? '<canvas id="statsChartCoeff"></canvas>' : none}</div></div>
+        <div class="card sensitive"><div class="chart-head"><h2>📊 Distribution des coefficients (Public)</h2></div><div style="position:relative;height:250px;">${items.length ? '<canvas id="statsChartCoeff"></canvas>' : none}</div></div>
         <div class="card sensitive" style="border-left:4px solid var(--caramel);">
-          <div class="frow" style="justify-content:space-between;align-items:center;">
-            <h2 style="margin:0;">🤝 Distribution des coefficients (B2B)</h2>
+          <div class="chart-head">
+            <h2>🤝 Distribution des coefficients (B2B)</h2>
             <div class="fg" style="max-width:150px;margin:0;"><label>Remise globale accessoires ${B2B._client() === 'ent' ? 'entreprise' : 'micro'} (%)</label><input type="number" step="0.1" value="${B2B._pct1(B2B._discView(B2B.discountAcc, Pricing.vatRate(), B2B._client()))}" onchange="Stats.setB2BDiscountAcc(this.value)"></div>
           </div>
-          <div style="position:relative;height:230px;">${items.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : none}</div>
+          <div style="position:relative;height:250px;">${items.length ? '<canvas id="statsChartCoeffB2B"></canvas>' : none}</div>
         </div>
       </div>
       <div class="grid c3 mt">
@@ -825,7 +825,7 @@ const Stats = {
         options: {
           maintainAspectRatio: false,
           scales: { y: { beginAtZero: true, grace: '12%', ticks: { color: textColor, precision: 0 }, title: { display: true, text: acc ? "Nombre d'accessoires" : 'Nombre de variantes', color: textColor, font: { size: 11, weight: '600' } } }, x: { ticks: { color: textColor, autoSkip: false, maxRotation: 60, font: { size: 10 } } } },
-          plugins: { legend: { labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 12, font: { family: 'Quicksand', size: 11 } } } },
+          plugins: { legend: { labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 15, boxHeight: 15, padding: 18, font: { family: 'Quicksand', size: 14, weight: '700' } } } },
           onClick: (evt, els) => {
             if (!els.length) return;
             const b = bins[els[0].index];
