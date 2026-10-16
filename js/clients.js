@@ -128,10 +128,28 @@ const Clients = {
     </div></details>`;
   },
   /* Réduction HABITUELLE d'un client (partenaire d'élevage…, Antho 2026-10-11) : c.discOn + c.discPct (%) + c.discCode (texte libre). Elle se remplit toute seule dans Paniers et Ventes quand on choisit ce client (modifiable par ticket). */
+  /* Code PARTENAIRE de la fiche (2026-10-16) : c.partnerCodeId (choisi dans la fiche) ; sinon, une ancienne réduction habituelle dont le code tapé à la main correspond à un code partenaire suit ce partenaire.
+     La réduction vient alors du code (Partners) : modifier le % ou le code du partenaire met à jour toutes les fiches rattachées. Renvoie { p, c } ou null. */
+  partnerCodeOf(c) {
+    if (!c || typeof Partners === 'undefined') return null;
+    if (c.partnerCodeId) { for (const p of Partners.list()) { const x = (p.codes || []).find(k => k.id === c.partnerCodeId); if (x) return { p, c: x }; } return null; }
+    return c.discOn && String(c.discCode || '').trim() ? Partners.byCode(c.discCode) : null;
+  },
   discountOf(name) {
-    const c = this.find(name); if (!c || !c.discOn) return null;
+    const c = this.find(name); if (!c) return null;
+    const m = this.partnerCodeOf(c);
+    if (m) { const pct = Math.min(99, Math.max(0, U.num(m.c.discPct))); return pct > 0 ? { pct, code: m.c.code, partner: m.p.name } : null; }
+    if (!c.discOn) return null;
     const pct = Math.min(99, Math.max(0, U.num(c.discPct)));
     return pct > 0 ? { pct, code: String(c.discCode || '').trim() } : null;
+  },
+  setPartnerCode(cid, v) {
+    if (this.ro()) return;
+    const c = this.list().find(x => x.id === cid); if (!c) return;
+    c.partnerCodeId = v || '';
+    if (!v && typeof Partners !== 'undefined' && Partners.byCode(c.discCode)) c.discCode = '';   // détachement : le code tapé à la main ne doit pas re-rattacher la fiche
+    Store.save('clients'); Stats.render();
+    if (v) { const d = this.discountOf(c.name); if (d) U.toast(`🤝 Rattaché au code ${d.code} (${d.partner}) : −${U.qty(d.pct)} % pour ce client.`); }
   },
   setDisc(cid, f, v) {
     if (this.ro()) return;
@@ -408,6 +426,8 @@ const Clients = {
       (selSale.items || []).filter(i => i.kind !== 'C').forEach(i => { const pk = i.name + (i.label ? ' ' + i.label : ''); const p = pm[pk] || (pm[pk] = { qty: 0, last: selSale.ts }); p.qty += U.num(i.qty); });
       prods = Object.entries(pm).sort((x, y) => y[1].qty - x[1].qty);
     }
+    const pm = this.partnerCodeOf(c);
+    const pcs = (typeof Partners !== 'undefined' ? Partners.list() : []).flatMap(p => (p.codes || []).filter(k => k.code).map(k => ({ id: k.id, label: `${k.code} · ${p.name}${U.num(k.discPct) ? ' (−' + U.qty(k.discPct) + ' %)' : ''}` })));
     return `<tr class="cl-fiche" id="clf_${c.id}"><td colspan="6"><div class="cl-body">
       ${this.ro() ? '' : `<div class="cl-id">${inp('firstName', 'Prénom', '')}${inp('lastName', 'Nom', '')}${inp('phone', 'Téléphone', '', 'tel')}${inp('email', 'Email', '', 'email')}${inp('note', 'Note', 'ex : rencontré au marché de…')}</div>
       <div class="cl-id mt">
@@ -415,8 +435,9 @@ const Clients = {
         ${c.delivery === 'livraison' ? `<div class="fg" style="grid-column:span 2;"><label>Point Mondial Relay habituel</label><input value="${U.esc(c.relay || '')}" placeholder="nom du relais, ville, n° du point…" onchange="Clients.setField('${c.id}','relay',this.value)"></div>` : ''}
       </div>
       <div class="cl-id mt"><div class="fg" style="grid-column:span 3;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" ${c.discOn ? 'checked' : ''} onchange="Clients.setDisc('${c.id}','discOn',this.checked)"> 🏷️ Réduction habituelle (partenaire d'élevage, code personnel…)</label>
-        ${c.discOn ? `<div class="frow" style="align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;"><input type="number" step="0.5" min="0" max="99" value="${c.discPct || ''}" placeholder="0" style="width:90px;" onchange="Clients.setDisc('${c.id}','discPct',this.value)"> <span>%</span><input type="text" value="${U.esc(c.discCode || '')}" placeholder="code (ex : ELEVAGE10)" style="width:190px;" onchange="Clients.setDisc('${c.id}','discCode',this.value)"><span class="muted help">Se remplit tout seul dans Paniers et Ventes quand tu choisis ce client ; tu peux la changer ou la retirer sur un ticket.</span></div>` : ''}
+        ${pcs.length ? `<label>🤝 Code partenaire ${U.info("La réduction de ce client vient du code du partenaire : si tu modifies le % ou le code dans Statistiques → Partenaires, cette fiche suit toute seule. « Aucun » = réduction manuelle ci-dessous.")}</label><select style="max-width:380px;" onchange="Clients.setPartnerCode('${c.id}',this.value)"><option value="">— aucun (réduction manuelle) —</option>${pcs.map(o => `<option value="${o.id}" ${pm && pm.c.id === o.id ? 'selected' : ''}>${U.esc(o.label)}</option>`).join('')}</select>${pm ? `<div class="muted" style="font-size:.82rem;margin-top:4px;">🏷️ −${U.qty(U.num(pm.c.discPct))} % avec le code <b>${U.esc(pm.c.code)}</b> (${U.esc(pm.p.name)}), appliqué tout seul dans Paniers et Ventes.</div>` : ''}` : ''}
+        ${pm ? '' : `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;"><input type="checkbox" ${c.discOn ? 'checked' : ''} onchange="Clients.setDisc('${c.id}','discOn',this.checked)"> 🏷️ Réduction habituelle (partenaire d'élevage, code personnel…)</label>
+        ${c.discOn ? `<div class="frow" style="align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;"><input type="number" step="0.5" min="0" max="99" value="${c.discPct || ''}" placeholder="0" style="width:90px;" onchange="Clients.setDisc('${c.id}','discPct',this.value)"> <span>%</span><input type="text" value="${U.esc(c.discCode || '')}" placeholder="code (ex : ELEVAGE10)" style="width:190px;" onchange="Clients.setDisc('${c.id}','discCode',this.value)"><span class="muted help">Se remplit tout seul dans Paniers et Ventes quand tu choisis ce client ; tu peux la changer ou la retirer sur un ticket.</span></div>` : ''}`}
       </div></div>`}
       ${this.ro() ? '' : this._balUI(c)}
       <div class="cl-id mt"><div class="fg" style="grid-column:span 2;"><label>🏠 Autres animaux dans le foyer</label><textarea class="note-area" rows="1" ${this.ro() ? 'disabled' : ''} placeholder="ex : un chat, un lapin — vide = les chiens vivent seuls" onchange="Clients.setField('${c.id}','pets',this.value)">${U.esc(c.pets || '')}</textarea></div></div>

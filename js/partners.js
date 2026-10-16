@@ -169,6 +169,7 @@ const Partners = {
       ${f('Réduction client %', `<input type="number" step="0.5" min="0" max="100" value="${c.discPct || ''}" placeholder="0" onchange="Partners.setCode('${p.id}','${c.id}','discPct',this.value)">`, 130)}
       ${f('Reversé au partenaire %', `<input type="number" step="0.5" min="0" max="100" value="${c.affPct || ''}" placeholder="0 = aucun" onchange="Partners.setCode('${p.id}','${c.id}','affPct',this.value)">`, 150)}
       <button class="btn-icon pt-del" title="Supprimer ce code" onclick="Partners.delCode('${p.id}','${c.id}')">🗑️</button>
+      <div class="muted pt-cl">${(cl => cl.length ? '👥 Clients rattachés : ' + cl.slice(0, 8).map(x => U.esc(Clients.show(x.name))).join(', ') + (cl.length > 8 ? ' … (+' + (cl.length - 8) + ')' : '') : '👥 Aucun client rattaché (choisis ce code dans la fiche du client)')(Clients.list().filter(x => { const m = Clients.partnerCodeOf(x); return m && m.c.id === c.id; }))}</div>
     </div>`;
   },
   _partnerCard(p) {

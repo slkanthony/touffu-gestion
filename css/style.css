@@ -1637,3 +1637,4 @@ table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
 .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
 .chart-head h2 { margin: 0; }
 @media (min-width: 701px) { .chart-head { min-height: 84px; flex-wrap: nowrap; } }
+.pt-code .pt-cl { flex: 1 1 100%; font-size: .82rem; }
