@@ -39,6 +39,25 @@ const Woo = {
   /* Filtres COMMUNS à Exporter et Comparer (Antho 2026-10-17, même esprit que Stock mastication / Accessoires) : Catégorie (Tous | Mastication | Accessoires, partagée avec SumUp),
      puis selon la catégorie — mastication : type de viande + variantes (format) ; accessoires : catégorie, largeur de sangle, bicolor. Une ligne = { kind:'Mastication'|'Accessoires', meat, accCat, width, bicolor }. */
   _k(l) { return l.kind === 'Accessoires' ? 'A' : 'M'; },
+  /* Variante décochée (« utilisée » = case cochée de la ligne dans Prix mastication, enabled !== false). Une variante du Stock est « non utilisée » si la ligne de fiche qui lui est reliée est décochée,
+     ou si son SKU n'existe que sur des lignes décochées. */
+  _offSkus() {
+    const on = new Set(), off = new Set();
+    Store.state.catalogM.forEach(c => (c.variants || []).forEach(v => { const k = String(v.sku || '').trim().toUpperCase(); if (k) (v.enabled === false ? off : on).add(k); }));
+    on.forEach(k => off.delete(k));
+    return off;
+  },
+  _offStock(p, v) {
+    const src = Stock.parentOf(p, v) || v, catId = v.catalogId || src.catalogId || p.catalogId || '';
+    const cat = catId ? Store.state.catalogM.find(c => c.id === catId) : null;
+    const cv = cat && v.catalogVariantId ? (cat.variants || []).find(x => x.id === v.catalogVariantId) : null;
+    return !!cv && cv.enabled === false;
+  },
+  _unitOff(u) {
+    if (u.kind !== 'M') return false;
+    const p = Store.state.stockM.find(x => x.id === u.pId), v = p && p.variants.find(x => x.id === u.vId);
+    return !!v && (this._offStock(p, v) || this._offSkus().has(String(v.sku || '').trim().toUpperCase()));
+  },
   _pass(l) {
     const f = this.filters, k = this._k(l);
     if (!this._inCat(k)) return false;
@@ -424,7 +443,7 @@ const Woo = {
     const inCat = l => this.cat === 'all' || lineKind(l) === this.cat;
     // 500 g et plus : réservés aux ventes en ligne, jamais emmenés sur les marchés (Antho, 2026-09-28) → normal qu'ils manquent dans SumUp.
     const bigBag = u => u.kind === 'M' && u.mode === 'gram' && U.num(u.value) >= 500;
-    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()) && !bigBag(u) && this._inCat(u.kind));
+    const appOnly = units.filter(u => u.sku && !seen.has(u.sku.trim().toUpperCase()) && !bigBag(u) && this._inCat(u.kind) && !this._unitOff(u));
     return { matched: matched.filter(m => this._inCat(m.kind)), unknown: unknown.filter(inCat), noSku: noSku.filter(inCat), appOnly, uncat };
   },
   /* Groupe « à relier » par viande : à gauche les articles SumUp sans SKU ou avec un SKU inconnu,
@@ -503,7 +522,7 @@ const Woo = {
     // générer (identifiants cachés des articles → mise à jour sans doublons).
     const r = this._sumup ? this._sumupReport() : null;
     const inSumup = new Map(); if (r) r.matched.forEach(m => inSumup.set(m.sku.toUpperCase(), m));
-    const units = Ventes.units().filter(u => u.sku && this._inCat(u.kind)).map(u => ({
+    const units = Ventes.units().filter(u => u.sku && this._inCat(u.kind) && !this._unitOff(u)).map(u => ({
       sku: u.sku.trim(), name: u.name, variant: u.label || '', appType: u.kind === 'A' ? 'Accessoires' : (u.type || ''),
       appPrice: u.price, appQty: u.availE, mode: u.mode, value: u.value, kind: u.kind, fmt: this._fmtKey(u.label)
     }));
@@ -781,9 +800,12 @@ const Woo = {
         if (!ex.meat && meat) ex.meat = meat;
       } else map.set(sku, { sku, name, price: price || 0, stock, kind, meat: meat || '', ...(extra || {}) });
     };
+    // Variantes NON UTILISÉES (décochées dans Prix mastication, ex. « Lot de 3 pc » qu'Antho ne vend pas) : jamais exportées ni comparées (2026-10-17)
+    const offSku = this._offSkus();
     // 1) Stock mastication (quantités + prix de vente + SKU)
     Store.state.stockM.forEach(p => p.variants.forEach(v => {
       if (v.mode === 'vrac') return;
+      if (this._offStock(p, v) || offSku.has(String(v.sku || '').trim().toUpperCase())) return;
       const _sv = Stock.stockVar(p, v), _n = Stock.isVirtual(p, v) ? Stock.packQtyOf(v) : 1;   // lot sans stock propre : stock principal ÷ N
       const stock = Math.floor(_sv.lots.reduce((a, l) => a + U.num(l.qtyGeneral) + (this.stockScope === 'both' ? U.num(l.qtyEvent) : 0), 0) / _n);
       add(v.sku, `${p.name} — ${Pricing.labelVariant(v)}`, U.num(v.priceTTC), stock, 'Mastication', p.meatType || '');
@@ -793,7 +815,7 @@ const Woo = {
       const base = Pricing.baseUnitCost(p); const na = (p.variants||[]).filter(v=>v.enabled!==false).length; let idx = 0;
       (p.variants || []).forEach(v => {
         const on = v.enabled !== false; const c = Pricing.variantCalc(p, v, on ? idx : 0, base, na); if (on) idx++;
-        if (v.sku) add(v.sku, `${p.name} — ${Pricing.labelVariant(v)}`, c.priceTTC, null, 'Mastication', p.meatType || '');
+        if (v.sku && on) add(v.sku, `${p.name} — ${Pricing.labelVariant(v)}`, c.priceTTC, null, 'Mastication', p.meatType || '');
       });
     });
     // 3) ACCESSOIRES (catalogA) : seulement ceux qui ont un SKU (Antho 2026-10-17 : ses fiches accessoires reçoivent leurs SKU un par un, la catégorie
