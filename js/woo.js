@@ -155,6 +155,31 @@ const Woo = {
     return rows;
   },
   _cmpCol(head, names) { for (const n of names) { const i = head.indexOf(n); if (i >= 0) return i; } return -1; },
+  /* Export du site gardé en cache (localStorage, comme la référence SumUp) : il survit à F5 / changement de page, et la comparaison est RECALCULÉE à chaque affichage
+     avec les données actuelles de l'appli (Antho 2026-10-17 : après avoir corrigé un SKU, plus besoin de redéposer le fichier). Redéposer = rafraîchir la référence. */
+  _siteRef: null, _siteCacheChecked: false,
+  _restoreSiteCache() {
+    if (this._siteRef || this._siteCacheChecked) return;
+    this._siteCacheChecked = true;
+    try { const j = JSON.parse(localStorage.getItem('touffu_siteRef') || 'null'); if (j && Array.isArray(j.items)) this._siteRef = j; } catch (e) {}
+  },
+  _buildCmp() {
+    const ref = this._siteRef; if (!ref) return null;
+    const site = new Map(ref.items.map(s => [s.sku, s]));
+    const app = new Map();
+    this.lines().filter(l => l.sku).forEach(l => app.set(l.sku, l));
+    const matched = [], appOnly = [], siteOnly = [];
+    const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
+    app.forEach((l, sku) => {
+      const s = site.get(sku);
+      if (!s) { appOnly.push({ sku, name: l.name, ...meta(l) }); return; }
+      const priceDiff = (l.price != null && s.price != null) ? +(l.price - s.price).toFixed(2) : null;
+      const stockDiff = (l.stock != null && s.stock != null) ? (l.stock - s.stock) : null;
+      matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, ...meta(l) });
+    });
+    site.forEach((s, sku) => { if (!app.has(sku)) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
+    return { siteRows: site.size, siteNoSku: ref.siteNoSku, matched, appOnly, siteOnly };
+  },
   compareSite() {
     const file = document.getElementById('woo_cmp_file')?.files[0];
     if (!file) { U.toast('Choisis d\'abord le fichier CSV exporté depuis ton site.', true); return; }
@@ -185,25 +210,16 @@ const Woo = {
         if (!sku) { siteNoSku++; return; }
         site.set(sku, { sku, name: iName >= 0 ? r[iName] : '', price: iPrice >= 0 ? num(r[iPrice]) : null, stock: iStock >= 0 ? num(r[iStock]) : null, ...siteKind(r) });
       });
-      const app = new Map();
-      this.lines().filter(l => l.sku).forEach(l => app.set(l.sku, l));
-      const matched = [], appOnly = [], siteOnly = [];
-      const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
-      app.forEach((l, sku) => {
-        const s = site.get(sku);
-        if (!s) { appOnly.push({ sku, name: l.name, ...meta(l) }); return; }
-        const priceDiff = (l.price != null && s.price != null) ? +(l.price - s.price).toFixed(2) : null;
-        const stockDiff = (l.stock != null && s.stock != null) ? (l.stock - s.stock) : null;
-        matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, ...meta(l) });
-      });
-      site.forEach((s, sku) => { if (!app.has(sku)) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
-      this._cmp = { siteRows: site.size, siteNoSku, matched, appOnly, siteOnly };
+      this._siteRef = { file: file.name, ts: Date.now(), siteNoSku, items: [...site.values()] };
+      try { localStorage.setItem('touffu_siteRef', JSON.stringify(this._siteRef)); } catch (e) { U.toast('Export du site trop gros pour la mémoire du navigateur : il faudra le redéposer après un rechargement.', true); }
+      this._cmp = this._buildCmp();
       this.render();
-      U.toast(`Comparaison : ${matched.length} reliés, ${appOnly.length} appli seule, ${siteOnly.length} site seul.`);
+      const c = this._cmp;
+      U.toast(`Comparaison : ${c.matched.length} reliés, ${c.appOnly.length} appli seule, ${c.siteOnly.length} site seul.`);
     };
     reader.readAsText(file);
   },
-  clearCompare() { this._cmp = null; this.render(); },
+  clearCompare() { this._cmp = null; this._siteRef = null; try { localStorage.removeItem('touffu_siteRef'); } catch (e) {} this.render(); },
   cmpFilter: 'issues', cmpQ: '', cmpSort: 'name', cmpSortDir: 'asc',
   _setCmpFilter(v) { this.cmpFilter = v; this.render(); },
   _setCmpQ(v) { this.cmpQ = v; this.render(); U.refocus('woo_cmp_q'); },
@@ -830,6 +846,8 @@ const Woo = {
 
   render() {
     this._restoreSumupCache();
+    this._restoreSiteCache();
+    this._cmp = this._buildCmp();   // recalculé avec les données actuelles de l'appli (SKU, prix, stock corrigés entre-temps)
     U.syncFilters('woo', this.filters);
     const all = this.lines();
     const linked = all.filter(l => l.sku);
@@ -897,11 +915,11 @@ const Woo = {
 
       ${this.tab === 'site' ? `      <div class="card">
         <h2>🔄 Comparer avec le site (import)</h2>
-        <p class="muted help">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée.</p>
+        <p class="muted help">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée. Le fichier est <b>gardé en mémoire</b> dans ce navigateur : la comparaison se recalcule toute seule avec tes données actuelles (SKU, prix, stock corrigés), même après un rechargement ; ne redépose un fichier que pour <b>rafraîchir la référence</b> (nouvel export du site).</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="woo_cmp_file" accept=".csv,text/csv">
-          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSite()">Comparer</button>
-          ${this._cmp ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearCompare()">Effacer le rapport</button>` : ''}
+          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSite()">${this._siteRef ? 'Rafraîchir la référence' : 'Comparer'}</button>
+          ${this._siteRef ? `<span class="muted" style="font-size:.8rem;">Référence : ${U.esc(this._siteRef.file)} (${new Date(this._siteRef.ts).toLocaleDateString('fr-FR')})</span><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearCompare()">Effacer</button>` : ''}
         </div>
         ${this._cmp ? this._renderCompare() : ''}
       </div>
