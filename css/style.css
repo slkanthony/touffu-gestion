@@ -126,9 +126,9 @@ body.visit-mode .topnav-brand .visit-eye { opacity: .75; }
    onglets débordent et la barre défile horizontalement (.topnav overflow-x:auto). */
 .nav-items { display: flex; align-items: center; flex: 1 0 auto; justify-content: space-evenly; gap: 2px; }
 .nav-item {
-  display: flex; align-items: center; gap: 5px; padding: 10px 11px;
+  display: flex; align-items: center; gap: 5px; padding: 10px 10px;
   border-radius: 8px; color: var(--beige); text-decoration: none; cursor: pointer;
-  font-size: 0.88rem; border: none; background: none; white-space: nowrap; flex-shrink: 0;
+  font-size: 0.88rem; font-weight: 700; border: none; background: none; white-space: nowrap; flex-shrink: 0;
 }
 .nav-item:hover { background: rgba(242, 230, 216, 0.1); }
 .nav-item.active { background: var(--caramel); color: #fff; }
