@@ -422,8 +422,8 @@ const Woo = {
   /* Catégorie (Antho 2026-10-11) : Tous | Mastication | Accessoires, PARTAGÉE par Comparer et Exporter SumUp (mémorisée). Elle borne aussi le « tout est exporté » quand rien n'est coché :
      les accessoires (qui reçoivent leurs SKU un par un) ne partent jamais dans SumUp sans l'avoir choisi. Côté SumUp, un article est « accessoire » si sa catégorie SumUp contient « accessoire » ;
      sans catégorie du tout → alerte (visible seulement sous « Tous »). Côté appli : kind 'A' = accessoire, le reste = mastication. */
-  cat: (() => { try { const v = localStorage.getItem('touffu_wooCat'); return v === 'M' || v === 'A' ? v : 'all'; } catch (e) { return 'all'; } })(),
-  setCat(v) { this.cat = v === 'M' || v === 'A' ? v : 'all'; try { localStorage.setItem('touffu_wooCat', this.cat); } catch (e) {} this.render(); },
+  cat: 'M',   // Antho 2026-10-17 : la page s'ouvre TOUJOURS sur Mastication (son choix « Tous / Accessoires » ne vaut que pour la visite en cours, plus mémorisé)
+  setCat(v) { this.cat = v === 'A' || v === 'all' ? v : 'M'; this.render(); },
   _inCat(kind) { return this.cat === 'all' || (this.cat === 'A' ? kind === 'A' : kind !== 'A'); },
   _catSeg() {
     return `<div class="frow mt" style="gap:8px;align-items:center;flex-wrap:wrap;"><span class="muted">Catégorie :</span>${U.seg([['all', 'Tous'], ['M', '🥩 Mastication'], ['A', '🐕 Accessoires']].map(([k, l]) => ({ l, on: this.cat === k, js: `Woo.setCat('${k}')` })), { sm: true, wrap: true })}</div>`;
