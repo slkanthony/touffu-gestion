@@ -22,7 +22,7 @@ const Store = {
         laborRate: 20, thanksConsoId: '', cardConsoId: '', shipLabelConsoId: '', labelCost: 0.10, fabHistory: [], bulkDiscount: 0, b2bCoeffThreshold: 1.0, accCoeffThreshold: 2.0, accPriceStep: 0.5, accPersoUv: 5, accPersoLaser: 3, accPersoTheme: 10, snapRetentionDays: 30,
         uvCartridgePrice: 42, uvCartridgeVolume: 100, // impression UV : coût encre/ml = prix ÷ volume
         uvMaintPct: 0, // + majoration entretien optionnelle (% du coût encre) — filtres/nettoyage/entretien
-        laserWatts: 0, kwhPrice: 0, laserWearPerHour: 0, // gravure laser : puissance (W), prix de l'électricité (€/kWh), usure/entretien du laser (€/h, facultatif)
+        laserWatts: 0, kwhPrice: 0, laserWearPerHour: 0, print3dWatts: 0, print3dWearPerHour: 0, // gravure laser : puissance (W), prix de l'électricité (€/kWh), usure/entretien du laser (€/h, facultatif)
         // Entretien imprimante UV — charges annuelles (déduites du bénéfice net mensuel ÷ 12, PAS du prix de l'accessoire)
         uvFilterPrice: 0, uvFilterPerYear: 0, // prix d'un filtre × nb de changements/an
         uvCleanPrice: 0, uvCleanPerYear: 0, // prix d'une cartouche de nettoyage × nb/an
@@ -56,6 +56,7 @@ const Store = {
           { value: 'sangle-hexa', label: 'Sangle HEXA' },
           { value: 'sangle-reflechissante', label: 'Sangle réfléchissante' },
           { value: 'bouclerie', label: 'Bouclerie' },
+          { value: 'filament', label: 'Filament 3D' },
           { value: 'autre', label: 'Autre' }
         ],
         strapWeights: {}, // {'<kind>|<type> <largeur>': {w, q}} — poids de réf. des matières en mode "partagé" pour le 🧮 Calculateur : w g = q m
@@ -162,6 +163,7 @@ const Store = {
     this.migrateSuppliers(s);
     this.migrateMatTax(s);
     this.migrateSangleKinds(s);
+    this.migrateFilamentKind(s);
     this.migrateUvCategories(s);
     return s;
   },
@@ -214,6 +216,18 @@ const Store = {
     S.sangleKindsMigrated = true;
   },
   isSangleKind(kind) { return String(kind || '').toLowerCase().startsWith('sangle'); },
+  /* Unité d'une matière : m (sangle…), g (filament 3D : stock en grammes, prix de la bobine ÷ son poids), sinon PCS */
+  matUnitLabel(unit) { return unit === 'm' ? 'm' : unit === 'g' ? 'g' : 'PCS'; },
+  /* (2026-10-17) Catégorie « Filament 3D » ajoutée UNE fois aux catégories existantes (flag : si Antho la supprime, elle ne revient pas), abréviation SKU FIL. */
+  migrateFilamentKind(s) {
+    const S = s.settings; if (!S || S.filamentKindMigrated) return;
+    if (Array.isArray(S.materialKinds) && S.materialKinds.length && !S.materialKinds.some(k => k.value === 'filament')) {
+      let at = S.materialKinds.findIndex(k => k.value === 'bouclerie'); at = at >= 0 ? at + 1 : S.materialKinds.length;
+      S.materialKinds.splice(at, 0, { value: 'filament', label: 'Filament 3D' });
+    }
+    S.matAbbrev = Object.assign({ 'filament': 'FIL' }, S.matAbbrev || {});
+    S.filamentKindMigrated = true;
+  },
   migrateMatTax(s) {
     (s.materials || []).forEach(m => {
       if (m.costTax) return;

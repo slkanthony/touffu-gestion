@@ -219,6 +219,9 @@ const Pricing = {
      Le temps d'Antho reste dans « Main d'œuvre », l'amortissement de la machine dans « Amortissement du matériel ». */
   laserElecPerHour() { const S = Store.state.settings; return U.num(S.laserWatts) / 1000 * U.num(S.kwhPrice); },
   laserCostPerHour() { return this.laserElecPerHour() + U.num(Store.state.settings.laserWearPerHour); },
+  /* Impression 3D (2026-10-17) : même principe que le laser (électricité + usure/h) ; le filament est une matière de la nomenclature (grammes). */
+  print3dElecPerHour() { const S = Store.state.settings; return U.num(S.print3dWatts) / 1000 * U.num(S.kwhPrice); },
+  print3dCostPerHour() { return this.print3dElecPerHour() + U.num(Store.state.settings.print3dWearPerHour); },
   // Amortissement du matériel — liste GÉNÉRALE (imprimante UV, extracteur, scelleuse mastication…), pas propre à l'UV.
   // Charge fixe de l'atelier, déduite du bénéfice net mensuel global. Migre l'ancien slot unique uvEquipPrice/uvEquipYears.
   equipItems() {
@@ -340,9 +343,10 @@ const Pricing = {
     const laborCost = (U.num(a.laborMinutes) / 60) * U.num(S.laborRate);
     const uvCost = U.num(a.uvMl) * this.uvCostPerMl();   // perso UV : ml d'encre × coût/ml
     const laserCost = a.laser ? U.num(a.laserMin) / 60 * this.laserCostPerHour() : 0;   // gravure laser : minutes ÷ 60 × (électricité + usure)/h
-    const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost + laserCost;
+    const print3dCost = U.num(a.print3dMin) / 60 * this.print3dCostPerHour();   // impression 3D : minutes ÷ 60 × (électricité + usure)/h
+    const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost + laserCost + print3dCost;
     const portCost = matCost * this.portRate('matiere');
-    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, portCost, costBase, cost: costBase + portCost };
+    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, print3dCost, portCost, costBase, cost: costBase + portCost };
   },
   /* ---------- SKU automatique ---------- */
   slugify(text) {

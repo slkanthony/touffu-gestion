@@ -2573,7 +2573,7 @@ const Stock = {
     const unit = document.getElementById('m_unit') ? U.val('m_unit') : 'm';
     const el = document.getElementById('m_costResult');
     const sh = this.costShown(this.matUnitCostOf(U.numVal('m_costTotal'), U.numVal('m_costQty'), tax, vat), vat);
-    if (el) el.textContent = U.eur(sh.v) + ' ' + sh.lab + ' / ' + (unit === 'm' ? 'm' : 'pièce');
+    if (el) el.textContent = U.eur(sh.v) + ' ' + sh.lab + ' / ' + (unit === 'm' ? 'm' : unit === 'g' ? 'g' : 'pièce');
   },
   _toggleConsoTax() {
     const b = document.getElementById('c_tax'); if (!b) return;
@@ -2727,7 +2727,7 @@ const Stock = {
   materialRow(m, i, items) {
     const isSangle = Store.isSangleKind(m.kind);
     if (isSangle) this.reconcileRolls(m);
-    const unit = m.unit === 'm' ? 'm' : 'PCS';
+    const unit = Store.matUnitLabel(m.unit);
     const hasRolls = isSangle && m.rolls && m.rolls.length > 0;
     const multiRoll = hasRolls && m.rolls.length > 1;
     const rollsOpen = this._matRollsOpen[m.id] || false;
@@ -2763,7 +2763,7 @@ const Stock = {
       <td class="col-name">${isSangle ? `<button class="btn-icon" title="${rollsOpen ? 'Replier' : 'Déplier'} les rouleaux" onclick="Stock.toggleMatRollsOpen('${m.id}')" style="margin-right:4px;">${rollsOpen ? '▾' : '▸'}</button>` : ''}${label}${multiRoll ? ` <span class="badge info" title="${m.rolls.length} rouleaux distincts">🧵 ${m.rolls.length} rouleaux</span>` : ''}<span class="mini-reorder" style="display:inline-flex;margin:0 0 0 8px;vertical-align:middle;"><button class="btn-icon" title="Monter" ${i <= 0 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',-1)">↑</button><button class="btn-icon" title="Descendre" ${i >= items.length - 1 ? 'disabled' : ''} onclick="Stock.moveMatVariant('${m.id}',1)">↓</button></span></td>
       <td class="muted">${U.esc(m.sku || '—')}</td>
       ${Store.hideSupplierInfo() ? '' : `<td><input class="mat-ref" value="${U.esc(m.ref || '')}" placeholder="réf." title="Référence chez le fournisseur" onchange="Stock.setMatText('${m.id}','ref',this.value)"></td>`}
-      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v)} ${shown.lab} / ${unit}</div>` : ''}</td>
+      <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v)} ${shown.lab} / ${unit}${unit === 'g' ? ` (${U.eur(shown.v * 1000)} / kg)` : ''}</div>` : ''}</td>
       <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
@@ -2904,7 +2904,7 @@ const Stock = {
      quand on ajoute une variante dans un produit existant (elle est déjà celle du produit). */
   _matSizeField(m, prod, kind, curOverride) {
     const sang = Store.isSangleKind(kind || m.kind);
-    if (!sang && this._matPreset) return `<div class="fg" id="m_size_fg" style="display:none;"></div>`;
+    if ((!sang && this._matPreset) || (kind || m.kind) === 'filament') return `<div class="fg" id="m_size_fg" style="display:none;"></div>`;   // filament : pas de taille de sangle
     let cur = curOverride;
     if (cur === undefined) cur = sang ? (m.variant || (m.product ? '' : m.name) || '') : (m.allSizes ? '__all' : (m.size || (/^\s*\d+(?:[.,]\d+)?\s*mm\s*$/i.test(m.variant || '') ? m.variant : '')));
     const nrm = v => U.normSearch(v).replace(/\s+/g, '');
@@ -2923,7 +2923,9 @@ const Stock = {
     const m = this._matEditing; if (!m) return;
     const row = document.getElementById('m_vrow'); if (row) row.style.display = Store.isSangleKind(kind) ? 'none' : '';
     const u = document.getElementById('m_unit');   // unité proposée selon le type (sangle = mètre, le reste = pièce), modifiable ensuite
-    if (u) { u.value = Store.isSangleKind(kind) ? 'm' : 'piece'; this._calcMatUnit(); }
+    if (u) { u.value = Store.isSangleKind(kind) ? 'm' : kind === 'filament' ? 'g' : 'piece'; }
+    const cq = document.getElementById('m_costQty'); if (cq && kind === 'filament' && U.num(cq.value) === 1) cq.value = 1000;   // filament : prix de la bobine pour 1000 g (1 kg), modifiable
+    this._calcMatUnit();
     this._matSizeRefresh(kind);
   },
   _matSizeRefresh(kindArg) {
@@ -2992,7 +2994,8 @@ const Stock = {
           ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
         <div class="fg"><label>Unité ${U.info("Proposée automatiquement selon le type (mètre pour les sangles, pièce pour le reste) ; tu peux la changer si une matière sort de la règle.")}</label><select id="m_unit" onchange="Stock._calcMatUnit()">
           <option value="m" ${m.unit === 'm' ? 'selected' : ''}>mètre</option>
-          <option value="piece" ${m.unit !== 'm' ? 'selected' : ''}>pièce</option></select></div>
+          <option value="piece" ${m.unit !== 'm' && m.unit !== 'g' ? 'selected' : ''}>pièce</option>
+          <option value="g" ${m.unit === 'g' ? 'selected' : ''}>gramme (filament)</option></select></div>
       </div>
       <div class="frow">
         <div class="fg"><label>SKU</label><input id="m_sku" value="${U.esc(m.sku || '')}"></div>
@@ -3002,7 +3005,7 @@ const Stock = {
         <div class="fg"><label>Prix d'achat (€, hors port)</label><div class="tax-in"><input id="m_costTotal" type="number" step="0.01" value="${mTotal}" oninput="Stock._calcMatUnit()"><button type="button" id="m_tax" class="tax-tag" data-tax="${mTax}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleMatTaxIn()">${mTax}</button></div></div>
         <div class="fg"><label>Pour (quantité achetée)</label><input id="m_costQty" type="number" step="0.01" min="0.01" value="${mQper}" oninput="Stock._calcMatUnit()"></div>
       </div>
-      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : 'pièce'}</span></div>
+      <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : m.unit === 'g' ? 'g' : 'pièce'}</span></div>
       <div class="frow">
         <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>

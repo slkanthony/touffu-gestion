@@ -180,12 +180,19 @@ const Woo = {
     site.forEach((s, sku) => { if (!app.has(sku)) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
     return { siteRows: site.size, siteNoSku: ref.siteNoSku, matched, appOnly, siteOnly };
   },
-  compareSite() {
-    const file = document.getElementById('woo_cmp_file')?.files[0];
-    if (!file) { U.toast('Choisis d\'abord le fichier CSV exporté depuis ton site.', true); return; }
+  /* Fichier choisi = lu TOUT DE SUITE (onchange du champ, Antho 2026-10-17 : il fallait recharger la page pour que le 2e choix soit pris en compte). Le champ est vidé
+     dès la lecture (rechoisir le même nom de fichier redéclenche l'événement) ; une lecture impossible (fichier déplacé / modifié depuis le choix) est signalée. */
+  _readPicked(inp, fallbackId, askMsg, onText) {
+    const file = (inp && inp.files && inp.files[0]) || document.getElementById(fallbackId)?.files[0];
+    if (!file) { U.toast(askMsg, true); return; }
     const reader = new FileReader();
-    reader.onload = () => {
-      let rows; try { rows = this._parseCSV(reader.result); } catch (e) { U.toast('CSV illisible : ' + e.message, true); return; }
+    reader.onerror = () => { if (inp) inp.value = ''; U.toast('Impossible de lire « ' + file.name + ' » (déplacé ou modifié depuis le choix ?) : choisis-le à nouveau.', true); };
+    reader.onload = () => { if (inp) inp.value = ''; onText(reader.result, file); };
+    reader.readAsText(file);
+  },
+  compareSite(inp) {
+    this._readPicked(inp, 'woo_cmp_file', 'Choisis d\'abord le fichier CSV exporté depuis ton site.', (text, file) => {
+      let rows; try { rows = this._parseCSV(text); } catch (e) { U.toast('CSV illisible : ' + e.message, true); return; }
       if (!rows.length) { U.toast('Fichier vide.', true); return; }
       const head = rows[0];
       const iSku = this._cmpCol(head, ['UGS', 'SKU', 'sku']);
@@ -216,8 +223,7 @@ const Woo = {
       this.render();
       const c = this._cmp;
       U.toast(`Comparaison : ${c.matched.length} reliés, ${c.appOnly.length} appli seule, ${c.siteOnly.length} site seul.`);
-    };
-    reader.readAsText(file);
+    });
   },
   clearCompare() { this._cmp = null; this._siteRef = null; try { localStorage.removeItem('touffu_siteRef'); } catch (e) {} this.render(); },
   cmpFilter: 'issues', cmpQ: '', cmpSort: 'name', cmpSortDir: 'asc',
@@ -384,12 +390,9 @@ const Woo = {
     U.download('sumup-import-' + U.today() + '.csv', text, 'text/csv;charset=utf-8');
     U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.\n\nToutes les autres lignes sont identiques à ton export SumUp.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
   },
-  compareSumup() {
-    const file = document.getElementById('woo_sumup_file')?.files[0];
-    if (!file) { U.toast('Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', true); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      let rows; try { rows = this._parseCSV(reader.result); } catch (e) { U.toast('CSV illisible : ' + e.message, true); return; }
+  compareSumup(inp) {
+    this._readPicked(inp, 'woo_sumup_file', 'Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', (text, file) => {
+      let rows; try { rows = this._parseCSV(text); } catch (e) { U.toast('CSV illisible : ' + e.message, true); return; }
       if (rows.length < 2) { U.toast('Fichier vide.', true); return; }
       const head = rows[0].map(h => h.trim());
       const col = n => head.indexOf(n);
@@ -411,13 +414,12 @@ const Woo = {
         lines.push({ ri, name: parent.name, variant: (r[iVar] || '').trim(), sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
       });
       // Fichier brut conservé : le fichier d'import SumUp repart de CE fichier (mêmes lignes, mêmes « Item id / Variant id »).
-      this._sumup = { lines, file: file.name, raw: rows, rawText: this._splitRecords(reader.result), cols: { iPrice, iQty } };
+      this._sumup = { lines, file: file.name, raw: rows, rawText: this._splitRecords(text), cols: { iPrice, iQty } };
       this._sumupSel = {};
       try { localStorage.setItem('touffu_sumupRef', JSON.stringify(this._sumup)); } catch (e) {}
       this.render();
       U.toast(`SumUp : ${lines.length} article(s)/variante(s) lus.`);
-    };
-    reader.readAsText(file);
+    });
   },
   /* Catégorie (Antho 2026-10-11) : Tous | Mastication | Accessoires, PARTAGÉE par Comparer et Exporter SumUp (mémorisée). Elle borne aussi le « tout est exporté » quand rien n'est coché :
      les accessoires (qui reçoivent leurs SKU un par un) ne partent jamais dans SumUp sans l'avoir choisi. Côté SumUp, un article est « accessoire » si sa catégorie SumUp contient « accessoire » ;
@@ -562,14 +564,12 @@ const Woo = {
     const refBlock = this._sumup
       ? `<div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
           <span class="muted" style="font-size:.85rem;">✅ Référence SumUp : ${U.esc(this._sumup.file)}</span>
-          <input type="file" id="woo_sumup_file" accept=".csv,text/csv" style="flex:1 1 200px;">
-          <button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Rafraîchir</button>
+          <input type="file" id="woo_sumup_file" accept=".csv,text/csv" style="flex:1 1 200px;" onchange="Woo.compareSumup(this)">
         </div>`
       : `<div class="card" style="border-left:4px solid var(--warn);margin:10px 0 0;">
           <b>Pour générer le fichier, il me faut ton export d'articles SumUp</b> (me.sumup.com → Articles → Exporter) : il contient les identifiants cachés qui permettent à SumUp de mettre à jour tes articles au lieu d'en créer en double. À déposer <b>une seule fois</b> — il est ensuite gardé en mémoire.
           <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-            <input type="file" id="woo_sumup_file" accept=".csv,text/csv" style="flex:1 1 200px;">
-            <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">Charger</button>
+            <input type="file" id="woo_sumup_file" accept=".csv,text/csv" style="flex:1 1 200px;" onchange="Woo.compareSumup(this)">
           </div></div>`;
     return `
       ${this._catSeg()}${this._uncatAlert(r ? r.uncat : 0)}
@@ -915,10 +915,9 @@ const Woo = {
 
       ${this.tab === 'site' ? `      <div class="card">
         <h2>🔄 Comparer avec le site (import)</h2>
-        <p class="muted help">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée. Le fichier est <b>gardé en mémoire</b> dans ce navigateur : la comparaison se recalcule toute seule avec tes données actuelles (SKU, prix, stock corrigés), même après un rechargement ; ne redépose un fichier que pour <b>rafraîchir la référence</b> (nouvel export du site).</p>
+        <p class="muted help">Dépose l'export produits de ton site (le CSV WooCommerce, menu <b>Produits → Tous les produits → Exporter</b>) pour comparer <b>prix</b> et <b>stock</b> par SKU, et repérer les produits présents d'un seul côté. <b>Lecture seule</b> — aucune donnée n'est modifiée. Le fichier est <b>gardé en mémoire</b> dans ce navigateur : la comparaison se recalcule toute seule avec tes données actuelles (SKU, prix, stock corrigés), même après un rechargement ; ne redépose un fichier que pour <b>rafraîchir la référence</b> (nouvel export du site) : <b>dès que tu choisis le fichier, il est lu et comparé</b>, sans bouton.</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="woo_cmp_file" accept=".csv,text/csv">
-          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSite()">${this._siteRef ? 'Rafraîchir la référence' : 'Comparer'}</button>
+          <input type="file" id="woo_cmp_file" accept=".csv,text/csv" onchange="Woo.compareSite(this)">
           ${this._siteRef ? `<span class="muted" style="font-size:.8rem;">Référence : ${U.esc(this._siteRef.file)} (${new Date(this._siteRef.ts).toLocaleDateString('fr-FR')})</span><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearCompare()">Effacer</button>` : ''}
         </div>
         ${this._cmp ? this._renderCompare() : ''}
@@ -936,10 +935,9 @@ const Woo = {
 
       ${this.tab === 'sumup' ? `      <div class="card">
         <h2>🔍 Comparer avec SumUp</h2>
-        <p class="muted help">Dépose l'export d'articles SumUp (me.sumup.com → <b>Articles → Exporter</b>) pour comparer <b>prix</b> et <b>quantités</b> (stock événement) par SKU. <b>Lecture seule</b> — rien n'est modifié.</p>
+        <p class="muted help">Dépose l'export d'articles SumUp (me.sumup.com → <b>Articles → Exporter</b>) pour comparer <b>prix</b> et <b>quantités</b> (stock événement) par SKU. <b>Lecture seule</b> — rien n'est modifié. Dès que tu choisis le fichier, il est lu et comparé.</p>
         <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="woo_sumup_file" accept=".csv,text/csv">
-          <button class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Woo.compareSumup()">${this._sumup ? 'Rafraîchir la référence' : 'Comparer'}</button>
+          <input type="file" id="woo_sumup_file" accept=".csv,text/csv" onchange="Woo.compareSumup(this)">
           ${this._sumup ? `<span class="muted" style="font-size:.8rem;">Référence : ${U.esc(this._sumup.file)}</span><button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Woo.clearSumup()">Effacer</button>` : ''}
         </div>
         ${this._sumup ? this._renderSumup() : ''}

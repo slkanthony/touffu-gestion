@@ -421,11 +421,11 @@ const Accessoires = {
   bomLineUnit(l) {
     if (l.familyKey) {
       const fam = this.families().find(f => f.key === l.familyKey);
-      return fam?.unit === 'm' ? 'm' : 'PCS';
+      return Store.matUnitLabel(fam && fam.unit);
     }
     if (l.materialId) {
       const m = Store.material(l.materialId);
-      return m?.unit === 'm' ? 'm' : 'PCS';
+      return Store.matUnitLabel(m && m.unit);
     }
     return 'PCS';
   },
@@ -754,6 +754,7 @@ const Accessoires = {
               <tr><td>Main d'œuvre (<input type="number" step="1" value="${U.num(a.laborMinutes)}" class="acc-inline-input" onchange="Accessoires.setAccInline('${a.id}','laborMinutes',this.value)"> min à <span class="sensitive">${U.eur(Store.state.settings.laborRate)}/h</span>)</td><td></td><td class="num sensitive">${U.eur(c.laborCost)}</td></tr>
               ${U.num(a.extraCost) ? `<tr><td>Autres coûts</td><td></td><td class="num sensitive">${U.eur(a.extraCost)}</td></tr>` : ''}
               ${U.num(c.laserCost) ? `<tr><td>🔦 Gravure laser <span class="muted">(${U.qty(a.laserMin)} min × ${U.eur(Pricing.laserCostPerHour() / 60)}/min)</span></td><td></td><td class="num sensitive">${U.eur(c.laserCost)}</td></tr>` : ''}
+              ${U.num(c.print3dCost) ? `<tr><td>🧊 Impression 3D <span class="muted">(${U.qty(a.print3dMin)} min × ${U.eur(Pricing.print3dCostPerHour() / 60)}/min)</span></td><td></td><td class="num sensitive">${U.eur(c.print3dCost)}</td></tr>` : ''}
               ${U.num(c.uvCost) ? `<tr><td>🖨️ Impression UV <span class="muted">(${U.qty(a.uvMl)} ml × ${U.eur(Pricing.uvCostPerMl())}/ml)</span></td><td></td><td class="num sensitive">${U.eur(c.uvCost)}</td></tr>` : ''}
               <tr><th>Coût de revient</th><th></th><th class="num sensitive">${U.eur(c.cost)}</th></tr></tbody></table></div>
           </div>
@@ -1148,6 +1149,9 @@ const Accessoires = {
             <span style="display:flex;align-items:center;gap:12px;"><label style="${lab}" title="Impression UV avec un visuel créé pour le client (supplément plus élevé, réglé dans Paramètres)"><input id="a_theme" type="checkbox" style="width:16px;height:16px;" ${a.theme ? 'checked' : ''} onchange="Accessoires.onPersoToggle('theme')"> Création thème UV</label></span>
             <span style="display:flex;align-items:center;gap:12px;"><label style="${lab}"><input id="a_laser" type="checkbox" style="width:16px;height:16px;" ${laOn ? 'checked' : ''} onchange="Accessoires.onPersoToggle('laser')"> Gravure laser</label><input id="a_lasermin" type="number" step="0.5" min="0" value="${a.laserMin || ''}" placeholder="minutes" style="width:110px;margin:0;${laOn ? '' : 'display:none;'}"></span></div>`; })()}</div>
       </div>
+      <div class="frow">
+        <div class="fg" style="flex:0 0 260px;max-width:100%;"><label>🧊 Impression 3D (minutes) ${U.info("Durée d'impression 3D de la pièce : le coût d'électricité et d'usure de l'imprimante (Paramètres → Accessoires → Imprimante 3D) s'ajoute au coût de revient. Le filament se met dans « Matières utilisées » (en grammes, matière de type Filament 3D). Laisse vide si la pièce n'est pas imprimée en 3D.")}</label><input id="a_p3d" type="number" step="1" min="0" value="${a.print3dMin || ''}" placeholder="0 = pas d'impression 3D"></div>
+      </div>
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>
       <div id="a_fab_row">
         ${this._fabFieldsHTML(a)}
@@ -1163,7 +1167,7 @@ const Accessoires = {
         a.category = U.val('a_cat'); a.laborMinutes = U.numVal('a_min'); a.extraCost = U.numVal('a_extra');
         a.coefficient = U.numVal('a_coeff'); a.priceTTCManual = U.val('a_pttc');
         a.sku = U.val('a_sku'); a.theme = U.chk('a_theme'); if (!a.theme) delete a.theme; a.uv = U.chk('a_uv') || !!a.theme; a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.laser = U.chk('a_laser'); a.laserMin = a.laser ? U.numVal('a_lasermin') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
-        a.notes = U.val('a_notes');
+        a.notes = U.val('a_notes'); a.print3dMin = U.numVal('a_p3d');
         this._readFabSegs();
         a.fabSegments = this._a.fabSegments || [];
         a.productLength = U.lenCm('a_prodLen') / 100;
@@ -1193,11 +1197,11 @@ const Accessoires = {
     if (l.familyKey) {
       const fam = this.families().find(f => f.key === l.familyKey);
       if (!fam) return l.familyKey;
-      return `${fam.label} (moy. ${U.eur(fam.avgCost)}/${fam.unit === 'm' ? 'm' : 'PCS'})`;
+      return `${fam.label} (moy. ${U.eur(fam.avgCost)}/${Store.matUnitLabel(fam.unit)})`;
     }
     if (l.materialId) {
       const m = Store.material(l.materialId);
-      return m ? `${m.name} (${U.eur(this.matCost(m))}/${m.unit === 'm' ? 'm' : 'PCS'})` : '';
+      return m ? `${m.name} (${U.eur(this.matCost(m))}/${Store.matUnitLabel(m.unit)})` : '';
     }
     return '';
   },
@@ -1259,10 +1263,10 @@ const Accessoires = {
     return items.map(it => {
       if (it.type === 'family') {
         const f = it.data;
-        return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomFamily(${i},'${U.esc(f.key)}')"><span class="pp-a">${U.esc(f.label)}</span><span class="pp-b">${f.count} réf.</span><span class="pp-c">moy. ${U.eur(f.avgCost)} / ${f.unit === 'm' ? 'm' : 'PCS'}</span></div>`;
+        return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomFamily(${i},'${U.esc(f.key)}')"><span class="pp-a">${U.esc(f.label)}</span><span class="pp-b">${f.count} réf.</span><span class="pp-c">moy. ${U.eur(f.avgCost)} / ${Store.matUnitLabel(f.unit)}</span></div>`;
       }
       const m = it.data;
-      const unit = m.unit === 'm' ? 'm' : 'PCS';
+      const unit = Store.matUnitLabel(m.unit);
       return `<div class="ac-item pp-row" onmousedown="event.preventDefault();Accessoires.pickBomMaterial(${i},'${m.id}')"><span class="pp-a">${U.esc(m.name)}</span><span class="pp-b">stock ${U.qty(m.qty)} ${unit}</span><span class="pp-c">${U.eur(this.matCost(m))} / ${unit}</span></div>`;
     }).join('');
   },
@@ -1555,7 +1559,7 @@ const Accessoires = {
   _fabBomHTML() {
     return this._fabBom.map((b, i) => {
       if (b.type === 'family') {
-        const unit = b.fam.unit === 'm' ? 'm' : 'PCS';
+        const unit = Store.matUnitLabel(b.fam.unit);
         const opts = b.materials.map(m =>
           `<option value="${m.id}" ${m.id === b.selectedId ? 'selected' : ''}>${U.esc(m.name)} — stock : ${U.qty(m.qty)} ${unit}</option>`
         ).join('');
@@ -1567,7 +1571,7 @@ const Accessoires = {
         </div>`;
       }
       if (b.type === 'direct' && b.m) {
-        const unit = b.m.unit === 'm' ? 'm' : 'PCS';
+        const unit = Store.matUnitLabel(b.m.unit);
         return `<div class="card" style="padding:8px 12px;margin-bottom:6px;background:var(--th-bg);">
           ${b.tag ? `<div style="font-weight:700;font-size:.85rem;color:var(--caramel);margin-bottom:4px;">${U.esc(b.tag)}</div>` : ''}
           <div style="display:flex;justify-content:space-between;align-items:center;">

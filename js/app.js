@@ -421,7 +421,7 @@ const App = {
     let overview = [
       ...inv.map(r => ({ name: r.name, type: r.meat, stock: r.gen + r.evt, stockLabel: r.evt ? `${U.qty(r.gen)} + ${U.qty(r.evt)} évén.` : U.qty(r.gen), buy: r.buy, sell: r.sell, nv: r.vars.length, linked: r.linked, unlinked: r.unlinked, cat: 'Mastication', stockId: r.stockId })),
       ...acc.map(r => ({ name: r.name, type: r.category, stock: r.total, stockLabel: U.qty(r.total), buy: r.buy, sell: r.sell, nv: 1, linked: true, cat: 'Accessoire' })),
-      ...st.materials.map(m => ({ name: m.name, type: Stock.matKindLabel[m.kind] || m.kind, stock: U.num(m.qty), stockLabel: `${U.qty(m.qty)} ${m.unit === 'm' ? 'm' : 'PCS'}`, buy: U.num(m.qty) * Accessoires.matCost(m), sell: null, nv: 1, linked: true, cat: 'Matières premières' })),
+      ...st.materials.map(m => ({ name: m.name, type: Stock.matKindLabel[m.kind] || m.kind, stock: U.num(m.qty), stockLabel: `${U.qty(m.qty)} ${Store.matUnitLabel(m.unit)}`, buy: U.num(m.qty) * Accessoires.matCost(m), sell: null, nv: 1, linked: true, cat: 'Matières premières' })),
       ...st.consumables.map(c => ({ name: c.name, type: c.category || 'Autre', stock: U.num(c.qty), stockLabel: `${U.qty(c.qty)} ${U.esc(!c.unit || c.unit === 'pc' ? 'PCS' : c.unit)}`, buy: U.num(c.qty) * U.num(c.costUnit) * Pricing.vatK(), sell: null, nv: 1, linked: true, cat: 'Consommable' }))
     ];
     const dashScope = this._dashScope || ['Mastication'];
