@@ -225,20 +225,23 @@ const Woo = {
     const matched = [], appOnly = [], siteOnly = [];
     const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
     // Liaisons manuelles (Antho 2026-10-17) : produit de l'appli ↔ fiche du site (par ID) dont l'UGS est différent ou vide ; l'appli est prioritaire → l'UGS du site sera corrigé par le CSV « Corriger les UGS du site »
-    const links = (Store.state.settings.wooLinks) || {}, byId = new Map(), usedIds = new Set();
+    const links = (Store.state.settings.wooLinks) || {}, byId = new Map(), claimed = new Map(), key = x => (ref.v === 2 ? String(x.id) : x.sku);
     if (ref.v === 2) { ref.items.forEach(s => byId.set(String(s.id), s)); (ref.noSku || []).forEach(s => byId.set(String(s.id), s)); }
+    // La liaison faite à la main l'EMPORTE sur la correspondance par UGS (ex. l'UGS d'une autre fiche a été collé par erreur sur le site) : la fiche reliée est « réservée » à ce produit.
+    app.forEach((l, sku) => { const t = links[sku] != null ? byId.get(String(links[sku])) : null; if (t && !claimed.has(String(t.id))) claimed.set(String(t.id), sku); });
+    const matchedKeys = new Set();
     app.forEach((l, sku) => {
-      let s = site.get(sku), link = null;
-      if (!s && links[sku] != null) {
-        const t = byId.get(String(links[sku]));
-        if (t) { s = t; link = { id: String(t.id), type: t.type, parent: t.parent, siteSku: t.sku || '' }; usedIds.add(String(t.id)); }
-      }
+      let s = null, link = null;
+      const lt = links[sku] != null ? byId.get(String(links[sku])) : null;
+      if (lt && claimed.get(String(lt.id)) === sku) { s = lt; if (lt.sku !== sku) link = { id: String(lt.id), type: lt.type, parent: lt.parent, siteSku: lt.sku || '' }; }
+      else { const d = site.get(sku); if (d && !(ref.v === 2 && claimed.has(String(d.id)))) s = d; }
       if (!s) { appOnly.push({ sku, name: l.name, ...meta(l) }); return; }
+      matchedKeys.add(key(s));
       const priceDiff = (l.price != null && s.price != null) ? +(l.price - s.price).toFixed(2) : null;
       const stockDiff = (l.stock != null && s.stock != null) ? (l.stock - s.stock) : null;
-      matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, link, ...meta(l) });
+      matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, link, sid: ref.v === 2 ? { id: String(s.id), type: s.type, parent: s.parent } : null, ...meta(l) });
     });
-    site.forEach((s, sku) => { if (!app.has(sku) && !usedIds.has(String(s.id))) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
+    site.forEach((s, sku) => { if (!matchedKeys.has(key(s))) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
     return { siteRows: site.size, siteNoSku: ref.siteNoSku, matched, appOnly, siteOnly };
   },
   /* Fichier choisi = lu TOUT DE SUITE (onchange du champ, Antho 2026-10-17 : il fallait recharger la page pour que le 2e choix soit pris en compte). Le champ est vidé
@@ -298,17 +301,15 @@ const Woo = {
   _pruneLinks() {
     const L = Store.state.settings.wooLinks, ref = this._siteRef;
     if (!L || !ref || ref.v !== 2) return;
-    const ids = new Set(ref.items.concat(ref.noSku || []).map(s => String(s.id))), skus = new Set(ref.items.map(s => s.sku));
+    const ids = new Set(ref.items.concat(ref.noSku || []).map(s => String(s.id))), bySku = new Map(ref.items.map(s => [s.sku, s]));
     let ch = false;
-    Object.keys(L).forEach(k => { if (skus.has(k) || !ids.has(String(L[k]))) { delete L[k]; ch = true; } });   // UGS désormais identique sur le site, ou fiche disparue
+    Object.keys(L).forEach(k => { const d = bySku.get(k); if ((d && String(d.id) === String(L[k])) || !ids.has(String(L[k]))) { delete L[k]; ch = true; } });   // la fiche reliée porte désormais le bon UGS, ou elle a disparu
     if (ch) Store.save('settings');
   },
   /* sku → { id, type, parent } de la fiche du site : UGS identique (export du site) ou fiche reliée à la main. Sert à l'export « avec ID ». */
   _idMap() {
-    const ref = this._siteRef, c = ref ? this._buildCmp() : null, m = new Map();
-    if (!c || ref.v !== 2) return m;
-    ref.items.forEach(x => { if (x.id) m.set(x.sku, { id: x.id, type: x.type, parent: x.parent }); });
-    c.matched.forEach(x => { if (x.link) m.set(x.sku, x.link); });
+    const c = this._siteRef ? this._buildCmp() : null, m = new Map();
+    if (c) c.matched.forEach(x => { if (x.sid) m.set(x.sku, x.sid); });
     return m;
   },
   _pendingSkus() {
@@ -319,10 +320,10 @@ const Woo = {
   _tok(s) { return U.normSearch(s || '').split(/[^a-z0-9]+/).filter(x => x.length > 1).map(x => x.length > 3 ? x.replace(/[sx]$/, '') : x); },
   _linkCandidates() {
     const ref = this._siteRef; if (!ref || ref.v !== 2) return null;
-    const app = new Set(this.lines().filter(l => l.sku).map(l => l.sku));
+    const appBySku = new Map(this.lines().filter(l => l.sku).map(l => [l.sku, l]));
     const used = new Set(Object.values(Store.state.settings.wooLinks || {}).map(String));
-    const ok = s => s.id && s.type !== 'variable' && !used.has(String(s.id));
-    return ref.items.filter(s => !app.has(s.sku) && ok(s)).concat((ref.noSku || []).filter(ok));
+    return ref.items.concat(ref.noSku || []).filter(s => s.id && s.type !== 'variable' && !used.has(String(s.id)))
+      .map(s => { const t = s.sku ? appBySku.get(s.sku) : null; return t ? { ...s, _taken: t } : s; });   // _taken : l'UGS de cette fiche est déjà celui d'un produit de l'appli
   },
   openLink(sku) {
     const l = this.lines().find(x => x.sku === sku); if (!l) return;
@@ -334,7 +335,8 @@ const Woo = {
     }
     const want = new Set(this._tok(l.name));
     this._lkSku = sku;
-    this._lkAll = c.map(s => { const t = new Set(this._tok(s.name)); let n = 0; want.forEach(x => { if (t.has(x)) n++; }); return { ...s, _score: want.size ? n / want.size : 0 }; })
+    const cover = (A, name) => { const t = new Set(this._tok(name)); let n = 0; A.forEach(x => { if (t.has(x)) n++; }); const u = A.size + t.size - n; return u ? n / u : 0; };   // ressemblance (intersection / union) : « Oreille de porc » ressemble plus à « Oreilles de porc » qu'à « Pavillons d'oreilles de porc »
+    this._lkAll = c.map(s => ({ ...s, _score: cover(want, s.name), _own: s._taken ? cover(new Set(this._tok(s._taken.name)), s.name) : 0 }))
       .sort((a, b) => b._score - a._score || U.sortFr(a.name || '', b.name || ''));
     U.modal({
       title: '🔗 Relier à une fiche du site', wide: true, hideOk: true,
@@ -348,11 +350,12 @@ const Woo = {
   _lkRender() {
     const box = document.getElementById('woo_lk_list'); if (!box) return;
     const q = (document.getElementById('woo_lk_q')?.value || '').trim();
-    const pool = q ? this._lkAll.filter(s => U.has((s.name || '') + ' ' + (s.sku || ''), q)) : this._lkAll.filter(s => s._score > 0);
+    // Suggestions : fiches libres de nom proche + fiches dont l'UGS appartient déjà à un AUTRE produit alors que le nom ne lui ressemble pas (UGS collé par erreur sur le site)
+    const pool = q ? this._lkAll.filter(s => U.has((s.name || '') + ' ' + (s.sku || ''), q)) : this._lkAll.filter(s => s._taken ? (s._score >= 0.75 && s._score > s._own + 0.05) : s._score > 0);
     this._lkShown = pool.slice(0, q ? 40 : 12);
     box.innerHTML = (q ? '' : '<div class="muted" style="font-size:.8rem;margin-bottom:6px;">Suggestions (noms proches) — tape un mot pour chercher ailleurs.</div>')
-      + (this._lkShown.map((s, i) => `<button type="button" class="btn-ghost" style="display:block;width:100%;text-align:left;margin-bottom:6px;" onclick="Woo.doLink(${i})"><b>${U.esc(s.name || '—')}</b><div class="sub" style="font-size:.8rem;">#${U.esc(s.id)} · UGS sur le site : ${s.sku ? `<span class="sku-txt">${U.esc(s.sku)}</span>` : '<i>aucun</i>'}${s.price != null ? ' · ' + U.eur(s.price) : ''}</div></button>`).join('')
-      || '<p class="muted">Aucune fiche trouvée. Les fiches déjà reliées ou déjà identiques à un produit de l\'appli ne sont pas proposées.</p>');
+      + (this._lkShown.map((s, i) => `<button type="button" class="btn-ghost" style="display:block;width:100%;text-align:left;margin-bottom:6px;" onclick="Woo.doLink(${i})"><b>${U.esc(s.name || '—')}</b><div class="sub" style="font-size:.8rem;">#${U.esc(s.id)} · UGS sur le site : ${s.sku ? `<span class="sku-txt">${U.esc(s.sku)}</span>` : '<i>aucun</i>'}${s.price != null ? ' · ' + U.eur(s.price) : ''}${s._taken ? `<br>⚠️ cet UGS est déjà celui de « ${U.esc(s._taken.name)} » dans l'appli : ce produit repassera en « absent du site »` : ''}</div></button>`).join('')
+      || '<p class="muted">Aucune fiche trouvée. Les fiches déjà reliées ne sont pas proposées.</p>');
   },
   doLink(i) {
     const s = (this._lkShown || [])[i]; if (!s || !this._lkSku) return;
@@ -363,7 +366,7 @@ const Woo = {
     const taken = new Set([String(s.id)].concat(Object.values(st.wooLinks).map(String))); let extra = 0;
     if (s.parent && app && this._cmp) this._cmp.appOnly.filter(a => a.sku !== this._lkSku && pre(a.name) === pre(app.name)).forEach(a => {
       const f = norm(String(a.name || '').split(' — ').slice(1).join(' — ')); if (!f) return;
-      const t = this._lkAll.find(x => x.parent === s.parent && !taken.has(String(x.id)) && norm(String(x.name || '').split(' - ').pop()) === f);
+      const t = this._lkAll.find(x => x.parent === s.parent && !x._taken && !taken.has(String(x.id)) && norm(String(x.name || '').split(' - ').pop()) === f);
       if (t) { st.wooLinks[a.sku] = String(t.id); taken.add(String(t.id)); extra++; }
     });
     Store.save('settings');
@@ -1147,13 +1150,22 @@ const Woo = {
     // Mode « avec ID » (Antho 2026-10-17 : un seul import qui met TOUT à jour) : dès qu'un produit de l'export est relié à une fiche du site dont l'UGS est à corriger,
     // CHAQUE ligne part avec l'ID / Type / Parent de sa fiche (export natif du site) : WooCommerce met alors à jour la fiche par son ID (UGS corrigé + prix + stock, sans doublon).
     // Les produits absents du site n'ont pas d'ID : ils ne sont pas exportés (ils créeraient des produits sans nom).
-    let ids = null, skipped = 0;
+    let ids = null, skipped = 0, blocked = 0;
     if (linked.some(l => pending.has(l.sku))) {
       ids = this._idMap();
       const before = linked.length;
       linked = linked.filter(l => ids.has(l.sku));
       skipped = before - linked.length;
       if (!linked.length) { U.toast("Aucun des produits choisis n'est sur ton site (redépose l'export du site dans Comparer si ça vient de changer).", true); return; }
+    }
+    if (ids) {
+      // WooCommerce refuse un UGS déjà porté par une AUTRE fiche : une fiche qui prend l'UGS d'une autre doit donc passer APRÈS elle dans le fichier (cas d'UGS échangés entre 2 fiches).
+      const owner = new Map(this._siteRef.items.map(x => [x.sku, String(x.id)])), idOf = l => String(ids.get(l.sku).id), inExp = new Map(linked.map(l => [idOf(l), l]));
+      const ordered = [], seen = new Set();
+      const visit = l => { const id = idOf(l); if (seen.has(id)) return; seen.add(id); const o = owner.get(l.sku); if (o && o !== id && inExp.has(o)) visit(inExp.get(o)); ordered.push(l); };
+      linked.forEach(visit);
+      blocked = linked.filter(l => { const o = owner.get(l.sku); return o && o !== idOf(l) && !inExp.has(o); }).length;
+      linked = ordered;
     }
     const head = ids ? ['ID', 'Type', 'UGS', 'Parent'] : ['UGS'];
     if (this.includePrice) head.push('Tarif régulier');
@@ -1177,7 +1189,7 @@ const Woo = {
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     const fname = `woocommerce-touffu-${U.today()}.csv`;
     U.download(fname, '﻿' + csv, 'text/csv');
-    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${ids ? ' Les fiches reliées reçoivent aussi leur nouvel UGS.' : ''}${skipped ? ` ${skipped} produit(s) absent(s) du site non exporté(s) (ils créeraient des produits vides).` : ''}`);
+    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${ids ? ' Les fiches reliées reçoivent aussi leur nouvel UGS.' : ''}${skipped ? ` ${skipped} produit(s) absent(s) du site non exporté(s) (ils créeraient des produits vides).` : ''}${blocked ? ` ⚠️ ${blocked} UGS sont encore portés par une autre fiche du site absente de l'export : coche aussi cette fiche, sinon WooCommerce refusera la ligne.` : ''}`);
     // Produits à contrôler sur le site après l'import : tous si ≤ 3, sinon 3 au hasard
     const pool = linked.slice(), pick = [];
     while (pick.length < Math.min(3, pool.length)) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
