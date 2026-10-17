@@ -1091,12 +1091,18 @@ const Woo = {
   exportCsv() {
     // Les produits exclus du site (réglage persistant) ne sont JAMAIS exportés.
     const pending = this._pendingSkus();   // reliés à une fiche du site dont l'UGS reste à corriger : les envoyer créerait un doublon
-    const allLinked = this.lines().filter(l => l.sku && !this._isExcluded(l.sku) && !pending.has(l.sku) && this._inCat(this._k(l)));   // « tout » = la catégorie choisie (Tous | Mastication | Accessoires)
-    if (!allLinked.length) { U.toast('Aucun produit à exporter (tous sans SKU ou exclus).', true); return; }
-    // Sélection active → on n'exporte QUE les produits cochés ; sinon tout.
-    const selCount = this._selCount(allLinked);
-    const linked = selCount > 0 ? allLinked.filter(l => this._sel[l.sku]) : allLinked;
-    if (!linked.length) { U.toast('Aucun produit sélectionné à exporter.', true); return; }
+    const inScope = this.lines().filter(l => l.sku && this._inCat(this._k(l)));   // « tout » = la catégorie choisie (Tous | Mastication | Accessoires)
+    // Sélection active → on n'exporte QUE les produits cochés ; sinon tout. La sélection est comptée AVANT d'écarter les exclus / reliés à corriger :
+    // sinon, si tous les produits cochés étaient écartés, le compte tombait à 0 et l'appli exportait TOUT le catalogue (incident du 2026-10-17 : 72 fiches du site mises à jour au lieu de 3).
+    const selCount = this._selCount(inScope);
+    const chosen = selCount > 0 ? inScope.filter(l => this._sel[l.sku]) : inScope;
+    const held = chosen.filter(l => pending.has(l.sku)).length;
+    const linked = chosen.filter(l => !this._isExcluded(l.sku) && !pending.has(l.sku));
+    if (!linked.length) {
+      U.toast(held ? `Les ${held} produit(s) choisi(s) sont reliés à une fiche du site dont l'UGS n'est pas encore corrigé : utilise d'abord « Corriger les UGS du site (CSV) » dans Comparer. Rien n'a été exporté.`
+        : selCount > 0 ? 'Aucun produit sélectionné à exporter (exclus du site ?).' : 'Aucun produit à exporter (tous sans SKU ou exclus).', true);
+      return;
+    }
     // En-têtes en FRANÇAIS, identiques à l'export natif du site d'Antho (WooCommerce FR :
     // UGS = SKU, Tarif régulier = prix, En stock ? = statut). Ainsi l'importateur WooCommerce
     // les reconnaît automatiquement (pas de mapping manuel de colonnes à faire).
@@ -1121,7 +1127,7 @@ const Woo = {
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     const fname = `woocommerce-touffu-${U.today()}.csv`;
     U.download(fname, '﻿' + csv, 'text/csv');
-    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${pending.size ? ` ${pending.size} produit(s) relié(s) exclu(s) : corrige d'abord leur UGS sur le site.` : ''}`);
+    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${held ? ` ${held} produit(s) relié(s) laissé(s) de côté : corrige d'abord leur UGS sur le site.` : ''}`);
     // Produits à contrôler sur le site après l'import : tous si ≤ 3, sinon 3 au hasard
     const pool = linked.slice(), pick = [];
     while (pick.length < Math.min(3, pool.length)) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
