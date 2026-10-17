@@ -514,7 +514,7 @@ const Pricing = {
     const sup = this.persoSupplement(a);   // le coefficient s'applique à TOUT le coût (encre et laser compris, décision d'Antho 2026-10-14) ; le supplément choisi s'ajoute ensuite au prix
     const storedCoeff = U.num(a.coefficient) || 2;
     let coeff, priceHT, priceTTC, priceFixed = false;
-    if (U.num(a.priceTTCManual) > 0) {
+    if (a.manual || U.num(a.priceTTCManual) > 0) {   // pièce « prête à finir » ajoutée à la main : son prix est celui saisi (0 si vide), jamais calculé par coefficient
       priceFixed = true;
       priceTTC = U.num(a.priceTTCManual);
       priceHT = priceTTC / (1 + vat);

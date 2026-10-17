@@ -2349,7 +2349,7 @@ const Stock = {
     const cnt = fn => all.filter(fn).length;
     const pass = a => (!qn || U.has(a.name + ' ' + (a.sku || ''), qn)) && (f.cat === 'all' || (a.category || 'Autre') === f.cat) && (f.width === 'all' || A._widthOf(a) === f.width)
       && (f.bic === 'yes' ? !!a.bicolor : f.bic === 'no' ? !a.bicolor : true)
-      && (f.state === 'in' ? tot(a) > 0 : f.state === 'out' ? tot(a) <= 0 : f.state === 'low' ? isLow(a) : true);
+      && (f.state === 'in' ? tot(a) > 0 : f.state === 'out' ? tot(a) <= 0 : f.state === 'low' ? isLow(a) : f.state === 'manual' ? !!a.manual : f.state === 'craft' ? !a.manual : true);
     const list = all.filter(pass);
     // une entrée par famille (a.groupId) ou par accessoire isolé ; totaux = ceux des longueurs AFFICHÉES
     const byKey = new Map();
@@ -2376,12 +2376,14 @@ const Stock = {
     const badges = a => { const r = A._persoRank(a); return (r & 4 ? ' <span class="badge">Thème UV</span>' : r & 1 ? ' <span class="badge">UV</span>' : '') + (r & 2 ? ' <span class="badge">Laser</span>' : ''); };
     const wBadge = a => { const w = A._widthOf(a); return w ? `<span class="badge">${U.esc(w)}</span>` : ''; };
     const arrows = a => ro ? '' : `<button class="btn-transfer" style="background:var(--ok);" title="Transférer du Général vers l'Événement" onclick="Accessoires.transferStock('${a.id}','ge')">→</button><button class="btn-transfer" style="background:#3b6fa0;" title="Retour de l'Événement vers le Général" onclick="Accessoires.transferStock('${a.id}','eg')">←</button>`;
-    const link = a => `<a class="btn-icon" href="#/accessoires/${a.id}" title="Ouvrir la fiche dans Artisanat (prix, matières, coût)" style="text-decoration:none;">↗</a>`;
+    const link = a => a.manual ? '' : `<a class="btn-icon" href="#/accessoires/${a.id}" title="Ouvrir la fiche dans Artisanat (prix, matières, coût)" style="text-decoration:none;">↗</a>`;
+    const actions = a => a.manual ? (ro ? '' : `<button class="btn-ghost btn-sm" title="Modifier cette pièce (nom, coût, prix, quantités)" onclick="Accessoires.editManual('${a.id}')">✎ Modifier</button><button class="btn-icon" title="Supprimer cette pièce" onclick="Accessoires.delManual('${a.id}')">🗑️</button>`)
+      : (ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button>`) + link(a);
     // ligne d'une longueur (ou d'un accessoire isolé : nom complet + largeur + catégorie)
     const row = (r, solo) => { const a = r.a, len = A._lenOf(a);
       return `<div class="stk-acc-row${solo ? ' solo' : ''}${isLow(a) ? ' low' : ''}">
         <span data-l="${solo ? 'Accessoire' : 'Longueur'}"><b>${solo ? U.esc(a.name) : (len > 0 ? U.qty(len) + ' m' : U.esc(a.name))}</b>${badges(a)}</span>
-        <span data-l="${solo ? 'Largeur · catégorie' : 'SKU'}">${solo ? `${wBadge(a)} <span class="badge info">${U.esc(a.category || 'Autre')}</span>${a.sku ? `<div><span class="sku-txt">${U.esc(a.sku)}</span></div>` : ''}` : (a.sku ? `<span class="sku-txt">${U.esc(a.sku)}</span>` : '<span class="muted">—</span>')}</span>
+        <span data-l="${solo ? 'Largeur · catégorie' : 'SKU'}">${solo ? `${wBadge(a)} <span class="badge info">${U.esc(a.category || 'Autre')}</span>${a.manual ? ' <span class="badge manual" title="Pièce faite à l’avance, pas encore terminée (ajoutée à la main)">🧩 Prêt à finir</span>' : ''}${a.sku ? `<div><span class="sku-txt">${U.esc(a.sku)}</span></div>` : ''}` : (a.sku ? `<span class="sku-txt">${U.esc(a.sku)}</span>` : '<span class="muted">—</span>')}</span>
         <span data-l="Général">${inp(a, 'general', a.stockGeneral, zc(a.stockGeneral))}</span>
         <span class="stk-acc-mv">${arrows(a)}</span>
         <span data-l="Événement">${inp(a, 'event', a.stockEvent, zc(a.stockEvent))}</span>
@@ -2389,9 +2391,9 @@ const Stock = {
         <span data-l="Min">${inp(a, 'low', a.low, ' min')}</span>
         <span data-l="Coût" class="sensitive right">${U.eur(r.cost)}</span>
         <span data-l="Prix TTC" class="right"><b>${U.eur(r.price)}</b></span>
-        <span class="stk-acc-act">${ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button>`}${link(a)}</span></div>`; };
+        <span class="stk-acc-act">${actions(a)}</span></div>`; };
     const card = i => {
-      if (!i.gid) return `<div class="fold stk-acc-single">${row(i.rows[0], true)}</div>`;
+      if (!i.gid) return `<div class="fold stk-acc-single${i.first.manual ? ' manual' : ''}">${row(i.rows[0], true)}</div>`;
       const first = i.first, total = all.filter(x => x.groupId === i.gid).length, name = first.groupName || A._familyName(first);
       const open = autoOpen || !!this._accGrpOpen[i.gid], ws = [...new Set(i.mem.map(a => A._widthOf(a)).filter(Boolean))];
       const nz = v => v > 0 ? '' : ' class="warn-txt"';
@@ -2420,19 +2422,19 @@ const Stock = {
         <div class="fg"><label>Catégorie</label><select onchange="Stock.accSet('cat',this.value)"><option value="all">Toutes (${all.length})</option>${cats.map(c => `<option value="${U.esc(c)}" ${f.cat === c ? 'selected' : ''}>${U.esc(c)} (${cnt(x => (x.category || 'Autre') === c)})</option>`).join('')}</select></div>
         <div class="fg"><label>Largeur</label><select onchange="Stock.accSet('width',this.value)"><option value="all">Toutes</option>${widths.map(w => `<option value="${U.esc(w)}" ${f.width === w ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div>
         <div class="fg"><label>Bicolor</label><select onchange="Stock.accSet('bic',this.value)"><option value="all" ${f.bic === 'all' ? 'selected' : ''}>Tous</option><option value="yes" ${f.bic === 'yes' ? 'selected' : ''}>Bicolor</option><option value="no" ${f.bic === 'no' ? 'selected' : ''}>Non bicolor</option></select></div>
-        <div class="fg"><label>État du stock</label><select onchange="Stock.accSet('state',this.value)"><option value="all" ${f.state === 'all' ? 'selected' : ''}>Tous</option><option value="in" ${f.state === 'in' ? 'selected' : ''}>En stock (${cnt(a => tot(a) > 0)})</option><option value="out" ${f.state === 'out' ? 'selected' : ''}>Sans stock (${cnt(a => tot(a) <= 0)})</option><option value="low" ${f.state === 'low' ? 'selected' : ''}>⚠️ Stock bas (${cnt(isLow)})</option></select></div>
+        <div class="fg"><label>État du stock</label><select onchange="Stock.accSet('state',this.value)"><option value="all" ${f.state === 'all' ? 'selected' : ''}>Tous</option><option value="in" ${f.state === 'in' ? 'selected' : ''}>En stock (${cnt(a => tot(a) > 0)})</option><option value="out" ${f.state === 'out' ? 'selected' : ''}>Sans stock (${cnt(a => tot(a) <= 0)})</option><option value="low" ${f.state === 'low' ? 'selected' : ''}>⚠️ Stock bas (${cnt(isLow)})</option><option value="manual" ${f.state === 'manual' ? 'selected' : ''}>🧩 Prêts à finir (${cnt(a => a.manual)})</option><option value="craft" ${f.state === 'craft' ? 'selected' : ''}>🛠 Fabriqués (Artisanat) (${cnt(a => !a.manual)})</option></select></div>
       </div>
       <div class="frow" style="gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
         <span class="muted">${list.length !== all.length ? list.length + ' / ' + all.length : all.length} accessoire(s) · <b>${U.qty(T.q)}</b> pièce(s) en stock fini</span>
         <span class="muted sensitive">Valeur du stock : achat <b>${U.eur(T.buy)}</b> · revente TTC <b>${U.eur(T.sell)}</b></span>
-        <span style="margin-left:auto;display:flex;gap:6px;"><button class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(true)">▼ Tout déplier</button><button class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(false)">▲ Tout réduire</button></span>
+        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${ro ? '' : `<button style="white-space:nowrap;" class="btn-cta btn-sm fit" onclick="Accessoires.editManual()" title="Ajoute à la main une pièce faite à l'avance mais pas terminée (porte-clés non personnalisés, sangles prédécoupées…)">＋ Ajouter un accessoire</button>`}<button style="white-space:nowrap;" class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(true)">▼ Tout déplier</button><button style="white-space:nowrap;" class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(false)">▲ Tout réduire</button></span>
       </div>
       ${items.length ? `<div class="prod-list-header stk-acc-header">
         <span>${sh('name', 'Accessoire')}</span><span>${sh('width', 'Largeur')} · ${sh('cat', 'Catégorie')}</span><span>Général</span><span></span><span>Événement</span><span>${sh('tot', 'Total')}</span><span></span><span class="right">${sh('cost', 'Coût')}</span><span class="right">${sh('price', 'Prix TTC')}</span><span></span>
       </div>
       ${items.map(card).join('')}
-      <p class="muted help mt" data-help-anchor=".stk-acc-header > span:first-child">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0 (orange). Coût = coût de revient d'une pièce (matières, filament, impression, UV) et Prix TTC = prix de la fiche dans Artisanat (↗ pour l'ouvrir). → et ← déplacent des pièces entre le stock général (site) et le stock événement (SumUp). Min = seuil d'alerte sur le total. Clique une famille pour voir ses longueurs.</p>`
-      : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Artisanat.') + '</div>'}`;
+      <p class="muted help mt" data-help-anchor=".stk-acc-header > span:first-child">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0 (orange). Coût = coût de revient d'une pièce (matières, filament, impression, UV) et Prix TTC = prix de la fiche dans Artisanat (↗ pour l'ouvrir). → et ← déplacent des pièces entre le stock général (site) et le stock événement (SumUp). Min = seuil d'alerte sur le total. Clique une famille pour voir ses longueurs. Bandeau BLEU 🧩 = pièce « prête à finir » ajoutée à la main (porte-clés imprimés non personnalisés, sangles prédécoupées…) : elle n'apparaît pas dans Artisanat ; en fabriquant l'accessoire fini tu peux choisir de partir d'elle. Filtre « État du stock » → « Prêts à finir ».</p>`
+      : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Artisanat, ou ajoute une pièce à la main avec « ＋ Ajouter un accessoire ».') + '</div>'}`;
   },
   /* ───── DLUO des consommables (Antho 2026-10-14 : encres, nettoyants… ont une date limite) ─────
      c.hasDluo = « ce produit a une date limite » ; c.lots = [{id, qty, dluo, lotNumber}] = unités DATÉES. La quantité `c.qty` reste le stock total :

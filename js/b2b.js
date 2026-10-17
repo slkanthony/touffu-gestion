@@ -101,7 +101,7 @@ const B2B = {
       const o = { name, variant, req: view(discPct), max: view(r.discMax), coeff: r.coeffB2B };
       if (r.capped && r.discMax > 0) out.push(o); else if (r.capped) blocked.push(o);
     };
-    if (acc) Store.state.catalogA.forEach(a => { const it = this.accStats(a), w = this.accWidths(a); add(a.name, a.mainWidth || w[0] || 'Standard', Pricing.vatRate(a), it.discPct, it); });
+    if (acc) Accessoires.crafted().forEach(a => { const it = this.accStats(a), w = this.accWidths(a); add(a.name, a.mainWidth || w[0] || 'Standard', Pricing.vatRate(a), it.discPct, it); });
     else Store.state.catalogM.forEach(p => { const it = this.productStats(p); it.rows.forEach(r => add(p.name, r.label, Pricing.vatRate(p), it.discPct, r)); });
     const srt = (a, b) => U.sortFr(a.name, b.name) || U.sortFr(a.variant, b.variant);
     return { capped: out.sort(srt), blocked: blocked.sort(srt) };
@@ -156,8 +156,8 @@ const B2B = {
   renderAcc() {
     const S = Store.state.settings;
     const f = this.filters;
-    const allWidths = [...new Set(Store.state.catalogA.flatMap(a => this.accWidths(a)))].filter(Boolean).sort(U.sortFr);
-    const list = Store.state.catalogA.filter(a =>
+    const allWidths = [...new Set(Accessoires.crafted().flatMap(a => this.accWidths(a)))].filter(Boolean).sort(U.sortFr);
+    const list = Accessoires.crafted().filter(a =>
       (!f.q || U.has(a.name || '', f.q)) &&
       (f.cat === 'all' || (a.category || '') === f.cat) &&
       (f.width === 'all' || this.accWidths(a).includes(f.width))

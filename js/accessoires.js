@@ -61,7 +61,7 @@ const Accessoires = {
   /* Propositions de familles pour les fiches pas encore rangées : même nom (sans longueur ni personnalisation) + catégorie + largeur, au moins 2 fiches. */
   _proposeGroups() {
     const map = {};
-    Store.state.catalogA.filter(a => !a.groupId).forEach(a => {
+    this.crafted().filter(a => !a.groupId).forEach(a => {
       const k = U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a) + '|' + this._persoRank(a);   // UV / laser = une autre famille
       (map[k] = map[k] || []).push(a);
     });
@@ -448,7 +448,7 @@ const Accessoires = {
     U.syncFilters('accessoires', this, ['accQ', 'accCatFilter', 'accWidthFilter', 'accBicolorFilter', 'accSort', 'accSortDir']);
     const focusId = this.focusId; this.focusId = null;
     if (focusId) { this.accQ = ''; this.accCatFilter = ''; this.accWidthFilter = ''; this.accBicolorFilter = ''; this._accOpen[focusId] = true; const _fa = Store.state.catalogA.find(x => x.id === focusId); if (_fa && _fa.groupId) this._grpOpen[_fa.groupId] = true; }
-    let list = [...Store.state.catalogA];
+    let list = [...this.crafted()];   // les pièces « prêtes à finir » (ajoutées à la main) ne sont que dans Stock → Accessoires
     const q = this.accQ.toLowerCase();
     if (q) list = list.filter(a => U.has(a.name, q));
     if (this.accCatFilter) list = list.filter(a => a.category === this.accCatFilter);
@@ -470,13 +470,13 @@ const Accessoires = {
       return (v || (this.accSort === 'name' ? 0 : this._cmpAcc(a, b))) * dir;
     });
     const sortHead = (key, label) => `<span class="sortable ${this.accSort===key?'active':''}" onclick="Accessoires.setAccSort('${key}')">${label} ${this.accSort===key?(this.accSortDir==='asc'?'▲':'▼'):'⇕'}</span>`;
-    const allCats = [...new Set(Store.state.catalogA.map(a => a.category).filter(Boolean))].sort(U.sortFr);
-    const allWidths = [...new Set(Store.state.catalogA.flatMap(a => a.strapWidths || []))].sort((a, b) => parseInt(a) - parseInt(b));
+    const allCats = [...new Set(this.crafted().map(a => a.category).filter(Boolean))].sort(U.sortFr);
+    const allWidths = [...new Set(this.crafted().flatMap(a => a.strapWidths || []))].sort((a, b) => parseInt(a) - parseInt(b));
     document.getElementById('accBody').innerHTML = `
       <div class="toolbar">
         <div class="fg"><label>Recherche</label><input id="acc_q" type="text" placeholder="nom du produit…" value="${U.esc(this.accQ)}" oninput="Accessoires.setAccQ(this.value)"></div>
         <div class="fg"><label>Catégorie</label><select onchange="Accessoires.setAccCatFilter(this.value)">
-          <option value="">Toutes (${Store.state.catalogA.length})</option>
+          <option value="">Toutes (${this.crafted().length})</option>
           ${allCats.map(c => `<option value="${U.esc(c)}" ${this.accCatFilter === c ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}
         </select></div>
         <div class="fg"><label>Largeur</label><select onchange="Accessoires.setAccWidthFilter(this.value)">
@@ -1593,6 +1593,63 @@ const Accessoires = {
     const w = document.getElementById('fab_bom_wrap'); if (w) w.innerHTML = this._fabBomHTML() || '<p class="muted">Aucune matière dans la nomenclature.</p>';
   },
 
+  /* ---------- pièces « prêtes à finir » ajoutées à la main (Antho 2026-10-17) ----------
+     Pièces faites d'avance mais pas terminées (porte-clés imprimés non personnalisés, sangles prédécoupées…) : même structure que les autres accessoires (général / événement / seuil, mêmes filtres)
+     mais SANS recette : `a.manual = true`, coût dans `a.extraCost`, prix dans `a.priceTTCManual` (donc `Pricing.accCalc` marche tel quel). Elles n'apparaissent PAS dans Artisanat, Revente pro, Paniers,
+     stats de prix ni export du site (`Accessoires.crafted()`) ; elles comptent dans le stock fini et le Tableau de bord. « Fabriquer » peut partir d'une de ces pièces (`fab_src`). */
+  crafted() { return Store.state.catalogA.filter(a => !a.manual); },
+  editManual(id) {
+    if (App.isViewer) return;
+    const S = Store.state.settings, ex = id ? Store.state.catalogA.find(x => x.id === id) : null;
+    if (id && !ex) return;
+    const a = ex || { category: '', name: '', sku: '', extraCost: '', priceTTCManual: '', stockGeneral: 0, stockEvent: 0, low: 0 };
+    const cats = [...new Set([...(S.accCategories || []), a.category].filter(Boolean))].sort(U.sortFr);
+    const nv = v => (v === '' || v === undefined || v === null) ? '' : U.num(v);
+    U.modal({
+      title: ex ? '🧩 ' + U.esc(a.name) : '🧩 Ajouter un accessoire', okLabel: 'Enregistrer',
+      body: `<div class="frow">
+          <div class="fg" style="flex:2;min-width:0;"><label>Nom ${U.info('Ex. « Porte-clés pas fini », « Sangle 20 mm prédécoupée ». Pièce faite à l\'avance, pas encore terminée : elle reste dans le stock des accessoires (bandeau bleu) et n\'apparaît pas dans Artisanat. Quand tu fabriques l\'accessoire fini, tu peux choisir de partir d\'elle.')}</label><input id="m_name" value="${U.esc(a.name)}" placeholder="ex: Porte-clés pas fini"></div>
+          <div class="fg" style="min-width:0;"><label>Catégorie</label><select id="m_cat"><option value="">Autre</option>${cats.map(c => `<option ${a.category === c ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}</select></div>
+        </div>
+        <div class="frow">
+          <div class="fg" style="min-width:0;"><label>SKU (option)</label><input id="m_sku" value="${U.esc(a.sku || '')}"></div>
+          <div class="fg" style="min-width:0;"><label>Coût (€)</label><input id="m_cost" type="number" step="0.01" min="0" value="${nv(a.extraCost)}"></div>
+          <div class="fg" style="min-width:0;"><label>Prix TTC (€)</label><input id="m_price" type="number" step="0.01" min="0" value="${nv(a.priceTTCManual)}"></div>
+        </div>
+        <div class="frow">
+          <div class="fg" style="min-width:0;"><label>Général</label><input id="m_gen" type="number" step="1" min="0" value="${U.num(a.stockGeneral)}"></div>
+          <div class="fg" style="min-width:0;"><label>Événement</label><input id="m_evt" type="number" step="1" min="0" value="${U.num(a.stockEvent)}"></div>
+          <div class="fg" style="min-width:0;"><label>Seuil min</label><input id="m_low" type="number" step="1" min="0" value="${U.num(a.low)}"></div>
+        </div>
+        <span class="muted help">Le coût sert à valoriser le stock (Tableau de bord). Le filament et les matières de l'accessoire fini ne sont retirés qu'au moment de le fabriquer : ne les retire pas toi-même en ajoutant la pièce ici.</span>`,
+      onOk: () => {
+        const name = U.val('m_name').trim();
+        if (!name) { U.toast('Donne un nom à la pièce.', true); return false; }
+        const sku = U.val('m_sku').trim();
+        if (sku && this._takenSkus(ex ? ex.id : '').has(sku.toUpperCase())) { U.toast('Ce SKU existe déjà.', true); return false; }
+        const raw = k => { const v = U.val(k).trim(); return v === '' ? '' : Math.max(0, U.num(v)); };
+        const whole = k => Math.max(0, Math.round(U.numVal(k)));
+        const snap = ex ? Store.snapshot('catalogA', ex) : null;
+        const rec = ex || { id: U.uid(), manual: true, bom: [], strapWidths: [], coefficient: 2 };
+        Object.assign(rec, { name, category: U.val('m_cat'), sku, extraCost: raw('m_cost'), priceTTCManual: raw('m_price'), stockGeneral: whole('m_gen'), stockEvent: whole('m_evt'), low: whole('m_low') });
+        if (!ex) Store.state.catalogA.push(rec);
+        const entry = ex ? Store.commitSnapshot(snap, 'stock', 'Pièce prête à finir modifiée — ' + name)
+          : Store.log('stock', 'Pièce prête à finir ajoutée — ' + name, { type: 'deleteCreated', data: { domain: 'catalogA', id: rec.id } });
+        Store.save('catalogA'); U.closeModal(); App.rerender();
+        U.toast(ex ? 'Modification enregistrée.' : name + ' ajouté au stock.', false, entry.id);
+      }
+    });
+  },
+  async delManual(id) {
+    const a = Store.state.catalogA.find(x => x.id === id); if (!a || App.isViewer) return;
+    if (!await U.confirm(`Supprimer « ${a.name} » du stock ?`, { danger: true })) return;
+    const snap = Store.snapshot('catalogA', a);
+    Store.state.catalogA = Store.state.catalogA.filter(x => x.id !== id);
+    const entry = Store.commitSnapshot(snap, 'stock', 'Pièce prête à finir supprimée — ' + a.name);
+    Store.save('catalogA'); App.rerender();
+    U.toast('Pièce supprimée.', false, entry.id);
+  },
+
   /* ---------- stock fini (Stock → Accessoires) ---------- */
   setStockFini(id, field, val) {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a || App.isViewer) return;
@@ -1632,10 +1689,15 @@ const Accessoires = {
     const bomHTML = this._fabBomHTML();
     const endsBox = a.bicolor && (a.fabSegments || []).length >= 2 ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0 0;font-size:.84rem;text-transform:none;letter-spacing:0;"><input id="fab_ends" type="checkbox" ${a.bicolorEnds ? 'checked' : ''} onchange="Accessoires._fabToggleEnds()"> <span>Ces 2 sangles ne sont pas de la même couleur <span class="muted">(→ 3 couleurs, pour cette fabrication)</span></span></label>` : '';
 
+    // pièces « prêtes à finir » (ajoutées à la main) en stock : on peut en partir (elles perdent n pièces, le stock fini de l'accessoire en gagne n)
+    const srcOpts = Store.state.catalogA.filter(x => x.manual && x.id !== a.id).flatMap(x => [['stockGeneral', 'Général'], ['stockEvent', 'Événement']]
+      .filter(([k]) => U.num(x[k]) > 0).map(([k, l]) => `<option value="${x.id}|${k}">${U.esc(x.name)} — ${l} (${U.qty(x[k])})</option>`)).join('');
+    const srcRow = srcOpts ? `<div class="frow"><div class="fg"><label>Partir d'une pièce prête à finir ${U.info("Option. Choisis la pièce faite à l'avance (ex. porte-clés pas fini) : elle perd autant de pièces que tu en fabriques, et l'accessoire fini en gagne autant. Les matières de la recette ci-dessous sont quand même retirées : le filament et la sangle n'ont pas été retirés quand tu as ajouté la pièce à la main.")}</label><select id="fab_src"><option value="">— Non, fabriquer de zéro —</option>${srcOpts}</select></div></div>` : '';
     U.modal({
       title: '🛠 Fabriquer — ' + U.esc(a.name), okLabel: 'Fabriquer',
       body: `<div class="frow"><div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1"></div>
         <div class="fg"><label>Pièces ajoutées au stock ${U.info("Les pièces fabriquées entrent dans le stock fini de cet accessoire (visible dans Stock → Accessoires et au Tableau de bord). Général = site / atelier ; Événement = emporté en marché (SumUp).")}</label><select id="fab_dest"><option value="stockGeneral">Général</option><option value="stockEvent">Événement</option></select></div></div>
+        ${srcRow}
         <h2 style="font-size:.95rem;margin-top:12px;">Matières à utiliser</h2>
         ${endsBox}
         <div id="fab_bom_wrap" style="margin-top:8px;">${bomHTML || '<p class="muted">Aucune matière dans la nomenclature.</p>'}</div>`,
@@ -1659,7 +1721,10 @@ const Accessoires = {
           } else { U.toast(`Famille introuvable : ${b.label}`, true); return false; }
         }
         const pool = U.val('fab_dest') === 'stockEvent' ? 'stockEvent' : 'stockGeneral';
+        const [srcId, srcPool] = (U.val('fab_src') || '').split('|'), srcAcc = srcId ? Store.state.catalogA.find(x => x.id === srcId && x.manual) : null;
+        if (srcAcc && U.num(srcAcc[srcPool]) < n) { U.toast(`Pas assez de « ${srcAcc.name} » : ${U.qty(srcAcc[srcPool])} disponible(s).`, true); return false; }
         const undo = { accId: a.id, n, mats: [], fid: U.uid(), pool };
+        if (srcAcc) { srcAcc[srcPool] = U.num(srcAcc[srcPool]) - n; undo.src = { id: srcAcc.id, pool: srcPool, n }; }   // pièce prête à finir consommée
         a[pool] = U.num(a[pool]) + n;   // stock FINI crédité (avant 2026-10-17 la fabrication ne faisait que retirer les matières)
         for (const { m, need } of resolved) {
           m.qty = U.num(m.qty) - need;
@@ -1671,7 +1736,7 @@ const Accessoires = {
         if (S.fabHistory.length > 5000) S.fabHistory.splice(0, S.fabHistory.length - 5000);
         Store.save('materials', 'settings', 'catalogA');
         U.closeModal(); App.rerender();
-        U.toast(`${n} × ${a.name} — matières déduites, +${n} en stock ${pool === 'stockEvent' ? 'événement' : 'général'}. 🛠`, false, entry.id);
+        U.toast(`${n} × ${a.name} — matières déduites${srcAcc ? `, −${n} « ${srcAcc.name} »` : ''}, +${n} en stock ${pool === 'stockEvent' ? 'événement' : 'général'}. 🛠`, false, entry.id);
       }
     });
   }

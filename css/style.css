@@ -1660,6 +1660,8 @@ table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
 .stk-acc-min { font-size: .7rem; font-weight: 400; color: var(--gris); }
 .stk-acc-act { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
 .stk-acc-single { margin-bottom: 10px; border-left: 4px solid var(--caramel); }
+.stk-acc-single.manual { border-left-color: #4f9fd0; }   /* pièce « prête à finir » ajoutée à la main (Antho 2026-10-17) : bandeau bleu, les accessoires fabriqués gardent le caramel */
+.badge.manual { background: rgba(79,159,208,.18); color: #4f9fd0; border: 1px solid rgba(79,159,208,.45); }
 .stk-acc-single .stk-acc-row { border-top: 0; padding: 10px 16px; }
 details.fold.stk-acc-fold.low { border-left-color: var(--warn) !important; }
 .stk-acc-foot { padding: 10px 16px; border-top: 1px solid var(--row-border); }

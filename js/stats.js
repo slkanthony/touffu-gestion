@@ -404,7 +404,7 @@ const Stats = {
   _coeffRows(kind) {
     const cl = this.coeffList, min = this._coeffNum(cl.min), max = this._coeffNum(cl.max), all = [];
     if (kind === 'acc') {
-      (Store.state.catalogA || []).forEach(a => {
+      Accessoires.crafted().forEach(a => {
         const c = Pricing.accCalc(a); if (!(c.cost > 0)) return;
         const w = B2B.accWidths(a);
         all.push({ key: 'A|' + a.id, id: a.id, name: a.name, variant: a.mainWidth || w[0] || '', group: a.category || '', price: c.priceTTC, cost: c.cost, coeff: c.effCoeff, qty: U.num(a.stockGeneral) + U.num(a.stockEvent), dluo: '' });
@@ -670,7 +670,7 @@ const Stats = {
   },
 
   renderPriceAcc() {
-    const items = Store.state.catalogA;
+    const items = Accessoires.crafted();
     B2B._loadDiscounts();
     const statsPublic = a => this.accVariantStats(a, false), statsB2B = a => this.accVariantStats(a, true);
     let sumCoeff = 0, sumMargin = 0, nPub = 0, sumCoeffB2B = 0, sumMarginB2B = 0, nB2B = 0;
@@ -884,7 +884,7 @@ const Stats = {
 
   /* Mêmes détails au clic pour les ACCESSOIRES (fiches catalogA, regroupées par catégorie ; lien vers la fiche Accessoires). */
   showAccDetail(filterFn, title, statsFn, min, max) {
-    const items = Store.state.catalogA.filter(filterFn), groups = {};
+    const items = Accessoires.crafted().filter(filterFn), groups = {};
     items.forEach(a => { const c = a.category || 'Non spécifié'; (groups[c] = groups[c] || []).push(a); });
     this.detail = { acc: true, title, meats: Object.keys(groups).sort(U.sortFr), groups, statsFn, min: min === undefined ? null : min, max: max === undefined ? null : max };
     this.renderDetail();
@@ -894,7 +894,7 @@ const Stats = {
     const d = this.detail;
     if (d && d.kind === 'coeff' && d.acc && d.serie === serie && d.binIdx === binIdx) { this.closeDetail(); return; }
     const b = this._bins()[binIdx], rows = [];
-    Store.state.catalogA.forEach(a => {
+    Accessoires.crafted().forEach(a => {
       const s = this.accVariantStats(a, true); if (!s) return;
       s.variants.forEach(v => { const c = serie === 0 ? v.coeff : v.coeffMicro; if (c >= b.min && c < b.max) rows.push({ p: a, v, key: c }); });
     });
@@ -1036,7 +1036,7 @@ const Stats = {
     allSales.forEach(s => (s.items || []).forEach(i => { if (i.pId) lastSold[i.pId] = Math.max(lastSold[i.pId] || 0, s.ts); }));
     const dormant = [];
     if (kind !== 'acc') Store.state.catalogM.forEach(p => { if (!soldPids.has(p.id)) dormant.push({ name: p.name, cat: p.meatType || '—', last: lastSold[p.id] || null }); });
-    if (kind !== 'mast') Store.state.catalogA.forEach(a => { if (!soldPids.has(a.id)) dormant.push({ name: a.name, cat: 'Accessoire', last: lastSold[a.id] || null }); });
+    if (kind !== 'mast') Accessoires.crafted().forEach(a => { if (!soldPids.has(a.id)) dormant.push({ name: a.name, cat: 'Accessoire', last: lastSold[a.id] || null }); });
     dormant.sort((a, b) => (a.last || 0) - (b.last || 0));
     // Frais de livraison sur achats + frais généraux : les MÊMES charges que la Compta (Compta.chargesPeriod), sur la période choisie.
     // Un mois sans vente mais avec une facture reste affiché, pour que le total soit celui de la Compta.

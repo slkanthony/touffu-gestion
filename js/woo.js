@@ -837,7 +837,7 @@ const Woo = {
     // 3) ACCESSOIRES (catalogA) : seulement ceux qui ont un SKU (Antho 2026-10-17 : ses fiches accessoires reçoivent leurs SKU un par un, la catégorie
     //    « Accessoires » du filtre les isole). Stock = stock fini (général + événement). Avant cette date ils étaient exclus faute de SKU.
     // Matières premières et consommables ne sont pas des produits vendus → jamais inclus.
-    Store.state.catalogA.forEach(a => {
+    Accessoires.crafted().forEach(a => {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
       add(a.sku, a.name, Pricing.accCalc(a).priceTTC, U.num(a.stockGeneral) + U.num(a.stockEvent), 'Accessoires', '', { accCat: a.category || '', width: String(width || ''), bicolor: !!a.bicolor });
     });

@@ -1209,7 +1209,7 @@ const Paniers = {
   },
   /* Accessoires proposables dans un panier / devis (toutes les fiches, même sans stock fini : fabriqués à la demande). Prix = fiche accessoire (accCalc). */
   accCandidates() {
-    return Store.state.catalogA.map(a => {
+    return Accessoires.crafted().map(a => {
       const c = Pricing.accCalc(a), w = a.mainWidth || (a.strapWidths || [])[0] || '';
       return { kind: 'A', pId: a.id, vId: '', lotId: '', name: a.name, meat: '', category: a.category || '', variant: '', width: w, sku: a.sku || '', price: c.priceTTC, coeff: c.effCoeff || 0,
         avail: U.num(a.stockGeneral) + U.num(a.stockEvent), dluo: '', daysLeft: 9999, tags: {}, rank: Accessoires._persoRank(a) };
@@ -1320,7 +1320,7 @@ const Paniers = {
     const sel = (key, label, opts, cur) => `<label class="pk-f"><span>${label}</span><select onchange="Paniers.pkSet('${key}',this.value)">${opts.map(o => `<option value="${U.esc(o.v)}" ${o.v === cur ? 'selected' : ''}>${U.esc(o.l)}</option>`).join('')}</select></label>`;
     let h = sel('addKind', 'Type', [{ v: 'all', l: 'Tout' }, { v: 'M', l: '🥩 Mastication' }, { v: 'A', l: '🐕 Accessoires' }], kind);
     if (kind === 'A') {
-      const accs = Store.state.catalogA, cats = [...new Set(accs.map(a => a.category).filter(Boolean))].sort(U.sortFr), ws = [...new Set(accs.map(a => a.mainWidth || (a.strapWidths || [])[0] || '').filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
+      const accs = Accessoires.crafted(), cats = [...new Set(accs.map(a => a.category).filter(Boolean))].sort(U.sortFr), ws = [...new Set(accs.map(a => a.mainWidth || (a.strapWidths || [])[0] || '').filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
       h += sel('addCat', 'Catégorie', [{ v: '', l: 'Toutes' }].concat(cats.map(c => ({ v: c, l: c }))), this.addCat)
         + sel('addWidth', 'Largeur', [{ v: '', l: 'Toutes' }].concat(ws.map(w => ({ v: w, l: w }))), this.addWidth)
         + sel('addPerso', 'Personnalisation', [{ v: 'all', l: 'Toutes' }, { v: 'none', l: 'Sans' }, { v: 'uv', l: 'Impression UV' }, { v: 'theme', l: 'Création thème UV' }, { v: 'laser', l: 'Gravure laser' }], this.addPerso);
@@ -1717,7 +1717,7 @@ const Paniers = {
             ${U.customSelect({ value: this.addKind || 'all', options: [{ v: 'all', l: 'Tout' }, { v: 'M', l: '🥩 Mastication' }, { v: 'A', l: '🐕 Accessoires' }], onPick: 'Paniers.setAddKind' })}
           </div>
           ${this.addKind === 'A' ? (() => {
-            const accs = Store.state.catalogA, cats = [...new Set(accs.map(a => a.category).filter(Boolean))].sort(U.sortFr), ws = [...new Set(accs.map(a => a.mainWidth || (a.strapWidths || [])[0] || '').filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
+            const accs = Accessoires.crafted(), cats = [...new Set(accs.map(a => a.category).filter(Boolean))].sort(U.sortFr), ws = [...new Set(accs.map(a => a.mainWidth || (a.strapWidths || [])[0] || '').filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
             const sel = (label, key, opts, w) => `<div class="fg mb0" style="flex:0 0 ${w}px;min-width:0;"><label style="white-space:nowrap;">${label}</label>${U.customSelect({ value: this[key], options: opts, onPick: 'Paniers._setAccF_' + key })}</div>`;
             return sel('Catégorie', 'addCat', [{ v: '', l: 'Toutes' }].concat(cats.map(c => ({ v: c, l: c }))), 120) + sel('Largeur', 'addWidth', [{ v: '', l: 'Toutes' }].concat(ws.map(w => ({ v: w, l: w }))), 100)
               + sel('Personnalisation', 'addPerso', [{ v: 'all', l: 'Toutes' }, { v: 'none', l: 'Sans' }, { v: 'uv', l: 'Impression UV' }, { v: 'theme', l: 'Création thème UV' }, { v: 'laser', l: 'Gravure laser' }], 165);
