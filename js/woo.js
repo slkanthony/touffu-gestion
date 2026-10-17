@@ -315,8 +315,8 @@ const Woo = {
   },
   /* CSV minimal ID / Type / UGS / Parent (mêmes en-têtes que l'export natif du site : WooCommerce les mappe tout seul et met à jour la fiche par son ID). Ne touche NI prix NI stock :
      ceux-là partent ensuite avec l'export normal, une fois l'UGS corrigé. */
-  exportSkuFix() {
-    const c = this._buildCmp(), rows = c ? c.matched.filter(m => m.link) : [];
+  exportSkuFix(only) {
+    const c = this._buildCmp(), rows = c ? c.matched.filter(m => m.link && (!only || only.includes(m.sku))) : [];
     if (!rows.length) { U.toast('Aucune liaison à corriger.', true); return; }
     const q = v => { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
     const csv = [['ID', 'Type', 'UGS', 'Parent']].concat(rows.map(m => [m.link.id, m.link.type, m.sku, m.link.parent])).map(r => r.map(q).join(',')).join('\r\n');
@@ -1098,9 +1098,12 @@ const Woo = {
     const chosen = selCount > 0 ? inScope.filter(l => this._sel[l.sku]) : inScope;
     const held = chosen.filter(l => pending.has(l.sku)).length;
     const linked = chosen.filter(l => !this._isExcluded(l.sku) && !pending.has(l.sku));
+    if (!linked.length && held) {   // tous les produits choisis sont reliés à une fiche du site à corriger : le bon fichier = celui des UGS (même bouton, pas de détour par Comparer)
+      this.exportSkuFix(chosen.filter(l => pending.has(l.sku)).map(l => l.sku));
+      return;
+    }
     if (!linked.length) {
-      U.toast(held ? `Les ${held} produit(s) choisi(s) sont reliés à une fiche du site dont l'UGS n'est pas encore corrigé : utilise d'abord « Corriger les UGS du site (CSV) » dans Comparer. Rien n'a été exporté.`
-        : selCount > 0 ? 'Aucun produit sélectionné à exporter (exclus du site ?).' : 'Aucun produit à exporter (tous sans SKU ou exclus).', true);
+      U.toast(selCount > 0 ? 'Aucun produit sélectionné à exporter (exclus du site ?).' : 'Aucun produit à exporter (tous sans SKU ou exclus).', true);
       return;
     }
     // En-têtes en FRANÇAIS, identiques à l'export natif du site d'Antho (WooCommerce FR :
