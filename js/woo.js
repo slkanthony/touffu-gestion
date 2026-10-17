@@ -265,14 +265,18 @@ const Woo = {
   openLink(sku) {
     const l = this.lines().find(x => x.sku === sku); if (!l) return;
     const c = this._linkCandidates();
-    if (!c) { U.toast('Redépose d\'abord l\'export de ton site (bouton « Choisir un fichier ») : la version gardée en mémoire date d\'avant cette fonction.', true); return; }
+    if (!c) {
+      U.toast('Choisis à nouveau le fichier d\'export de ton site (bouton « Choisir un fichier », en haut de la comparaison) : une seule fois, pour activer la liaison.', true);
+      document.getElementById('woo_cmp_file')?.scrollIntoView({ block: 'center' });
+      return;
+    }
     const want = new Set(this._tok(l.name));
     this._lkSku = sku;
     this._lkAll = c.map(s => { const t = new Set(this._tok(s.name)); let n = 0; want.forEach(x => { if (t.has(x)) n++; }); return { ...s, _score: want.size ? n / want.size : 0 }; })
       .sort((a, b) => b._score - a._score || U.sortFr(a.name || '', b.name || ''));
     U.modal({
       title: '🔗 Relier à une fiche du site', wide: true, hideOk: true,
-      body: `<p class="muted" style="margin-top:0;">Choisis la fiche du site qui correspond à <b>${U.esc(l.name)}</b>. Son UGS sera remplacé par celui de l'appli : <span class="sku-txt">${U.esc(sku)}</span>.</p>
+      body: `<p class="muted" style="margin-top:0;">Choisis la fiche du site qui correspond à <b>${U.esc(l.name)}</b>. Son UGS sera remplacé par celui de l'appli : <span class="sku-txt">${U.esc(sku)}</span>. <b>Les autres formats du même produit se relient tout seuls</b> quand leur nom est identique (100G ↔ 100g).</p>
         <input id="woo_lk_q" style="width:100%;" placeholder="Rechercher une fiche du site…" oninput="Woo._lkRender()">
         <div id="woo_lk_list" style="max-height:52vh;overflow:auto;margin-top:8px;"></div>`
     });
@@ -292,10 +296,18 @@ const Woo = {
     const s = (this._lkShown || [])[i]; if (!s || !this._lkSku) return;
     const st = Store.state.settings; if (!st.wooLinks) st.wooLinks = {};
     st.wooLinks[this._lkSku] = String(s.id);
+    // Les autres formats du MÊME produit (même nom avant « — », même fiche parente sur le site) sont reliés d'un coup quand le nom du format est identique (100G ↔ 100g…)
+    const app = this.lines().find(x => x.sku === this._lkSku), pre = n => String(n || '').split(' — ')[0], norm = v => U.normSearch(v || '').replace(/[^a-z0-9]/g, '');
+    const taken = new Set([String(s.id)].concat(Object.values(st.wooLinks).map(String))); let extra = 0;
+    if (s.parent && app && this._cmp) this._cmp.appOnly.filter(a => a.sku !== this._lkSku && pre(a.name) === pre(app.name)).forEach(a => {
+      const f = norm(String(a.name || '').split(' — ').slice(1).join(' — ')); if (!f) return;
+      const t = this._lkAll.find(x => x.parent === s.parent && !taken.has(String(x.id)) && norm(String(x.name || '').split(' - ').pop()) === f);
+      if (t) { st.wooLinks[a.sku] = String(t.id); taken.add(String(t.id)); extra++; }
+    });
     Store.save('settings');
     U.closeModal();
     this.render();
-    U.toast(`Relié à « ${s.name} » (#${s.id}). Exporte « Corriger les UGS du site » pour mettre l'UGS de l'appli sur la fiche.`);
+    U.toast(`Relié à « ${s.name} » (#${s.id})${extra ? ` + ${extra} autre(s) format(s) du même produit` : ''}. Exporte « Corriger les UGS du site » pour mettre l'UGS de l'appli sur les fiches.`);
   },
   unlink(sku) {
     const L = Store.state.settings.wooLinks; if (!L || !(sku in L)) return;
