@@ -121,6 +121,20 @@ const Woo = {
     this._visible(this.lines().filter(l => l.sku)).filter(l => this._grpKey(l) === k && !this._isExcluded(l.sku)).forEach(l => { this._sel[l.sku] = !!on; });
     this._syncBoxes(); this._refreshSelInfo();
   },
+  /* 🚫 sur la ligne produit : exclut (ou ré-inclut) TOUS les formats d'un coup — comme le 🚫 d'une ligne, mémorisé dans les réglages */
+  toggleExcludeGroup(k) {
+    const members = this._visible(this.lines().filter(l => l.sku)).filter(l => this._grpKey(l) === k);
+    if (!members.length) return;
+    const s = Store.state.settings; if (!s.wooExclude) s.wooExclude = [];
+    const allOut = members.every(l => this._isExcluded(l.sku));
+    members.forEach(l => {
+      const i = s.wooExclude.indexOf(l.sku);
+      if (allOut) { if (i >= 0) s.wooExclude.splice(i, 1); } else if (i < 0) s.wooExclude.push(l.sku);
+    });
+    Store.save('settings');
+    this.render();
+    U.toast(allOut ? `${members.length} format(s) de nouveau envoyés au site.` : `${members.length} format(s) exclus du site (ils ne seront plus jamais exportés).`);
+  },
   toggleGrpFold(k) { if (this._grpClosed.has(k)) this._grpClosed.delete(k); else this._grpClosed.add(k); this.render(); },
   _syncBoxes() {
     const rows = [...document.querySelectorAll('input.rsel')];
@@ -149,7 +163,8 @@ const Woo = {
       if (g.rows.length < 2) return row(g.rows[0], g.k, false);
       const closed = this._grpClosed.has(g.k);
       return `<tr class="wgrp"><td><input type="checkbox" data-gbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleGroup(this.dataset.gbox,this.checked)"></td>
-            <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(String(g.rows[0].name || '').split(' — ')[0])}</b> <span class="muted">· ${g.rows.length} formats</span></td></tr>` + g.rows.map(l => row(l, g.k, true)).join('');
+            <td colspan="5" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(String(g.rows[0].name || '').split(' — ')[0])}</b> <span class="muted">· ${g.rows.length} formats</span></td>
+            <td>${g.rows.every(l => this._isExcluded(l.sku)) ? `<button class="btn-ghost btn-sm" data-gk="${U.esc(g.k)}" onclick="Woo.toggleExcludeGroup(this.dataset.gk)">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure tous les formats de ce produit du site (ne jamais les envoyer)" data-gk="${U.esc(g.k)}" onclick="Woo.toggleExcludeGroup(this.dataset.gk)">🚫</button>`}</td></tr>` + g.rows.map(l => row(l, g.k, true)).join('');
     }).join('');
   },
   selectAllVisible(checked) {
