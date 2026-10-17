@@ -1680,3 +1680,8 @@ details.fold.stk-acc-fold.low { border-left-color: var(--warn) !important; }
   .stk-acc-act { justify-content: flex-start; }
   .stk-acc-mv { justify-content: flex-start; }
 }
+/* Synchro → aperçu de l'export : ligne « produit » qui regroupe ses formats (Antho 2026-10-17) */
+tr.wgrp td { background: var(--th-bg); }
+tr[hidden] { display: none; }
+tr.wgrp td[colspan] { text-align: left; }
+@media (min-width: 861px) { td.col-name[data-fmt] { padding-left: 30px; text-align: left; } }

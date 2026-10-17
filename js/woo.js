@@ -112,7 +112,46 @@ const Woo = {
     return linked.filter(l => this._pass(l) && (!q || U.has((l.name || '') + ' ' + (l.sku || ''), q)));
   },
   _selCount(linked) { return linked.filter(l => this._sel[l.sku]).length; },
-  toggleSel(sku, checked) { this._sel[sku] = !!checked; this._refreshSelInfo(); },
+  toggleSel(sku, checked) { this._sel[sku] = !!checked; this._syncBoxes(); this._refreshSelInfo(); },
+  /* Aperçu de l'export regroupé par PRODUIT (Antho 2026-10-17) : une case par produit coche/décoche tous ses formats, chaque format garde sa case.
+     Clé de groupe = nom avant « — ». La case produit est « partielle » quand seuls certains formats sont cochés (mise à jour par _syncBoxes, sans re-rendu). */
+  _grpKey(l) { return U.normSearch(String(l.name || '').split(' — ')[0]).trim(); },
+  _grpClosed: new Set(),
+  toggleGroup(k, on) {
+    this._visible(this.lines().filter(l => l.sku)).filter(l => this._grpKey(l) === k && !this._isExcluded(l.sku)).forEach(l => { this._sel[l.sku] = !!on; });
+    this._syncBoxes(); this._refreshSelInfo();
+  },
+  toggleGrpFold(k) { if (this._grpClosed.has(k)) this._grpClosed.delete(k); else this._grpClosed.add(k); this.render(); },
+  _syncBoxes() {
+    const rows = [...document.querySelectorAll('input.rsel')];
+    rows.forEach(b => { b.checked = !!this._sel[b.dataset.sku]; });
+    document.querySelectorAll('input[data-gbox]').forEach(h => {
+      const mine = rows.filter(b => b.dataset.grp === h.dataset.gbox && !b.disabled), n = mine.filter(b => b.checked).length;
+      h.disabled = !mine.length; h.checked = mine.length > 0 && n === mine.length; h.indeterminate = n > 0 && n < mine.length;
+    });
+  },
+  _previewRows(visible) {
+    const map = new Map(), groups = [];
+    visible.slice(0, 200).forEach(l => { const k = this._grpKey(l); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(l); });
+    const row = (l, k, multi) => {
+      const excl = this._isExcluded(l.sku), skuJs = String(l.sku).replace(/'/g, "\\'"), parts = String(l.name || '').split(' — ');
+      const label = multi && parts.length > 1 ? U.esc(parts.slice(1).join(' — ')) : U.esc(l.name);
+      return `<tr${excl ? ' style="opacity:.45;"' : ''} data-grp="${U.esc(k)}"${multi && this._grpClosed.has(k) ? ' hidden' : ''}>
+            <td><input type="checkbox" class="rsel" data-sku="${U.esc(l.sku)}" data-grp="${U.esc(k)}" ${excl ? 'disabled' : (this._sel[l.sku] ? 'checked' : '')} onchange="Woo.toggleSel('${skuJs}',this.checked)"></td>
+            <td><span class="tag">${U.esc(l.sku)}</span></td>
+            <td class="col-name"${multi ? ' data-fmt="1"' : ''}>${label}${excl ? ' <span class="badge">exclu</span>' : ''}</td>
+            <td>${l.meat || l.accCat ? `<span class="badge info">${U.esc(l.meat || l.accCat)}</span>` : '—'}</td>
+            <td class="num">${this.includePrice ? U.eur(l.price) : '—'}</td>
+            <td class="num">${this.includeStock ? (l.stock === null ? '<span class="muted">pas de stock lié</span>' : U.qty(l.stock)) : '—'}</td>
+            <td>${excl ? `<button class="btn-ghost btn-sm" onclick="Woo.toggleExclude('${skuJs}')">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure ce produit du site (ne jamais l'envoyer)" onclick="Woo.toggleExclude('${skuJs}')">🚫</button>`}</td></tr>`;
+    };
+    return groups.map(g => {
+      if (g.rows.length < 2) return row(g.rows[0], g.k, false);
+      const closed = this._grpClosed.has(g.k);
+      return `<tr class="wgrp"><td><input type="checkbox" data-gbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleGroup(this.dataset.gbox,this.checked)"></td>
+            <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(String(g.rows[0].name || '').split(' — ')[0])}</b> <span class="muted">· ${g.rows.length} formats</span></td></tr>` + g.rows.map(l => row(l, g.k, true)).join('');
+    }).join('');
+  },
   selectAllVisible(checked) {
     this._visible(this.lines().filter(l => l.sku)).forEach(l => { if (!this._isExcluded(l.sku)) this._sel[l.sku] = !!checked; });
     this.render();
@@ -1070,14 +1109,7 @@ const Woo = {
         <div class="table-wrap"><table><thead><tr>
           <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.selectAllVisible(this.checked)" title="Tout sélectionner"></th>
           <th>${sortHead('sku', 'SKU')}</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Type')}</th><th class="num">${sortHead('price', 'Prix TTC')}</th><th class="num">${sortHead('stock', 'Stock')}</th><th>${sortHead('excluded', 'Envoi site')}</th></tr></thead>
-          <tbody>${visible.slice(0, 200).map(l => { const excl = this._isExcluded(l.sku); const skuJs = String(l.sku).replace(/'/g, "\\'"); return `<tr${excl ? ' style="opacity:.45;"' : ''}>
-            <td><input type="checkbox" ${excl ? 'disabled' : (this._sel[l.sku] ? 'checked' : '')} onchange="Woo.toggleSel('${skuJs}',this.checked)"></td>
-            <td><span class="tag">${U.esc(l.sku)}</span></td>
-            <td class="col-name">${U.esc(l.name)}${excl ? ' <span class="badge">exclu</span>' : ''}</td>
-            <td>${l.meat || l.accCat ? `<span class="badge info">${U.esc(l.meat || l.accCat)}</span>` : '—'}</td>
-            <td class="num">${this.includePrice ? U.eur(l.price) : '—'}</td>
-            <td class="num">${this.includeStock ? (l.stock === null ? '<span class="muted">pas de stock lié</span>' : U.qty(l.stock)) : '—'}</td>
-            <td>${excl ? `<button class="btn-ghost btn-sm" onclick="Woo.toggleExclude('${skuJs}')">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure ce produit du site (ne jamais l'envoyer)" onclick="Woo.toggleExclude('${skuJs}')">🚫</button>`}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun produit ne correspond au filtre.</td></tr>'}</tbody></table>
+          <tbody>${this._previewRows(visible) || '<tr><td colspan="7" class="muted">Aucun produit ne correspond au filtre.</td></tr>'}</tbody></table>
           ${visible.length > 200 ? `<p class="muted">… et ${visible.length - 200} autres non affichés (affine la recherche pour les voir — « Tout sélectionner » couvre bien les ${visible.length}).</p>` : ''}</div>
       </div>
 
@@ -1086,6 +1118,7 @@ const Woo = {
         <p class="muted help mb0">L'export CSV ci-dessus est le moyen le plus sûr pour commencer. Pour une synchro automatique (l'app pousse prix et stock vers le site sans fichier), WooCommerce offre une API REST. Elle ne peut pas être appelée directement depuis cette app (les clés seraient exposées et le navigateur bloque ces appels) : il faut un petit relais côté serveur. Comme tu utilises déjà Supabase, ce relais peut être une « Edge Function » Supabase. C'est décrit dans le guide, section WooCommerce — à activer quand tu voudras. En attendant, l'export CSV fait le travail.</p>
       </div>` : ''}
     `);
+    this._syncBoxes();
   },
 
   exportCsv() {
