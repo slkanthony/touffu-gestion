@@ -341,7 +341,7 @@ const Accessoires = {
 
   render() {
     App.mount(`
-      <div class="view-title"><h1>Accessoires</h1><span class="sub">fabrication artisanale · sangle enduite</span></div>
+      <div class="view-title"><h1>Artisanat</h1><span class="sub">fabrication artisanale · sangle enduite · prix et coûts</span></div>
       <div id="accBody"></div>`);
     this.renderProducts();
   },
@@ -1471,7 +1471,7 @@ const Accessoires = {
     const src = Store.state.catalogA.find(x => x.id === id);
     if (!src) return;
     const sangleIdx = (src.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
-    if (sangleIdx < 0) return;
+    if (sangleIdx < 0) { U.toast('Cette fiche n’a pas de ligne de sangle (en mètres) : ajoute-la dans Artisanat pour pouvoir créer une longueur.', true); return; }
     const currentStrap = U.num(src.bom[sangleIdx].qty);
     const segs = src.fabSegments || [];
     const prodLen = U.num(src.productLength);
@@ -1606,11 +1606,11 @@ const Accessoires = {
     Store.save('catalogA'); App.rerender();
     U.toast(`${a.name} : ${lab} = ${v}.`, false, entry.id);
   },
-  transferStock(id) {
+  transferStock(id, dir0) {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a || App.isViewer) return;
     U.modal({
       title: '⇄ Transférer — ' + U.esc(a.name), okLabel: 'Transférer',
-      body: `<div class="frow"><div class="fg"><label>Sens</label><select id="tr_dir"><option value="ge">Général → Événement (${U.qty(a.stockGeneral)} en général)</option><option value="eg">Événement → Général (${U.qty(a.stockEvent)} en événement)</option></select></div>
+      body: `<div class="frow"><div class="fg"><label>Sens</label><select id="tr_dir"><option value="ge" ${dir0 !== 'eg' ? 'selected' : ''}>Général → Événement (${U.qty(a.stockGeneral)} en général)</option><option value="eg" ${dir0 === 'eg' ? 'selected' : ''}>Événement → Général (${U.qty(a.stockEvent)} en événement)</option></select></div>
         <div class="fg"><label>Quantité</label><input id="tr_n" type="number" step="1" min="1" value="1"></div></div>`,
       onOk: () => {
         const dir = U.val('tr_dir'), n = Math.round(U.numVal('tr_n')), from = dir === 'ge' ? 'stockGeneral' : 'stockEvent', to = dir === 'ge' ? 'stockEvent' : 'stockGeneral';

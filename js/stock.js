@@ -2343,6 +2343,7 @@ const Stock = {
   accFoldAll(open) { document.querySelectorAll('#stockBody details.stk-acc-fold').forEach(d => { this._accGrpOpen[d.dataset.gid] = open; d.open = open; }); },
   renderAccessoires() {
     const f = this.accFilters; U.syncFilters('stock_acc', f);
+    if (f.sort === 'buy') f.sort = 'cost'; else if (f.sort === 'sell') f.sort = 'price';   // anciens réglages mémorisés
     const A = Accessoires, all = Store.state.catalogA, ro = !!App.isViewer, qn = U.normSearch(f.q || '');
     const tot = a => U.num(a.stockGeneral) + U.num(a.stockEvent);
     const isLow = a => U.num(a.low) > 0 && tot(a) <= U.num(a.low);
@@ -2355,60 +2356,68 @@ const Stock = {
       && (f.bic === 'yes' ? !!a.bicolor : f.bic === 'no' ? !a.bicolor : true)
       && (f.state === 'in' ? tot(a) > 0 : f.state === 'out' ? tot(a) <= 0 : f.state === 'low' ? isLow(a) : true);
     const list = all.filter(pass);
-    // une entrée par famille (a.groupId) ou par accessoire isolé ; valeurs = celles des longueurs AFFICHÉES
+    // une entrée par famille (a.groupId) ou par accessoire isolé ; totaux = ceux des longueurs AFFICHÉES
     const byKey = new Map();
     list.forEach(a => { const k = a.groupId ? 'g' + a.groupId : 's' + a.id; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(a); });
     const memCmp = (x, y) => (A._lenOf(x) - A._lenOf(y)) || (A._persoRank(x) - A._persoRank(y)) || U.sortFr(x.name, y.name);
     const items = [...byKey.entries()].map(([key, mem]) => {
       mem.sort(memCmp);
-      const rows = mem.map(a => { const c = Pricing.accCalc(a), q = tot(a); return { a, q, buy: q * c.costBase, sell: q * c.priceTTC }; });
-      const sum = fn => rows.reduce((t, r) => t + fn(r), 0);
-      return { key, gid: mem[0].groupId || '', mem, rows, first: mem[0], gen: sum(r => U.num(r.a.stockGeneral)), evt: sum(r => U.num(r.a.stockEvent)), q: sum(r => r.q), buy: sum(r => r.buy), sell: sum(r => r.sell), low: mem.some(isLow) };
+      const rows = mem.map(a => { const c = Pricing.accCalc(a), q = tot(a); return { a, q, cost: c.costBase, price: c.priceTTC, buy: q * c.costBase, sell: q * c.priceTTC }; });
+      const sum = fn => rows.reduce((t, r) => t + fn(r), 0), rng = fn => { const v = rows.map(fn); return [Math.min(...v), Math.max(...v)]; };
+      return { key, gid: mem[0].groupId || '', mem, rows, first: mem[0], gen: sum(r => U.num(r.a.stockGeneral)), evt: sum(r => U.num(r.a.stockEvent)), q: sum(r => r.q), buy: sum(r => r.buy), sell: sum(r => r.sell), low: mem.some(isLow), cr: rng(r => r.cost), pr: rng(r => r.price) };
     });
     const dir = f.sortDir === 'asc' ? 1 : -1;
     items.sort((x, y) => {
       const v = f.sort === 'cat' ? U.sortFr(x.first.category || '', y.first.category || '') : f.sort === 'width' ? A._widthNum(x.first) - A._widthNum(y.first)
-        : f.sort === 'tot' ? x.q - y.q : f.sort === 'buy' ? x.buy - y.buy : f.sort === 'sell' ? x.sell - y.sell : 0;
+        : f.sort === 'tot' ? x.q - y.q : f.sort === 'cost' ? x.cr[0] - y.cr[0] : f.sort === 'price' ? x.pr[0] - y.pr[0] : 0;
       return (v || A._cmpAcc(x.first, y.first)) * dir;
     });
     const T = items.reduce((t, i) => ({ q: t.q + i.q, buy: t.buy + i.buy, sell: t.sell + i.sell }), { q: 0, buy: 0, sell: 0 });
     const autoOpen = !!qn || f.state !== 'all';   // une recherche ou un filtre d'état déplie les familles (sinon les lignes trouvées restent cachées)
     const sh = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Stock.accSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
-    const inp = (a, key, v, ph) => `<input class="stk-acc-in" type="number" step="1" min="0" value="${U.num(v) || 0}" ${ro ? 'disabled' : ''} onchange="Accessoires.setStockFini('${a.id}','${key}',this.value)" onfocus="this.select()">`;
+    const range = (r, fmt) => Math.abs(r[1] - r[0]) < 0.005 ? fmt(r[0]) : fmt(r[0]) + ' – ' + fmt(r[1]);
+    const zc = v => U.num(v) > 0 ? '' : ' z';   // quantité à 0 : orange, comme dans Mastication
+    const inp = (a, key, v, extra) => `<input class="stk-acc-in${extra || ''}" type="number" step="1" min="0" value="${U.num(v) || 0}" ${ro ? 'disabled' : ''} onchange="Accessoires.setStockFini('${a.id}','${key}',this.value)" onfocus="this.select()">`;
     const badges = a => { const r = A._persoRank(a); return (r & 4 ? ' <span class="badge">Thème UV</span>' : r & 1 ? ' <span class="badge">UV</span>' : '') + (r & 2 ? ' <span class="badge">Laser</span>' : ''); };
-    const wBadge = a => { const w = A._widthOf(a); return w ? `<span class="badge">${U.esc(w)}</span>` : '<span class="muted">—</span>'; };
-    const act = a => ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button><button class="btn-icon" title="Transférer du stock général vers l'événement (ou l'inverse)" onclick="Accessoires.transferStock('${a.id}')">⇄</button>`;
+    const wBadge = a => { const w = A._widthOf(a); return w ? `<span class="badge">${U.esc(w)}</span>` : ''; };
+    const arrows = a => ro ? '' : `<button class="btn-transfer" style="background:var(--ok);" title="Transférer du Général vers l'Événement" onclick="Accessoires.transferStock('${a.id}','ge')">→</button><button class="btn-transfer" style="background:#3b6fa0;" title="Retour de l'Événement vers le Général" onclick="Accessoires.transferStock('${a.id}','eg')">←</button>`;
+    const link = a => `<a class="btn-icon" href="#/accessoires/${a.id}" title="Ouvrir la fiche dans Artisanat (prix, matières, coût)" style="text-decoration:none;">↗</a>`;
     // ligne d'une longueur (ou d'un accessoire isolé : nom complet + largeur + catégorie)
     const row = (r, solo) => { const a = r.a, len = A._lenOf(a);
-      return `<div class="stk-acc-row${solo ? ' solo' : ''}">
-        <span data-l="Accessoire"><b>${solo ? U.esc(a.name) : (len > 0 ? U.qty(len) + ' m' : U.esc(a.name))}</b>${badges(a)}${a.sku ? `<div class="muted" style="font-size:.74rem;">${U.esc(a.sku)}</div>` : ''}</span>
-        <span data-l="Largeur">${solo ? wBadge(a) : ''}</span>
-        <span data-l="Catégorie">${solo ? `<span class="badge info">${U.esc(a.category || 'Autre')}</span>` : ''}</span>
-        <span data-l="Général">${inp(a, 'general', a.stockGeneral)}</span>
-        <span data-l="Événement">${inp(a, 'event', a.stockEvent)}</span>
-        <span data-l="Total" class="${isLow(a) ? 'warn-txt' : ''}"><b>${U.qty(r.q)}</b></span>
-        <span data-l="Seuil">${inp(a, 'low', a.low)}</span>
-        <span data-l="Valeur achat" class="sensitive right">${r.q ? U.eur(r.buy) : '—'}</span>
-        <span data-l="Revente TTC" class="sensitive right">${r.q ? U.eur(r.sell) : '—'}</span>
-        <span class="stk-acc-act">${act(a)}</span></div>`; };
+      return `<div class="stk-acc-row${solo ? ' solo' : ''}${isLow(a) ? ' low' : ''}">
+        <span data-l="${solo ? 'Accessoire' : 'Longueur'}"><b>${solo ? U.esc(a.name) : (len > 0 ? U.qty(len) + ' m' : U.esc(a.name))}</b>${badges(a)}</span>
+        <span data-l="${solo ? 'Largeur · catégorie' : 'SKU'}">${solo ? `${wBadge(a)} <span class="badge info">${U.esc(a.category || 'Autre')}</span>${a.sku ? `<div><span class="sku-txt">${U.esc(a.sku)}</span></div>` : ''}` : (a.sku ? `<span class="sku-txt">${U.esc(a.sku)}</span>` : '<span class="muted">—</span>')}</span>
+        <span data-l="Général">${inp(a, 'general', a.stockGeneral, zc(a.stockGeneral))}</span>
+        <span class="stk-acc-mv">${arrows(a)}</span>
+        <span data-l="Événement">${inp(a, 'event', a.stockEvent, zc(a.stockEvent))}</span>
+        <span data-l="Total" class="${isLow(a) ? 'warn-txt' : U.num(r.q) > 0 ? '' : 'warn-txt'}"><b>${U.qty(r.q)}</b>${U.num(a.low) > 0 ? `<div class="stk-acc-min${isLow(a) ? ' warn-txt' : ''}">(min ${U.qty(a.low)})</div>` : ''}</span>
+        <span data-l="Min">${inp(a, 'low', a.low, ' min')}</span>
+        <span data-l="Coût" class="sensitive right">${U.eur(r.cost)}</span>
+        <span data-l="Prix TTC" class="right"><b>${U.eur(r.price)}</b></span>
+        <span class="stk-acc-act">${ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button>`}${link(a)}</span></div>`; };
     const card = i => {
       if (!i.gid) return `<div class="fold stk-acc-single">${row(i.rows[0], true)}</div>`;
       const first = i.first, total = all.filter(x => x.groupId === i.gid).length, name = first.groupName || A._familyName(first);
       const open = autoOpen || !!this._accGrpOpen[i.gid], ws = [...new Set(i.mem.map(a => A._widthOf(a)).filter(Boolean))];
-      return `<details class="fold prod-fold acc-fold acc-group stk-acc-fold" data-gid="${i.gid}" ${open ? 'open' : ''} ontoggle="if(!${autoOpen})Stock._accGrpOpen['${i.gid}']=this.open">
+      const nz = v => v > 0 ? '' : ' class="warn-txt"';
+      return `<details class="fold prod-fold acc-fold acc-group stk-acc-fold${i.low ? ' low' : ''}" data-gid="${i.gid}" ${open ? 'open' : ''} ontoggle="if(!${autoOpen})Stock._accGrpOpen['${i.gid}']=this.open">
         <summary>
           <span><b>${U.esc(name)}</b><div class="muted" style="font-size:.76rem;">${i.mem.length === total ? total : i.mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</div></span>
-          <span data-l="Largeur">${ws.map(w => `<span class="badge">${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
-          <span data-l="Catégorie"><span class="badge info">${U.esc(first.category || 'Autre')}</span></span>
-          <span data-l="Général">${U.qty(i.gen)}</span>
-          <span data-l="Événement">${U.qty(i.evt)}</span>
-          <span data-l="Total" class="${i.low ? 'warn-txt' : ''}"><b>${U.qty(i.q)}</b></span>
+          <span data-l="Largeur · catégorie">${ws.map(w => `<span class="badge">${U.esc(w)}</span>`).join(' ')} <span class="badge info">${U.esc(first.category || 'Autre')}</span></span>
+          <span data-l="Général"><b${nz(i.gen)}>${U.qty(i.gen)}</b></span>
           <span></span>
-          <span data-l="Valeur achat" class="sensitive right">${i.q ? U.eur(i.buy) : '—'}</span>
-          <span data-l="Revente TTC" class="sensitive right"><b>${i.q ? U.eur(i.sell) : '—'}</b></span>
+          <span data-l="Événement"><b${nz(i.evt)}>${U.qty(i.evt)}</b></span>
+          <span data-l="Total"><b${i.low || !i.q ? ' class="warn-txt"' : ''}>${U.qty(i.q)}</b></span>
           <span></span>
+          <span data-l="Coût" class="sensitive right">${range(i.cr, U.eur)}</span>
+          <span data-l="Prix TTC" class="right"><b>${range(i.pr, U.eur)}</b></span>
+          <span class="stk-acc-act">${link(first)}</span>
         </summary>
-        <div class="fold-body" style="padding:0;">${i.rows.map(r => row(r, false)).join('')}</div>
+        <div class="fold-body" style="padding:0;">
+          <div class="stk-acc-sub"><span>Longueur</span><span>SKU</span><span>Général</span><span></span><span>Événement</span><span>Total</span><span>Min</span><span class="right">Coût</span><span class="right">Prix TTC</span><span></span></div>
+          ${i.rows.map(r => row(r, false)).join('')}
+          <div class="stk-acc-foot">${ro ? '' : `<button class="btn-cta btn-sm fit" onclick="Accessoires.addLength('${i.gid}')" title="Crée une nouvelle longueur dans cette famille (prix et coût calculés dans Artisanat)">＋ Ajouter une longueur</button>`}</div>
+        </div>
       </details>`; };
     document.getElementById('stockBody').innerHTML = `
       <div class="toolbar">
@@ -2420,15 +2429,15 @@ const Stock = {
       </div>
       <div class="frow" style="gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
         <span class="muted">${list.length !== all.length ? list.length + ' / ' + all.length : all.length} accessoire(s) · <b>${U.qty(T.q)}</b> pièce(s) en stock fini</span>
-        <span class="muted sensitive">Valeur d'achat <b>${U.eur(T.buy)}</b> · revente TTC <b>${U.eur(T.sell)}</b></span>
+        <span class="muted sensitive">Valeur du stock : achat <b>${U.eur(T.buy)}</b> · revente TTC <b>${U.eur(T.sell)}</b></span>
         <span style="margin-left:auto;display:flex;gap:6px;"><button class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(true)">▼ Tout déplier</button><button class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(false)">▲ Tout réduire</button></span>
       </div>
       ${items.length ? `<div class="prod-list-header stk-acc-header">
-        <span>${sh('name', 'Accessoire')}</span><span>${sh('width', 'Largeur')}</span><span>${sh('cat', 'Catégorie')}</span><span>Général</span><span>Événement</span><span>${sh('tot', 'Total')}</span><span>Seuil</span><span class="right">${sh('buy', 'Valeur achat')}</span><span class="right">${sh('sell', 'Revente TTC')}</span><span></span>
+        <span>${sh('name', 'Accessoire')}</span><span>${sh('width', 'Largeur')} · ${sh('cat', 'Catégorie')}</span><span>Général</span><span></span><span>Événement</span><span>${sh('tot', 'Total')}</span><span></span><span class="right">${sh('cost', 'Coût')}</span><span class="right">${sh('price', 'Prix TTC')}</span><span></span>
       </div>
       ${items.map(card).join('')}
-      <p class="muted help mt" data-help-anchor=".stk-acc-header">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0. Valeur d'achat = coût de revient actuel de la fiche (matières, filament, impression, UV) × pièces ; revente = prix TTC de la fiche × pièces. Le stock général sert au site, l'événement à SumUp. Clique une famille pour voir ses longueurs.</p>`
-      : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Accessoires.') + '</div>'}`;
+      <p class="muted help mt" data-help-anchor=".stk-acc-header > span:first-child">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0 (orange). Coût = coût de revient d'une pièce (matières, filament, impression, UV) et Prix TTC = prix de la fiche dans Artisanat (↗ pour l'ouvrir). → et ← déplacent des pièces entre le stock général (site) et le stock événement (SumUp). Min = seuil d'alerte sur le total. Clique une famille pour voir ses longueurs.</p>`
+      : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Artisanat.') + '</div>'}`;
   },
   /* ───── DLUO des consommables (Antho 2026-10-14 : encres, nettoyants… ont une date limite) ─────
      c.hasDluo = « ce produit a une date limite » ; c.lots = [{id, qty, dluo, lotNumber}] = unités DATÉES. La quantité `c.qty` reste le stock total :

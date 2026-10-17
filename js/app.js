@@ -9,7 +9,7 @@ const App = {
     { id: 'achats', ico: '🧾', label: 'Achats', group: 'Stock & ventes', admin: true },
 
     { id: 'catalogue', ico: '🥩', label: 'Prix mastication', group: 'Catalogue & prix' },
-    { id: 'accessoires', ico: '🐕', label: 'Accessoires', group: 'Catalogue & prix' },
+    { id: 'accessoires', ico: '🐕', label: 'Artisanat', group: 'Catalogue & prix' },
     { id: 'calc', ico: '🧮', label: 'Calculateur', group: 'Catalogue & prix' },
     { id: 'b2b', ico: '🤝', label: 'Revente pro', group: 'Catalogue & prix' },
     { id: 'stats', ico: '📊', label: 'Statistiques', group: 'Analyse & site' },
