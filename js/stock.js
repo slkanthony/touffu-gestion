@@ -1959,20 +1959,15 @@ const Stock = {
         </table></div>
       </div>`;
   },
-  /* Bouton « 🧺 » d'une ligne : envoie CE lot dans le panier en cours de la page Paniers (le nombre déjà ajouté s'affiche à côté) */
-  _peremInBasket(r) { return (Paniers.basket || []).filter(b => b.pId === r.p.id && b.vId === r.v.id && b.lotId === r.l.id).reduce((a, b) => a + U.num(b.qty), 0); },
-  _peremAddBtn(r) {
-    const n = this._peremInBasket(r);
-    return `<button class="btn-ghost btn-sm pm-add" data-pk="${this.peremKey(r)}" onclick="Stock.peremToBasket('${r.p.id}','${r.v.id}','${r.l.id}')" title="Ajouter ce lot au panier en cours (page Paniers)">🧺 +${n ? ` <b>×${U.qty(n)}</b>` : ''}</button>`;
+  _peremAddBtn(r) {   // bouton simple (pas de compteur : il serait périmé dès que le panier change ailleurs) ; le toast confirme l'ajout
+    return `<button class="btn-ghost btn-sm pm-add" onclick="Stock.peremToBasket('${r.p.id}','${r.v.id}','${r.l.id}')" title="Ajouter ce lot au panier en cours (page Paniers)">🧺 Ajouter</button>`;
   },
   peremToBasket(pId, vId, lId) {
     Paniers._draft();   // charge d'abord le brouillon enregistré (client, budget…) pour ne pas l'écraser
     Paniers.pickManual(pId, vId, lId, 'M', true);
     const row = this._peremRowsCache.find(r => r.p.id === pId && r.v.id === vId && r.l.id === lId);
     if (!row) return;
-    const n = this._peremInBasket(row), key = this.peremKey(row);
-    if (n) document.querySelectorAll('.pm-add').forEach(b => { if (b.dataset.pk === key) b.innerHTML = '🧺 + <b>×' + U.qty(n) + '</b>'; });
-    U.toast('🧺 ' + row.p.name + ' ' + row.label + ' ajouté au panier (' + (Paniers.basket || []).reduce((a, b) => a + U.num(b.qty), 0) + ' article(s)).');
+    U.toast('🧺 ' + row.p.name + ' ' + row.label + ' ajouté au panier.');
   },
   /* Téléphone : une fiche par produit, une ligne par lot (le tableau à cellules fusionnées ne tient pas sur 375 px) */
   _peremMobHTML(groups, viewQty, viewLabel) {

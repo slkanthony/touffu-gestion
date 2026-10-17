@@ -418,7 +418,31 @@ const Paniers = {
     return basket;
   },
 
+  /* Générer avec des produits déjà dans le panier (Antho 2026-10-17) : on DEMANDE — les garder (ils deviennent la base verrouillée 🔒, le panier est complété autour)
+     ou tout supprimer et repartir de zéro. Sans produit dans le panier, on génère directement. */
   generate() {
+    if (this.basket.length) { this._askGenerate(); return; }
+    this._generateNow();
+  },
+  _askGenerate() {
+    const lines = this.basket.length, n = this.basket.reduce((a, b) => a + U.num(b.qty), 0), lk = this.basket.filter(b => b.locked).length;
+    U.modal({
+      title: '🧺 Il y a déjà des produits dans le panier', hideOk: true,
+      body: `<p style="margin-top:0;">Le panier contient <b>${n} article${n > 1 ? 's' : ''}</b> (${lines} ligne${lines > 1 ? 's' : ''}${lk ? `, dont ${lk} verrouillée${lk > 1 ? 's' : ''} 🔒` : ''}). Que veux-tu en faire avant de générer ?</p>
+        <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:center;">
+          <button class="btn-cta fit" onclick="Paniers._genGo(true)">✔ Les garder et compléter autour</button>
+          <button class="btn-ghost fit" onclick="Paniers._genGo(false)">🗑️ Les supprimer et repartir de zéro</button>
+        </div>
+        <p class="muted help" style="margin-bottom:0;">« Garder » : tous les articles actuels restent (verrouillés) et la génération complète le panier avec le budget restant. « Supprimer » : le panier est vidé puis recomposé entièrement. « Fermer » ne change rien.</p>`
+    });
+  },
+  _genGo(keep) {
+    U.closeModal();
+    if (keep) this.basket.forEach(b => { b.locked = true; });
+    else this.basket = [];
+    this._generateNow();
+  },
+  _generateNow() {
     const available = this._avail();
     if (available <= 0) { U.toast('Le budget disponible (après livraison) est nul ou négatif.', true); return; }
     if (!this.candidates().length) { U.toast('Aucun produit ne correspond aux filtres.', true); return; }
@@ -436,9 +460,9 @@ const Paniers = {
     const n2 = b2.reduce((a, b) => a + b.qty, 0);
 
     if (!n1 && !n2) {
-      this.proposals = null; this.basket = [];
+      this.proposals = null;   // le panier actuel est GARDÉ (avant, un échec de génération le vidait et faisait « disparaître » les produits ajoutés à la main)
       this.render();
-      U.toast('Impossible de composer un panier avec ces contraintes.', true);
+      U.toast('Impossible de composer un panier avec ces contraintes : le panier actuel est conservé.', true);
     } else if (n1 > 0 && t2 > t1 + 0.005) {
       this.proposals = [b1, b2];
       this.basket = [];
@@ -466,9 +490,9 @@ const Paniers = {
     const n2 = b2.reduce((a, b) => a + b.qty, 0);
 
     if (!n1 && !n2) {
-      this.proposals = null; this.basket = [];
+      this.proposals = null;   // le panier actuel est GARDÉ (avant, un échec de génération le vidait et faisait « disparaître » les produits ajoutés à la main)
       this.render();
-      U.toast('Impossible de composer un panier avec ces contraintes.', true);
+      U.toast('Impossible de composer un panier avec ces contraintes : le panier actuel est conservé.', true);
     } else if (n1 > 0 && t2 > t1 + 0.005) {
       this.proposals = [b1, b2];
       this.basket = [];
