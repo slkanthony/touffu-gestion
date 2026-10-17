@@ -1639,3 +1639,30 @@ table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
 .chart-head h2 { margin: 0; }
 @media (min-width: 701px) { .chart-head { min-height: 84px; flex-wrap: nowrap; } }
 .pt-code .pt-cl { flex: 1 1 100%; font-size: .82rem; }
+
+/* Stock → Accessoires (2026-10-17) : mêmes familles repliables que la page Accessoires ; une grille de colonnes commune à l'en-tête, aux familles et aux longueurs */
+.prod-list-header.stk-acc-header, details.fold.prod-fold.stk-acc-fold > summary, .stk-acc-row {
+  grid-template-columns: minmax(170px, 1.6fr) 72px 92px 84px 84px 56px 66px 96px 104px 150px;
+}
+.stk-acc-row { display: grid; gap: 10px; align-items: center; padding: 7px 16px 7px 30px; border-top: 1px solid var(--row-border); }
+.stk-acc-row > span, details.fold.stk-acc-fold > summary > span { min-width: 0; }
+.stk-acc-row > span:nth-child(n+2):nth-child(-n+7), details.fold.stk-acc-fold > summary > span:nth-child(n+2):nth-child(-n+7) { text-align: center; }
+.stk-acc-row .right, details.fold.stk-acc-fold > summary .right { text-align: right; }
+.stk-acc-in { width: 100%; max-width: 76px; text-align: center; padding: 6px 4px; margin: 0; }
+.stk-acc-act { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.stk-acc-single { margin-bottom: 10px; border-left: 4px solid var(--caramel); }
+.stk-acc-single .stk-acc-row { border-top: 0; padding: 10px 16px; }
+details.fold.stk-acc-fold > .fold-body > .stk-acc-row:first-child { border-top: 0; }
+@media (max-width: 1180px) {
+  .prod-list-header.stk-acc-header { display: none; }
+  .prod-list-header.stk-acc-header, details.fold.prod-fold.stk-acc-fold > summary, .stk-acc-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }
+  details.fold.stk-acc-fold > summary > :first-child, .stk-acc-row > :first-child, .stk-acc-act { grid-column: 1 / -1; }
+  .stk-acc-row > span, details.fold.stk-acc-fold > summary > span { text-align: left !important; }
+  .stk-acc-row > span[data-l]::before, details.fold.stk-acc-fold > summary > span[data-l]::before { content: attr(data-l); display: block; font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--gris); margin-bottom: 2px; }
+  .stk-acc-row > span:empty, details.fold.stk-acc-fold > summary > span:empty { display: none; }
+  .stk-acc-in { max-width: 100%; }
+  .stk-acc-act { justify-content: flex-start; }
+}
+@media (max-width: 1180px) {
+  .stk-acc-row > :first-child::before, details.fold.stk-acc-fold > summary > :first-child::before { display: none !important; }
+}

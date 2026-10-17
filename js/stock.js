@@ -2333,48 +2333,102 @@ const Stock = {
         </tbody></table></div></div>` : '<div class="card empty"><span class="big">📦</span>Aucun consommable.</div>'}`;
   },
   /* ───── Stock → Accessoires (Antho 2026-10-17) : stock FINI des accessoires (modèles d'exposition, pièces faites d'avance), général / événement ─────
-     Même champs que la fiche (`a.stockGeneral`, `a.stockEvent`, seuil `a.low`) : « Fabriquer » les crédite, les ventes les débitent, le Tableau de bord et la synchro Site/SumUp les lisent. */
-  accFilters: { q: '', cat: 'all', state: 'all' },
-  _setAccCat(v) { this.accFilters.cat = v; this.renderAccessoires(); },
-  _setAccState(v) { this.accFilters.state = v; this.renderAccessoires(); },
+     Même présentation que la page Accessoires (Antho : « remets le système de la page Accessoires ») : mêmes filtres (recherche, catégorie, largeur, bicolor), une ligne par FAMILLE
+     (nom, largeurs, catégorie, nombre de longueurs, stock et valeurs cumulés) qui se déplie sur ses longueurs ; chaque longueur porte ses quantités modifiables.
+     Champs de la fiche : `a.stockGeneral`, `a.stockEvent`, seuil `a.low` — « Fabriquer » les crédite, les ventes les débitent, Tableau de bord et synchro Site/SumUp les lisent. */
+  accFilters: { q: '', cat: 'all', width: 'all', bic: 'all', state: 'all', sort: 'name', sortDir: 'asc' },
+  _accGrpOpen: {},
+  accSet(key, v) { this.accFilters[key] = v; this.renderAccessoires(); },
+  accSort(key) { const f = this.accFilters; if (f.sort === key) f.sortDir = f.sortDir === 'asc' ? 'desc' : 'asc'; else { f.sort = key; f.sortDir = 'asc'; } this.renderAccessoires(); },
+  accFoldAll(open) { document.querySelectorAll('#stockBody details.stk-acc-fold').forEach(d => { this._accGrpOpen[d.dataset.gid] = open; d.open = open; }); },
   renderAccessoires() {
     const f = this.accFilters; U.syncFilters('stock_acc', f);
-    const all = Store.state.catalogA, ro = !!App.isViewer, qn = U.normSearch(f.q || '');
+    const A = Accessoires, all = Store.state.catalogA, ro = !!App.isViewer, qn = U.normSearch(f.q || '');
     const tot = a => U.num(a.stockGeneral) + U.num(a.stockEvent);
     const isLow = a => U.num(a.low) > 0 && tot(a) <= U.num(a.low);
     const cats = [...new Set(all.map(a => a.category || 'Autre'))].sort(U.sortFr);
-    const cnt = fn => all.filter(fn).length;
+    const widths = [...new Set(all.map(a => A._widthOf(a)).filter(Boolean))].sort((x, y) => parseFloat(x) - parseFloat(y));
     if (f.cat !== 'all' && !cats.includes(f.cat)) f.cat = 'all';
-    const list = all.filter(a => (!qn || U.has(a.name + ' ' + (a.sku || ''), qn)) && (f.cat === 'all' || (a.category || 'Autre') === f.cat)
-      && (f.state === 'in' ? tot(a) > 0 : f.state === 'out' ? tot(a) <= 0 : f.state === 'low' ? isLow(a) : true))
-      .sort((x, y) => U.sortFr(x.name, y.name));
-    const rows = list.map(a => { const c = Pricing.accCalc(a), q = tot(a); return { a, q, buy: q * c.costBase, sell: q * c.priceTTC }; });
-    const T = rows.reduce((t, r) => ({ q: t.q + r.q, buy: t.buy + r.buy, sell: t.sell + r.sell }), { q: 0, buy: 0, sell: 0 });
-    const inp = (a, key, v, w) => `<input type="number" step="1" min="0" value="${U.num(v) || 0}" style="width:${w || 80}px;text-align:center;" ${ro ? 'disabled' : ''} onchange="Accessoires.setStockFini('${a.id}','${key}',this.value)">`;
+    if (f.width !== 'all' && !widths.includes(f.width)) f.width = 'all';
+    const cnt = fn => all.filter(fn).length;
+    const pass = a => (!qn || U.has(a.name + ' ' + (a.sku || ''), qn)) && (f.cat === 'all' || (a.category || 'Autre') === f.cat) && (f.width === 'all' || A._widthOf(a) === f.width)
+      && (f.bic === 'yes' ? !!a.bicolor : f.bic === 'no' ? !a.bicolor : true)
+      && (f.state === 'in' ? tot(a) > 0 : f.state === 'out' ? tot(a) <= 0 : f.state === 'low' ? isLow(a) : true);
+    const list = all.filter(pass);
+    // une entrée par famille (a.groupId) ou par accessoire isolé ; valeurs = celles des longueurs AFFICHÉES
+    const byKey = new Map();
+    list.forEach(a => { const k = a.groupId ? 'g' + a.groupId : 's' + a.id; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(a); });
+    const memCmp = (x, y) => (A._lenOf(x) - A._lenOf(y)) || (A._persoRank(x) - A._persoRank(y)) || U.sortFr(x.name, y.name);
+    const items = [...byKey.entries()].map(([key, mem]) => {
+      mem.sort(memCmp);
+      const rows = mem.map(a => { const c = Pricing.accCalc(a), q = tot(a); return { a, q, buy: q * c.costBase, sell: q * c.priceTTC }; });
+      const sum = fn => rows.reduce((t, r) => t + fn(r), 0);
+      return { key, gid: mem[0].groupId || '', mem, rows, first: mem[0], gen: sum(r => U.num(r.a.stockGeneral)), evt: sum(r => U.num(r.a.stockEvent)), q: sum(r => r.q), buy: sum(r => r.buy), sell: sum(r => r.sell), low: mem.some(isLow) };
+    });
+    const dir = f.sortDir === 'asc' ? 1 : -1;
+    items.sort((x, y) => {
+      const v = f.sort === 'cat' ? U.sortFr(x.first.category || '', y.first.category || '') : f.sort === 'width' ? A._widthNum(x.first) - A._widthNum(y.first)
+        : f.sort === 'tot' ? x.q - y.q : f.sort === 'buy' ? x.buy - y.buy : f.sort === 'sell' ? x.sell - y.sell : 0;
+      return (v || A._cmpAcc(x.first, y.first)) * dir;
+    });
+    const T = items.reduce((t, i) => ({ q: t.q + i.q, buy: t.buy + i.buy, sell: t.sell + i.sell }), { q: 0, buy: 0, sell: 0 });
+    const autoOpen = !!qn || f.state !== 'all';   // une recherche ou un filtre d'état déplie les familles (sinon les lignes trouvées restent cachées)
+    const sh = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Stock.accSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
+    const inp = (a, key, v, ph) => `<input class="stk-acc-in" type="number" step="1" min="0" value="${U.num(v) || 0}" ${ro ? 'disabled' : ''} onchange="Accessoires.setStockFini('${a.id}','${key}',this.value)" onfocus="this.select()">`;
+    const badges = a => { const r = A._persoRank(a); return (r & 4 ? ' <span class="badge">Thème UV</span>' : r & 1 ? ' <span class="badge">UV</span>' : '') + (r & 2 ? ' <span class="badge">Laser</span>' : ''); };
+    const wBadge = a => { const w = A._widthOf(a); return w ? `<span class="badge">${U.esc(w)}</span>` : '<span class="muted">—</span>'; };
+    const act = a => ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button><button class="btn-icon" title="Transférer du stock général vers l'événement (ou l'inverse)" onclick="Accessoires.transferStock('${a.id}')">⇄</button>`;
+    // ligne d'une longueur (ou d'un accessoire isolé : nom complet + largeur + catégorie)
+    const row = (r, solo) => { const a = r.a, len = A._lenOf(a);
+      return `<div class="stk-acc-row${solo ? ' solo' : ''}">
+        <span data-l="Accessoire"><b>${solo ? U.esc(a.name) : (len > 0 ? U.qty(len) + ' m' : U.esc(a.name))}</b>${badges(a)}${a.sku ? `<div class="muted" style="font-size:.74rem;">${U.esc(a.sku)}</div>` : ''}</span>
+        <span data-l="Largeur">${solo ? wBadge(a) : ''}</span>
+        <span data-l="Catégorie">${solo ? `<span class="badge info">${U.esc(a.category || 'Autre')}</span>` : ''}</span>
+        <span data-l="Général">${inp(a, 'general', a.stockGeneral)}</span>
+        <span data-l="Événement">${inp(a, 'event', a.stockEvent)}</span>
+        <span data-l="Total" class="${isLow(a) ? 'warn-txt' : ''}"><b>${U.qty(r.q)}</b></span>
+        <span data-l="Seuil">${inp(a, 'low', a.low)}</span>
+        <span data-l="Valeur achat" class="sensitive right">${r.q ? U.eur(r.buy) : '—'}</span>
+        <span data-l="Revente TTC" class="sensitive right">${r.q ? U.eur(r.sell) : '—'}</span>
+        <span class="stk-acc-act">${act(a)}</span></div>`; };
+    const card = i => {
+      if (!i.gid) return `<div class="fold stk-acc-single">${row(i.rows[0], true)}</div>`;
+      const first = i.first, total = all.filter(x => x.groupId === i.gid).length, name = first.groupName || A._familyName(first);
+      const open = autoOpen || !!this._accGrpOpen[i.gid], ws = [...new Set(i.mem.map(a => A._widthOf(a)).filter(Boolean))];
+      return `<details class="fold prod-fold acc-fold acc-group stk-acc-fold" data-gid="${i.gid}" ${open ? 'open' : ''} ontoggle="if(!${autoOpen})Stock._accGrpOpen['${i.gid}']=this.open">
+        <summary>
+          <span><b>${U.esc(name)}</b><div class="muted" style="font-size:.76rem;">${i.mem.length === total ? total : i.mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</div></span>
+          <span data-l="Largeur">${ws.map(w => `<span class="badge">${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
+          <span data-l="Catégorie"><span class="badge info">${U.esc(first.category || 'Autre')}</span></span>
+          <span data-l="Général">${U.qty(i.gen)}</span>
+          <span data-l="Événement">${U.qty(i.evt)}</span>
+          <span data-l="Total" class="${i.low ? 'warn-txt' : ''}"><b>${U.qty(i.q)}</b></span>
+          <span></span>
+          <span data-l="Valeur achat" class="sensitive right">${i.q ? U.eur(i.buy) : '—'}</span>
+          <span data-l="Revente TTC" class="sensitive right"><b>${i.q ? U.eur(i.sell) : '—'}</b></span>
+          <span></span>
+        </summary>
+        <div class="fold-body" style="padding:0;">${i.rows.map(r => row(r, false)).join('')}</div>
+      </details>`; };
     document.getElementById('stockBody').innerHTML = `
-      <div class="card" style="padding:12px 16px;"><div class="grid c3">
-        <div class="fg mb0"><label>Recherche</label><input id="acc_q" placeholder="nom ou SKU…" value="${U.esc(f.q || '')}" oninput="Stock.accFilters.q=this.value;Stock.renderAccessoires();U.refocus('acc_q')"></div>
-        <div class="fg mb0"><label>Catégorie</label>${U.customSelect({ value: f.cat, options: [{ v: 'all', l: 'Toutes (' + all.length + ')' }].concat(cats.map(c => ({ v: c, l: c + ' (' + cnt(x => (x.category || 'Autre') === c) + ')' }))), onPick: 'Stock._setAccCat' })}</div>
-        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state, options: [{ v: 'all', l: 'Tous' }, { v: 'in', l: 'En stock (' + cnt(a => tot(a) > 0) + ')' }, { v: 'out', l: 'Sans stock (' + cnt(a => tot(a) <= 0) + ')' }, { v: 'low', l: '⚠️ Stock bas (' + cnt(isLow) + ')' }], onPick: 'Stock._setAccState' })}</div>
+      <div class="toolbar">
+        <div class="fg"><label>Recherche</label><input id="acc_q" type="text" placeholder="nom ou SKU…" value="${U.esc(f.q || '')}" oninput="Stock.accFilters.q=this.value;Stock.renderAccessoires();U.refocus('acc_q')"></div>
+        <div class="fg"><label>Catégorie</label><select onchange="Stock.accSet('cat',this.value)"><option value="all">Toutes (${all.length})</option>${cats.map(c => `<option value="${U.esc(c)}" ${f.cat === c ? 'selected' : ''}>${U.esc(c)} (${cnt(x => (x.category || 'Autre') === c)})</option>`).join('')}</select></div>
+        <div class="fg"><label>Largeur</label><select onchange="Stock.accSet('width',this.value)"><option value="all">Toutes</option>${widths.map(w => `<option value="${U.esc(w)}" ${f.width === w ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Bicolor</label><select onchange="Stock.accSet('bic',this.value)"><option value="all" ${f.bic === 'all' ? 'selected' : ''}>Tous</option><option value="yes" ${f.bic === 'yes' ? 'selected' : ''}>Bicolor</option><option value="no" ${f.bic === 'no' ? 'selected' : ''}>Non bicolor</option></select></div>
+        <div class="fg"><label>État du stock</label><select onchange="Stock.accSet('state',this.value)"><option value="all" ${f.state === 'all' ? 'selected' : ''}>Tous</option><option value="in" ${f.state === 'in' ? 'selected' : ''}>En stock (${cnt(a => tot(a) > 0)})</option><option value="out" ${f.state === 'out' ? 'selected' : ''}>Sans stock (${cnt(a => tot(a) <= 0)})</option><option value="low" ${f.state === 'low' ? 'selected' : ''}>⚠️ Stock bas (${cnt(isLow)})</option></select></div>
       </div>
-      <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
+      <div class="frow" style="gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
         <span class="muted">${list.length !== all.length ? list.length + ' / ' + all.length : all.length} accessoire(s) · <b>${U.qty(T.q)}</b> pièce(s) en stock fini</span>
-        <span class="muted sensitive" style="margin-left:auto;">Valeur d'achat <b>${U.eur(T.buy)}</b> · revente TTC <b>${U.eur(T.sell)}</b></span>
-      </div></div>
-      ${rows.length ? `<div class="card"><p class="muted help" data-help-anchor=".table-wrap th">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0. Valeur d'achat = coût de revient actuel de la fiche (matières, filament, impression, UV) × pièces ; revente = prix TTC de la fiche × pièces. Le stock général sert au site, l'événement à SumUp.</p>
-        <div class="table-wrap"><table>
-        <thead><tr><th class="col-name">Accessoire</th><th>Catégorie</th><th style="text-align:center;">Général</th><th style="text-align:center;">Événement</th><th style="text-align:center;">Total</th><th style="text-align:center;">Seuil</th><th class="num">Valeur achat</th><th class="num">Revente TTC</th><th></th></tr></thead>
-        <tbody>${rows.map(({ a, q, buy, sell }) => `<tr>
-          <td class="col-name"><b>${U.esc(a.name)}</b>${a.sku ? `<div class="muted" style="font-size:.78rem;">${U.esc(a.sku)}</div>` : ''}</td>
-          <td><span class="badge info">${U.esc(a.category || 'Autre')}</span></td>
-          <td style="text-align:center;">${inp(a, 'general', a.stockGeneral)}</td>
-          <td style="text-align:center;">${inp(a, 'event', a.stockEvent)}</td>
-          <td style="text-align:center;" class="${isLow(a) ? 'warn-txt' : ''}"><b>${U.qty(q)}</b></td>
-          <td style="text-align:center;">${inp(a, 'low', a.low, 64)}</td>
-          <td class="num sensitive">${q ? U.eur(buy) : '—'}</td>
-          <td class="num sensitive">${q ? U.eur(sell) : '—'}</td>
-          <td class="right"><div class="act-grid"><span class="act-row">${ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button><button class="btn-icon" title="Transférer du stock général vers l'événement (ou l'inverse)" onclick="Accessoires.transferStock('${a.id}')">⇄</button>`}</span></div></td></tr>`).join('')}
-        </tbody></table></div></div>` : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Accessoires.') + '</div>'}`;
+        <span class="muted sensitive">Valeur d'achat <b>${U.eur(T.buy)}</b> · revente TTC <b>${U.eur(T.sell)}</b></span>
+        <span style="margin-left:auto;display:flex;gap:6px;"><button class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(true)">▼ Tout déplier</button><button class="btn-ghost btn-sm fit" onclick="Stock.accFoldAll(false)">▲ Tout réduire</button></span>
+      </div>
+      ${items.length ? `<div class="prod-list-header stk-acc-header">
+        <span>${sh('name', 'Accessoire')}</span><span>${sh('width', 'Largeur')}</span><span>${sh('cat', 'Catégorie')}</span><span>Général</span><span>Événement</span><span>${sh('tot', 'Total')}</span><span>Seuil</span><span class="right">${sh('buy', 'Valeur achat')}</span><span class="right">${sh('sell', 'Revente TTC')}</span><span></span>
+      </div>
+      ${items.map(card).join('')}
+      <p class="muted help mt" data-help-anchor=".stk-acc-header">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0. Valeur d'achat = coût de revient actuel de la fiche (matières, filament, impression, UV) × pièces ; revente = prix TTC de la fiche × pièces. Le stock général sert au site, l'événement à SumUp. Clique une famille pour voir ses longueurs.</p>`
+      : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Accessoires.') + '</div>'}`;
   },
   /* ───── DLUO des consommables (Antho 2026-10-14 : encres, nettoyants… ont une date limite) ─────
      c.hasDluo = « ce produit a une date limite » ; c.lots = [{id, qty, dluo, lotNumber}] = unités DATÉES. La quantité `c.qty` reste le stock total :
