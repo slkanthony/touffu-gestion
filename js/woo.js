@@ -278,8 +278,8 @@ const Woo = {
   },
   /* ───── Liaison manuelle produit de l'appli ↔ fiche du site (Antho 2026-10-17) ─────
      Pour un produit « absent du site » (UGS différent ou jamais rempli sur le site) : on choisit la fiche du site, l'appli retient son ID. L'appli est PRIORITAIRE :
-     le CSV « Corriger les UGS du site » (ID + Type + UGS + Parent, comme l'export natif du site) met l'UGS de l'appli sur cette fiche → WooCommerce la met à jour
-     (pas de doublon). Tant que l'UGS du site n'est pas corrigé, le produit est exclu de l'export normal (sinon il créerait un doublon). */
+     l'export normal (onglet Exporter) envoie alors ces produits avec l'ID de la fiche (colonnes ID / Type / UGS / Parent comme l'export natif du site + prix + stock) →
+     UN SEUL import met à jour UGS, prix et stock, sans doublon. */
   _pruneLinks() {
     const L = Store.state.settings.wooLinks, ref = this._siteRef;
     if (!L || !ref || ref.v !== 2) return;
@@ -287,6 +287,14 @@ const Woo = {
     let ch = false;
     Object.keys(L).forEach(k => { if (skus.has(k) || !ids.has(String(L[k]))) { delete L[k]; ch = true; } });   // UGS désormais identique sur le site, ou fiche disparue
     if (ch) Store.save('settings');
+  },
+  /* sku → { id, type, parent } de la fiche du site : UGS identique (export du site) ou fiche reliée à la main. Sert à l'export « avec ID ». */
+  _idMap() {
+    const ref = this._siteRef, c = ref ? this._buildCmp() : null, m = new Map();
+    if (!c || ref.v !== 2) return m;
+    ref.items.forEach(x => { if (x.id) m.set(x.sku, { id: x.id, type: x.type, parent: x.parent }); });
+    c.matched.forEach(x => { if (x.link) m.set(x.sku, x.link); });
+    return m;
   },
   _pendingSkus() {
     this._restoreSiteCache();
@@ -346,34 +354,11 @@ const Woo = {
     Store.save('settings');
     U.closeModal();
     this.render();
-    U.toast(`Relié à « ${s.name} » (#${s.id})${extra ? ` + ${extra} autre(s) format(s) du même produit` : ''}. Exporte « Corriger les UGS du site » pour mettre l'UGS de l'appli sur les fiches.`);
+    U.toast(`Relié à « ${s.name} » (#${s.id})${extra ? ` + ${extra} autre(s) format(s) du même produit` : ''}. Coche-le dans « Exporter » : le fichier mettra aussi l'UGS de l'appli sur la fiche.`);
   },
   unlink(sku) {
     const L = Store.state.settings.wooLinks; if (!L || !(sku in L)) return;
     delete L[sku]; Store.save('settings'); this.render(); U.toast('Liaison retirée.');
-  },
-  /* CSV minimal ID / Type / UGS / Parent (mêmes en-têtes que l'export natif du site : WooCommerce les mappe tout seul et met à jour la fiche par son ID). Ne touche NI prix NI stock :
-     ceux-là partent ensuite avec l'export normal, une fois l'UGS corrigé. */
-  exportSkuFix(only) {
-    const c = this._buildCmp(), rows = c ? c.matched.filter(m => m.link && (!only || only.includes(m.sku))) : [];
-    if (!rows.length) { U.toast('Aucune liaison à corriger.', true); return; }
-    const q = v => { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-    const csv = [['ID', 'Type', 'UGS', 'Parent']].concat(rows.map(m => [m.link.id, m.link.type, m.sku, m.link.parent])).map(r => r.map(q).join(',')).join('\r\n');
-    const fname = `woocommerce-touffu-ugs-${U.today()}.csv`;
-    U.download(fname, '\uFEFF' + csv, 'text/csv');
-    U.toast(`CSV « Corriger les UGS » exporté : ${rows.length} fiche(s).`);
-    const sample = rows.slice(0, 3).map(m => `<li><b>${U.esc(m.name)}</b> (#${U.esc(m.link.id)}) → UGS <span class="sku-txt">${U.esc(m.sku)}</span></li>`).join('');
-    U.modal({
-      title: '📖 Corriger les UGS sur ton site', wide: true, hideOk: true,
-      body: `<p class="muted" style="margin-top:0;">Fichier <b>${U.esc(fname)}</b> (${rows.length} fiche${rows.length > 1 ? 's' : ''}) enregistré dans tes Téléchargements. <b>Première fois : relie seulement 1 ou 2 produits</b> et vérifie le résultat avant de faire le reste.</p>
-        <ol style="line-height:1.6;padding-left:20px;">
-          <li>Sur ton site : <b>Produits → Tous les produits → Importer</b>, choisis ce fichier, <b>coche « Mettre à jour les produits existants »</b>, Continuer.</li>
-          <li>Écran « Mapper les champs » : <b>ID → ID · Type → Type · UGS → UGS · Parent → Parent</b>. <b style="color:var(--alerte);">Si une ligne affiche « Ne pas importer », ne lance pas l'import.</b></li>
-          <li>Lancer l'importation, puis ouvre la fiche pour contrôler :<ul style="margin:4px 0 0 18px;">${sample}</ul>Il ne doit y avoir <b>aucun produit en plus</b> sur le site.</li>
-          <li>Ré-exporte tes produits depuis le site et redépose le fichier ici (Comparer avec le site) : les produits passent en ✅.</li>
-          <li>Enfin, fais l'export WooCommerce normal pour envoyer prix et stock de l'appli.</li>
-        </ol>`
-    });
   },
   clearCompare() { this._cmp = null; this._siteRef = null; try { localStorage.removeItem('touffu_siteRef'); } catch (e) {} this.render(); },
   cmpFilter: 'issues', cmpQ: '', cmpSort: 'name', cmpSortDir: 'asc',
@@ -933,7 +918,6 @@ const Woo = {
       <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
         <input id="woo_cmp_q" style="flex:1 1 240px;" placeholder="Rechercher un produit, un SKU…" value="${U.esc(this.cmpQ || '')}" oninput="Woo._setCmpQ(this.value)">
         <span class="muted" style="flex:0 0 auto;">${sorted.length} ligne(s)</span>
-        ${c.matched.some(m => m.link) ? `<button class="btn-cta btn-sm fit" style="white-space:nowrap;" onclick="Woo.exportSkuFix()" title="CSV ID / Type / UGS / Parent : met l'UGS de l'appli sur les fiches du site reliées">⬇ Corriger les UGS du site (CSV) · ${c.matched.filter(m => m.link).length}</button>` : ''}
       </div>
       <table class="sumup-table mt">
         <colgroup>${widths.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
@@ -1123,18 +1107,13 @@ const Woo = {
 
   exportCsv() {
     // Les produits exclus du site (réglage persistant) ne sont JAMAIS exportés.
-    const pending = this._pendingSkus();   // reliés à une fiche du site dont l'UGS reste à corriger : les envoyer créerait un doublon
+    const pending = this._pendingSkus();   // reliés à une fiche du site dont l'UGS n'est pas encore corrigé : leur ligne part avec l'ID de la fiche (un seul import met tout à jour)
     const inScope = this.lines().filter(l => l.sku && this._inCat(this._k(l)));   // « tout » = la catégorie choisie (Tous | Mastication | Accessoires)
     // Sélection active → on n'exporte QUE les produits cochés ; sinon tout. La sélection est comptée AVANT d'écarter les exclus / reliés à corriger :
     // sinon, si tous les produits cochés étaient écartés, le compte tombait à 0 et l'appli exportait TOUT le catalogue (incident du 2026-10-17 : 72 fiches du site mises à jour au lieu de 3).
     const selCount = this._selCount(inScope);
     const chosen = selCount > 0 ? inScope.filter(l => this._sel[l.sku]) : inScope;
-    const held = chosen.filter(l => pending.has(l.sku)).length;
-    const linked = chosen.filter(l => !this._isExcluded(l.sku) && !pending.has(l.sku));
-    if (!linked.length && held) {   // tous les produits choisis sont reliés à une fiche du site à corriger : le bon fichier = celui des UGS (même bouton, pas de détour par Comparer)
-      this.exportSkuFix(chosen.filter(l => pending.has(l.sku)).map(l => l.sku));
-      return;
-    }
+    let linked = chosen.filter(l => !this._isExcluded(l.sku));
     if (!linked.length) {
       U.toast(selCount > 0 ? 'Aucun produit sélectionné à exporter (exclus du site ?).' : 'Aucun produit à exporter (tous sans SKU ou exclus).', true);
       return;
@@ -1142,12 +1121,24 @@ const Woo = {
     // En-têtes en FRANÇAIS, identiques à l'export natif du site d'Antho (WooCommerce FR :
     // UGS = SKU, Tarif régulier = prix, En stock ? = statut). Ainsi l'importateur WooCommerce
     // les reconnaît automatiquement (pas de mapping manuel de colonnes à faire).
-    const head = ['UGS'];
+    // Mode « avec ID » (Antho 2026-10-17 : un seul import qui met TOUT à jour) : dès qu'un produit de l'export est relié à une fiche du site dont l'UGS est à corriger,
+    // CHAQUE ligne part avec l'ID / Type / Parent de sa fiche (export natif du site) : WooCommerce met alors à jour la fiche par son ID (UGS corrigé + prix + stock, sans doublon).
+    // Les produits absents du site n'ont pas d'ID : ils ne sont pas exportés (ils créeraient des produits sans nom).
+    let ids = null, skipped = 0;
+    if (linked.some(l => pending.has(l.sku))) {
+      ids = this._idMap();
+      const before = linked.length;
+      linked = linked.filter(l => ids.has(l.sku));
+      skipped = before - linked.length;
+      if (!linked.length) { U.toast("Aucun des produits choisis n'est sur ton site (redépose l'export du site dans Comparer si ça vient de changer).", true); return; }
+    }
+    const head = ids ? ['ID', 'Type', 'UGS', 'Parent'] : ['UGS'];
     if (this.includePrice) head.push('Tarif régulier');
     if (this.includeStock) { head.push('Stock'); head.push('En stock ?'); }   // espace INSÉCABLE : celle de l'export du site, seule reconnue par l'importateur
     const rows = [head];
     linked.forEach(l => {
-      const r = [l.sku];
+      const d = ids ? ids.get(l.sku) : null;
+      const r = d ? [d.id, d.type, l.sku, d.parent] : [l.sku];
       // Prix : décimale VIRGULE (format FR, comme l'export du site). Tous les champs sont
       // mis entre guillemets plus bas, donc la virgule décimale ne casse pas le CSV.
       if (this.includePrice) r.push(l.price.toFixed(2).replace('.', ','));
@@ -1163,11 +1154,11 @@ const Woo = {
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     const fname = `woocommerce-touffu-${U.today()}.csv`;
     U.download(fname, '﻿' + csv, 'text/csv');
-    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${held ? ` ${held} produit(s) relié(s) laissé(s) de côté : corrige d'abord leur UGS sur le site.` : ''}`);
+    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${ids ? ' Les fiches reliées reçoivent aussi leur nouvel UGS.' : ''}${skipped ? ` ${skipped} produit(s) absent(s) du site non exporté(s) (ils créeraient des produits vides).` : ''}`);
     // Produits à contrôler sur le site après l'import : tous si ≤ 3, sinon 3 au hasard
     const pool = linked.slice(), pick = [];
     while (pick.length < Math.min(3, pool.length)) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
-    this._lastExport = { file: fname, n: linked.length, price: this.includePrice, stock: this.includeStock, sample: pick.map(l => ({ sku: l.sku, name: l.name, price: l.price, stock: l.stock })) };
+    this._lastExport = { file: fname, n: linked.length, ids: !!ids, price: this.includePrice, stock: this.includeStock, sample: pick.map(l => ({ sku: l.sku, name: l.name, price: l.price, stock: l.stock })) };
     if (!this.guideOff()) setTimeout(() => this.showGuide(), 400);
   },
 
@@ -1177,7 +1168,7 @@ const Woo = {
   setGuideOff(on) { try { localStorage.setItem('touffu_wooGuideOff', on ? '1' : '0'); } catch (e) {} },
   showGuide() {
     const x = this._lastExport, step = (n, h) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.95rem;font-weight:400;color:var(--texte);"><input type="checkbox" style="margin-top:4px;flex:0 0 auto;"><span><b>${n}.</b> ${h}</span></label>`;
-    const cols = ['UGS → UGS'].concat(!x || x.price ? ['Tarif régulier → Tarif régulier'] : [], !x || x.stock ? ['Stock → Stock', 'En stock ? → En stock ?'] : []);
+    const cols = (x && x.ids ? ['ID → ID', 'Type → Type', 'UGS → UGS', 'Parent → Parent'] : ['UGS → UGS']).concat(!x || x.price ? ['Tarif régulier → Tarif régulier'] : [], !x || x.stock ? ['Stock → Stock', 'En stock ? → En stock ?'] : []);
     const checks = x ? x.sample.map(s => `<li><b>${U.esc(s.name)}</b> (${U.esc(s.sku)}) : ${x.price ? U.eur(s.price) : ''}${x.price && x.stock && s.stock !== null ? ' · ' : ''}${x.stock && s.stock !== null ? 'stock ' + U.qty(s.stock) : ''}</li>`).join('') : '';
     U.modal({
       title: '📖 Guide d\'import sur ton site', wide: true, hideOk: true,
