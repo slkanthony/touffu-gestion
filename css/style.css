@@ -1659,9 +1659,12 @@ table tbody tr.pt-ord:hover td { background: rgba(166, 113, 83, .22); }
 .stk-acc-mv { display: flex; gap: 4px; justify-content: center; }
 .stk-acc-min { font-size: .7rem; font-weight: 400; color: var(--gris); }
 .stk-acc-act { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
-.stk-acc-single { margin-bottom: 10px; border-left: 4px solid var(--caramel); }
-.stk-acc-single.manual { border-left-color: #4f9fd0; }   /* pièce « prête à finir » ajoutée à la main (Antho 2026-10-17) : bandeau bleu, les accessoires fabriqués gardent le caramel */
-.badge.manual { background: rgba(79,159,208,.18); color: #4f9fd0; border: 1px solid rgba(79,159,208,.45); }
+.stk-acc-single { margin-bottom: 10px; border: 1px solid var(--card-border); border-left: 4px solid var(--caramel); border-radius: var(--radius); background: var(--card-bg); box-shadow: var(--ombre); overflow: hidden; }
+/* Pièce « prête à finir » ajoutée à la main (Antho 2026-10-17) : bandeau + pastille dans la charte, bien distincts du caramel des accessoires fabriqués. Sombre = beige, clair = nuit */
+.stk-acc-single.manual, .badge.manual { --manual: var(--nuit); }
+:root[data-theme="dark"] .stk-acc-single.manual, :root[data-theme="dark"] .badge.manual { --manual: var(--beige); }
+.stk-acc-single.manual { border-left-color: var(--manual); }
+.badge.manual { background: transparent; color: var(--manual); border: 1px solid var(--manual); }
 .stk-acc-single .stk-acc-row { border-top: 0; padding: 10px 16px; }
 details.fold.stk-acc-fold.low { border-left-color: var(--warn) !important; }
 .stk-acc-foot { padding: 10px 16px; border-top: 1px solid var(--row-border); }
