@@ -443,6 +443,13 @@ const Woo = {
   _siteFmtToggle(v) { const cur = this._siteFmtSel(); this.filters.fmts = cur.includes(v) ? cur.filter(x => x !== v) : cur.concat(v); this.render(); },
   _siteFmtAll(all) { this.filters.fmts = all ? [...(this._siteFmtList || [])] : []; this.render(); },
   _siteFmtOpen(o) { this.filters.fmtOpen = o; },
+  /* Tri par nom d'un produit à formats (« Produit — S ») : produit A→Z, puis formats dans l'ordre naturel (100G < 250G < 500G, S < M < L < XL) et non alphabétique (Antho 2026-10-17) */
+  _nameCmp(a, b) {
+    const sp = n => String(n || '').match(/^(.*) [—–-] (.+)$/);   // « Produit — S » (appli) ou « Produit - S » (export du site)
+    const x = sp(a), y = sp(b);
+    if (!x || !y) return U.sortFr(String(a || ''), String(b || ''));
+    return U.sortFr(x[1], y[1]) || this._fmtCmp(this._fmtKey(x[2]), this._fmtKey(y[2]));
+  },
   _fmtCmp(a, b) { const x = Woo._fmtRank(a), y = Woo._fmtRank(b); return x[0] - y[0] || x[1] - y[1] || U.sortFr(x[2], y[2]); },
   _setSumupFilter(v) { this.sumupFilter = v; this.render(); },
   _setSumupQ(v) { this.sumupQ = v; this.render(); U.refocus('woo_sumup_q'); },
@@ -887,7 +894,7 @@ const Woo = {
       .sort((a, b) => {
         const x = key(a), y = key(b);
         if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
-        return (typeof x === 'number' ? x - y : U.sortFr(String(x), String(y))) * dir || U.sortFr(a.name || '', b.name || '');
+        return (typeof x === 'number' ? x - y : sortK === 'name' ? this._nameCmp(x, y) : U.sortFr(String(x), String(y))) * dir || this._nameCmp(a.name, b.name);
       });
     // Un bloc par produit (nom écrit une fois, formats dessous) : il prend la place de sa 1re ligne dans l'ordre du tri.
     const shown = sorted.slice(0, 400), gmap = new Map();
@@ -998,6 +1005,7 @@ const Woo = {
       if (f.sort === 'price') r = (a.price || 0) - (b.price || 0);
       else if (f.sort === 'stock') r = ((a.stock ?? -1)) - ((b.stock ?? -1));
       else if (f.sort === 'excluded') r = (this._isExcluded(a.sku) ? 1 : 0) - (this._isExcluded(b.sku) ? 1 : 0);
+      else if (f.sort === 'name') r = this._nameCmp(a.name, b.name);
       else r = U.sortFr(a[f.sort] || '', b[f.sort] || '');
       return r * dir;
     });
