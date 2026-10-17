@@ -1592,6 +1592,38 @@ const Accessoires = {
     this._fabBom.forEach(b => { if (b.color && b.type === 'family' && keep[b.color] && b.materials.some(m => m.id === keep[b.color])) b.selectedId = keep[b.color]; });
     const w = document.getElementById('fab_bom_wrap'); if (w) w.innerHTML = this._fabBomHTML() || '<p class="muted">Aucune matière dans la nomenclature.</p>';
   },
+
+  /* ---------- stock fini (Stock → Accessoires) ---------- */
+  setStockFini(id, field, val) {
+    const a = Store.state.catalogA.find(x => x.id === id); if (!a || App.isViewer) return;
+    const key = field === 'event' ? 'stockEvent' : field === 'low' ? 'low' : 'stockGeneral';
+    const v = Math.max(0, Math.round(U.num(val)));
+    if (v === Math.round(U.num(a[key]))) { App.rerender(); return; }
+    const snap = Store.snapshot('catalogA', a);
+    a[key] = v;
+    const lab = { stockGeneral: 'stock général', stockEvent: 'stock événement', low: 'seuil d\'alerte' }[key];
+    const entry = Store.commitSnapshot(snap, 'stock', `Accessoire — ${lab} de ${a.name} : ${v}`);
+    Store.save('catalogA'); App.rerender();
+    U.toast(`${a.name} : ${lab} = ${v}.`, false, entry.id);
+  },
+  transferStock(id) {
+    const a = Store.state.catalogA.find(x => x.id === id); if (!a || App.isViewer) return;
+    U.modal({
+      title: '⇄ Transférer — ' + U.esc(a.name), okLabel: 'Transférer',
+      body: `<div class="frow"><div class="fg"><label>Sens</label><select id="tr_dir"><option value="ge">Général → Événement (${U.qty(a.stockGeneral)} en général)</option><option value="eg">Événement → Général (${U.qty(a.stockEvent)} en événement)</option></select></div>
+        <div class="fg"><label>Quantité</label><input id="tr_n" type="number" step="1" min="1" value="1"></div></div>`,
+      onOk: () => {
+        const dir = U.val('tr_dir'), n = Math.round(U.numVal('tr_n')), from = dir === 'ge' ? 'stockGeneral' : 'stockEvent', to = dir === 'ge' ? 'stockEvent' : 'stockGeneral';
+        if (!(n > 0)) { U.toast('Indique une quantité.', true); return false; }
+        if (n > U.num(a[from])) { U.toast(`Stock insuffisant : ${U.qty(a[from])} disponible(s).`, true); return false; }
+        const snap = Store.snapshot('catalogA', a);
+        a[from] = U.num(a[from]) - n; a[to] = U.num(a[to]) + n;
+        const entry = Store.commitSnapshot(snap, 'stock', `Accessoire transféré — ${n} × ${a.name} (${dir === 'ge' ? 'général → événement' : 'événement → général'})`);
+        Store.save('catalogA'); U.closeModal(); App.rerender();
+        U.toast(`${n} × ${a.name} transféré${n > 1 ? 's' : ''}.`, false, entry.id);
+      }
+    });
+  },
   fabricate(id) {
     const a = Store.state.catalogA.find(x => x.id === id);
     if (!a) return;
@@ -1602,7 +1634,8 @@ const Accessoires = {
 
     U.modal({
       title: '🛠 Fabriquer — ' + U.esc(a.name), okLabel: 'Fabriquer',
-      body: `<div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1"></div>
+      body: `<div class="frow"><div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1"></div>
+        <div class="fg"><label>Pièces ajoutées au stock ${U.info("Les pièces fabriquées entrent dans le stock fini de cet accessoire (visible dans Stock → Accessoires et au Tableau de bord). Général = site / atelier ; Événement = emporté en marché (SumUp).")}</label><select id="fab_dest"><option value="stockGeneral">Général</option><option value="stockEvent">Événement</option></select></div></div>
         <h2 style="font-size:.95rem;margin-top:12px;">Matières à utiliser</h2>
         ${endsBox}
         <div id="fab_bom_wrap" style="margin-top:8px;">${bomHTML || '<p class="muted">Aucune matière dans la nomenclature.</p>'}</div>`,
@@ -1625,7 +1658,9 @@ const Accessoires = {
             resolved.push({ m, need });
           } else { U.toast(`Famille introuvable : ${b.label}`, true); return false; }
         }
-        const undo = { accId: a.id, n, mats: [], fid: U.uid() };
+        const pool = U.val('fab_dest') === 'stockEvent' ? 'stockEvent' : 'stockGeneral';
+        const undo = { accId: a.id, n, mats: [], fid: U.uid(), pool };
+        a[pool] = U.num(a[pool]) + n;   // stock FINI crédité (avant 2026-10-17 la fabrication ne faisait que retirer les matières)
         for (const { m, need } of resolved) {
           m.qty = U.num(m.qty) - need;
           undo.mats.push({ id: m.id, qty: need });
@@ -1634,9 +1669,9 @@ const Accessoires = {
         // Historique PERMANENT des fabrications (le journal ne garde que 600 actions) : sert aux stats « sangles / couleurs les plus utilisées » (Statistiques → Prix & marges → Accessoires)
         const S = Store.state.settings; (S.fabHistory = S.fabHistory || []).push({ id: undo.fid, ts: Date.now(), accId: a.id, n, mats: undo.mats.map(x => ({ ...x })) });
         if (S.fabHistory.length > 5000) S.fabHistory.splice(0, S.fabHistory.length - 5000);
-        Store.save('materials', 'settings');
+        Store.save('materials', 'settings', 'catalogA');
         U.closeModal(); App.rerender();
-        U.toast(`${n} × ${a.name} — matières déduites du stock. 🛠`, false, entry.id);
+        U.toast(`${n} × ${a.name} — matières déduites, +${n} en stock ${pool === 'stockEvent' ? 'événement' : 'général'}. 🛠`, false, entry.id);
       }
     });
   }

@@ -43,6 +43,7 @@ const Stock = {
         ${U.seg([
           ['mastication', '🥩', 'Mastication (' + Store.state.stockM.length + ')'],
           ['matieres', '🧵', 'Matières premières (' + Store.state.materials.length + ')'],
+          ['accessoires', '🐕', 'Accessoires (' + Store.state.catalogA.length + ')'],
           ['conso', '📦', 'Consommables (' + Store.state.consumables.length + ')'],
           ['peremptions', '⏳', 'Péremptions'],
           ['faible', '📉', 'Faible stock']
@@ -52,6 +53,7 @@ const Stock = {
     if (this.tab === 'mastication') this.renderM();
     else if (this.tab === 'conso') this.renderConso();
     else if (this.tab === 'matieres') this.renderMatieres();
+    else if (this.tab === 'accessoires') this.renderAccessoires();
     else if (this.tab === 'peremptions') this.renderPeremptions();
     else this.renderFaible();
   },
@@ -2329,6 +2331,50 @@ const Stock = {
             <button class="btn-ghost btn-sm" onclick="Stock.editConso('${c.id}')">Modifier</button>
             <button class="btn-icon" title="Supprimer" onclick="Stock.delConso('${c.id}')">🗑️</button></span></div></td></tr>`;}).join('')}
         </tbody></table></div></div>` : '<div class="card empty"><span class="big">📦</span>Aucun consommable.</div>'}`;
+  },
+  /* ───── Stock → Accessoires (Antho 2026-10-17) : stock FINI des accessoires (modèles d'exposition, pièces faites d'avance), général / événement ─────
+     Même champs que la fiche (`a.stockGeneral`, `a.stockEvent`, seuil `a.low`) : « Fabriquer » les crédite, les ventes les débitent, le Tableau de bord et la synchro Site/SumUp les lisent. */
+  accFilters: { q: '', cat: 'all', state: 'all' },
+  _setAccCat(v) { this.accFilters.cat = v; this.renderAccessoires(); },
+  _setAccState(v) { this.accFilters.state = v; this.renderAccessoires(); },
+  renderAccessoires() {
+    const f = this.accFilters; U.syncFilters('stock_acc', f);
+    const all = Store.state.catalogA, ro = !!App.isViewer, qn = U.normSearch(f.q || '');
+    const tot = a => U.num(a.stockGeneral) + U.num(a.stockEvent);
+    const isLow = a => U.num(a.low) > 0 && tot(a) <= U.num(a.low);
+    const cats = [...new Set(all.map(a => a.category || 'Autre'))].sort(U.sortFr);
+    const cnt = fn => all.filter(fn).length;
+    if (f.cat !== 'all' && !cats.includes(f.cat)) f.cat = 'all';
+    const list = all.filter(a => (!qn || U.has(a.name + ' ' + (a.sku || ''), qn)) && (f.cat === 'all' || (a.category || 'Autre') === f.cat)
+      && (f.state === 'in' ? tot(a) > 0 : f.state === 'out' ? tot(a) <= 0 : f.state === 'low' ? isLow(a) : true))
+      .sort((x, y) => U.sortFr(x.name, y.name));
+    const rows = list.map(a => { const c = Pricing.accCalc(a), q = tot(a); return { a, q, buy: q * c.costBase, sell: q * c.priceTTC }; });
+    const T = rows.reduce((t, r) => ({ q: t.q + r.q, buy: t.buy + r.buy, sell: t.sell + r.sell }), { q: 0, buy: 0, sell: 0 });
+    const inp = (a, key, v, w) => `<input type="number" step="1" min="0" value="${U.num(v) || 0}" style="width:${w || 80}px;text-align:center;" ${ro ? 'disabled' : ''} onchange="Accessoires.setStockFini('${a.id}','${key}',this.value)">`;
+    document.getElementById('stockBody').innerHTML = `
+      <div class="card" style="padding:12px 16px;"><div class="grid c3">
+        <div class="fg mb0"><label>Recherche</label><input id="acc_q" placeholder="nom ou SKU…" value="${U.esc(f.q || '')}" oninput="Stock.accFilters.q=this.value;Stock.renderAccessoires();U.refocus('acc_q')"></div>
+        <div class="fg mb0"><label>Catégorie</label>${U.customSelect({ value: f.cat, options: [{ v: 'all', l: 'Toutes (' + all.length + ')' }].concat(cats.map(c => ({ v: c, l: c + ' (' + cnt(x => (x.category || 'Autre') === c) + ')' }))), onPick: 'Stock._setAccCat' })}</div>
+        <div class="fg mb0"><label>État</label>${U.customSelect({ value: f.state, options: [{ v: 'all', l: 'Tous' }, { v: 'in', l: 'En stock (' + cnt(a => tot(a) > 0) + ')' }, { v: 'out', l: 'Sans stock (' + cnt(a => tot(a) <= 0) + ')' }, { v: 'low', l: '⚠️ Stock bas (' + cnt(isLow) + ')' }], onPick: 'Stock._setAccState' })}</div>
+      </div>
+      <div class="frow mt" style="gap:12px;align-items:center;flex-wrap:wrap;">
+        <span class="muted">${list.length !== all.length ? list.length + ' / ' + all.length : all.length} accessoire(s) · <b>${U.qty(T.q)}</b> pièce(s) en stock fini</span>
+        <span class="muted sensitive" style="margin-left:auto;">Valeur d'achat <b>${U.eur(T.buy)}</b> · revente TTC <b>${U.eur(T.sell)}</b></span>
+      </div></div>
+      ${rows.length ? `<div class="card"><p class="muted help" data-help-anchor=".table-wrap th">Stock FINI = les pièces déjà fabriquées (modèles d'exposition, porte-clés imprimés d'avance…). « 🛠 Fabriquer » les ajoute ici (et retire les matières) ; chaque vente d'un accessoire en retire. Un accessoire fait à la commande peut rester à 0. Valeur d'achat = coût de revient actuel de la fiche (matières, filament, impression, UV) × pièces ; revente = prix TTC de la fiche × pièces. Le stock général sert au site, l'événement à SumUp.</p>
+        <div class="table-wrap"><table>
+        <thead><tr><th class="col-name">Accessoire</th><th>Catégorie</th><th style="text-align:center;">Général</th><th style="text-align:center;">Événement</th><th style="text-align:center;">Total</th><th style="text-align:center;">Seuil</th><th class="num">Valeur achat</th><th class="num">Revente TTC</th><th></th></tr></thead>
+        <tbody>${rows.map(({ a, q, buy, sell }) => `<tr>
+          <td class="col-name"><b>${U.esc(a.name)}</b>${a.sku ? `<div class="muted" style="font-size:.78rem;">${U.esc(a.sku)}</div>` : ''}</td>
+          <td><span class="badge info">${U.esc(a.category || 'Autre')}</span></td>
+          <td style="text-align:center;">${inp(a, 'general', a.stockGeneral)}</td>
+          <td style="text-align:center;">${inp(a, 'event', a.stockEvent)}</td>
+          <td style="text-align:center;" class="${isLow(a) ? 'warn-txt' : ''}"><b>${U.qty(q)}</b></td>
+          <td style="text-align:center;">${inp(a, 'low', a.low, 64)}</td>
+          <td class="num sensitive">${q ? U.eur(buy) : '—'}</td>
+          <td class="num sensitive">${q ? U.eur(sell) : '—'}</td>
+          <td class="right"><div class="act-grid"><span class="act-row">${ro ? '' : `<button class="btn-ghost btn-sm" title="Fabriquer : ajoute les pièces au stock fini et retire les matières" onclick="Accessoires.fabricate('${a.id}')">🛠 Fabriquer</button><button class="btn-icon" title="Transférer du stock général vers l'événement (ou l'inverse)" onclick="Accessoires.transferStock('${a.id}')">⇄</button>`}</span></div></td></tr>`).join('')}
+        </tbody></table></div></div>` : '<div class="card empty"><span class="big">🐕</span>Aucun accessoire' + (all.length ? ' ne correspond au filtre.' : ' : crée-les dans la page Accessoires.') + '</div>'}`;
   },
   /* ───── DLUO des consommables (Antho 2026-10-14 : encres, nettoyants… ont une date limite) ─────
      c.hasDluo = « ce produit a une date limite » ; c.lots = [{id, qty, dluo, lotNumber}] = unités DATÉES. La quantité `c.qty` reste le stock total :
