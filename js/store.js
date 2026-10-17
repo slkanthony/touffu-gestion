@@ -62,6 +62,7 @@ const Store = {
         strapWeights: {}, // {'<kind>|<type> <largeur>': {w, q}} — poids de réf. des matières en mode "partagé" pour le 🧮 Calculateur : w g = q m
         calcRefMode: { sangle: 'shared', bouclerie: 'perItem', autre: 'perItem' }, // 🧮 Calculateur : mode de référence par catégorie de matière ('shared' = partagée par largeur/type ; 'perItem' = par article)
         variantPresets: { gram: [50, 100, 250, 500, 1000], piece: [1, 2, 3, 4, 5], size: ['S', 'M', 'L', 'XL'] },
+        wooLinks: {}, // liaisons manuelles {SKU appli: ID de la fiche du site} : fiche du site à laquelle on remplace l'UGS (l'appli reste prioritaire) — voir Woo.openLink
         wooExclude: [], // SKU exclus DÉFINITIVEMENT de l'export WooCommerce (produits événement-only, tests…) — jamais envoyés au site
         sumupExclude: [] // SKU (majuscules) exclus DÉFINITIVEMENT de l'export SumUp (ex: sachets 500g+ jamais emmenés sur les marchés) — jamais proposés à l'export
       },

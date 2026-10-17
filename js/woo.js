@@ -170,14 +170,21 @@ const Woo = {
     this.lines().filter(l => l.sku).forEach(l => app.set(l.sku, l));
     const matched = [], appOnly = [], siteOnly = [];
     const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
+    // Liaisons manuelles (Antho 2026-10-17) : produit de l'appli ↔ fiche du site (par ID) dont l'UGS est différent ou vide ; l'appli est prioritaire → l'UGS du site sera corrigé par le CSV « Corriger les UGS du site »
+    const links = (Store.state.settings.wooLinks) || {}, byId = new Map(), usedIds = new Set();
+    if (ref.v === 2) { ref.items.forEach(s => byId.set(String(s.id), s)); (ref.noSku || []).forEach(s => byId.set(String(s.id), s)); }
     app.forEach((l, sku) => {
-      const s = site.get(sku);
+      let s = site.get(sku), link = null;
+      if (!s && links[sku] != null) {
+        const t = byId.get(String(links[sku]));
+        if (t) { s = t; link = { id: String(t.id), type: t.type, parent: t.parent, siteSku: t.sku || '' }; usedIds.add(String(t.id)); }
+      }
       if (!s) { appOnly.push({ sku, name: l.name, ...meta(l) }); return; }
       const priceDiff = (l.price != null && s.price != null) ? +(l.price - s.price).toFixed(2) : null;
       const stockDiff = (l.stock != null && s.stock != null) ? (l.stock - s.stock) : null;
-      matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, ...meta(l) });
+      matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, link, ...meta(l) });
     });
-    site.forEach((s, sku) => { if (!app.has(sku)) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
+    site.forEach((s, sku) => { if (!app.has(sku) && !usedIds.has(String(s.id))) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
     return { siteRows: site.size, siteNoSku: ref.siteNoSku, matched, appOnly, siteOnly };
   },
   /* Fichier choisi = lu TOUT DE SUITE (onchange du champ, Antho 2026-10-17 : il fallait recharger la page pour que le 2e choix soit pris en compte). Le champ est vidé
@@ -211,18 +218,110 @@ const Woo = {
         const m = c.split(', ').find(x => /Type de viande > /.test(x));
         return { kind: /accessoires/i.test(c) ? 'Accessoires' : 'Mastication', meat: m ? m.split(' > ').pop().trim() : '' };
       };
-      const site = new Map(); let siteNoSku = 0;
+      // ID / Type / Parent : nécessaires pour RELIER une fiche du site à un produit de l'appli (liaison par ID, sans doublon)
+      const iType = this._cmpCol(head, ['Type']);
+      const idOf = r => ({ id: iId >= 0 ? String(r[iId] || '').trim() : '', type: iType >= 0 ? String(r[iType] || '').trim() : '', parent: iPar >= 0 ? String(r[iPar] || '').trim() : '' });
+      const site = new Map(), noSku = []; let siteNoSku = 0;
       rows.slice(1).filter(r => r.length > 1).forEach(r => {
         const sku = (r[iSku] || '').trim();
-        if (!sku) { siteNoSku++; return; }
-        site.set(sku, { sku, name: iName >= 0 ? r[iName] : '', price: iPrice >= 0 ? num(r[iPrice]) : null, stock: iStock >= 0 ? num(r[iStock]) : null, ...siteKind(r) });
+        const base = { name: iName >= 0 ? r[iName] : '', price: iPrice >= 0 ? num(r[iPrice]) : null, stock: iStock >= 0 ? num(r[iStock]) : null, ...idOf(r), ...siteKind(r) };
+        if (!sku) { siteNoSku++; if (base.id && (base.type === 'variation' || base.type === 'simple')) noSku.push({ sku: '', ...base }); return; }
+        site.set(sku, { sku, ...base });
       });
-      this._siteRef = { file: file.name, ts: Date.now(), siteNoSku, items: [...site.values()] };
+      this._siteRef = { v: 2, file: file.name, ts: Date.now(), siteNoSku, items: [...site.values()], noSku };
+      this._pruneLinks();
       try { localStorage.setItem('touffu_siteRef', JSON.stringify(this._siteRef)); } catch (e) { U.toast('Export du site trop gros pour la mémoire du navigateur : il faudra le redéposer après un rechargement.', true); }
       this._cmp = this._buildCmp();
       this.render();
       const c = this._cmp;
       U.toast(`Comparaison : ${c.matched.length} reliés, ${c.appOnly.length} appli seule, ${c.siteOnly.length} site seul.`);
+    });
+  },
+  /* ───── Liaison manuelle produit de l'appli ↔ fiche du site (Antho 2026-10-17) ─────
+     Pour un produit « absent du site » (UGS différent ou jamais rempli sur le site) : on choisit la fiche du site, l'appli retient son ID. L'appli est PRIORITAIRE :
+     le CSV « Corriger les UGS du site » (ID + Type + UGS + Parent, comme l'export natif du site) met l'UGS de l'appli sur cette fiche → WooCommerce la met à jour
+     (pas de doublon). Tant que l'UGS du site n'est pas corrigé, le produit est exclu de l'export normal (sinon il créerait un doublon). */
+  _pruneLinks() {
+    const L = Store.state.settings.wooLinks, ref = this._siteRef;
+    if (!L || !ref || ref.v !== 2) return;
+    const ids = new Set(ref.items.concat(ref.noSku || []).map(s => String(s.id))), skus = new Set(ref.items.map(s => s.sku));
+    let ch = false;
+    Object.keys(L).forEach(k => { if (skus.has(k) || !ids.has(String(L[k]))) { delete L[k]; ch = true; } });   // UGS désormais identique sur le site, ou fiche disparue
+    if (ch) Store.save('settings');
+  },
+  _pendingSkus() {
+    this._restoreSiteCache();
+    const c = this._siteRef ? this._buildCmp() : null;
+    return new Set(c ? c.matched.filter(m => m.link).map(m => m.sku) : []);
+  },
+  _tok(s) { return U.normSearch(s || '').split(/[^a-z0-9]+/).filter(x => x.length > 1).map(x => x.length > 3 ? x.replace(/[sx]$/, '') : x); },
+  _linkCandidates() {
+    const ref = this._siteRef; if (!ref || ref.v !== 2) return null;
+    const app = new Set(this.lines().filter(l => l.sku).map(l => l.sku));
+    const used = new Set(Object.values(Store.state.settings.wooLinks || {}).map(String));
+    const ok = s => s.id && s.type !== 'variable' && !used.has(String(s.id));
+    return ref.items.filter(s => !app.has(s.sku) && ok(s)).concat((ref.noSku || []).filter(ok));
+  },
+  openLink(sku) {
+    const l = this.lines().find(x => x.sku === sku); if (!l) return;
+    const c = this._linkCandidates();
+    if (!c) { U.toast('Redépose d\'abord l\'export de ton site (bouton « Choisir un fichier ») : la version gardée en mémoire date d\'avant cette fonction.', true); return; }
+    const want = new Set(this._tok(l.name));
+    this._lkSku = sku;
+    this._lkAll = c.map(s => { const t = new Set(this._tok(s.name)); let n = 0; want.forEach(x => { if (t.has(x)) n++; }); return { ...s, _score: want.size ? n / want.size : 0 }; })
+      .sort((a, b) => b._score - a._score || U.sortFr(a.name || '', b.name || ''));
+    U.modal({
+      title: '🔗 Relier à une fiche du site', wide: true, hideOk: true,
+      body: `<p class="muted" style="margin-top:0;">Choisis la fiche du site qui correspond à <b>${U.esc(l.name)}</b>. Son UGS sera remplacé par celui de l'appli : <span class="sku-txt">${U.esc(sku)}</span>.</p>
+        <input id="woo_lk_q" style="width:100%;" placeholder="Rechercher une fiche du site…" oninput="Woo._lkRender()">
+        <div id="woo_lk_list" style="max-height:52vh;overflow:auto;margin-top:8px;"></div>`
+    });
+    this._lkRender();
+    setTimeout(() => document.getElementById('woo_lk_q')?.focus(), 50);
+  },
+  _lkRender() {
+    const box = document.getElementById('woo_lk_list'); if (!box) return;
+    const q = (document.getElementById('woo_lk_q')?.value || '').trim();
+    const pool = q ? this._lkAll.filter(s => U.has((s.name || '') + ' ' + (s.sku || ''), q)) : this._lkAll.filter(s => s._score > 0);
+    this._lkShown = pool.slice(0, q ? 40 : 12);
+    box.innerHTML = (q ? '' : '<div class="muted" style="font-size:.8rem;margin-bottom:6px;">Suggestions (noms proches) — tape un mot pour chercher ailleurs.</div>')
+      + (this._lkShown.map((s, i) => `<button type="button" class="btn-ghost" style="display:block;width:100%;text-align:left;margin-bottom:6px;" onclick="Woo.doLink(${i})"><b>${U.esc(s.name || '—')}</b><div class="sub" style="font-size:.8rem;">#${U.esc(s.id)} · UGS sur le site : ${s.sku ? `<span class="sku-txt">${U.esc(s.sku)}</span>` : '<i>aucun</i>'}${s.price != null ? ' · ' + U.eur(s.price) : ''}</div></button>`).join('')
+      || '<p class="muted">Aucune fiche trouvée. Les fiches déjà reliées ou déjà identiques à un produit de l\'appli ne sont pas proposées.</p>');
+  },
+  doLink(i) {
+    const s = (this._lkShown || [])[i]; if (!s || !this._lkSku) return;
+    const st = Store.state.settings; if (!st.wooLinks) st.wooLinks = {};
+    st.wooLinks[this._lkSku] = String(s.id);
+    Store.save('settings');
+    U.closeModal();
+    this.render();
+    U.toast(`Relié à « ${s.name} » (#${s.id}). Exporte « Corriger les UGS du site » pour mettre l'UGS de l'appli sur la fiche.`);
+  },
+  unlink(sku) {
+    const L = Store.state.settings.wooLinks; if (!L || !(sku in L)) return;
+    delete L[sku]; Store.save('settings'); this.render(); U.toast('Liaison retirée.');
+  },
+  /* CSV minimal ID / Type / UGS / Parent (mêmes en-têtes que l'export natif du site : WooCommerce les mappe tout seul et met à jour la fiche par son ID). Ne touche NI prix NI stock :
+     ceux-là partent ensuite avec l'export normal, une fois l'UGS corrigé. */
+  exportSkuFix() {
+    const c = this._buildCmp(), rows = c ? c.matched.filter(m => m.link) : [];
+    if (!rows.length) { U.toast('Aucune liaison à corriger.', true); return; }
+    const q = v => { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+    const csv = [['ID', 'Type', 'UGS', 'Parent']].concat(rows.map(m => [m.link.id, m.link.type, m.sku, m.link.parent])).map(r => r.map(q).join(',')).join('\r\n');
+    const fname = `woocommerce-touffu-ugs-${U.today()}.csv`;
+    U.download(fname, '\uFEFF' + csv, 'text/csv');
+    U.toast(`CSV « Corriger les UGS » exporté : ${rows.length} fiche(s).`);
+    const sample = rows.slice(0, 3).map(m => `<li><b>${U.esc(m.name)}</b> (#${U.esc(m.link.id)}) → UGS <span class="sku-txt">${U.esc(m.sku)}</span></li>`).join('');
+    U.modal({
+      title: '📖 Corriger les UGS sur ton site', wide: true, hideOk: true,
+      body: `<p class="muted" style="margin-top:0;">Fichier <b>${U.esc(fname)}</b> (${rows.length} fiche${rows.length > 1 ? 's' : ''}) enregistré dans tes Téléchargements. <b>Première fois : relie seulement 1 ou 2 produits</b> et vérifie le résultat avant de faire le reste.</p>
+        <ol style="line-height:1.6;padding-left:20px;">
+          <li>Sur ton site : <b>Produits → Tous les produits → Importer</b>, choisis ce fichier, <b>coche « Mettre à jour les produits existants »</b>, Continuer.</li>
+          <li>Écran « Mapper les champs » : <b>ID → ID · Type → Type · UGS → UGS · Parent → Parent</b>. <b style="color:var(--alerte);">Si une ligne affiche « Ne pas importer », ne lance pas l'import.</b></li>
+          <li>Lancer l'importation, puis ouvre la fiche pour contrôler :<ul style="margin:4px 0 0 18px;">${sample}</ul>Il ne doit y avoir <b>aucun produit en plus</b> sur le site.</li>
+          <li>Ré-exporte tes produits depuis le site et redépose le fichier ici (Comparer avec le site) : les produits passent en ✅.</li>
+          <li>Enfin, fais l'export WooCommerce normal pour envoyer prix et stock de l'appli.</li>
+        </ol>`
     });
   },
   clearCompare() { this._cmp = null; this._siteRef = null; try { localStorage.removeItem('touffu_siteRef'); } catch (e) {} this.render(); },
@@ -729,11 +828,12 @@ const Woo = {
       ...c.siteOnly.map(m => ({ ...m, st: 'siteOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null }))
     ].filter(m => this._pass(m));
     const matched = m => m.st === 'matched';
-    const isOk = m => matched(m) && m.priceOk !== false && m.stockOk !== false;
+    const skuOk = m => matched(m) && !m.link, isOk = m => skuOk(m) && m.priceOk !== false && m.stockOk !== false;
+    const lnk = { l: '🔗 UGS à corriger sur le site', f: m => !!m.link };
     const bad = '⚠️ À corriger', app = { l: '⚠️ Absent du site', f: m => m.st === 'appOnly' }, site = { l: 'ℹ️ Absent de l\'appli', f: m => m.st === 'siteOnly' };
     const FS = {
-      all: { issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk }, price: { l: '💶 Prix différent', f: m => m.priceOk === false }, stock: { l: '📦 Stock différent', f: m => m.stockOk === false }, appOnly: app, siteOnly: site },
-      sku: { issues: { l: bad, f: m => !matched(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: matched }, appOnly: app, siteOnly: site },
+      all: { issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk }, linked: lnk, price: { l: '💶 Prix différent', f: m => m.priceOk === false }, stock: { l: '📦 Stock différent', f: m => m.stockOk === false }, appOnly: app, siteOnly: site },
+      sku: { issues: { l: bad, f: m => !skuOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: skuOk }, linked: lnk, appOnly: app, siteOnly: site },
       price: { issues: { l: bad, f: m => m.priceOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.priceOk === true } },
       stock: { issues: { l: bad, f: m => m.stockOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.stockOk === true } }
     };
@@ -765,7 +865,7 @@ const Woo = {
       : `<span class="neg">❌ ${d != null ? sgn(d) + fmt(d) : ''}</span><div class="sub">site ${b != null ? fmt(b) : '—'} · ${lb} ${fmt(a)}</div>`;
     const widths = { all: [32, 14, 22, 16, 16], sku: [40, 20, 40], price: [44, 20, 36], stock: [44, 20, 36] }[W];
     const body = groups.map((g, gi) => `<tbody class="sumup-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((m, i) => `<tr>${i === 0 ? `<td rowspan="${g.rows.length}"><b>${U.esc(g.p)}</b></td>` : ''}
-          <td>${m._sp.v ? `<b>${U.esc(m._sp.v)}</b>` : '<span class="muted">—</span>'}${m.st === 'appOnly' ? '<div class="sub">⚠️ absent du site — créerait un doublon à l\'export</div>' : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}</td>
+          <td>${m._sp.v ? `<b>${U.esc(m._sp.v)}</b>` : '<span class="muted">—</span>'}${m.st === 'appOnly' ? `<div class="sub">⚠️ absent du site — créerait un doublon à l'export</div><div class="mt" style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.openLink(this.dataset.sku)">🔗 Relier à une fiche du site</button></div>` : m.link ? `<div class="sub">🔗 fiche #${U.esc(m.link.id)} · UGS du site : ${m.link.siteSku ? U.esc(m.link.siteSku) : 'vide'}</div><div style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.unlink(this.dataset.sku)">Délier</button></div>` : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}</td>
           ${has('sku') ? `<td><span class="sku-txt">${U.esc(m.sku)}</span></td>` : ''}
           ${has('price') ? `<td>${cell(m.priceOk, m.priceDiff, m.appPrice, m.sitePrice, U.eur, 'appli')}</td>` : ''}
           ${has('stock') ? `<td>${cell(m.stockOk, m.stockDiff, m.appStock, m.siteStock, U.qty, 'appli')}</td>` : ''}
@@ -776,12 +876,13 @@ const Woo = {
       ${this._catSeg()}
       <div class="grid c3 mt">${this._ctrls(opts).join('')}</div>
       <div class="sumup-filters mt">
-        ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
+        ${Object.entries(F).filter(([k, o]) => k !== 'linked' || all.some(o.f)).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
         ${c.siteNoSku ? `<span class="muted" style="align-self:center;font-size:.82rem;">· ${c.siteNoSku} ligne(s) du site sans SKU (non comparables)</span>` : ''}
       </div>
       <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
         <input id="woo_cmp_q" style="flex:1 1 240px;" placeholder="Rechercher un produit, un SKU…" value="${U.esc(this.cmpQ || '')}" oninput="Woo._setCmpQ(this.value)">
         <span class="muted" style="flex:0 0 auto;">${sorted.length} ligne(s)</span>
+        ${c.matched.some(m => m.link) ? `<button class="btn-cta btn-sm fit" style="white-space:nowrap;" onclick="Woo.exportSkuFix()" title="CSV ID / Type / UGS / Parent : met l'UGS de l'appli sur les fiches du site reliées">⬇ Corriger les UGS du site (CSV) · ${c.matched.filter(m => m.link).length}</button>` : ''}
       </div>
       <table class="sumup-table mt">
         <colgroup>${widths.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
@@ -977,7 +1078,8 @@ const Woo = {
 
   exportCsv() {
     // Les produits exclus du site (réglage persistant) ne sont JAMAIS exportés.
-    const allLinked = this.lines().filter(l => l.sku && !this._isExcluded(l.sku) && this._inCat(this._k(l)));   // « tout » = la catégorie choisie (Tous | Mastication | Accessoires)
+    const pending = this._pendingSkus();   // reliés à une fiche du site dont l'UGS reste à corriger : les envoyer créerait un doublon
+    const allLinked = this.lines().filter(l => l.sku && !this._isExcluded(l.sku) && !pending.has(l.sku) && this._inCat(this._k(l)));   // « tout » = la catégorie choisie (Tous | Mastication | Accessoires)
     if (!allLinked.length) { U.toast('Aucun produit à exporter (tous sans SKU ou exclus).', true); return; }
     // Sélection active → on n'exporte QUE les produits cochés ; sinon tout.
     const selCount = this._selCount(allLinked);
@@ -1007,7 +1109,7 @@ const Woo = {
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     const fname = `woocommerce-touffu-${U.today()}.csv`;
     U.download(fname, '﻿' + csv, 'text/csv');
-    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.`);
+    U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${pending.size ? ` ${pending.size} produit(s) relié(s) exclu(s) : corrige d'abord leur UGS sur le site.` : ''}`);
     // Produits à contrôler sur le site après l'import : tous si ≤ 3, sinon 3 au hasard
     const pool = linked.slice(), pick = [];
     while (pick.length < Math.min(3, pool.length)) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
