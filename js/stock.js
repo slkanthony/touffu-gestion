@@ -2337,6 +2337,7 @@ const Stock = {
   accSort(key) { const f = this.accFilters; if (f.sort === key) f.sortDir = f.sortDir === 'asc' ? 'desc' : 'asc'; else { f.sort = key; f.sortDir = 'asc'; } this.renderAccessoires(); },
   accFoldAll(open) { document.querySelectorAll('#stockBody details.stk-acc-fold').forEach(d => { this._accGrpOpen[d.dataset.gid] = open; d.open = open; }); },
   renderAccessoires() {
+    Accessoires.ensureFamilies();   // chaque accessoire fabriqué est rangé dans un produit (famille)
     const f = this.accFilters; U.syncFilters('stock_acc', f);
     if (f.sort === 'buy') f.sort = 'cost'; else if (f.sort === 'sell') f.sort = 'price';   // anciens réglages mémorisés
     const A = Accessoires, all = Store.state.catalogA, ro = !!App.isViewer, qn = U.normSearch(f.q || '');

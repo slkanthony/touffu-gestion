@@ -40,8 +40,7 @@ const Accessoires = {
      sinon elle a un réglage PROPRE (badge « propre »). Tout changement de famille = un seul « Annuler » (restoreBatch sur les fiches). */
   _grpOpen: {},
   setGrpOpen(gid, v) { this._grpOpen[gid] = !!v; },
-  /* Fiche SEULE (pas rangée en famille) : « solo:<id> » — mêmes boutons ✨ SKU / 📋 Dupliquer qu'une famille (Antho 2026-10-18), sur cette seule fiche. */
-  _grpMembers(gid) { if (String(gid).startsWith('solo:')) return Store.state.catalogA.filter(x => x.id === String(gid).slice(5)); return Store.state.catalogA.filter(x => x.groupId === gid).sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name)); },
+  _grpMembers(gid) { return Store.state.catalogA.filter(x => x.groupId === gid).sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name)); },
   _follows(a) { const gc = U.num(a.groupCoeff); return gc > 0 && Math.abs(U.num(a.coefficient) - gc) < 0.0005 && !(U.num(a.priceTTCManual) > 0); },
   _widthOf(a) { return a.mainWidth || (a.strapWidths || [])[0] || ''; },
   /* Nom d'une famille = même logique que les fiches : catégorie (type) + largeur de sangle principale + personnalisation (UV / laser) → « Longe 16mm », « Longe 16mm — Personnalisation UV ». Si le nom de la fiche précise un modèle (« Laisse Classique — 5m »), il est gardé : « Laisse Classique 20mm ». */
@@ -59,49 +58,22 @@ const Accessoires = {
     Store.save('catalogA'); App.rerender();
     return entry;
   },
-  /* Propositions de familles pour les fiches pas encore rangées : même nom (sans longueur ni personnalisation) + catégorie + largeur, au moins 2 fiches. */
-  _proposeGroups() {
-    const map = {};
-    this.crafted().filter(a => !a.groupId).forEach(a => {
-      const k = U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a) + '|' + this._persoRank(a);   // UV / laser = une autre famille
-      (map[k] = map[k] || []).push(a);
+  /* Tout accessoire fabriqué est RANGÉ dans un produit (famille), même avec une seule variante (Antho 2026-10-18 : plus de fiche « hors des clous », plus de Regrouper / Dégrouper).
+     Appelé à l'affichage et à la création d'une fiche. Une fiche pas rangée rejoint la famille de même clé (même nom sans longueur + catégorie + largeur + UV / laser), sinon elle crée la sienne
+     (nom = catégorie + largeur : « poignée 20mm »). Identifiants DÉTERMINISTES (« g » + id de la 1re fiche) : refaire le calcul donne toujours le même résultat, même sur un autre appareil. */
+  _famKey(a) { return U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a) + '|' + this._persoRank(a); },
+  ensureFamilies() {
+    const all = this.crafted(), loose = all.filter(a => !a.groupId); if (!loose.length) return false;
+    const fam = new Map(); all.filter(a => a.groupId).forEach(a => { const k = this._famKey(a); if (!fam.has(k)) fam.set(k, { gid: a.groupId, name: a.groupName || this._familyName(a), gc: U.num(a.groupCoeff) }); });
+    const byKey = new Map(); loose.forEach(a => { const k = this._famKey(a); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(a); });
+    byKey.forEach((mem, k) => {
+      mem.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+      let f = fam.get(k);
+      if (!f) f = { gid: 'g' + mem[0].id, name: this._familyName(mem[0]), gc: Math.round((U.num(mem[0].coefficient) || 2) * 100) / 100 };
+      mem.forEach(a => { a.groupId = f.gid; a.groupName = f.name; a.groupCoeff = f.gc || Math.round((U.num(a.coefficient) || 2) * 100) / 100; });
     });
-    return Object.values(map).filter(g => g.length >= 2).map(g => {
-      g.sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name));
-      return { name: this._familyName(g[0]), category: g[0].category || '', width: this._widthOf(g[0]), members: g };
-    }).sort((x, y) => U.sortFr(x.name, y.name) || (parseFloat(x.width) - parseFloat(y.width)));
-  },
-  openRegroup() {
-    const props = this._proposeGroups();
-    if (!props.length) { U.toast('Aucun regroupement à proposer : toutes tes fiches sont déjà rangées ou n\'ont pas de « jumelles ».'); return; }
-    this._rgProps = props;
-    const body = props.map((g, gi) => `<div class="card" style="padding:10px 14px;margin-bottom:10px;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;"><input type="checkbox" id="rg_g_${gi}" checked style="width:auto;"> <b>Créer cette famille</b> <span class="badge info">${U.esc(g.category)}</span> <span class="badge">${U.esc(g.width || '—')}</span></label>
-        <div class="fg" style="margin:8px 0;"><label>Nom du produit</label><input id="rg_n_${gi}" value="${U.esc(g.name)}"></div>
-        ${g.members.map((a, mi) => `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.88rem;margin:2px 0;"><input type="checkbox" id="rg_m_${gi}_${mi}" checked style="width:auto;"> <span>${U.esc(a.name)}</span> <span class="muted">· ${U.eur(Pricing.accCalc(a).priceTTC)}${a.sku ? ' · ' + U.esc(a.sku) : ''}</span></label>`).join('')}
-      </div>`).join('');
-    U.modal({
-      title: '🗂 Regrouper mes accessoires', okLabel: 'Créer les familles',
-      body: `<p class="muted" style="margin-top:0;">Voici ce que je propose : les fiches qui ne diffèrent que par la <b>longueur</b>. Le nom reprend la catégorie + la largeur de sangle (+ UV / laser) ; tu peux le corriger. Décoche une famille ou une fiche pour la laisser seule, corrige le nom si besoin. <b>Aucun prix, SKU ni stock ne change</b> ; tu pourras tout annuler.</p>${body}`,
-      onOk: () => {
-        const touched = [], made = [];
-        props.forEach((g, gi) => {
-          if (!document.getElementById('rg_g_' + gi) || !document.getElementById('rg_g_' + gi).checked) return;
-          const mem = g.members.filter((a, mi) => { const c = document.getElementById('rg_m_' + gi + '_' + mi); return c && c.checked; });
-          if (mem.length < 2) return;
-          const name = (U.val('rg_n_' + gi) || g.name).trim() || g.name;
-          const cnt = {}; mem.forEach(a => { const k = Math.round(U.num(a.coefficient) * 1000) / 1000; cnt[k] = (cnt[k] || 0) + 1; });
-          const gc = Number(Object.keys(cnt).sort((p, q) => cnt[q] - cnt[p] || Number(p) - Number(q))[0]) || 2;   // coefficient le plus répandu
-          made.push({ gid: U.uid(), name, gc, mem });
-          mem.forEach(a => touched.push(a));
-        });
-        if (!made.length) { U.toast('Rien de coché : aucune famille créée.', true); return false; }
-        const entry = this._grpTouch(touched, a => { const m = made.find(x => x.mem.includes(a)); a.groupId = m.gid; a.groupName = m.name; a.groupCoeff = m.gc; }, `Familles d'accessoires créées (${made.length}) — ${touched.length} fiches rangées`);
-        made.forEach(m => { this._grpOpen[m.gid] = false; });
-        U.closeModal();
-        U.toast(`${made.length} famille${made.length > 1 ? 's' : ''} créée${made.length > 1 ? 's' : ''} (${touched.length} fiches).`, false, entry.id);
-      }
-    });
+    Store.save('catalogA');
+    return true;
   },
   renameGroup(gid, val) {
     const name = String(val || '').trim(), mem = this._grpMembers(gid); if (!name || !mem.length) return;
@@ -124,12 +96,6 @@ const Accessoires = {
     const entry = this._grpTouch(mem, a => { a.coefficient = gc; a.priceTTCManual = ''; }, `Famille alignée sur le coefficient ${gc} (${mem.length})`);
     U.toast('Famille alignée.', false, entry.id);
   },
-  async ungroup(gid) {
-    const mem = this._grpMembers(gid); if (!mem.length) return;
-    if (!await U.confirm(`Dégrouper « ${mem[0].groupName || 'cette famille'} » ? Les ${mem.length} fiches redeviennent des produits séparés (rien d'autre ne change).`, { title: 'Dégrouper', okLabel: 'Dégrouper' })) return;
-    const entry = this._grpTouch(mem, a => { delete a.groupId; delete a.groupName; delete a.groupCoeff; }, 'Famille dégroupée — ' + (mem[0].groupName || ''));
-    U.toast('Famille dégroupée.', false, entry.id);
-  },
   /* « ＋ Ajouter une longueur » : même fenêtre que « Sur mesure », à partir d'une fiche de la famille ; la nouvelle fiche suit le coefficient commun. */
   addLength(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
@@ -147,14 +113,14 @@ const Accessoires = {
     this._skuRows = rows;
     const changed = rows.filter(r => r.next && r.next !== r.now).length;
     U.modal({
-      title: (mem[0].groupId ? '✨ SKU de la famille — ' : '✨ SKU — ') + U.esc(mem[0].groupName || mem[0].name || ''), okLabel: 'Appliquer',
+      title: '✨ SKU de la famille — ' + U.esc(mem[0].groupName || ''), okLabel: 'Appliquer',
       body: `<p class="muted" style="margin-top:0;">Format <b>TYPE-LARGEUR-NOM-LONGUEUR</b> (+ -UV / -LASER). Coche les lignes à changer. ⚠️ Un SKU modifié doit l'être aussi dans SumUp et sur le site si tu les utilises.</p>
         <div class="table-wrap"><table><thead><tr><th></th><th>Fiche</th><th>SKU actuel</th><th>SKU proposé</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><input type="checkbox" id="sk_${i}" ${r.next && r.next !== r.now ? 'checked' : ''} ${r.next && r.next !== r.now ? '' : 'disabled'} style="width:auto;"></td><td>${U.esc(r.a.name)}</td><td class="muted">${U.esc(r.now || '—')}</td><td><b>${U.esc(r.next || '—')}</b>${r.next === r.now ? ' <span class="muted">(déjà bon)</span>' : ''}</td></tr>`).join('')}</tbody></table></div>
-        <p class="muted">${changed ? changed + ' SKU à mettre à jour.' : 'Tous les SKU sont déjà au bon format.'}</p>`,
+        <p class="muted">${changed ? changed + ' SKU à mettre à jour.' : 'Tous les SKU de la famille sont déjà au bon format.'}</p>`,
       onOk: () => {
         const sel = rows.filter((r, i) => { const c = document.getElementById('sk_' + i); return c && c.checked && !c.disabled; });
         if (!sel.length) { U.toast('Rien de coché.', true); return false; }
-        const entry = this._grpTouch(sel.map(r => r.a), a => { a.sku = sel.find(r => r.a === a).next; }, `SKU mis à jour — ${mem[0].groupName || mem[0].name || ''} (${sel.length})`);
+        const entry = this._grpTouch(sel.map(r => r.a), a => { a.sku = sel.find(r => r.a === a).next; }, `SKU de la famille mis à jour — ${mem[0].groupName || ''} (${sel.length})`);
         U.closeModal(); U.toast(`${sel.length} SKU mis à jour.`, false, entry.id);
       }
     });
@@ -192,7 +158,6 @@ const Accessoires = {
           { l: 'Modifier', js: `Accessoires.editGroup('${gid}')` },
           { l: '✨ SKU', js: `Accessoires.groupSkus('${gid}')` },
           { l: '📋 Dupliquer', js: `Accessoires.duplicateGroup('${gid}')` },
-          { l: 'Dégrouper', js: `Accessoires.ungroup('${gid}')` },
           { l: 'Supprimer', tone: 'danger', js: `Accessoires.deleteGroup('${gid}')` }
         ], { full: true, scroll: true })}</div>
       </div>
@@ -278,41 +243,41 @@ const Accessoires = {
   /* « Dupliquer » une famille : copie toutes les longueurs (stock à 0, SKU neufs). On peut changer la LARGEUR : les sangles de chaque nomenclature passent à la nouvelle largeur → coûts recalculés ; les prix suivent le coefficient commun. */
   duplicateGroup(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
-    const f = mem[0], w0 = this._widthOf(f), solo = String(gid).startsWith('solo:'), fname = f.groupName || f.name || '';
+    const f = mem[0], w0 = this._widthOf(f);
     const ws = [...new Set([w0, ...(Store.state.settings.widths || [])].filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
     const r0 = this._persoRank(f), uv0 = !!(r0 & 1), la0 = !!(r0 & 2), th0 = !!(r0 & 4);
-    this._dgW0 = w0; this._dgBase = String(fname).replace(/\s*\(copie\)\s*$/, '').replace(this._PERSO_RX, '').trim(); this._dgUv0 = uv0; this._dgLa0 = la0; this._dgTh0 = th0;
+    this._dgW0 = w0; this._dgBase = String(f.groupName || '').replace(/\s*\(copie\)\s*$/, '').replace(this._PERSO_RX, '').trim(); this._dgUv0 = uv0; this._dgLa0 = la0; this._dgTh0 = th0;
     U.modal({
-      title: (solo ? '📋 Dupliquer — ' : '📋 Dupliquer la famille — ') + U.esc(fname), okLabel: 'Dupliquer',
-      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">${solo ? 'Nom de la copie' : 'Nom de la nouvelle famille'}</label><input id="dg_name" value="${U.esc(fname + ' (copie)')}"></div>
+      title: '📋 Dupliquer la famille — ' + U.esc(f.groupName || ''), okLabel: 'Dupliquer',
+      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
         <div class="fg" style="flex:0 0 150px;"><label style="white-space:nowrap;">Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
         <div class="fg"><label>🎨 Personnalisation de la nouvelle famille ${U.info("Coche pour décliner le produit en version personnalisée : toutes les longueurs reçoivent l'impression UV et / ou la gravure laser (coût, nom et SKU mis à jour).")}</label>
           ${this._persoBlockHTML('dg', f, 'Accessoires._dgWidth()')}</div>
-        <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} ser${mem.length > 1 ? 'ont' : 'a'} créée${mem.length > 1 ? 's' : ''} (stock à 0, nouveaux SKU).</p>`,
+        <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} seront créées (stock à 0, nouveaux SKU).</p>`,
       onOk: () => {
         const name = U.val('dg_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
-        const w1 = U.val('dg_w') || w0, gid2 = solo ? '' : U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
+        const w1 = U.val('dg_w') || w0, gid2 = U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
         const { uv: uv1, laser: la1, theme: th1, uvMl, laMin } = this._persoRead('dg'), persoChanged = uv1 !== uv0 || la1 !== la0 || th1 !== th0;
         const taken = this._takenSkus(''), created = []; let missing = 0;
         mem.forEach(a => {
           const c = JSON.parse(JSON.stringify(a));
-          c.id = U.uid(); c.stockGeneral = 0; c.stockEvent = 0;
-          if (solo) { delete c.groupId; delete c.groupName; delete c.groupCoeff; c.name = name; } else { c.groupId = gid2; c.groupName = name; }
+          c.id = U.uid(); c.groupId = gid2; c.groupName = name; c.stockGeneral = 0; c.stockEvent = 0;
           if (changed) {
             c.strapWidths = (c.strapWidths || []).map(w => w === w0 ? w1 : w); c.mainWidth = w1;
             (c.bom || []).forEach(l => { if (l.familyKey && l.familyKey.endsWith(':' + w0)) { l.familyKey = l.familyKey.slice(0, -w0.length) + w1; if (!this.families().some(x => x.key === l.familyKey)) missing++; } });
           }
           c.uv = uv1; c.uvMl = uv1 ? uvMl : 0; c.laser = la1; c.laserMin = la1 ? laMin : 0; if (th1) c.theme = true; else delete c.theme;
-          if (!solo) { if (persoChanged) c.name = this._persoName(c.name, uv1, la1, th1); else if (!changed) c.name = a.name + ' (copie)'; }
+          if (persoChanged) c.name = this._persoName(c.name, uv1, la1, th1);
+          else if (!changed) c.name = a.name + ' (copie)';
           if (gc > 0) { c.coefficient = gc; c.priceTTCManual = ''; }
           this._autoStrap(c);
           const base = Pricing.autoSkuAcc(c); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); c.sku = base ? sku : '';
           created.push(c);
         });
         created.forEach(c => Store.state.catalogA.push(c));
-        const entry = Store.log('accessoires', `${solo ? 'Accessoire dupliqué' : 'Famille dupliquée'} — ${name} (${created.length} fiche${created.length > 1 ? 's' : ''})`, { type: 'restoreBatch', data: created.map(c => ({ domain: 'catalogA', id: c.id, before: null })) });
-        Store.save('catalogA'); if (!solo) this._grpOpen[gid2] = true; U.closeModal(); App.rerender();
-        U.toast(`${solo ? 'Accessoire dupliqué' : 'Famille dupliquée'} (${created.length} fiche${created.length > 1 ? 's' : ''}).` + (missing ? ` ⚠️ ${missing} ligne(s) de sangle sans référence en ${w1} dans le stock : coût à vérifier.` : ''), missing > 0, entry.id);
+        const entry = Store.log('accessoires', `Famille dupliquée — ${name} (${created.length} fiches)`, { type: 'restoreBatch', data: created.map(c => ({ domain: 'catalogA', id: c.id, before: null })) });
+        Store.save('catalogA'); this._grpOpen[gid2] = true; U.closeModal(); App.rerender();
+        U.toast(`Famille dupliquée (${created.length} fiches).` + (missing ? ` ⚠️ ${missing} ligne(s) de sangle sans référence en ${w1} dans le stock : coût à vérifier.` : ''), missing > 0, entry.id);
       }
     });
   },
@@ -433,6 +398,7 @@ const Accessoires = {
 
   /* ---------- produits finis ---------- */
   renderProducts() {
+    this.ensureFamilies();
     let needSave = false;
     for (const a of Store.state.catalogA) if (this._migrateInternalLength(a)) needSave = true;
     if (!this._strapRecalced) {
@@ -490,7 +456,7 @@ const Accessoires = {
           <option value="no" ${this.accBicolorFilter === 'no' ? 'selected' : ''}>Non bicolor</option>
         </select></div>
       </div>
-      <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button>${(() => { const n = this._proposeGroups().length; return n ? `<button class="btn-ghost" onclick="Accessoires.openRegroup()" title="Plusieurs fiches ne diffèrent que par la longueur : les ranger dans un seul produit">🗂 Regrouper les longueurs (${n})</button>` : ''; })()}</div>
+      <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button></div>
       ${list.length ? `<div class="prod-list-header acc-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
         <span>${sortHead('width', 'Largeur')}</span>
@@ -777,10 +743,7 @@ const Accessoires = {
         <div class="mt">${U.seg([
           { l: '🛠 Fabriquer', tone: 'ok', js: `Accessoires.fabricate('${a.id}')` },
           { l: 'Modifier', js: `Accessoires.editAcc('${a.id}')` },
-          // Plus de « Sur mesure » (Antho 2026-10-14) : une longueur de plus = « ＋ Ajouter une longueur » de la famille ; pour une fiche pas encore rangée, ce bouton crée la famille
-          ...(!a.groupId && U.num(a.productLength) > 0 && (a.bom||[]).some(l => this.bomLineUnit(l) === 'm') ? [{ l: '＋ Ajouter une longueur', js: `Accessoires.customLength('${a.id}',true)` }] : []),
-          // Fiche seule : mêmes ✨ SKU et 📋 Dupliquer (UV / laser, largeur) qu'une famille (Antho 2026-10-18)
-          ...(!a.groupId ? [{ l: '✨ SKU', js: `Accessoires.groupSkus('solo:${a.id}')` }, { l: '📋 Dupliquer', js: `Accessoires.duplicateGroup('solo:${a.id}')` }] : []),
+          // Une longueur de plus = « ＋ Ajouter une longueur » du produit (famille) ; SKU et Dupliquer sont ceux de la famille
           { l: 'Supprimer', tone: 'danger', js: `Accessoires.delAcc('${a.id}')` }
         ], { full: true, scroll: true })}</div>
       </div></details>`;
@@ -1185,6 +1148,8 @@ const Accessoires = {
         const idx = Store.state.catalogA.findIndex(x => x.id === a.id);
         const before = idx >= 0 ? JSON.parse(JSON.stringify(Store.state.catalogA[idx])) : null;
         if (idx >= 0) Store.state.catalogA[idx] = a; else Store.state.catalogA.push(a);
+        this.ensureFamilies();   // un nouvel accessoire est tout de suite un produit (famille), comme les autres
+        if (a.groupId) this._grpOpen[a.groupId] = true;
         const entry = Store.log('accessoires', (this._isNewA ? 'Accessoire créé' : 'Accessoire modifié') + ' — ' + a.name,
           this._isNewA ? { type: 'deleteCreated', data: { domain: 'catalogA', id: a.id } } : { type: 'restoreItem', data: { domain: 'catalogA', id: a.id, before } });
         Store.save('catalogA'); U.closeModal(); App.rerender();
@@ -1515,13 +1480,7 @@ const Accessoires = {
           ? src.name.replace(lenRx, desired + 'm')
           : src.name + ' — ' + desired + 'm';
         { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }   // SKU propre à cette longueur
-        // fiche pas encore rangée : elle devient une famille (nom = catégorie + largeur + UV/laser) avec sa nouvelle longueur ; un seul « Annuler » défait les deux
         const snaps = [];
-        if (!src.groupId) {
-          snaps.push(Store.snapshot('catalogA', src));
-          src.groupId = U.uid(); src.groupName = this._familyName(src); src.groupCoeff = U.num(src.coefficient) || 2;
-          copy.groupId = src.groupId; copy.groupName = src.groupName; copy.groupCoeff = src.groupCoeff;
-        }
         if (copy.groupId) this._grpOpen[copy.groupId] = true;
         Store.state.catalogA.push(copy);
         snaps.push({ domain: 'catalogA', id: copy.id, before: null });
