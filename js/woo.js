@@ -644,7 +644,12 @@ const Woo = {
     const untracked = this.sumupExpQty ? chosen.filter(m => !m.track).length : 0;
     const changes = chosen.filter(m => m.link || (this.sumupExpQty && m.track && !m.qtyOk) || (this.sumupExpPrice && !m.priceOk)).length;
     const catTxt = this.cat === 'A' ? ' (accessoires)' : this.cat === 'M' ? ' (mastication)' : '';
-    if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${catTxt} (${[this.sumupExpQty ? 'quantités' : '', this.sumupExpPrice ? 'prix' : '', nLinked ? 'SKU des ' + nLinked + ' reliés' : ''].filter(Boolean).join(' + ')}).\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
+    // Confirmation TOUJOURS (Antho 2026-10-18, après un export reçu comme « 116 articles ») : dit exactement ce qui va partir
+    const what = [this.sumupExpQty ? 'quantités' : '', this.sumupExpPrice ? 'prix' : '', nLinked ? 'SKU des ' + nLinked + ' reliés' : ''].filter(Boolean).join(' + ');
+    const list = chosen.slice(0, 6).map(m => m.sku).join(', ') + (chosen.length > 6 ? '…' : '');
+    if (!await U.confirm(n
+      ? `Le fichier ne contiendra que ${chosen.length} ligne(s) choisie(s) (${list}) — ${what}.\n\nLes autres articles de SumUp ne sont pas touchés. Continuer ?`
+      : `Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${catTxt} (${what}).\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
     const raw = this._sumup.raw.map(row => row.slice());
     const lines = this._sumup.rawText.slice();
     const sameCount = lines.length === raw.length;
@@ -657,14 +662,23 @@ const Woo = {
       if (this.sumupExpPrice) row[iPrice] = U.num(m.appPrice).toFixed(2);
       touched.add(m.ri);
     });
-    // Lignes non cochées : texte d'origine tel quel ; lignes cochées : réécrites.
-    const text = (sameCount
-      ? lines.map((t, i) => touched.has(i) ? raw[i].map(f => this._csvField(f)).join(',') : t)
-      : raw.map(row => row.map(f => this._csvField(f)).join(','))).join('\n') + '\n';
+    // Le fichier ne contient QUE les articles choisis (en-tête + la ligne de chaque article touché avec toutes ses variantes, qui sont recopiées telles quelles) — comme l'export du site :
+    // les autres articles de SumUp ne sont ni relus ni réécrits (SumUp compte « N articles importés » = les lignes du fichier ; avant, tout le catalogue repartait, avec le risque
+    // d'écraser des quantités vendues depuis l'export). Lignes cochées : réécrites ; variantes voisines : texte d'origine.
+    const iName = raw[0].map(h => String(h).trim()).indexOf('Item name'), keep = new Set([0]); let curStart = -1, curKeep = false;
+    raw.forEach((row, i) => {
+      if (i === 0) return;
+      if (iName < 0 || String(row[iName] || '').trim()) { curStart = i; curKeep = false; }   // nouvelle ligne « article »
+      if (touched.has(i)) curKeep = true;
+      if (curKeep) for (let j = curStart; j <= i; j++) keep.add(j);
+    });
+    const idx = [...keep].sort((a, b) => a - b), nItems = idx.filter(i => i > 0 && (iName < 0 || String(raw[i][iName] || '').trim())).length;
+    const out = idx.map(i => touched.has(i) || !sameCount ? raw[i].map(f => this._csvField(f)).join(',') : lines[i]);
+    const text = out.join('\n') + '\n';
     U.download('sumup-import-' + U.today() + '.csv', text, 'text/csv;charset=utf-8');
     // SKU qui resteraient en double dans SumUp : une ligne NON reliée porte encore le SKU qu'une ligne reliée va recevoir
     const taking = new Set(chosen.filter(m => m.link).map(m => m.sku.toUpperCase())), dups = r.unknown.filter(l => l.taken && taking.has(l.sku.toUpperCase()));
-    U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${nLinked ? `, dont ${nLinked} avec SKU corrigé` : ''}${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.${dups.length ? `\n\n⚠️ ${dups.length} ligne(s) SumUp gardent un SKU qu'un autre article va recevoir (${dups.slice(0, 3).map(l => l.sku).join(', ')}${dups.length > 3 ? '…' : ''}) : relie-les aussi, sinon SumUp aura ces SKU en double.` : ''}\n\nToutes les autres lignes sont identiques à ton export SumUp.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
+    U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${nLinked ? `, dont ${nLinked} avec SKU corrigé` : ''}${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.${dups.length ? `\n\n⚠️ ${dups.length} ligne(s) SumUp gardent un SKU qu'un autre article va recevoir (${dups.slice(0, 3).map(l => l.sku).join(', ')}${dups.length > 3 ? '…' : ''}) : relie-les aussi, sinon SumUp aura ces SKU en double.` : ''}\n\nLe fichier ne contient que ${nItems} article${nItems > 1 ? 's' : ''} de ta bibliothèque SumUp (avec leurs variantes) : SumUp annoncera « ${nItems} article${nItems > 1 ? 's' : ''} importé${nItems > 1 ? 's' : ''} ». Les autres ne sont pas touchés.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
   },
   compareSumup(inp) {
     this._readPicked(inp, 'woo_sumup_file', 'Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', (text, file) => {
@@ -880,7 +894,7 @@ const Woo = {
       </div>
       ${refBlock}
       <button id="sumup_exp_btn2" class="btn-cta mt" onclick="Woo.exportSumupImport()">${exportLabel}</button>
-      <p class="muted help mt">Dans SumUp : Articles → Importer → choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> et vérifie que SumUp met bien à jour l'existant (pas de doublon créé) avant de faire un export complet. Un produit « absent » de SumUp n'est pas mis à jour : crée-le d'abord dans SumUp puis rafraîchis la référence. 🚫 = exclu définitivement (mémorisé).</p>
+      <p class="muted help mt">Dans SumUp : Articles → Importer → choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> (le fichier ne contient QUE les articles cochés, avec leurs variantes) et vérifie que SumUp met bien à jour l'existant (pas de doublon créé) avant de faire un export complet. Un produit « absent » de SumUp n'est pas mis à jour : crée-le d'abord dans SumUp puis rafraîchis la référence. 🚫 = exclu définitivement (mémorisé).</p>
       <div class="table-wrap mt"><table><thead><tr>
         <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout sélectionner"></th>
         <th>SKU</th><th class="col-name">Produit</th><th>Type / viande</th><th class="num">Prix TTC</th><th class="num">Stock évén.</th><th>Dans SumUp</th><th>Envoi SumUp</th></tr></thead>
