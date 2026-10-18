@@ -263,30 +263,37 @@ const Accessoires = {
     const mem = this._grpMembers(gid); if (!mem.length) return;
     const f = mem[0], w0 = this._widthOf(f);
     const ws = [...new Set([w0, ...(Store.state.settings.widths || [])].filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
-    const r0 = this._persoRank(f), uv0 = !!(r0 & 1), la0 = !!(r0 & 2), th0 = !!(r0 & 4);
-    this._dgW0 = w0; this._dgBase = String(f.groupName || '').replace(/\s*\(copie\)\s*$/, '').replace(this._PERSO_RX, '').trim(); this._dgUv0 = uv0; this._dgLa0 = la0; this._dgTh0 = th0;
+    this._dgW0 = w0; this._dgWcur = w0;
+    setTimeout(() => { const e = document.getElementById('dg_name'); if (e) { e.focus(); e.select(); } }, 60);   // nom sélectionné : taper le nouveau nom remplace l'ancien (plus de « (copie) » à effacer)
     U.modal({
       title: '📋 Dupliquer la famille — ' + U.esc(f.groupName || ''), okLabel: 'Dupliquer',
-      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
+      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc(f.groupName || '')}" onfocus="this.select()"></div>
         <div class="fg" style="flex:0 0 150px;"><label style="white-space:nowrap;">Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
         <div class="fg"><label>🎨 Personnalisation de la nouvelle famille ${U.info("Coche pour décliner le produit en version personnalisée : toutes les longueurs reçoivent l'impression UV et / ou la gravure laser (coût, nom et SKU mis à jour).")}</label>
           ${this._persoBlockHTML('dg', f, 'Accessoires._dgWidth()')}</div>
         <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} seront créées (stock à 0, nouveaux SKU).</p>`,
       onOk: () => {
-        const name = U.val('dg_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
+        const typed = U.val('dg_name').trim(); if (!typed) { U.toast('Nom obligatoire', true); return false; }
         const w1 = U.val('dg_w') || w0, gid2 = U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
-        const { uv: uv1, laser: la1, theme: th1, uvMl, laMin } = this._persoRead('dg'), persoChanged = uv1 !== uv0 || la1 !== la0 || th1 !== th0;
+        const { uv: uv1, laser: la1, theme: th1, uvMl, laMin } = this._persoRead('dg');
+        // Nom de la famille : la largeur de sangle y est OBLIGATOIRE (elle revient toute seule si elle a été effacée) ; « (copie) » n'est ajouté QUE si le nom est resté celui d'une famille existante.
+        const wRx = this._widthRx(w1), taken0 = new Set(Store.state.catalogA.filter(x => x.groupName).map(x => U.normSearch(x.groupName)));
+        let core = typed.replace(this._PERSO_RX, '').replace(/\s+/g, ' ').trim();
+        if (!wRx.test(core)) core = (core + ' ' + w1).trim();
+        let name = this._persoName(core, uv1, la1, th1);
+        if (taken0.has(U.normSearch(name))) { core += ' (copie)'; name = this._persoName(core, uv1, la1, th1); }
+        // Les fiches suivent le nouveau nom : « Collier nomade — 5m » → « Collier Instant — 5m » (nom de la famille sans la largeur)
+        const newBase = core.replace(wRx, ' ').replace(/\s+/g, ' ').trim(), oldBase = this._baseName(f);
         const taken = this._takenSkus(''), created = []; let missing = 0;
         mem.forEach(a => {
           const c = JSON.parse(JSON.stringify(a));
           c.id = U.uid(); c.groupId = gid2; c.groupName = name; c.stockGeneral = 0; c.stockEvent = 0;
+          { const ob = this._baseName(a), nm = String(a.name || ''); c.name = this._persoName(ob && nm.toLowerCase().startsWith(ob.toLowerCase()) ? newBase + nm.slice(ob.length) : nm, uv1, la1, th1); }
           if (changed) {
             c.strapWidths = (c.strapWidths || []).map(w => w === w0 ? w1 : w); c.mainWidth = w1;
             (c.bom || []).forEach(l => { if (l.familyKey && l.familyKey.endsWith(':' + w0)) { l.familyKey = l.familyKey.slice(0, -w0.length) + w1; if (!this.families().some(x => x.key === l.familyKey)) missing++; } });
           }
           c.uv = uv1; c.uvMl = uv1 ? uvMl : 0; c.laser = la1; c.laserMin = la1 ? laMin : 0; if (th1) c.theme = true; else delete c.theme;
-          if (persoChanged) c.name = this._persoName(c.name, uv1, la1, th1);
-          else if (!changed) c.name = a.name + ' (copie)';
           if (gc > 0) { c.coefficient = gc; c.priceTTCManual = ''; }
           this._autoStrap(c);
           const base = Pricing.autoSkuAcc(c); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); c.sku = base ? sku : '';
@@ -299,13 +306,19 @@ const Accessoires = {
       }
     });
   },
-  /* Changer la largeur dans « Dupliquer » : le nom suit (« … 16mm (copie) » → « … 20mm »), « (copie) » revient si on reprend la largeur d'origine. */
+  /* Regex de la largeur dans un nom (« 20mm », « 20 mm », « 12,5mm ») */
+  _widthRx(w) {
+    const m = String(w || '').match(/^(\d+(?:[.,]\d+)?)\s*(\D*)$/);
+    return m ? new RegExp('(^|\\s)' + m[1].replace(/[.,]/, '[.,]') + '\\s*' + (m[2] || 'mm').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\s|$)', 'i') : new RegExp('(^|\\s)' + String(w || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\s|$)', 'i');
+  },
+  /* Changer la largeur / la personnalisation dans « Dupliquer » : le nom TAPÉ est conservé, seule la largeur (« 16mm » → « 20mm ») et le suffixe UV / laser sont ajustés ; la largeur manquante est rajoutée à la validation. */
   _dgWidth() {   // appelé aussi par les cases UV / laser
-    const el = document.getElementById('dg_name'), w1 = U.val('dg_w'), w0 = this._dgW0; if (!el || !w0) return;
+    const el = document.getElementById('dg_name'), w1 = U.val('dg_w'), prev = this._dgWcur || this._dgW0; if (!el) return;
     const { uv, laser: la, theme: th } = this._persoRead('dg');
-    const same = w1 === w0 && uv === this._dgUv0 && la === this._dgLa0 && th === this._dgTh0;
-    let base = this._dgBase.includes(w0) ? this._dgBase.replace(w0, w1) : this._dgBase;
-    el.value = this._persoName(base, uv, la, th) + (same ? ' (copie)' : '');
+    let v = el.value;
+    if (prev && w1 && w1 !== prev) { const rx = this._widthRx(prev); if (rx.test(v)) v = v.replace(rx, (m0, sp) => sp + w1); }
+    this._dgWcur = w1;
+    el.value = this._persoName(v, uv, la, th);
   },
   async deleteGroup(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
