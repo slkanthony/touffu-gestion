@@ -273,13 +273,13 @@ const Pricing = {
     const socHM = (U.num(S.socialTaxRateHandmade) || U.num(S.socialTaxRate)) / 100;
     const vatRate = U.num(S.vatRate), vatActive = S.vatActive;
     const cardRate = U.num(S.cardFeeRate) / 100, stripeRate = U.num(S.stripeFeeRate) / 100;
-    const blank = () => ({ ca: 0, cogs: 0, fee: 0, shipFee: 0, shipping: 0, eventFee: 0, partner: 0, box: 0, cotis: 0, tva: 0, fixed: 0, charges: 0 });
+    const blank = () => ({ labor: 0, ca: 0, cogs: 0, fee: 0, shipFee: 0, shipping: 0, eventFee: 0, partner: 0, box: 0, cotis: 0, tva: 0, fixed: 0, charges: 0 });
     const M = blank(), A = blank();
     (sales || []).forEach(s => {
       if (s.cancelled) return;
       let mCA = 0, aCA = 0, mCogs = 0, aCogs = 0, box = 0;
       (s.items || []).forEach(i => {
-        if (i.kind === 'A') { aCA += U.num(i.price) * U.num(i.qty); aCogs += this.saleItemCost(i); }
+        if (i.kind === 'A') { aCA += U.num(i.price) * U.num(i.qty); aCogs += this.saleItemCost(i); A.labor += this.saleItemLabor(i); }
         else if (i.kind === 'C') { box += this.saleItemCost(i); }
         else { mCA += U.num(i.price) * U.num(i.qty); mCogs += this.saleItemCost(i); }
       });
@@ -331,7 +331,7 @@ const Pricing = {
     const r = this.activityPnL([s], 0), M = r.masti, A = r.acc;
     const sum = k => U.num(M[k]) + U.num(A[k]);
     const S = Store.state.settings;
-    return { ca: sum('ca'), cogs: sum('cogs'), marge: sum('ca') - sum('cogs'), shipFee: sum('shipFee'), fee: sum('fee'), shipping: sum('shipping'), box: sum('box'), eventFee: sum('eventFee'), partner: sum('partner'), cotis: sum('cotis'), tva: sum('tva'), tvaActive: !!S.vatActive, net: sum('net') };
+    return { ca: sum('ca'), cogs: sum('cogs'), marge: sum('ca') - sum('cogs'), shipFee: sum('shipFee'), fee: sum('fee'), shipping: sum('shipping'), box: sum('box'), eventFee: sum('eventFee'), partner: sum('partner'), cotis: sum('cotis'), tva: sum('tva'), labor: sum('labor'), tvaActive: !!S.vatActive, net: sum('net') };
   },
 
   accCost(a) {
@@ -540,6 +540,13 @@ const Pricing = {
      passées (avant cette fonctionnalité) : estimation avec le coût de revient ACTUEL —
      variante stock (`v.costUnit`) pour la mastication, `accCalc` pour l'accessoire,
      coût unitaire pour le consommable. Renvoie le coût de la ligne entière (× qté). */
+  /* Part « ton temps de fabrication » du coût d'un accessoire vendu (minutes × taux horaire de la fiche, ESTIMÉE d'après la fiche actuelle) : déjà comprise dans le coût de revient, donc retirée du bénéfice ;
+     sert seulement à afficher « bénéfice avec ton temps » (Compta, Stats, Tableau de bord). N'entre dans AUCUN calcul de coût ni de bénéfice. */
+  saleItemLabor(i) {
+    if (i.kind !== 'A') return 0;
+    const a = Store.state.catalogA.find(x => x.id === i.pId);
+    return a ? U.num(this.accCalc(a).laborCost) * U.num(i.qty) : 0;
+  },
   saleItemCost(i) {
     if (i.cost !== undefined && i.cost !== null && i.cost !== '') return U.num(i.cost);
     const qty = U.num(i.qty);

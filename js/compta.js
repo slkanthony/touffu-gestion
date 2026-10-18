@@ -147,12 +147,12 @@ const Compta = {
   },
   data() {
     const months = this._months(), M = {}, inSet = new Set(months);
-    months.forEach(k => { M[k] = { inc: 0, incBy: {}, ca: 0, cogs: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, eventFee: 0, partner: 0, cotis: 0, tva: 0, buy: {}, buyPaid: 0, expensed: 0, portBuy: 0, amort: this._amortFor(k), uv: Pricing.uvMaintenanceMonthly(), n: 0 }; });
+    months.forEach(k => { M[k] = { labor: 0, inc: 0, incBy: {}, ca: 0, cogs: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, eventFee: 0, partner: 0, cotis: 0, tva: 0, buy: {}, buyPaid: 0, expensed: 0, portBuy: 0, amort: this._amortFor(k), uv: Pricing.uvMaintenanceMonthly(), n: 0 }; });
     (Store.state.sales || []).forEach(s => {
       if (s.cancelled) return; const k = this.mk(s.ts); if (!inSet.has(k)) return;
       const sp = Pricing.saleProfit(s), m = M[k], cash = sp.ca + sp.shipFee;
       m.n++; m.inc += cash; const pk = s.payment || 'autre'; m.incBy[pk] = (m.incBy[pk] || 0) + cash;
-      m.ca += sp.ca; m.cogs += sp.cogs; m.shipFee += sp.shipFee; m.fee += sp.fee; m.shipping += sp.shipping; m.box += sp.box; m.eventFee += sp.eventFee; m.partner += sp.partner; m.cotis += sp.cotis; m.tva += sp.tva;
+      m.ca += sp.ca; m.cogs += sp.cogs; m.shipFee += sp.shipFee; m.fee += sp.fee; m.shipping += sp.shipping; m.box += sp.box; m.eventFee += sp.eventFee; m.partner += sp.partner; m.cotis += sp.cotis; m.tva += sp.tva; m.labor += sp.labor;
     });
     let toRefund = 0;
     Achats.list().forEach(p => {
@@ -176,7 +176,7 @@ const Compta = {
       m.fixed = m.amort + m.uv;
       m.net = m.marge - m.sellCosts - m.cotis - m.expensed - m.portBuy - m.fixed - (Store.state.settings.vatActive ? m.tva : 0);
     });
-    const T = { inc: 0, ca: 0, cogs: 0, marge: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, eventFee: 0, partner: 0, cotis: 0, tva: 0, buyPaid: 0, out: 0, solde: 0, expensed: 0, amort: 0, uv: 0, fixed: 0, sellCosts: 0, portBuy: 0, net: 0, buy: {}, incBy: {}, n: 0 };
+    const T = { labor: 0, inc: 0, ca: 0, cogs: 0, marge: 0, shipFee: 0, fee: 0, shipping: 0, box: 0, eventFee: 0, partner: 0, cotis: 0, tva: 0, buyPaid: 0, out: 0, solde: 0, expensed: 0, amort: 0, uv: 0, fixed: 0, sellCosts: 0, portBuy: 0, net: 0, buy: {}, incBy: {}, n: 0 };
     months.forEach(k => { const m = M[k]; Object.keys(T).forEach(x => { if (typeof T[x] === 'number') T[x] += U.num(m[x]); }); Object.entries(m.buy).forEach(([c, v]) => T.buy[c] = (T.buy[c] || 0) + v); Object.entries(m.incBy).forEach(([c, v]) => T.incBy[c] = (T.incBy[c] || 0) + v); });
     return { months, M, T, toRefund };
   },
@@ -227,7 +227,8 @@ const Compta = {
           ${line('Ventes (CA)', e(T.ca))}${line('− Coût des marchandises vendues', e(T.cogs), '', 'coût réel figé à la vente')}${line('<b>= Marge brute</b>', e(T.marge))}
           ${line('+ Port encaissé', e(T.shipFee))}${line('− Frais de paiement (SumUp / Stripe)', e(T.fee))}${line('− Envois (transporteur, TTC)', e(T.shipping))}${line('− Consommables utilisés (cartons…)', e(T.box))}${line('− Stands, déplacements, repas', e(T.eventFee))}${T.partner ? line('− Reversements aux partenaires', e(T.partner), '', 'charge : ne baisse pas les cotisations') : ''}
           ${line('− Cotisations URSSAF (estimées)', e(T.cotis))}${line('− Outillage, frais généraux, investissements non amortis', e(T.expensed))}${line('− Frais de livraison sur achats de marchandises', e(T.portBuy), '', 'livraison payée aux fournisseurs')}${line('− Amortissements du matériel', e(T.amort))}${line('− Entretien imprimante UV', e(T.uv))}${S.vatActive ? line('− TVA reversée', e(T.tva)) : ''}
-          <tr style="border-top:2px solid var(--caramel);font-weight:800;"><td style="text-align:left;">= Bénéfice net</td><td class="num">${sg(T.net)}</td></tr></tbody></table>
+          <tr style="border-top:2px solid var(--caramel);font-weight:800;"><td style="text-align:left;">= Bénéfice net</td><td class="num">${sg(T.net)}</td></tr>
+          ${T.labor > 0 ? `${line('+ Ton temps de fabrication (accessoires)', e(T.labor), '', 'déjà retiré dans le coût des marchandises vendues ; estimé d\'après les fiches actuelles')}<tr style="font-weight:700;"><td style="text-align:left;">= Bénéfice avec ton temps</td><td class="num">${sg(T.net + T.labor)}</td></tr>` : ''}</tbody></table>
           ${stockBuy > 0 ? `<p class="muted" style="font-size:.82rem;margin-top:8px;">ℹ️ ${U.eur(stockBuy)} d'achats de mastication, matières et consommables sur la période ne sont pas dans cette liste : ils passent par le « coût des marchandises vendues » au fur et à mesure des ventes (ce qui n'est pas encore vendu reste en stock). Seule leur livraison est comptée tout de suite, à la date de la facture.</p>` : ''}
         </div>
       </div>

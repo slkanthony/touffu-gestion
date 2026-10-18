@@ -1089,7 +1089,9 @@ const Stats = {
         ${line('Charges fixes matériel', 'fixed', '-')}
         ${line('Frais de livraison & frais généraux', 'charges', '-')}
       </tbody>
-      <tfoot><tr><td><b>Bénéfice net</b></td><td class="num sensitive ${M.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(M.net)}</b></td><td class="num sensitive ${A.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(A.net)}</b></td></tr></tfoot>
+      <tfoot><tr><td><b>Bénéfice net</b></td><td class="num sensitive ${M.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(M.net)}</b></td><td class="num sensitive ${A.net >= 0 ? 'pos' : 'neg'}"><b>${U.eur(A.net)}</b></td></tr>
+      ${A.labor > 0 ? `<tr><td>+ Ton temps de fabrication <span class="muted help">Déjà retiré dans « Coût de revient » (main d'œuvre des fiches accessoires) : c'est toi qui fabriques, cet argent te revient. Estimé d'après les temps actuels des fiches.</span></td><td class="num sensitive">—</td><td class="num sensitive pos">+ ${U.eur(A.labor)}</td></tr>
+      <tr><td><b>Bénéfice avec ton temps</b></td><td class="num sensitive">—</td><td class="num sensitive ${A.net + A.labor >= 0 ? 'pos' : 'neg'}"><b>${U.eur(A.net + A.labor)}</b></td></tr>` : ''}</tfoot>
     </table></div>
     <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Charges fixes matériel » = entretien imprimante UV (→ accessoires) + amortissement du matériel réparti sur la période (tagué mastication/accessoires directement, « commun » au prorata du CA). ${va ? '' : 'TVA non déduite (non assujetti) — affichée pour info seulement si tu coches « assujetti ».'}</p>`;
   },
