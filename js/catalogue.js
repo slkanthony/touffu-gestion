@@ -32,11 +32,11 @@ const Catalogue = {
     ['📏 Façon de vendre', [['t_gram', 'Vendu au poids'], ['t_piece', 'Vendu à la pièce'], ['t_size', 'Vendu par taille'], ['inactive', 'Avec variantes désactivées']]]
   ],
   /* Options du menu « Contrôle » : titres de groupe + nombre de fiches par filtre */
-  _ctlOptions(linked) {
-    const all = Store.state.catalogM || [], out = [];
+  _ctlOptions(linked, pool, supId) {
+    const all = pool || Store.state.catalogM || [], out = [];
     this._CTL.forEach(([g, items]) => {
       if (g) out.push({ g });
-      items.forEach(([v, l]) => out.push({ v, s: l, l: v === 'all' ? l : `${l} (${all.filter(p => this._ctlMatch(p, v, linked)).length})` }));
+      items.forEach(([v, l]) => out.push({ v, s: l, l: v === 'all' ? l : `${l} (${all.filter(p => this._ctlMatch(p, v, linked, supId)).length})` }));
     });
     return out;
   },
@@ -53,11 +53,13 @@ const Catalogue = {
     const ago = d <= 0 ? 'aujourd\'hui' : d === 1 ? 'hier' : d < 60 ? d + ' j' : Math.round(d / 30) + ' mois';
     return new Date(ts).toLocaleDateString('fr-FR') + ' · ' + ago;
   },
-  _ctlMatch(p, key, linked) {
+  /* supId : fournisseur choisi dans le filtre « Fournisseur » — les contrôles qui portent sur UN fournisseur (lien, réf., date et TVA du prix d'achat) s'appliquent alors à SA ligne, pas à celle du fournisseur principal
+     (Antho 2026-10-18 : « Cernunos » + « Sans lien fournisseur » doit regarder le lien de Cernunos). Sans fournisseur choisi : le principal, comme avant. */
+  _ctlMatch(p, key, linked, supId) {
     if (key === 'all') return true;
-    const main = Pricing.mainEntry(p), act = (p.variants || []).filter(v => v.enabled !== false);
+    const main = Pricing.mainEntry(p, supId || undefined), act = (p.variants || []).filter(v => v.enabled !== false);
     const vatOf = () => main ? Pricing.purchaseVatOf(main.supplierId, main.vatRate) : null;
-    const age = this._ageDays(this.priceDateOf(p));
+    const age = this._ageDays(this.priceDateOf(p, supId || undefined));
     switch (key) {
       case 'crit': return this._activeCalcs(p).some(c => c.critical);
       case 'under': return this._activeCalcs(p).some(c => c.margin < 0);
@@ -355,12 +357,11 @@ const Catalogue = {
     U.syncFilters('catalogue', f);
     const linked = new Set();
     Store.state.stockM.forEach(sp => { if (sp.catalogId) linked.add(sp.catalogId); (sp.variants || []).forEach(sv => { if (sv.catalogId) linked.add(sv.catalogId); }); });
-    let list = Store.state.catalogM.filter(p =>
-      this._ctlMatch(p, f.ctl || 'all', linked) &&
-      (!f.q || U.has(p.name, f.q)) &&
+    const supSel = f.sup && !['all', '_multi', '_single'].includes(f.sup) ? f.sup : '';
+    const baseOk = p => (!f.q || U.has(p.name, f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
-      (f.sup === 'all' || (f.sup === '_multi' ? (p.suppliers || []).length >= 2 : f.sup === '_single' ? (p.suppliers || []).length <= 1 : (p.suppliers || []).some(s => s.supplierId === f.sup)))
-    );
+      (f.sup === 'all' || (f.sup === '_multi' ? (p.suppliers || []).length >= 2 : f.sup === '_single' ? (p.suppliers || []).length <= 1 : (p.suppliers || []).some(s => s.supplierId === f.sup)));
+    let list = Store.state.catalogM.filter(p => this._ctlMatch(p, f.ctl || 'all', linked, supSel) && baseOk(p));
     const dir = f.sortDir === 'desc' ? -1 : 1;
     const hasCritical = (p) => this._activeCalcs(p).some(c => c.critical);
     list.sort((a, b) => {
@@ -379,7 +380,7 @@ const Catalogue = {
         <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
         <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
-        <div class="fg ctl-fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._ctlOptions(linked), onPick: 'Catalogue._setCtlFilter' })}</div>
+        <div class="fg ctl-fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._ctlOptions(linked, Store.state.catalogM.filter(baseOk), supSel), onPick: 'Catalogue._setCtlFilter' })}</div>
         <button class="btn ${this.sheet.open ? 'btn-cta' : 'btn-ghost'}" onclick="Catalogue.sheetShow()" title="Liste imprimable / téléchargeable : produit, variante, SKU, sachet, coeff, prix">🖨 Fiche de contrôle</button>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
