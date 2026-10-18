@@ -2227,10 +2227,11 @@ const Stock = {
     });
     this._orderProds = this._orderBuild(items);
     this._orderSel = new Set(this._orderProds.map(g => g.k));
-    this._orderFilter = null; this._orderMeat = null; this._orderBy = 'sup';
+    this._orderFilter = null; this._orderMeat = null; this._orderBy = 'sup'; this._orderQueue = [];
     U.modal({
       title: '📋Commande à passer', hideOk: true, wide: true,
       body: `${missing ? `<p class="warn-txt mt-0">${missing} ligne(s) sans reference fournisseur.</p>` : ''}
+        <div id="order_queue">${this._orderQueueHTML()}</div>
         <div id="order_filterbar">${this._orderFilterBarHTML()}</div>
         <div id="order_list" style="max-height:min(52vh,520px);overflow-y:auto;">${this._orderListHTML()}</div>
         <button type="button" class="btn-ghost btn-sm mt" onclick="Stock.copyOrderList()">📋Copier la liste</button>`
@@ -2322,11 +2323,34 @@ const Stock = {
     const groups = h >= 0 ? ((this._orderHeads || [])[h] || { groups: [] }).groups : this._orderVisible();
     const urls = [...new Set(groups.filter(g => this._orderSel.has(g.k)).flatMap(g => g.urls))];
     if (!urls.length) { U.toast('Aucun lien dans la sélection.', true); return; }
-    let blocked = 0;
-    urls.forEach(u => { let w = null; try { w = window.open(u, '_blank'); } catch (e) { /* bloqué */ } if (w) { try { w.opener = null; } catch (e) { /* ignoré */ } } else blocked++; });
-    if (blocked) U.alert(`${urls.length - blocked} onglet(s) ouvert(s), ${blocked} bloqué(s) par ton navigateur.\n\nAutorise les fenêtres surgissantes pour ce site (icône dans la barre d'adresse), puis clique de nouveau sur « Ouvrir les liens » : tous les liens se rouvriront.`, '🔗 Fenêtres bloquées');
+    // Chrome n'accepte qu'UN onglet par clic tant que le site n'est pas autorisé à ouvrir des fenêtres surgissantes : window.open renvoie alors null (ce n'est pas l'appli qui bride).
+    // Les liens bloqués restent dans une file : « ▶ Ouvrir le suivant » = un clic, un lien, ce qui marche toujours.
+    const rest = [];
+    urls.forEach(u => { let w = null; try { w = window.open(u, '_blank'); } catch (e) { /* bloqué */ } if (w) { try { w.opener = null; } catch (e) { /* ignoré */ } } else rest.push(u); });
+    this._orderQueue = rest; this._orderQueueTotal = urls.length;
+    const q = document.getElementById('order_queue'); if (q) q.innerHTML = this._orderQueueHTML();
+    if (rest.length) U.alert(`${urls.length - rest.length} onglet(s) ouvert(s), ${rest.length} bloqué(s) par Chrome (c'est lui qui limite à un onglet par clic, pas l'appli).
+
+Pour tout ouvrir d'un coup : clique sur l'icône « pop-up bloqué » à droite de la barre d'adresse → « Toujours autoriser » pour ce site (ou cadenas / ⓘ à gauche de l'adresse → Paramètres du site → Fenêtres pop-up et redirections → Autoriser), puis reclique « Ouvrir les liens ».
+
+Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien).`, '🔗 Fenêtres bloquées');
     else U.toast(`${urls.length} onglet(s) ouvert(s).`);
   },
+  _orderQueueHTML() {
+    const n = (this._orderQueue || []).length; if (!n) return '';
+    const total = this._orderQueueTotal || n;
+    return `<div class="card" style="border-left:4px solid var(--warn);margin:0 0 10px;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span>⚠️ <b>${n} lien${n > 1 ? 's' : ''}</b> bloqué${n > 1 ? 's' : ''} par ton navigateur (${total - n} / ${total} ouverts).</span>
+      <button type="button" class="btn-cta btn-sm" style="flex:0 0 auto;" onclick="Stock.orderOpenNext()">▶ Ouvrir le suivant</button>
+      <button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Stock.orderQueueClear()">Ignorer</button></div>`;
+  },
+  orderOpenNext() {
+    const u = (this._orderQueue || []).shift(); if (!u) return;
+    try { const w = window.open(u, '_blank'); if (w) w.opener = null; } catch (e) { /* ignoré */ }
+    const q = document.getElementById('order_queue'); if (q) q.innerHTML = this._orderQueueHTML();
+    if (!(this._orderQueue || []).length) U.toast('Tous les liens sont ouverts.');
+  },
+  orderQueueClear() { this._orderQueue = []; const q = document.getElementById('order_queue'); if (q) q.innerHTML = ''; },
   copyOrderList() {
     const heads = this._orderHeads; if (!heads) return;
     const text = heads.map(h => {
