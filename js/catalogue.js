@@ -32,6 +32,10 @@ const Catalogue = {
     ['📏 Façon de vendre', [['t_gram', 'Vendu au poids'], ['t_piece', 'Vendu à la pièce'], ['t_size', 'Vendu par taille'], ['inactive', 'Avec variantes désactivées']]]
   ],
   /* Options du menu « Contrôle » : titres de groupe + nombre de fiches par filtre */
+  /* Recherche : nom + références fournisseur + SKU des variantes (Antho 2026-10-18, comme dans Stock). Profil visite : les références fournisseur restent cachées (pas de recherche dessus non plus). */
+  _searchText(p) {
+    return p.name + (Store.hideSupplierInfo() ? '' : ' ' + (p.suppliers || []).map(s => s.ref || '').join(' ')) + ' ' + (p.variants || []).map(v => v.sku || '').join(' ');
+  },
   _ctlOptions(linked, pool, supId) {
     const all = pool || Store.state.catalogM || [], out = [];
     this._CTL.forEach(([g, items]) => {
@@ -358,7 +362,7 @@ const Catalogue = {
     const linked = new Set();
     Store.state.stockM.forEach(sp => { if (sp.catalogId) linked.add(sp.catalogId); (sp.variants || []).forEach(sv => { if (sv.catalogId) linked.add(sv.catalogId); }); });
     const supSel = f.sup && !['all', '_multi', '_single'].includes(f.sup) ? f.sup : '';
-    const baseOk = p => (!f.q || U.has(p.name, f.q)) &&
+    const baseOk = p => (!f.q || U.has(this._searchText(p), f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
       (f.sup === 'all' || (f.sup === '_multi' ? (p.suppliers || []).length >= 2 : f.sup === '_single' ? (p.suppliers || []).length <= 1 : (p.suppliers || []).some(s => s.supplierId === f.sup)));
     let list = Store.state.catalogM.filter(p => this._ctlMatch(p, f.ctl || 'all', linked, supSel) && baseOk(p));
@@ -377,7 +381,7 @@ const Catalogue = {
     App.mount(`
       <div class="view-title"><h1>Prix mastication</h1><span class="sub">${list.length === Store.state.catalogM.length ? Store.state.catalogM.length + ' produits' : list.length + ' sur ' + Store.state.catalogM.length + ' produits'} · coefficient, marges & profit</span></div>
       <div class="toolbar">
-        <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
+        <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom, réf. fournisseur ou SKU…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
         <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
         <div class="fg ctl-fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._ctlOptions(linked, Store.state.catalogM.filter(baseOk), supSel), onPick: 'Catalogue._setCtlFilter' })}</div>
