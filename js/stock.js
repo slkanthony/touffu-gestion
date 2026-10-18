@@ -2198,8 +2198,8 @@ const Stock = {
         const p = Store.state.stockM.find(x => x.id === id); const v = p?.variants.find(x => x.id === vId); if (!v) return;
         pName = p.name; fmt = Pricing.labelVariant(v); meat = p.meatType || 'Autre';
         ref = v.ref || '';
-        if (p.catalogId) {
-          const cat = Store.state.catalogM.find(c => c.id === p.catalogId);
+        {   // fiche prix de CETTE variante (la sienne, sinon celle de sa taille, sinon celle du produit) : une variante peut venir d'un autre fournisseur que le reste du produit
+          const fId = this.ficheOf(p, v), cat = fId ? Store.state.catalogM.find(c => c.id === fId) : null;
           if (cat) {
             (cat.suppliers || []).forEach(s => {
               if (s.notes) supNotes.push({ name: Store.supplierName(s.supplierId), text: s.notes, isMain: s.supplierId === cat.mainSupplierId });
@@ -2300,7 +2300,7 @@ const Stock = {
           <div style="flex:1;min-width:0;">
             <div><b>${U.esc(g.pName)}</b>${g.fmts.length ? ` <span class="muted">— ${g.fmts.map(x => U.esc(x)).join(' · ')}</span>` : ''}${by === 'meat' && g.supplier ? ` <span class="badge info">${U.esc(g.supplier)}</span>` : ''}</div>
             ${g.refs.length && refsSame ? `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${U.esc(g.refs[0])}</div>` : g.items.filter(x => x.ref).map(x => `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${x.fmt ? U.esc(x.fmt) + ' : ' : ''}${U.esc(x.ref)}</div>`).join('')}
-            ${g.urls.map(u => `<div style="font-size:.85rem;"><a href="${U.esc(u)}" target="_blank" rel="noopener" style="color:var(--caramel);">🔗 Commander chez le fournisseur</a></div>`).join('')}
+            ${g.urls.map(u => { const fm = g.urls.length > 1 ? [...new Set(g.items.filter(x => x.supplierUrl === u).map(x => x.fmt).filter(Boolean))] : []; return `<div style="font-size:.85rem;"><a href="${U.esc(u)}" target="_blank" rel="noopener" style="color:var(--caramel);">🔗 ${fm.length ? U.esc(fm.join(' · ')) + ' : ' : ''}Commander chez le fournisseur</a></div>`; }).join('')}
             ${(!g.refs.length && !g.urls.length && !hide) ? `<div style="font-size:.85rem;color:var(--alerte);">⚠️Pas de reference fournisseur</div>` : ''}
             ${g.notes.map(n => this._orderNoteBox(n)).join('')}
           </div></div>`;
