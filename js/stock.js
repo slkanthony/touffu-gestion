@@ -2184,17 +2184,19 @@ const Stock = {
     this.faible.excluded = checked ? [] : (this._faibleRowsCache || []).map(r => r.key);
     this.renderFaible();
   },
+  /* ───── COMMANDE À PASSER (refonte 2026-10-19, demande d'Antho) ─────
+     Une ligne par PRODUIT (les formats 100G / 250G / 500G sont réunis : référence, lien et notes fournisseur écrits une seule fois), rangée par fournisseur OU par viande, filtrable par fournisseur
+     et par viande, avec une case par produit. « 🔗 Ouvrir les liens » ouvre un onglet par lien (une seule fois par page) pour les produits cochés — le navigateur doit autoriser les fenêtres surgissantes. */
   faibleGenerateOrder() {
     const f = this.faible;
     if (!f.sel.length) { U.toast('Sélectionne au moins une ligne.', true); return; }
-    const items = []; let missing = 0;
-    const seen = new Set();
+    const hide = Store.hideSupplierInfo(), items = [], seen = new Set(); let missing = 0;
     f.sel.forEach(key => {
       const [kind, id, vId] = key.split('|');
-      let prodName = '', ref = '', supNotes = [], supplier = '', supplierUrl = '';
+      let pName = '', fmt = '', meat = '', ref = '', supNotes = [], supplier = '', supplierUrl = '', pKey = kind + '|' + id;
       if (kind === 'M') {
         const p = Store.state.stockM.find(x => x.id === id); const v = p?.variants.find(x => x.id === vId); if (!v) return;
-        prodName = `${p.name} — ${Pricing.labelVariant(v)}`;
+        pName = p.name; fmt = Pricing.labelVariant(v); meat = p.meatType || 'Autre';
         ref = v.ref || '';
         if (p.catalogId) {
           const cat = Store.state.catalogM.find(c => c.id === p.catalogId);
@@ -2204,95 +2206,143 @@ const Stock = {
             });
             if (!supNotes.length && cat.notes) supNotes.push({ name: 'Produit', text: cat.notes, isMain: false });
             const main = (cat.suppliers || []).find(s => s.supplierId === cat.mainSupplierId) || (cat.suppliers || [])[0];
-          if (main) { supplier = Store.supplierName(main.supplierId); supplierUrl = main.url || ''; if (main.ref) ref = main.ref; }
+            if (main) { supplier = Store.supplierName(main.supplierId); supplierUrl = main.url || ''; if (main.ref) ref = main.ref; }
           }
         }
       } else if (kind === 'MT') {
         const m = Store.state.materials.find(x => x.id === id); if (!m) return;
-        prodName = `${m.product ? m.product + ' ' : ''}${m.variant || m.name}`;
+        pName = m.product || m.variant || m.name; fmt = m.product ? (m.variant || '') : ''; meat = 'Matières premières'; pKey = 'MT|' + pName;
         if (m.supplierId) supplier = Store.supplierName(m.supplierId);
         supplierUrl = m.url || '';
       } else {
         const c = Store.state.consumables.find(x => x.id === id); if (!c) return;
-        prodName = c.name; ref = c.ref || ''; supplierUrl = c.url || '';
-        const ri = this.replaceInfo(c); if (ri) prodName += ' — ' + ri.txt;
+        pName = c.name; ref = c.ref || ''; supplierUrl = c.url || ''; meat = 'Consommables';
+        const ri = this.replaceInfo(c); if (ri) pName += ' — ' + ri.txt;
       }
       const ukey = kind + '|' + id + '|' + (vId || '');
       if (seen.has(ukey)) return; seen.add(ukey);
-      if (Store.hideSupplierInfo()) { ref = ''; supplierUrl = ''; supNotes = []; }
+      if (hide) { ref = ''; supplierUrl = ''; supNotes = []; }
       else if (!ref && !supplier && !supplierUrl) missing++;
-      items.push({ prodName, ref, supNotes, supplier, supplierUrl });
+      items.push({ pKey, pName, fmt, meat, ref, supNotes, supplier, supplierUrl });
     });
-      this._orderItems = items;
-      const groups = {};
-      items.forEach(it => { const key = it.supplier || ''; if (!groups[key]) groups[key] = []; groups[key].push(it); });
-      const groupKeys = Object.keys(groups).sort((a, b) => { if (!a && b) return 1; if (a && !b) return -1; return U.sortFr(a, b); });
-      this._orderGroups = groups; this._orderGroupKeys = groupKeys; this._orderFilter = null;
-      U.modal({
-        title: '📋Commande à passer', hideOk: true, wide: true,
-        body: `${missing ? `<p class="warn-txt mt-0">${missing} ligne(s) sans reference fournisseur.</p>` : ''}
-          <div id="order_filterbar">${this._orderFilterBarHTML()}</div>
-          <div id="order_list" style="max-height:min(60vh,560px);overflow-y:auto;">${this._orderListHTML()}</div>
-          <button type="button" class="btn-ghost btn-sm mt" onclick="Stock.copyOrderList()">📋Copier la liste</button>`
-      });
-    },
+    this._orderProds = this._orderBuild(items);
+    this._orderSel = new Set(this._orderProds.map(g => g.k));
+    this._orderFilter = null; this._orderMeat = null; this._orderBy = 'sup';
+    U.modal({
+      title: '📋Commande à passer', hideOk: true, wide: true,
+      body: `${missing ? `<p class="warn-txt mt-0">${missing} ligne(s) sans reference fournisseur.</p>` : ''}
+        <div id="order_filterbar">${this._orderFilterBarHTML()}</div>
+        <div id="order_list" style="max-height:min(52vh,520px);overflow-y:auto;">${this._orderListHTML()}</div>
+        <button type="button" class="btn-ghost btn-sm mt" onclick="Stock.copyOrderList()">📋Copier la liste</button>`
+    });
+  },
 
-    _orderNoteBox(n) {
-      return `<div style="margin:4px 0;padding:6px 10px;background:${n.isMain ? '#fff3cd' : '#e8f4fd'};color:${n.isMain ? '#664d03' : '#4a6de5'};border-left:4px solid ${n.isMain ? '#ffc107' : '#4da6d9'};border-radius:4px;font-size:.85rem;white-space:pre-wrap;"><b>💡${U.esc(n.name)}${n.isMain ? ' ★' : ''}</b>\n${U.esc(n.text)}</div>`;
-    },
-
-    _orderFilterBarHTML() {
-      const chip = (key, label, count, active) => `<button type="button" class="btn-sm" style="border-radius:16px;padding:5px 12px;margin:2px;border:1px solid var(--card-border);background:${active ? 'var(--caramel)' : 'transparent'};color:${active ? '#1a1a1a' : 'var(--texte)'};font-weight:${active ? '700' : '400'};cursor:pointer;" onclick="Stock.filterOrderBySupplier('${U.esc(key).replace(/'/g, "\\'")}')">${U.esc(label)} (${count})</button>`;
-      const total = this._orderItems.length;
-      return `<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:10px;">
-        ${chip('__ALL__', 'Tous', total, !this._orderFilter)}
-        ${this._orderGroupKeys.map(k => chip(k, k || 'Sans fournisseur', this._orderGroups[k].length, this._orderFilter === k)).join('')}
+  /* Une entrée par produit ET fournisseur : formats réunis, références / liens / notes sans doublon */
+  _orderBuild(items) {
+    const map = new Map(), uniq = a => [...new Set(a.filter(Boolean))];
+    items.forEach(it => { const k = it.pKey + '|' + it.supplier; let g = map.get(k); if (!g) map.set(k, g = { k, pName: it.pName, meat: it.meat, supplier: it.supplier, items: [] }); g.items.push(it); });
+    return [...map.values()].map((g, i) => {
+      g.i = i;
+      g.fmts = uniq(g.items.map(x => x.fmt));
+      g.refs = uniq(g.items.map(x => x.ref));
+      g.urls = uniq(g.items.map(x => x.supplierUrl)).filter(u => /^https?:\/\//i.test(u));   // jamais de lien « javascript: » ouvert
+      const nm = new Map(); g.items.forEach(x => x.supNotes.forEach(n => { const kk = n.name + '|' + n.text; if (!nm.has(kk)) nm.set(kk, n); }));
+      g.notes = [...nm.values()];
+      return g;
+    });
+  },
+  _orderVisible(ignore) {
+    return (this._orderProds || []).filter(g => (ignore === 'sup' || this._orderFilter === null || g.supplier === this._orderFilter) && (ignore === 'meat' || this._orderMeat === null || g.meat === this._orderMeat));
+  },
+  _orderNoteBox(n) {
+    return `<div style="margin:4px 0;padding:6px 10px;background:${n.isMain ? '#fff3cd' : '#e8f4fd'};color:${n.isMain ? '#664d03' : '#4a6de5'};border-left:4px solid ${n.isMain ? '#ffc107' : '#4da6d9'};border-radius:4px;font-size:.85rem;white-space:pre-wrap;"><b>💡${U.esc(n.name)}${n.isMain ? ' ★' : ''}</b>\n${U.esc(n.text)}</div>`;
+  },
+  _orderFilterBarHTML() {
+    const chip = (js, label, count, active) => `<button type="button" class="btn-sm" style="border-radius:16px;padding:5px 12px;margin:2px;border:1px solid var(--card-border);background:${active ? 'var(--caramel)' : 'transparent'};color:${active ? '#1a1a1a' : 'var(--texte)'};font-weight:${active ? '700' : '400'};cursor:pointer;" onclick="${js}">${U.esc(label)} (${count})</button>`;
+    const q = s => U.esc(s).replace(/&#39;/g, "\\'");
+    const sups = [...new Set(this._orderProds.map(g => g.supplier))].sort((a, b) => (!a && b) ? 1 : (a && !b) ? -1 : U.sortFr(a, b));
+    const meats = [...new Set(this._orderProds.map(g => g.meat))].sort(U.sortFr);
+    const bySup = this._orderVisible('sup'), byMeat = this._orderVisible('meat');
+    const vis = this._orderVisible(), nSel = vis.filter(g => this._orderSel.has(g.k)).length, hide = Store.hideSupplierInfo();
+    const nUrl = new Set(vis.filter(g => this._orderSel.has(g.k)).flatMap(g => g.urls)).size;
+    return `<div class="muted" style="font-size:.78rem;margin:0 0 2px;">Fournisseur</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px;">
+        ${chip("Stock.filterOrderBySupplier('__ALL__')", 'Tous', bySup.length, this._orderFilter === null)}
+        ${sups.map(s => chip(`Stock.filterOrderBySupplier('${q(s)}')`, s || 'Sans fournisseur', bySup.filter(g => g.supplier === s).length, this._orderFilter === s)).join('')}
+      </div>
+      <div class="muted" style="font-size:.78rem;margin:0 0 2px;">Viande / catégorie</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px;">
+        ${chip("Stock.filterOrderByMeat('__ALL__')", 'Toutes', byMeat.length, this._orderMeat === null)}
+        ${meats.map(m => chip(`Stock.filterOrderByMeat('${q(m)}')`, m, byMeat.filter(g => g.meat === m).length, this._orderMeat === m)).join('')}
+      </div>
+      <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <span class="muted" style="font-size:.85rem;">Ranger :</span>${U.seg([{ l: 'Par fournisseur', on: this._orderBy === 'sup', js: "Stock.setOrderBy('sup')" }, { l: 'Par viande', on: this._orderBy === 'meat', js: "Stock.setOrderBy('meat')" }], { sm: true })}
+        ${U.seg([{ l: '☑ Tout cocher', js: 'Stock.orderToggleAll(true)' }, { l: '☐ Tout décocher', js: 'Stock.orderToggleAll(false)' }], { sm: true })}
+        ${hide ? '' : `<button type="button" class="btn-cta btn-sm" style="flex:0 0 auto;" ${nUrl ? '' : 'disabled'} onclick="Stock.orderOpenLinks(-1)" title="Ouvre un onglet par lien (une seule fois par page) pour les produits cochés et affichés">🔗 Ouvrir les liens (${nUrl})</button>`}
+        <span class="muted" style="font-size:.85rem;margin-left:auto;">${nSel} / ${vis.length} produit(s) coché(s)</span>
       </div>`;
-    },
-
-    _orderListHTML() {
-      const keys = this._orderFilter !== null ? [this._orderFilter] : this._orderGroupKeys;
-      return keys.map(supName => {
-        const list = this._orderGroups[supName];
-        const header = `<h3 style="margin:14px 0 8px;font-size:1.05rem;font-weight:700;color:var(--caramel);background:var(--card-bg);padding:8px 10px;border-radius:6px;border-left:4px solid var(--caramel);">${supName ? U.esc(supName) : 'Fournisseur non identifie'} <span style="font-size:.8rem;font-weight:400;color:var(--gris);">(${list.length})</span></h3>`;
-        const rows = list.map(it =>
-          `<div style="padding:6px 0;border-bottom:1px solid var(--card-border);">
-            <div><b>${U.esc(it.prodName)}</b></div>
-            ${it.ref ? `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${U.esc(it.ref)}</div>` : ''}
-            ${it.supplierUrl ? `<div style="font-size:.85rem;"><a href="${U.esc(it.supplierUrl)}" target="_blank" rel="noopener" style="color:var(--caramel);">🔗 Commander chez le fournisseur</a></div>` : ''}
-            ${(!it.ref && !it.supplierUrl && !Store.hideSupplierInfo()) ? `<div style="font-size:.85rem;color:var(--alerte);">⚠️Pas de reference fournisseur</div>` : ''}
-            ${it.supNotes.map(n => this._orderNoteBox(n)).join('')}
-          </div>`
-        ).join('');
-        return header + rows;
+  },
+  _orderListHTML() {
+    const vis = this._orderVisible(), by = this._orderBy, hide = Store.hideSupplierInfo();
+    const label = g => by === 'sup' ? g.supplier : g.meat;
+    const keys = [...new Set(vis.map(label))].sort((a, b) => (!a && b) ? 1 : (a && !b) ? -1 : U.sortFr(a, b));
+    this._orderHeads = keys.map(k => ({ label: k || (by === 'sup' ? 'Fournisseur non identifié' : 'Autre'), groups: vis.filter(g => label(g) === k).sort((a, b) => U.sortFr(a.pName, b.pName)) }));
+    return this._orderHeads.map((h, hi) => {
+      const nUrl = new Set(h.groups.filter(g => this._orderSel.has(g.k)).flatMap(g => g.urls)).size;
+      const header = `<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px;background:var(--card-bg);padding:8px 10px;border-radius:6px;border-left:4px solid var(--caramel);">
+        <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:var(--caramel);flex:1;">${U.esc(h.label)} <span style="font-size:.8rem;font-weight:400;color:var(--gris);">(${h.groups.length})</span></h3>
+        ${hide ? '' : `<button type="button" class="btn-ghost btn-sm" style="flex:0 0 auto;" ${nUrl ? '' : 'disabled'} onclick="Stock.orderOpenLinks(${hi})" title="Ouvre un onglet par lien pour les produits cochés de ce groupe">🔗 Ouvrir les liens (${nUrl})</button>`}</div>`;
+      const rows = h.groups.map(g => {
+        const refsSame = g.refs.length <= 1;
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--card-border);display:flex;gap:10px;align-items:flex-start;">
+          <input type="checkbox" style="margin-top:4px;" ${this._orderSel.has(g.k) ? 'checked' : ''} onchange="Stock.orderToggle(${g.i})">
+          <div style="flex:1;min-width:0;">
+            <div><b>${U.esc(g.pName)}</b>${g.fmts.length ? ` <span class="muted">— ${g.fmts.map(x => U.esc(x)).join(' · ')}</span>` : ''}${by === 'meat' && g.supplier ? ` <span class="badge info">${U.esc(g.supplier)}</span>` : ''}</div>
+            ${g.refs.length && refsSame ? `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${U.esc(g.refs[0])}</div>` : g.items.filter(x => x.ref).map(x => `<div style="font-size:.85rem;color:var(--gris);font-family:monospace;">${x.fmt ? U.esc(x.fmt) + ' : ' : ''}${U.esc(x.ref)}</div>`).join('')}
+            ${g.urls.map(u => `<div style="font-size:.85rem;"><a href="${U.esc(u)}" target="_blank" rel="noopener" style="color:var(--caramel);">🔗 Commander chez le fournisseur</a></div>`).join('')}
+            ${(!g.refs.length && !g.urls.length && !hide) ? `<div style="font-size:.85rem;color:var(--alerte);">⚠️Pas de reference fournisseur</div>` : ''}
+            ${g.notes.map(n => this._orderNoteBox(n)).join('')}
+          </div></div>`;
       }).join('');
-    },
-
-    filterOrderBySupplier(key) {
-      this._orderFilter = (key === '__ALL__') ? null : key;
-      const bar = document.getElementById('order_filterbar');
-      const list = document.getElementById('order_list');
-      if (bar) bar.innerHTML = this._orderFilterBarHTML();
-      if (list) list.innerHTML = this._orderListHTML();
-    },
-
-    copyOrderList() {
-      const items = this._orderItems; if (!items) return;
-      const keys = this._orderFilter !== null ? [this._orderFilter] : this._orderGroupKeys;
-      const text = keys.map(supName => {
-        const header = `=== ${supName || 'Fournisseur non identifie'} ===`;
-        const body = this._orderGroups[supName].map(it => {
-          let line = it.prodName + (it.ref ? ` [${it.ref}]` : '') + (it.supplierUrl ? ` (${it.supplierUrl})` : '');
-          it.supNotes.forEach(n => { line += `\n${n.isMain ? 'MAIN ' : ''}${n.text}`; });
-          return line;
-        }).join('\n');
-        return header + '\n' + body;
-      }).join('\n\n');
-      const fallbackCopy = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); U.toast('Liste copiee.'); };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => U.toast('Liste copiee.')).catch(fallbackCopy);
-      } else { fallbackCopy(); }
-    },
+      return header + rows;
+    }).join('') || '<p class="muted">Aucun produit pour ce filtre.</p>';
+  },
+  _orderRefresh() {
+    const bar = document.getElementById('order_filterbar'), list = document.getElementById('order_list');
+    if (list) list.innerHTML = this._orderListHTML();   // d'abord : met à jour les en-têtes utilisés par la barre
+    if (bar) bar.innerHTML = this._orderFilterBarHTML();
+  },
+  filterOrderBySupplier(key) { this._orderFilter = key === '__ALL__' ? null : key; this._orderRefresh(); },
+  filterOrderByMeat(key) { this._orderMeat = key === '__ALL__' ? null : key; this._orderRefresh(); },
+  setOrderBy(v) { this._orderBy = v; this._orderRefresh(); },
+  orderToggle(i) { const g = (this._orderProds || [])[i]; if (!g) return; if (this._orderSel.has(g.k)) this._orderSel.delete(g.k); else this._orderSel.add(g.k); this._orderRefresh(); },
+  orderToggleAll(on) { this._orderVisible().forEach(g => { if (on) this._orderSel.add(g.k); else this._orderSel.delete(g.k); }); this._orderRefresh(); },
+  /* h = numéro d'un en-tête de la liste, ou -1 = tout ce qui est affiché. Un onglet par lien (dédoublonné) pour les produits cochés. */
+  orderOpenLinks(h) {
+    const groups = h >= 0 ? ((this._orderHeads || [])[h] || { groups: [] }).groups : this._orderVisible();
+    const urls = [...new Set(groups.filter(g => this._orderSel.has(g.k)).flatMap(g => g.urls))];
+    if (!urls.length) { U.toast('Aucun lien dans la sélection.', true); return; }
+    let blocked = 0;
+    urls.forEach(u => { let w = null; try { w = window.open(u, '_blank'); } catch (e) { /* bloqué */ } if (w) { try { w.opener = null; } catch (e) { /* ignoré */ } } else blocked++; });
+    if (blocked) U.alert(`${urls.length - blocked} onglet(s) ouvert(s), ${blocked} bloqué(s) par ton navigateur.\n\nAutorise les fenêtres surgissantes pour ce site (icône dans la barre d'adresse), puis clique de nouveau sur « Ouvrir les liens » : tous les liens se rouvriront.`, '🔗 Fenêtres bloquées');
+    else U.toast(`${urls.length} onglet(s) ouvert(s).`);
+  },
+  copyOrderList() {
+    const heads = this._orderHeads; if (!heads) return;
+    const text = heads.map(h => {
+      const body = h.groups.filter(g => this._orderSel.has(g.k)).map(g => {
+        let line = g.pName + (g.fmts.length ? ' — ' + g.fmts.join(', ') : '') + (g.refs.length ? ' [' + g.refs.join(' / ') + ']' : '') + g.urls.map(u => ` (${u})`).join('');
+        g.notes.forEach(n => { line += `\n${n.isMain ? 'MAIN ' : ''}${n.text}`; });
+        return line;
+      }).join('\n');
+      return body ? `=== ${h.label} ===\n${body}` : '';
+    }).filter(Boolean).join('\n\n');
+    if (!text) { U.toast('Rien de coché à copier.', true); return; }
+    const fallbackCopy = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); U.toast('Liste copiee.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => U.toast('Liste copiee.')).catch(fallbackCopy);
+    } else { fallbackCopy(); }
+  },
 
   /* ───── CONSOMMABLES ───── */
   consoFilters: { q: '', cat: 'all', link: 'all', state: 'all', sort: 'name', sortDir: 'asc', view: 'list', pm: 'up' },
