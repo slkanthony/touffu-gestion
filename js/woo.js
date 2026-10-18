@@ -570,7 +570,35 @@ const Woo = {
   _sumupSel: {},
   sumupExpQty: true,
   sumupExpPrice: false,
-  toggleSumupSel(sku, on) { this._sumupSel[sku] = !!on; this._sumupSelInfo(); },
+  toggleSumupSel(sku, on) { this._sumupSel[String(sku).toUpperCase()] = !!on; this._sumupSelInfo(); },
+  /* Aperçu de l'export SumUp regroupé par PRODUIT (Antho 2026-10-18) — mêmes gestes que l'export du site : case produit (tri-état) = tous ses formats d'un coup, repli du produit,
+     🚫 / ↩ Inclure sur tout le produit (mémorisé dans `sumupExclude`, comme le 🚫 d'une ligne). _sumupExpRows / _sumupExclRows = lignes affichées / exclues, remplies à chaque rendu. */
+  _sumupGrpKey(m) { return U.normSearch(m.name || '').trim() + '|' + (m.kind || ''); },
+  _sumupGrpClosed: new Set(),
+  toggleSumupGroup(k, on) {
+    (this._sumupExpRows || []).filter(m => this._sumupGrpKey(m) === k).forEach(m => { this._sumupSel[m.sku.toUpperCase()] = !!on; });
+    this.render();
+  },
+  toggleSumupExcludeGroup(k, out) {
+    const members = ((out ? this._sumupExpRows : this._sumupExclRows) || []).filter(m => this._sumupGrpKey(m) === k);
+    if (!members.length) return;
+    const s = Store.state.settings; if (!s.sumupExclude) s.sumupExclude = [];
+    members.forEach(m => {
+      const key = m.sku.toUpperCase(), i = s.sumupExclude.indexOf(key);
+      if (out) { if (i < 0) s.sumupExclude.push(key); delete this._sumupSel[key]; } else if (i >= 0) s.sumupExclude.splice(i, 1);
+    });
+    Store.save('settings');
+    this.render();
+    U.toast(out ? `${members.length} format(s) exclus de SumUp (ils ne seront plus jamais exportés).` : `${members.length} format(s) de nouveau envoyés à SumUp.`);
+  },
+  toggleSumupGrpFold(k) { if (this._sumupGrpClosed.has(k)) this._sumupGrpClosed.delete(k); else this._sumupGrpClosed.add(k); this.render(); },
+  _syncSumupBoxes() {
+    const rows = [...document.querySelectorAll('input.ssel')];
+    document.querySelectorAll('input[data-sgbox]').forEach(h => {
+      const mine = rows.filter(b => b.dataset.grp === h.dataset.sgbox), n = mine.filter(b => b.checked).length;
+      h.checked = mine.length > 0 && n === mine.length; h.indeterminate = n > 0 && n < mine.length;
+    });
+  },
   sumupSelectVisible(on) {
     (this._sumupVisible || []).forEach(k => { this._sumupSel[k] = !!on; });
     this.render();
@@ -817,6 +845,7 @@ const Woo = {
     const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.has(m.name + ' ' + m.variant + ' ' + m.sku, q)))
       .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
+    this._sumupExpRows = visible; this._sumupExclRows = units.filter(isExcl);
     this._sumupExpMap = Object.fromEntries(visible.map(m => [m.sku.toUpperCase(), m]));
     const allVisSel = visible.length > 0 && visible.every(m => this._sumupSel[m.sku.toUpperCase()]);
     const selCount = exportable.filter(m => this._sumupSel[m.sku.toUpperCase()]).length;
@@ -855,19 +884,35 @@ const Woo = {
       <div class="table-wrap mt"><table><thead><tr>
         <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout sélectionner"></th>
         <th>SKU</th><th class="col-name">Produit</th><th>Type / viande</th><th class="num">Prix TTC</th><th class="num">Stock évén.</th><th>Dans SumUp</th><th>Envoi SumUp</th></tr></thead>
-        <tbody>${visible.slice(0, 200).map(m => { const sku = m.sku.toUpperCase(); const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<tr>
-          <td><input type="checkbox" ${this._sumupSel[sku] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${skuJs}',this.checked);Woo.render();"></td>
+        <tbody>${(() => {
+          const map = new Map(), groups = [];
+          visible.slice(0, 200).forEach(m => { const k = this._sumupGrpKey(m); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(m); });
+          const row = (m, k, multi) => { const sku = m.sku.toUpperCase(); const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<tr data-grp="${U.esc(k)}"${multi && this._sumupGrpClosed.has(k) ? ' hidden' : ''}>
+          <td><input type="checkbox" class="ssel" data-grp="${U.esc(k)}" ${this._sumupSel[sku] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${skuJs}',this.checked);Woo.render();"></td>
           <td><span class="tag">${U.esc(m.sku)}</span></td>
-          <td class="col-name">${U.esc(m.name)}${m.variant ? ' — ' + U.esc(m.variant) : ''}</td>
+          <td class="col-name"${multi ? ' data-fmt="1"' : ''}>${multi ? U.esc(m.variant || m.name) : U.esc(m.name) + (m.variant ? ' — ' + U.esc(m.variant) : '')}</td>
           <td>${m.appType ? `<span class="badge info">${U.esc(m.appType)}</span>` : '—'}</td>
           <td class="num">${this.sumupExpPrice ? U.eur(m.appPrice) : '—'}</td>
           <td class="num">${this.sumupExpQty ? U.qty(m.appQty) : '—'}</td>
           <td>${!r ? '<span class="muted">—</span>' : inSumup.has(sku) ? (inSumup.get(sku).link ? '<span class="badge info" title="Ligne SumUp reliée à la main : le fichier d\'import y met le SKU de l\'appli">🔗 SKU à corriger</span>' : '<span class="pos">✅</span>') : '<span class="badge warn">absent</span>'}</td>
-          <td><button class="btn-icon" title="Exclure définitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">🚫</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
+          <td><button class="btn-icon" title="Exclure définitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">🚫</button></td></tr>`; };
+          return groups.map(g => {
+            if (g.rows.length < 2) return row(g.rows[0], g.k, false);
+            const closed = this._sumupGrpClosed.has(g.k);
+            return `<tr class="wgrp"><td><input type="checkbox" data-sgbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleSumupGroup(this.dataset.sgbox,this.checked)"></td>
+              <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(g.rows[0].name)}</b> <span class="muted">· ${g.rows.length} formats</span></td>
+              <td><button class="btn-icon" title="Exclure tous les formats de ce produit de SumUp (ne jamais les envoyer)" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupExcludeGroup(this.dataset.gk,true)">🚫</button></td></tr>` + g.rows.map(m => row(m, g.k, true)).join('');
+          }).join('');
+        })() || '<tr><td colspan="8" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
         ${visible.length > 200 ? `<p class="muted">… et ${visible.length - 200} autres non affichés (affine la recherche pour les voir — « Tout sélectionner » couvre bien les ${visible.length}).</p>` : ''}
       </div>
       ${excludedCount > 0 ? `<details class="fold mt" ${this._sumupExclOpen ? 'open' : ''} ontoggle="Woo._sumupExclOpen=this.open"><summary>🚫 ${excludedCount} article(s) exclu(s) de SumUp</summary><div class="fold-body">
-        ${units.filter(isExcl).sort((a, b) => U.sortFr(a.name, b.name)).map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(m.name)}${m.variant ? ' — ' + U.esc(m.variant) : ''}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">↩ Inclure</button></div>`; }).join('')}
+        ${(() => {
+          const map = new Map(), groups = [];
+          units.filter(isExcl).sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant)).forEach(m => { const k = this._sumupGrpKey(m); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(m); });
+          return groups.map(g => (g.rows.length > 1 ? `<div class="frow" style="gap:10px;align-items:center;padding:6px 0 2px;"><b style="flex:1;">${U.esc(g.rows[0].name)} <span class="muted" style="font-weight:400;">· ${g.rows.length} formats</span></b><button class="btn-ghost btn-sm" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupExcludeGroup(this.dataset.gk,false)">↩ Inclure tout le produit</button></div>` : '')
+            + g.rows.map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;${g.rows.length > 1 ? 'margin-left:18px;' : ''}"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(g.rows.length > 1 ? (m.variant || m.name) : m.name + (m.variant ? ' — ' + m.variant : ''))}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">↩ Inclure</button></div>`; }).join('')).join('');
+        })()}
       </div></details>` : ''}
     `;
   },
@@ -1231,6 +1276,7 @@ const Woo = {
       </div>` : ''}
     `);
     this._syncBoxes();
+    this._syncSumupBoxes();
   },
 
   exportCsv() {
