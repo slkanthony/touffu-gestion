@@ -1006,8 +1006,9 @@ const Woo = {
         </tr>`;
     }).join('') + '</tbody>').join('') || `<tbody><tr><td colspan="${nCols}" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr></tbody>`;
     const help = [has('price') ? 'Prix : ✅ = identique ; ❌ = écart (« + » = l\'appli est plus chère que SumUp), avec les deux prix en dessous.' : '', has('stock') ? 'Quantité : comparée à ton <b>stock événement</b>, seulement si le suivi de stock est activé dans SumUp (« + » = l\'appli a plus que SumUp).' : '', has('price') || has('stock') ? 'Clique « Prix TTC » ou « Quantité » pour trier par écart.' : 'Ici, seuls les SKU sont comparés : un article est « reconnu » quand son SKU existe dans l\'appli.'].filter(Boolean).join(' ');
+    const needV2 = this._sumup.v !== 2 ? `<div class="card" style="border-left:4px solid var(--warn);margin:10px 0 0;padding:10px 14px;">🔗 <b>Pour relier des articles, choisis à nouveau ton export SumUp</b> (le bouton « Choisir un fichier » ci-dessus ; le même fichier convient). Une seule fois : l'ancienne copie gardée en mémoire ne contient pas les identifiants des articles.</div>` : '';
     return `
-      ${this._catSeg()}${this._uncatAlert(r.uncat)}
+      ${needV2}${this._catSeg()}${this._uncatAlert(r.uncat)}
       ${this._whatSeg(W, 'Woo._setSumupWhat')}
       <div class="sumup-filters mt">
         ${Object.entries(F).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setSumupFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
