@@ -333,10 +333,27 @@ const App = {
     try { Stock.refreshPrices(); } catch (e) { console.error(e); }
     // Vider puis redessiner ramenait la page tout en haut (rechargement automatique au retour sur l'appli, synchro d'un autre appareil…) : on garde la position
     const y = window.scrollY;
-    document.getElementById('main').innerHTML = '';
+    // Champ en cours de saisie (Antho 2026-10-18 : « je dois cliquer 2 fois pour que ma saisie soit prise ») : un redessin venu de l'arrière-plan (synchro d'un autre appareil, retour sur la fenêtre,
+    // changement de jour…) remplace le champ par un NOUVEAU → le focus tombait sur <body> et les lettres suivantes étaient perdues. On le retrouve par son id : même focus, même curseur, même texte.
+    const ae = document.activeElement, main = document.getElementById('main');
+    // Champ sans id : retrouvé par ses gestionnaires (oninput / onchange contiennent l'identifiant de la ligne) + son texte d'aide ; refusé s'il y a le moindre doute (0 ou plusieurs candidats).
+    const sig = el => (el.getAttribute('oninput') || el.getAttribute('onchange') || '') + '|' + (el.getAttribute('placeholder') || '') + '|' + el.type;
+    const keep = ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && main.contains(ae) && !ae.readOnly && !ae.disabled && !/^(checkbox|radio|button|file|range|date)$/.test(ae.type)
+      && (ae.id || (ae.getAttribute('oninput') || ae.getAttribute('onchange')))
+      ? { id: ae.id, sig: sig(ae), v: ae.value, s: ae.selectionStart, e: ae.selectionEnd } : null;
+    main.innerHTML = '';
     const r = this.renderers[this.current];
     if (r) r();
     if (y > 0) window.scrollTo(0, y);
+    if (keep) {
+      let n = keep.id ? document.getElementById(keep.id) : null;
+      if (!keep.id) { const c = [...main.querySelectorAll('input,textarea')].filter(x => sig(x) === keep.sig); n = c.length === 1 ? c[0] : null; }
+      // pas pour les champs qui gèrent eux-mêmes leur focus (autocomplete, menus à recherche : `onfocus` rouvre une liste)
+      if (n && n !== ae && !n.getAttribute('onfocus') && !n.closest('.autocomplete') && n !== document.activeElement) {
+        if (n.value !== keep.v) n.value = keep.v;
+        try { n.focus({ preventScroll: true }); if (keep.s != null) n.setSelectionRange(keep.s, keep.e); } catch (e) { /* type sans curseur (number…) */ }
+      }
+    }
   },
   mount(html) { const m = document.getElementById('main'); m.innerHTML = html; return m; },
 
