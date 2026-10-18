@@ -63,17 +63,35 @@ const Accessoires = {
      (nom = catégorie + largeur : « poignée 20mm »). Identifiants DÉTERMINISTES (« g » + id de la 1re fiche) : refaire le calcul donne toujours le même résultat, même sur un autre appareil. */
   _famKey(a) { return U.normSearch(this._baseName(a)) + '|' + U.normSearch(a.category || '') + '|' + this._widthOf(a) + '|' + this._persoRank(a); },
   ensureFamilies() {
-    const all = this.crafted(), loose = all.filter(a => !a.groupId); if (!loose.length) return false;
-    const fam = new Map(); all.filter(a => a.groupId).forEach(a => { const k = this._famKey(a); if (!fam.has(k)) fam.set(k, { gid: a.groupId, name: a.groupName || this._familyName(a), gc: U.num(a.groupCoeff) }); });
-    const byKey = new Map(); loose.forEach(a => { const k = this._famKey(a); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(a); });
-    byKey.forEach((mem, k) => {
-      mem.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
-      let f = fam.get(k);
-      if (!f) f = { gid: 'g' + mem[0].id, name: this._familyName(mem[0]), gc: Math.round((U.num(mem[0].coefficient) || 2) * 100) / 100 };
-      mem.forEach(a => { a.groupId = f.gid; a.groupName = f.name; a.groupCoeff = f.gc || Math.round((U.num(a.coefficient) || 2) * 100) / 100; });
+    const all = this.crafted(), loose = all.filter(a => !a.groupId);
+    let changed = false;
+    if (loose.length) {
+      const fam = new Map(); all.filter(a => a.groupId).forEach(a => { const k = this._famKey(a); if (!fam.has(k)) fam.set(k, { gid: a.groupId, name: a.groupName || this._familyName(a), gc: U.num(a.groupCoeff) }); });
+      const byKey = new Map(); loose.forEach(a => { const k = this._famKey(a); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(a); });
+      byKey.forEach((mem, k) => {
+        mem.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+        let f = fam.get(k);
+        if (!f) f = { gid: 'g' + mem[0].id, name: this._familyName(mem[0]), gc: 0 };
+        mem.forEach(a => { a.groupId = f.gid; a.groupName = f.name; a.groupCoeff = f.gc || Math.round((U.num(a.coefficient) || 2) * 100) / 100; });
+      });
+      changed = true;
+    }
+    // Produit à UNE seule variante : son coefficient EST le coefficient commun (Antho 2026-10-18). Quand son prix TTC est tapé (↺), le coefficient enregistré est remis d'équerre avec ce prix
+    // (comme `_applyTtc`), sinon « ↺ Revenir au calcul auto » repartirait d'un vieux coefficient et le coefficient commun afficherait autre chose que la fiche.
+    const cnt = {}; all.forEach(a => { if (a.groupId) cnt[a.groupId] = (cnt[a.groupId] || 0) + 1; });
+    all.forEach(a => {
+      if (!a.groupId || cnt[a.groupId] !== 1) return;
+      const c = Pricing.accCalc(a);
+      let coef = U.num(a.coefficient) || 2;
+      if (c.priceFixed && c.cost > 0) {
+        coef = Math.round((c.priceTTC - U.num(c.persoSup)) / (1 + U.num(Store.state.settings.vatRate) / 100) / c.cost * 1e6) / 1e6;
+        if (coef > 0 && Math.abs(U.num(a.coefficient) - coef) > 1e-6) { a.coefficient = coef; changed = true; }
+      }
+      const g = Math.round(coef * 100) / 100;
+      if (g > 0 && Math.abs(U.num(a.groupCoeff) - g) > 0.0049) { a.groupCoeff = g; changed = true; }
     });
-    Store.save('catalogA');
-    return true;
+    if (changed) Store.save('catalogA');
+    return changed;
   },
   renameGroup(gid, val) {
     const name = String(val || '').trim(), mem = this._grpMembers(gid); if (!name || !mem.length) return;
@@ -85,7 +103,7 @@ const Accessoires = {
     const v = Math.round(U.num(val) * 100) / 100, mem = this._grpMembers(gid); if (!(v > 0) || !mem.length) return;
     let upd = 0, kept = 0;
     this._grpOpen[gid] = true;
-    const entry = this._grpTouch(mem, a => { if (this._follows(a)) { a.coefficient = v; a.priceTTCManual = ''; upd++; } else kept++; a.groupCoeff = v; }, `Coefficient commun ${v} — ${mem[0].groupName || ''}`);
+    const entry = this._grpTouch(mem, a => { if (this._follows(a) || mem.length === 1) { a.coefficient = v; a.priceTTCManual = ''; upd++; } else kept++; a.groupCoeff = v; }, `Coefficient commun ${v} — ${mem[0].groupName || ''}`);
     U.toast(`Coefficient commun ${v} : ${upd} longueur${upd > 1 ? 's' : ''} mise${upd > 1 ? 's' : ''} à jour${kept ? `, ${kept} gardent leur réglage propre` : ''}.`, false, entry.id);
   },
   async alignGroup(gid) {
@@ -131,7 +149,7 @@ const Accessoires = {
     const calcs = mem.map(a => Pricing.accCalc(a));
     const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' – ' + f(hi); };
     const widths = [...new Set(mem.map(a => this._widthOf(a)).filter(Boolean))];
-    const nCrit = calcs.filter(c => c.critical).length, nOwn = this._grpMembers(gid).filter(a => !this._follows(a)).length;
+    const nCrit = calcs.filter(c => c.critical).length, nOwn = total > 1 ? this._grpMembers(gid).filter(a => !this._follows(a)).length : 0;
     const gc = U.num(first.groupCoeff), open = !!this._grpOpen[gid], name = first.groupName || this._familyName(first);
     const notes = first.groupNotes ? `<div class="muted" style="font-size:.85rem;margin:0 0 10px;white-space:pre-line;">📝 ${U.esc(first.groupNotes)}</div>` : '';
     return `<details class="fold prod-fold acc-fold acc-group" id="grp-${gid}" ${open ? 'open' : ''} ontoggle="Accessoires.setGrpOpen('${gid}',this.open)">
@@ -707,7 +725,7 @@ const Accessoires = {
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="type-col">${this._lenOf(a) > 0 ? U.qty(this._lenOf(a)) + ' m' : '<span class="muted">—</span>'}</span>
-        <span class="type-col">${c.critical ? '<span class="badge bad">coeff critique</span>' : ''}${a.groupId && !this._follows(a) ? ' <span class="badge warn" title="Coefficient ou prix propre à cette longueur (différent du coefficient commun de la famille)">propre</span>' : ''}</span>
+        <span class="type-col">${c.critical ? '<span class="badge bad">coeff critique</span>' : ''}${a.groupId && !this._follows(a) && Store.state.catalogA.filter(x => x.groupId === a.groupId).length > 1 ? ' <span class="badge warn" title="Coefficient ou prix propre à cette longueur (différent du coefficient commun de la famille)">propre</span>' : ''}</span>
         <span class="meta right sensitive" style="white-space:nowrap;">${U.eur(c.cost)}</span>
         <span class="meta right"><b>${U.eur(c.priceTTC)}</b></span>
       </summary>
