@@ -388,8 +388,8 @@ const Woo = {
     const app = this.lines().find(x => x.sku === this._lkSku), pre = n => String(n || '').split(' — ')[0], norm = v => U.normSearch(v || '').replace(/[^a-z0-9]/g, '');
     const taken = new Set([String(s.id)].concat(Object.values(st.wooLinks).map(String))); let extra = 0;
     if (s.parent && app && this._cmp) this._cmp.appOnly.filter(a => a.sku !== this._lkSku && pre(a.name) === pre(app.name)).forEach(a => {
-      const f = norm(String(a.name || '').split(' — ').slice(1).join(' — ')); if (!f) return;
-      const t = this._lkAll.find(x => x.parent === s.parent && !x._taken && !taken.has(String(x.id)) && norm(String(x.name || '').split(' - ').pop()) === f);
+      const f = String(a.name || '').split(' — ').slice(1).join(' — '); if (!norm(f)) return;
+      const t = this._lkAll.find(x => x.parent === s.parent && !x._taken && !taken.has(String(x.id)) && this._fmtSame(f, String(x.name || '').split(' - ').pop()));
       if (t) { st.wooLinks[a.sku] = String(t.id); taken.add(String(t.id)); extra++; }
     });
     Store.save('settings');
@@ -491,6 +491,15 @@ const Woo = {
     if (!x || !y) return U.sortFr(String(a || ''), String(b || ''));
     return U.sortFr(x[1], y[1]) || this._fmtCmp(this._fmtKey(x[2]), this._fmtKey(y[2]));
   },
+  /* Même FORMAT, écrit différemment (Antho 2026-10-18) : pour un produit vendu à la pièce, SumUp / le site disent « PCS », « LOT2 » là où l'appli dit « 1 pièce », « Lot de 2 pc ». _packN : nombre de pièces
+     d'un format « à la pièce » (0 = pas un format à la pièce, on retombe sur la comparaison de texte : 100G ↔ 100g). Sert au rapprochement automatique des formats frères (relier un format relie les autres). */
+  _packN(v) {
+    const t = U.normSearch(String(v || '')).replace(/\s+/g, ' ').trim();
+    if (/^(pcs?|pieces?|unites?|1 ?(pcs?|pieces?|unites?))$/.test(t)) return 1;
+    const m = t.match(/^lot ?(?:de )?(\d+)(?: ?(?:pcs?|pieces?))?$/) || t.match(/^(\d+) ?(?:pcs?|pieces?|unites?)$/);
+    return m ? +m[1] : 0;
+  },
+  _fmtSame(a, b) { const x = this._packN(a), y = this._packN(b); return x || y ? x === y : this._fmtKey(a) === this._fmtKey(b); },
   _fmtCmp(a, b) { const x = Woo._fmtRank(a), y = Woo._fmtRank(b); return x[0] - y[0] || x[1] - y[1] || U.sortFr(x[2], y[2]); },
   _setSumupFilter(v) { this.sumupFilter = v; this.render(); },
   _setSumupQ(v) { this.sumupQ = v; this.render(); U.refocus('woo_sumup_q'); },
@@ -572,7 +581,7 @@ const Woo = {
     const nk = n => U.normSearch(n || '').replace(/[^a-z0-9]/g, ''), fk = v => this._fmtKey(v);
     const used = new Set(Object.values(st.sumupLinks).map(String)), linked = new Set(Object.keys(st.sumupLinks).map(k => k.toUpperCase())), todo = new Set(r.unknown.concat(r.noSku).map(l => l.id)); let extra = 0;
     if (fk(line.variant) !== '—') this._sumup.lines.filter(l => l.id && !used.has(l.id) && todo.has(l.id) && nk(l.name) === nk(line.name) && fk(l.variant) !== '—').forEach(l => {
-      const t = r.appOnly.find(u => u.name === unit.name && !linked.has(u.sku.trim().toUpperCase()) && fk(u.label) === fk(l.variant));
+      const t = r.appOnly.find(u => u.name === unit.name && !linked.has(u.sku.trim().toUpperCase()) && this._fmtSame(u.label, l.variant));
       if (t) { st.sumupLinks[t.sku.trim()] = l.id; used.add(l.id); linked.add(t.sku.trim().toUpperCase()); extra++; }
     });
     Store.save('settings');
