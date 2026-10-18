@@ -40,7 +40,8 @@ const Accessoires = {
      sinon elle a un réglage PROPRE (badge « propre »). Tout changement de famille = un seul « Annuler » (restoreBatch sur les fiches). */
   _grpOpen: {},
   setGrpOpen(gid, v) { this._grpOpen[gid] = !!v; },
-  _grpMembers(gid) { return Store.state.catalogA.filter(x => x.groupId === gid).sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name)); },
+  /* Fiche SEULE (pas rangée en famille) : « solo:<id> » — mêmes boutons ✨ SKU / 📋 Dupliquer qu'une famille (Antho 2026-10-18), sur cette seule fiche. */
+  _grpMembers(gid) { if (String(gid).startsWith('solo:')) return Store.state.catalogA.filter(x => x.id === String(gid).slice(5)); return Store.state.catalogA.filter(x => x.groupId === gid).sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name)); },
   _follows(a) { const gc = U.num(a.groupCoeff); return gc > 0 && Math.abs(U.num(a.coefficient) - gc) < 0.0005 && !(U.num(a.priceTTCManual) > 0); },
   _widthOf(a) { return a.mainWidth || (a.strapWidths || [])[0] || ''; },
   /* Nom d'une famille = même logique que les fiches : catégorie (type) + largeur de sangle principale + personnalisation (UV / laser) → « Longe 16mm », « Longe 16mm — Personnalisation UV ». Si le nom de la fiche précise un modèle (« Laisse Classique — 5m »), il est gardé : « Laisse Classique 20mm ». */
@@ -139,21 +140,21 @@ const Accessoires = {
   /* SKU de la famille : TYPE-LARGEUR-NOM-LONGUEUR[-UV][-LASER] pour chaque longueur (Pricing.autoSkuAcc), à valider ligne par ligne. */
   groupSkus(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
-    const taken = new Set(); Store.state.catalogA.filter(x => x.groupId !== gid).forEach(x => { if (x.sku) taken.add(String(x.sku).trim().toUpperCase()); });
+    const taken = new Set(); Store.state.catalogA.filter(x => !mem.includes(x)).forEach(x => { if (x.sku) taken.add(String(x.sku).trim().toUpperCase()); });
     Store.state.stockM.forEach(p => (p.variants || []).forEach(v => { if (v.sku) taken.add(String(v.sku).trim().toUpperCase()); }));
     Store.state.catalogM.forEach(p => (p.variants || []).forEach(v => { if (v.sku) taken.add(String(v.sku).trim().toUpperCase()); }));
     const rows = mem.map(a => { const base = Pricing.autoSkuAcc(a); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); return { a, now: String(a.sku || ''), next: sku }; });
     this._skuRows = rows;
     const changed = rows.filter(r => r.next && r.next !== r.now).length;
     U.modal({
-      title: '✨ SKU de la famille — ' + U.esc(mem[0].groupName || ''), okLabel: 'Appliquer',
+      title: (mem[0].groupId ? '✨ SKU de la famille — ' : '✨ SKU — ') + U.esc(mem[0].groupName || mem[0].name || ''), okLabel: 'Appliquer',
       body: `<p class="muted" style="margin-top:0;">Format <b>TYPE-LARGEUR-NOM-LONGUEUR</b> (+ -UV / -LASER). Coche les lignes à changer. ⚠️ Un SKU modifié doit l'être aussi dans SumUp et sur le site si tu les utilises.</p>
         <div class="table-wrap"><table><thead><tr><th></th><th>Fiche</th><th>SKU actuel</th><th>SKU proposé</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><input type="checkbox" id="sk_${i}" ${r.next && r.next !== r.now ? 'checked' : ''} ${r.next && r.next !== r.now ? '' : 'disabled'} style="width:auto;"></td><td>${U.esc(r.a.name)}</td><td class="muted">${U.esc(r.now || '—')}</td><td><b>${U.esc(r.next || '—')}</b>${r.next === r.now ? ' <span class="muted">(déjà bon)</span>' : ''}</td></tr>`).join('')}</tbody></table></div>
-        <p class="muted">${changed ? changed + ' SKU à mettre à jour.' : 'Tous les SKU de la famille sont déjà au bon format.'}</p>`,
+        <p class="muted">${changed ? changed + ' SKU à mettre à jour.' : 'Tous les SKU sont déjà au bon format.'}</p>`,
       onOk: () => {
         const sel = rows.filter((r, i) => { const c = document.getElementById('sk_' + i); return c && c.checked && !c.disabled; });
         if (!sel.length) { U.toast('Rien de coché.', true); return false; }
-        const entry = this._grpTouch(sel.map(r => r.a), a => { a.sku = sel.find(r => r.a === a).next; }, `SKU de la famille mis à jour — ${mem[0].groupName || ''} (${sel.length})`);
+        const entry = this._grpTouch(sel.map(r => r.a), a => { a.sku = sel.find(r => r.a === a).next; }, `SKU mis à jour — ${mem[0].groupName || mem[0].name || ''} (${sel.length})`);
         U.closeModal(); U.toast(`${sel.length} SKU mis à jour.`, false, entry.id);
       }
     });
@@ -277,41 +278,41 @@ const Accessoires = {
   /* « Dupliquer » une famille : copie toutes les longueurs (stock à 0, SKU neufs). On peut changer la LARGEUR : les sangles de chaque nomenclature passent à la nouvelle largeur → coûts recalculés ; les prix suivent le coefficient commun. */
   duplicateGroup(gid) {
     const mem = this._grpMembers(gid); if (!mem.length) return;
-    const f = mem[0], w0 = this._widthOf(f);
+    const f = mem[0], w0 = this._widthOf(f), solo = String(gid).startsWith('solo:'), fname = f.groupName || f.name || '';
     const ws = [...new Set([w0, ...(Store.state.settings.widths || [])].filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
     const r0 = this._persoRank(f), uv0 = !!(r0 & 1), la0 = !!(r0 & 2), th0 = !!(r0 & 4);
-    this._dgW0 = w0; this._dgBase = String(f.groupName || '').replace(/\s*\(copie\)\s*$/, '').replace(this._PERSO_RX, '').trim(); this._dgUv0 = uv0; this._dgLa0 = la0; this._dgTh0 = th0;
+    this._dgW0 = w0; this._dgBase = String(fname).replace(/\s*\(copie\)\s*$/, '').replace(this._PERSO_RX, '').trim(); this._dgUv0 = uv0; this._dgLa0 = la0; this._dgTh0 = th0;
     U.modal({
-      title: '📋 Dupliquer la famille — ' + U.esc(f.groupName || ''), okLabel: 'Dupliquer',
-      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">Nom de la nouvelle famille</label><input id="dg_name" value="${U.esc((f.groupName || '') + ' (copie)')}"></div>
+      title: (solo ? '📋 Dupliquer — ' : '📋 Dupliquer la famille — ') + U.esc(fname), okLabel: 'Dupliquer',
+      body: `<div class="frow" style="align-items:flex-start;"><div class="fg" style="flex:1 1 240px;"><label style="white-space:nowrap;">${solo ? 'Nom de la copie' : 'Nom de la nouvelle famille'}</label><input id="dg_name" value="${U.esc(fname + ' (copie)')}"></div>
         <div class="fg" style="flex:0 0 150px;"><label style="white-space:nowrap;">Largeur de sangle ${U.info("Change la largeur pour décliner le produit (ex. 16 mm → 20 mm) : les sangles de chaque longueur passent à la nouvelle largeur et les coûts se recalculent. Tu n'as plus qu'à vérifier les prix.")}</label><select id="dg_w" onchange="Accessoires._dgWidth()">${ws.map(w => `<option ${w === w0 ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div></div>
         <div class="fg"><label>🎨 Personnalisation de la nouvelle famille ${U.info("Coche pour décliner le produit en version personnalisée : toutes les longueurs reçoivent l'impression UV et / ou la gravure laser (coût, nom et SKU mis à jour).")}</label>
           ${this._persoBlockHTML('dg', f, 'Accessoires._dgWidth()')}</div>
-        <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} seront créées (stock à 0, nouveaux SKU).</p>`,
+        <p class="muted">${mem.length} fiche${mem.length > 1 ? 's' : ''} ser${mem.length > 1 ? 'ont' : 'a'} créée${mem.length > 1 ? 's' : ''} (stock à 0, nouveaux SKU).</p>`,
       onOk: () => {
         const name = U.val('dg_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
-        const w1 = U.val('dg_w') || w0, gid2 = U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
+        const w1 = U.val('dg_w') || w0, gid2 = solo ? '' : U.uid(), gc = U.num(f.groupCoeff), changed = w1 !== w0;
         const { uv: uv1, laser: la1, theme: th1, uvMl, laMin } = this._persoRead('dg'), persoChanged = uv1 !== uv0 || la1 !== la0 || th1 !== th0;
         const taken = this._takenSkus(''), created = []; let missing = 0;
         mem.forEach(a => {
           const c = JSON.parse(JSON.stringify(a));
-          c.id = U.uid(); c.groupId = gid2; c.groupName = name; c.stockGeneral = 0; c.stockEvent = 0;
+          c.id = U.uid(); c.stockGeneral = 0; c.stockEvent = 0;
+          if (solo) { delete c.groupId; delete c.groupName; delete c.groupCoeff; c.name = name; } else { c.groupId = gid2; c.groupName = name; }
           if (changed) {
             c.strapWidths = (c.strapWidths || []).map(w => w === w0 ? w1 : w); c.mainWidth = w1;
             (c.bom || []).forEach(l => { if (l.familyKey && l.familyKey.endsWith(':' + w0)) { l.familyKey = l.familyKey.slice(0, -w0.length) + w1; if (!this.families().some(x => x.key === l.familyKey)) missing++; } });
           }
           c.uv = uv1; c.uvMl = uv1 ? uvMl : 0; c.laser = la1; c.laserMin = la1 ? laMin : 0; if (th1) c.theme = true; else delete c.theme;
-          if (persoChanged) c.name = this._persoName(c.name, uv1, la1, th1);
-          else if (!changed) c.name = a.name + ' (copie)';
+          if (!solo) { if (persoChanged) c.name = this._persoName(c.name, uv1, la1, th1); else if (!changed) c.name = a.name + ' (copie)'; }
           if (gc > 0) { c.coefficient = gc; c.priceTTCManual = ''; }
           this._autoStrap(c);
           const base = Pricing.autoSkuAcc(c); let sku = base, n = 1; while (base && taken.has(sku.toUpperCase())) { n++; sku = base + '-' + n; } if (sku) taken.add(sku.toUpperCase()); c.sku = base ? sku : '';
           created.push(c);
         });
         created.forEach(c => Store.state.catalogA.push(c));
-        const entry = Store.log('accessoires', `Famille dupliquée — ${name} (${created.length} fiches)`, { type: 'restoreBatch', data: created.map(c => ({ domain: 'catalogA', id: c.id, before: null })) });
-        Store.save('catalogA'); this._grpOpen[gid2] = true; U.closeModal(); App.rerender();
-        U.toast(`Famille dupliquée (${created.length} fiches).` + (missing ? ` ⚠️ ${missing} ligne(s) de sangle sans référence en ${w1} dans le stock : coût à vérifier.` : ''), missing > 0, entry.id);
+        const entry = Store.log('accessoires', `${solo ? 'Accessoire dupliqué' : 'Famille dupliquée'} — ${name} (${created.length} fiche${created.length > 1 ? 's' : ''})`, { type: 'restoreBatch', data: created.map(c => ({ domain: 'catalogA', id: c.id, before: null })) });
+        Store.save('catalogA'); if (!solo) this._grpOpen[gid2] = true; U.closeModal(); App.rerender();
+        U.toast(`${solo ? 'Accessoire dupliqué' : 'Famille dupliquée'} (${created.length} fiche${created.length > 1 ? 's' : ''}).` + (missing ? ` ⚠️ ${missing} ligne(s) de sangle sans référence en ${w1} dans le stock : coût à vérifier.` : ''), missing > 0, entry.id);
       }
     });
   },
@@ -776,8 +777,10 @@ const Accessoires = {
         <div class="mt">${U.seg([
           { l: '🛠 Fabriquer', tone: 'ok', js: `Accessoires.fabricate('${a.id}')` },
           { l: 'Modifier', js: `Accessoires.editAcc('${a.id}')` },
-          // Plus de « Dupliquer » ni « Sur mesure » (Antho 2026-10-14) : une longueur de plus = « ＋ Ajouter une longueur » de la famille ; pour une fiche pas encore rangée, ce bouton crée la famille
+          // Plus de « Sur mesure » (Antho 2026-10-14) : une longueur de plus = « ＋ Ajouter une longueur » de la famille ; pour une fiche pas encore rangée, ce bouton crée la famille
           ...(!a.groupId && U.num(a.productLength) > 0 && (a.bom||[]).some(l => this.bomLineUnit(l) === 'm') ? [{ l: '＋ Ajouter une longueur', js: `Accessoires.customLength('${a.id}',true)` }] : []),
+          // Fiche seule : mêmes ✨ SKU et 📋 Dupliquer (UV / laser, largeur) qu'une famille (Antho 2026-10-18)
+          ...(!a.groupId ? [{ l: '✨ SKU', js: `Accessoires.groupSkus('solo:${a.id}')` }, { l: '📋 Dupliquer', js: `Accessoires.duplicateGroup('solo:${a.id}')` }] : []),
           { l: 'Supprimer', tone: 'danger', js: `Accessoires.delAcc('${a.id}')` }
         ], { full: true, scroll: true })}</div>
       </div></details>`;
