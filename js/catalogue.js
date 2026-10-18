@@ -21,31 +21,25 @@ const Catalogue = {
   _setCtlFilter(val) { this.filters.ctl = val; this.render(); },
 
   /* ---------- menu « Contrôle » (filtre d'aide au contrôle des fiches) ---------- */
+  /* Rangé par thème, avec le nombre de produits concernés (Antho 2026-10-18 : 22 filtres à la suite = illisible). */
   _CTL: [
-    ['all', 'Tous'],
-    ['crit', '⚠ Coeff critique'],
-    ['under', '📉 Vendu sous le coût de revient'],
-    ['own', '🎚 Coeff ou décote personnalisé'],
-    ['px_old', '🕒 Prix à vérifier : plus de 30 jours ou jamais daté'],
-    ['px_old90', '🕒 Prix à vérifier : plus de 90 jours ou jamais daté'],
-    ['px_new', '✅ Prix mis à jour ces 30 derniers jours'],
-    ['px_none', '❔ Prix jamais daté'],
-    ['vat0', '🧾 Sans TVA d\'achat : 0 %'],
-    ['vat10', '🧾 TVA d\'achat à 10 %'],
-    ['vat20', '🧾 TVA d\'achat à 20 %'],
-    ['vatOwn', '🧾 TVA d\'achat propre à la fiche'],
-    ['noRef', '📝 Sans réf. fournisseur'],
-    ['noUrl', '📝 Sans lien fournisseur'],
-    ['noPpk', '📝 Vente à la pièce sans pièces par kilo'],
-    ['noSku', '📝 Variante sans SKU'],
-    ['unlinked', '🔗 Non relié au Stock'],
-    ['linked', '🔗 Relié au Stock'],
-    ['t_gram', '⚖ Vendu au poids'],
-    ['t_piece', '🔢 Vendu à la pièce'],
-    ['t_size', '📏 Vendu par taille'],
-    ['inactive', '🙈 Avec variantes désactivées'],
-    ['cheaper', '💡 Principal pas le moins cher']
+    ['', [['all', 'Tous']]],
+    ['💶 Prix & marges', [['crit', 'Coeff critique'], ['under', 'Vendu sous le coût de revient'], ['own', 'Coeff ou décote personnalisé'], ['cheaper', 'Principal pas le moins cher']]],
+    ['🕒 Date du prix d’achat', [['px_new', 'Mis à jour ces 30 derniers jours'], ['px_old', 'À vérifier : plus de 30 jours ou jamais daté'], ['px_old90', 'À vérifier : plus de 90 jours ou jamais daté'], ['px_none', 'Jamais daté']]],
+    ['🧾 TVA d’achat', [['vat0', 'Sans TVA d’achat : 0 %'], ['vat10', 'TVA d’achat à 10 %'], ['vat20', 'TVA d’achat à 20 %'], ['vatOwn', 'TVA d’achat propre à la fiche']]],
+    ['📝 Fiches à compléter', [['noUrl', 'Sans lien fournisseur'], ['noRef', 'Sans réf. fournisseur'], ['noSku', 'Variante sans SKU'], ['noPpk', 'Vente à la pièce sans pièces par kilo']]],
+    ['🔗 Liaison au Stock', [['unlinked', 'Non relié au Stock'], ['linked', 'Relié au Stock']]],
+    ['📏 Façon de vendre', [['t_gram', 'Vendu au poids'], ['t_piece', 'Vendu à la pièce'], ['t_size', 'Vendu par taille'], ['inactive', 'Avec variantes désactivées']]]
   ],
+  /* Options du menu « Contrôle » : titres de groupe + nombre de fiches par filtre */
+  _ctlOptions(linked) {
+    const all = Store.state.catalogM || [], out = [];
+    this._CTL.forEach(([g, items]) => {
+      if (g) out.push({ g });
+      items.forEach(([v, l]) => out.push({ v, s: l, l: v === 'all' ? l : `${l} (${all.filter(p => this._ctlMatch(p, v, linked)).length})` }));
+    });
+    return out;
+  },
   /* Calculs de toutes les variantes ACTIVES d'une fiche (même position/décote que dans la liste) */
   _activeCalcs(p) {
     const base = Pricing.baseUnitCost(p), act = (p.variants || []).filter(v => v.enabled !== false);
@@ -385,7 +379,7 @@ const Catalogue = {
         <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
         <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
-        <div class="fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._CTL.map(([v, l]) => ({ v, l })), onPick: 'Catalogue._setCtlFilter' })}</div>
+        <div class="fg ctl-fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._ctlOptions(linked), onPick: 'Catalogue._setCtlFilter' })}</div>
         <button class="btn ${this.sheet.open ? 'btn-cta' : 'btn-ghost'}" onclick="Catalogue.sheetShow()" title="Liste imprimable / téléchargeable : produit, variante, SKU, sachet, coeff, prix">🖨 Fiche de contrôle</button>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>

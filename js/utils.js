@@ -375,12 +375,12 @@ const U = {
   CHART_COLORS: ['#e8955a', '#4fbf8b', '#ef6f6c', '#f5c04e', '#5aa9e6', '#b78cf0', '#f28ab8', '#46cfc4', '#a3d65c', '#f59e6c', '#7b8cf0', '#e3d26f', '#6dc8f0', '#d98cd0', '#8fe3a6', '#f0a0a0', '#c9a36b', '#5fb3a0', '#cf7a4a', '#9aa7ff'],
 
   customSelect({ value, options, onPick, cls }) {
-    const cur = options.find(o => String(o.v) === String(value)) || options[0];
-    const label = cur ? cur.l : '—';
+    const cur = options.find(o => !o.g && String(o.v) === String(value)) || options.find(o => !o.g);
+    const label = cur ? (cur.s || cur.l) : '—';   // s = libellé court affiché dans le champ fermé (sans le compteur)
     return `<details class="multiselect custom-select${cls ? ' ' + cls : ''}">
       <summary>${U.esc(label)}</summary>
       <div class="multiselect-panel">
-        ${options.map(o => { const [a, b, c] = U.optParts(o.l); return `<div class="dluo-opt pp-row${String(o.v)===String(value)?' active':''}" onclick="this.closest('details').open=false;(${onPick})('${U.esc(String(o.v)).replace(/&#39;/g, "\\'")}')"><span class="pp-a">${U.esc(a)}</span><span class="pp-b">${U.esc(b)}</span><span class="pp-c">${U.esc(c)}</span></div>`; }).join('')}
+        ${options.map(o => { if (o.g) return `<div class="opt-group">${U.esc(o.g)}</div>`; const [a, b, c] = U.optParts(o.l); return `<div class="dluo-opt pp-row${String(o.v)===String(value)?' active':''}" onclick="this.closest('details').open=false;(${onPick})('${U.esc(String(o.v)).replace(/&#39;/g, "\\'")}')"><span class="pp-a">${U.esc(a)}</span><span class="pp-b">${U.esc(b)}</span><span class="pp-c">${U.esc(c)}</span></div>`; }).join('')}
       </div>
     </details>`;
   },
