@@ -222,6 +222,15 @@ const Woo = {
     const site = new Map(ref.items.map(s => [s.sku, s]));
     const app = new Map();
     this.lines().filter(l => l.sku).forEach(l => app.set(l.sku, l));
+    // SKU EN DOUBLE sur le site (Antho 2026-10-18) : une seule fiche garde la correspondance (nom le plus ressemblant, sans ambiguïté) ; sans fiche nettement plus proche, aucune n'est retenue
+    // (le produit de l'appli passe en « absent du site » + alerte) plutôt que de mettre à jour la mauvaise fiche au hasard. Les autres fiches sortent en « site seul » + « SKU en double ».
+    const dupInfo = new Map();
+    (ref.dupGroups || []).forEach(g => {
+      const l = app.get(g[0].sku); let best = null;
+      if (l) { const sc = g.map(x => [this._slScore(l.name, x.name), x]).sort((a, b) => b[0] - a[0]); if (sc[0][0] > sc[1][0]) best = sc[0][1]; }
+      if (best) site.set(best.sku, best); else if (l) site.delete(g[0].sku);
+      dupInfo.set(g[0].sku, g);
+    });
     const matched = [], appOnly = [], siteOnly = [];
     const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
     // Liaisons manuelles (Antho 2026-10-17) : produit de l'appli ↔ fiche du site (par ID) dont l'UGS est différent ou vide ; l'appli est prioritaire → l'UGS du site sera corrigé par le CSV « Corriger les UGS du site »
@@ -242,7 +251,16 @@ const Woo = {
       matched.push({ sku, name: l.name, appPrice: l.price, sitePrice: s.price, priceDiff, appStock: l.stock, siteStock: s.stock, stockDiff, link, sid: ref.v === 2 ? { id: String(s.id), type: s.type, parent: s.parent } : null, ...meta(l) });
     });
     site.forEach((s, sku) => { if (!matchedKeys.has(key(s))) siteOnly.push({ sku, name: s.name, kind: s.kind, meat: s.meat, _site: true }); });
-    return { siteRows: site.size, siteNoSku: ref.siteNoSku, matched, appOnly, siteOnly };
+    const idKey = x => String(x.id || x.name), othersOf = (g, id) => g.filter(x => idKey(x) !== id).map(x => x.name + (x.id ? ' (#' + x.id + ')' : ''));
+    dupInfo.forEach((g, sku) => {
+      const m = matched.find(x => x.sku === sku), keptId = m && m.sid ? String(m.sid.id) : null;
+      if (m) m.dup = { n: g.length, others: othersOf(g, keptId) };
+      const a = appOnly.find(x => x.sku === sku); if (a) a.dup = { n: g.length, others: g.map(x => x.name + (x.id ? ' (#' + x.id + ')' : '')) };
+      for (let i = siteOnly.length - 1; i >= 0; i--) if (siteOnly[i].sku === sku) siteOnly.splice(i, 1);
+      g.filter(x => idKey(x) !== keptId).forEach(x => siteOnly.push({ sku, name: x.name, kind: x.kind, meat: x.meat, _site: true, dup: { n: g.length, others: othersOf(g, idKey(x)) } }));
+    });
+    const dups = [...dupInfo.values()].map(g => ({ sku: g[0].sku, labels: g.map(x => x.name + (x.id ? ' (#' + x.id + ')' : '')) }));
+    return { siteRows: site.size, siteNoSku: ref.siteNoSku, matched, appOnly, siteOnly, dups, appDups: this._appDups() };
   },
   /* Fichier choisi = lu TOUT DE SUITE (onchange du champ, Antho 2026-10-17 : il fallait recharger la page pour que le 2e choix soit pris en compte). Le champ est vidé
      dès la lecture (rechoisir le même nom de fichier redéclenche l'événement) ; une lecture impossible (fichier déplacé / modifié depuis le choix) est signalée. */
@@ -278,14 +296,18 @@ const Woo = {
       // ID / Type / Parent : nécessaires pour RELIER une fiche du site à un produit de l'appli (liaison par ID, sans doublon)
       const iType = this._cmpCol(head, ['Type']);
       const idOf = r => ({ id: iId >= 0 ? String(r[iId] || '').trim() : '', type: iType >= 0 ? String(r[iType] || '').trim() : '', parent: iPar >= 0 ? String(r[iPar] || '').trim() : '' });
-      const site = new Map(), noSku = []; let siteNoSku = 0;
+      const site = new Map(), noSku = [], all = new Map(); let siteNoSku = 0;
       rows.slice(1).filter(r => r.length > 1).forEach(r => {
         const sku = (r[iSku] || '').trim();
         const base = { name: iName >= 0 ? r[iName] : '', price: iPrice >= 0 ? num(r[iPrice]) : null, stock: iStock >= 0 ? num(r[iStock]) : null, ...idOf(r), ...siteKind(r) };
         if (!sku) { siteNoSku++; if (base.id && (base.type === 'variation' || base.type === 'simple')) noSku.push({ sku: '', ...base }); return; }
         site.set(sku, { sku, ...base });
+        if (!all.has(sku)) all.set(sku, []);
+        all.get(sku).push({ sku, ...base });
       });
-      this._siteRef = { v: 2, file: file.name, ts: Date.now(), siteNoSku, items: [...site.values()], noSku };
+      // SKU (UGS) présents sur plusieurs fiches du site : gardés pour l'alerte « SKU en double » (la comparaison, elle, ne retient qu'une fiche par UGS)
+      const dupGroups = [...all.values()].filter(g => g.length > 1);
+      this._siteRef = { v: 2, file: file.name, ts: Date.now(), siteNoSku, items: [...site.values()], noSku, dupGroups };
       this._pruneLinks();
       try { localStorage.setItem('touffu_siteRef', JSON.stringify(this._siteRef)); } catch (e) { U.toast('Export du site trop gros pour la mémoire du navigateur : il faudra le redéposer après un rechargement.', true); }
       this._cmp = this._buildCmp();
@@ -322,7 +344,8 @@ const Woo = {
     const ref = this._siteRef; if (!ref || ref.v !== 2) return null;
     const appBySku = new Map(this.lines().filter(l => l.sku).map(l => [l.sku, l]));
     const used = new Set(Object.values(Store.state.settings.wooLinks || {}).map(String));
-    return ref.items.concat(ref.noSku || []).filter(s => s.id && s.type !== 'variable' && !used.has(String(s.id)))
+    const pool = new Map(); ref.items.concat(ref.noSku || [], ...(ref.dupGroups || [])).forEach(s => { if (s.id && !pool.has(String(s.id))) pool.set(String(s.id), s); });
+    return [...pool.values()].filter(s => s.type !== 'variable' && !used.has(String(s.id)))
       .map(s => { const t = s.sku ? appBySku.get(s.sku) : null; return t ? { ...s, _taken: t } : s; });   // _taken : l'UGS de cette fiche est déjà celui d'un produit de l'appli
   },
   openLink(sku) {
@@ -795,6 +818,20 @@ const Woo = {
   },
   _sumupOpen: {},
   /* Bandeau « SKU en double » : un SKU est UNIQUE, dans SumUp comme dans l'appli (Antho 2026-10-18). */
+  _appDups() {
+    // Sur les produits eux-mêmes (Ventes.units), PAS sur lines() : lines() fusionne les SKU identiques (stocks additionnés) et cacherait justement le doublon.
+    const m = new Map(); Ventes.units().filter(u => u.sku && !this._unitOff(u)).forEach(u => { const k = u.sku.trim().toUpperCase(); if (!m.has(k)) m.set(k, []); m.get(k).push(u); });
+    return [...m.values()].filter(g => g.length > 1).map(g => ({ sku: g[0].sku.trim(), labels: g.map(u => u.name + (u.label ? ' — ' + u.label : '')) }));
+  },
+  /* Même bandeau pour le site (Comparer ET Exporter : deux lignes de l'appli avec le même SKU feraient refuser l'import par WooCommerce) */
+  _siteDupAlert(c) {
+    const dups = c ? c.dups : [], appDups = c ? c.appDups : this._appDups();
+    if (!dups.length && !appDups.length) return '';
+    const li = arr => arr.slice(0, 8).map(d => `<li><span class="sku-txt">${U.esc(d.sku)}</span> — ${d.labels.map(x => U.esc(x)).join(' · ')}</li>`).join('') + (arr.length > 8 ? `<li class="muted">… et ${arr.length - 8} autre(s)</li>` : '');
+    return `<div class="card" style="border-left:4px solid var(--alerte);margin:10px 0 0;padding:10px 14px;">
+      ${dups.length ? `<b>⚠️ ${dups.length} SKU (UGS) en double sur le site</b> — WooCommerce veut un UGS unique. L'appli ne compare que la fiche la plus ressemblante (sans fiche nettement plus proche, aucune : le produit passe en « absent du site ») ; corrige l'UGS de l'autre fiche sur le site, ou relie la bonne avec 🔗.<ul style="margin:6px 0 0 18px;">${li(dups)}</ul>` : ''}
+      ${appDups.length ? `<div${dups.length ? ' class="mt"' : ''}><b>⚠️ ${appDups.length} SKU en double dans l'appli</b> — à corriger dans Stock / Accessoires (deux produits ne peuvent pas avoir le même SKU : l'import du site serait refusé ou mélangé).<ul style="margin:6px 0 0 18px;">${li(appDups)}</ul></div>` : ''}</div>`;
+  },
   _sumupDupAlert(r) {
     if (!r || (!r.dups.length && !r.appDups.length)) return '';
     const li = arr => arr.slice(0, 8).map(d => `<li><span class="sku-txt">${U.esc(d.sku)}</span> — ${d.labels.map(x => U.esc(x)).join(' · ')}</li>`).join('') + (arr.length > 8 ? `<li class="muted">… et ${arr.length - 8} autre(s)</li>` : '');
@@ -1077,12 +1114,12 @@ const Woo = {
       ...c.siteOnly.map(m => ({ ...m, st: 'siteOnly', priceOk: null, stockOk: null, priceDiff: null, stockDiff: null }))
     ].filter(m => this._pass(m));
     const matched = m => m.st === 'matched';
-    const skuOk = m => matched(m) && !m.link, isOk = m => skuOk(m) && m.priceOk !== false && m.stockOk !== false;
-    const lnk = { l: '🔗 UGS à corriger sur le site', f: m => !!m.link };
+    const skuOk = m => matched(m) && !m.link && !m.dup, isOk = m => skuOk(m) && m.priceOk !== false && m.stockOk !== false;
+    const lnk = { l: '🔗 UGS à corriger sur le site', f: m => !!m.link }, dupF = { l: '⚠️ SKU en double', f: m => !!m.dup };
     const bad = '⚠️ À corriger', app = { l: '⚠️ Absent du site', f: m => m.st === 'appOnly' }, site = { l: 'ℹ️ Absent de l\'appli', f: m => m.st === 'siteOnly' };
     const FS = {
-      all: { issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk }, linked: lnk, price: { l: '💶 Prix différent', f: m => m.priceOk === false }, stock: { l: '📦 Stock différent', f: m => m.stockOk === false }, appOnly: app, siteOnly: site },
-      sku: { issues: { l: bad, f: m => !skuOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: skuOk }, linked: lnk, appOnly: app, siteOnly: site },
+      all: { issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk }, dup: dupF, linked: lnk, price: { l: '💶 Prix différent', f: m => m.priceOk === false }, stock: { l: '📦 Stock différent', f: m => m.stockOk === false }, appOnly: app, siteOnly: site },
+      sku: { issues: { l: bad, f: m => !skuOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: skuOk }, dup: dupF, linked: lnk, appOnly: app, siteOnly: site },
       price: { issues: { l: bad, f: m => m.priceOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.priceOk === true } },
       stock: { issues: { l: bad, f: m => m.stockOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.stockOk === true } }
     };
@@ -1114,18 +1151,19 @@ const Woo = {
       : `<span class="neg">❌ ${d != null ? sgn(d) + fmt(d) : ''}</span><div class="sub">site ${b != null ? fmt(b) : '—'} · ${lb} ${fmt(a)}</div>`;
     const widths = { all: [32, 14, 22, 16, 16], sku: [40, 20, 40], price: [44, 20, 36], stock: [44, 20, 36] }[W];
     const body = groups.map((g, gi) => `<tbody class="sumup-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((m, i) => `<tr>${i === 0 ? `<td rowspan="${g.rows.length}"><b>${U.esc(g.p)}</b></td>` : ''}
-          <td>${m._sp.v ? `<b>${U.esc(m._sp.v)}</b>` : '<span class="muted">—</span>'}${m.st === 'appOnly' ? `<div class="sub">⚠️ absent du site — créerait un doublon à l'export</div><div class="mt" style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.openLink(this.dataset.sku)">🔗 Relier à une fiche du site</button></div>` : m.link ? `<div class="sub">🔗 fiche #${U.esc(m.link.id)} · UGS du site : ${m.link.siteSku ? U.esc(m.link.siteSku) : 'vide'}</div><div style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.unlink(this.dataset.sku)">Délier</button></div>` : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}</td>
+          <td>${m._sp.v ? `<b>${U.esc(m._sp.v)}</b>` : '<span class="muted">—</span>'}${m.st === 'appOnly' ? `<div class="sub">⚠️ absent du site — créerait un doublon à l'export</div><div class="mt" style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.openLink(this.dataset.sku)">🔗 Relier à une fiche du site</button></div>` : m.link ? `<div class="sub">🔗 fiche #${U.esc(m.link.id)} · UGS du site : ${m.link.siteSku ? U.esc(m.link.siteSku) : 'vide'}</div><div style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.unlink(this.dataset.sku)">Délier</button></div>` : m.st === 'siteOnly' ? '<div class="sub">ℹ️ sur le site, absent de l\'appli</div>' : ''}${m.dup ? `<div class="sub" style="color:var(--alerte);">⚠️ SKU en double sur le site : aussi sur « ${U.esc(m.dup.others.join(' · '))} »</div>` : ''}</td>
           ${has('sku') ? `<td><span class="sku-txt">${U.esc(m.sku)}</span></td>` : ''}
           ${has('price') ? `<td>${cell(m.priceOk, m.priceDiff, m.appPrice, m.sitePrice, U.eur, 'appli')}</td>` : ''}
           ${has('stock') ? `<td>${cell(m.stockOk, m.stockDiff, m.appStock, m.siteStock, U.qty, 'appli')}</td>` : ''}
         </tr>`).join('') + '</tbody>').join('') || `<tbody><tr><td colspan="${2 + cols.length}" class="muted">${cur === 'issues' ? 'Rien à corriger 🎉' : 'Aucune ligne.'}</td></tr></tbody>`;
     return `
+      ${this._siteDupAlert(c)}
       ${c.siteRows === 0 ? '<p class="warn-txt mt">Aucune ligne du site n\'a de SKU (UGS) rempli — impossible de comparer tant que tu n\'as pas mis les SKU sur ton site.</p>' : ''}
       ${this._whatSeg(W, 'Woo._setCmpWhat')}
       ${this._catSeg()}
       <div class="grid c3 mt">${this._ctrls(opts).join('')}</div>
       <div class="sumup-filters mt">
-        ${Object.entries(F).filter(([k, o]) => k !== 'linked' || all.some(o.f)).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
+        ${Object.entries(F).filter(([k, o]) => !['linked', 'dup'].includes(k) || all.some(o.f)).map(([k, o]) => `<button class="${cur === k ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Woo._setCmpFilter('${k}')">${o.l} <b>(${all.filter(o.f).length})</b></button>`).join('')}
         ${c.siteNoSku ? `<span class="muted" style="align-self:center;font-size:.82rem;">· ${c.siteNoSku} ligne(s) du site sans SKU (non comparables)</span>` : ''}
       </div>
       <div class="frow mt" style="gap:8px;flex-wrap:wrap;align-items:center;">
@@ -1295,7 +1333,8 @@ const Woo = {
 
 ` : ''}
 
-      ${this.tab === 'export' ? `      ${missing.length ? `<div class="card" style="border-left:4px solid var(--warn);">
+      ${this.tab === 'export' ? `      ${this._siteDupAlert((this._restoreSiteCache(), this._siteRef ? this._buildCmp() : null))}
+      ${missing.length ? `<div class="card" style="border-left:4px solid var(--warn);">
         <h2>⚠️ ${missing.length} produit(s) sans SKU — à relier</h2>
         <p class="muted help">Ces produits ne seront pas envoyés tant qu'ils n'ont pas de SKU. Renseigne le même SKU que sur ta fiche WooCommerce (Prix mastication → Modifier → colonne SKU, ou Accessoires → Modifier).</p>
         <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Type</th></tr></thead>
