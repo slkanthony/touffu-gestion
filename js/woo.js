@@ -403,7 +403,7 @@ const Woo = {
   _restoreSumupCache() {
     if (this._sumup || this._sumupCacheChecked) return;
     this._sumupCacheChecked = true;
-    try { const raw = localStorage.getItem('touffu_sumupRef'); if (raw) this._sumup = JSON.parse(raw); } catch (e) {}
+    try { const raw = localStorage.getItem('touffu_sumupRef'); if (raw) { this._sumup = JSON.parse(raw); this._pruneSumupLinks(); } } catch (e) {}
   },
   /* Exclusion PERSISTANTE d'un article des exports SumUp (ex: sachets 500g+ jamais emmenés sur les
      marchés) — même patron que _isExcluded/toggleExclude pour le site, réglage séparé
@@ -478,6 +478,90 @@ const Woo = {
   },
   clearSumup() { this._sumup = null; this._sumupSel = {}; try { localStorage.removeItem('touffu_sumupRef'); } catch (e) {} this.render(); },
 
+  /* ───── Liaison manuelle article SumUp ↔ produit de l'appli (Antho 2026-10-18) ─────
+     Pour une ligne SumUp sans SKU ou au SKU inconnu : on choisit le produit de l'appli, l'appli retient l'identifiant de la ligne SumUp (Variant id, sinon Item id : il ne change pas quand le SKU change).
+     L'appli est PRIORITAIRE : le fichier d'import SumUp met alors le SKU de l'appli sur cette ligne (+ prix / quantité si cochés), sans doublon. Même principe que la liaison avec le site. */
+  _pruneSumupLinks() {
+    const L = Store.state.settings.sumupLinks, ref = this._sumup;
+    if (!L || !ref || ref.v !== 2) return;
+    const byId = new Map(ref.lines.filter(l => l.id).map(l => [l.id, l])), skus = new Set(Ventes.units().filter(u => u.sku).map(u => u.sku.trim().toUpperCase()));
+    let ch = false;
+    Object.keys(L).forEach(k => { const l = byId.get(String(L[k])); if (!l || (l.sku || '').toUpperCase() === k.toUpperCase() || !skus.has(k.toUpperCase())) { delete L[k]; ch = true; } });   // la ligne porte désormais le bon SKU, ou elle / le produit a disparu
+    if (ch) Store.save('settings');
+  },
+  _sumupNeedsV2() {
+    if (this._sumup && this._sumup.v === 2) return false;
+    U.toast('Choisis à nouveau ton export SumUp (bouton « Choisir un fichier », en haut) : une seule fois, pour activer la liaison.', true);
+    document.getElementById('woo_sumup_file')?.scrollIntoView({ block: 'center' });
+    return true;
+  },
+  _slScore(a, b) { const A = new Set(this._tok(a)), B = new Set(this._tok(b)); let n = 0; A.forEach(x => { if (B.has(x)) n++; }); const u = A.size + B.size - n; return u ? n / u : 0; },   // ressemblance (intersection / union des mots)
+  /* mode 'line' : depuis une ligne SumUp (key = son identifiant) → choisir le produit de l'appli ; mode 'app' : depuis un produit de l'appli (key = son SKU) → choisir la ligne SumUp. */
+  openSumupLink(mode, key) {
+    if (this._sumupNeedsV2()) return;
+    const r = this._sumupReport(), links = Store.state.settings.sumupLinks || {}, linkedSkus = new Set(Object.keys(links).map(k => k.toUpperCase()));
+    const unitLabel = u => u.name + (u.label ? ' — ' + u.label : ''), lineLabel = l => l.name + (l.variant ? ' — ' + l.variant : '');
+    let src, items, srcTxt;
+    if (mode === 'line') {
+      src = this._sumup.lines.find(l => l.id === key); if (!src) return;
+      const holder = new Map(); this._sumup.lines.forEach(l => { if (l.sku) holder.set(l.sku.toUpperCase(), l); });
+      items = Ventes.units().filter(u => u.sku && !this._unitOff(u) && !linkedSkus.has(u.sku.trim().toUpperCase())).map(u => {
+        const h = holder.get(u.sku.trim().toUpperCase());
+        return { ref: u.sku.trim(), title: unitLabel(u), sku: u.sku.trim(), price: u.price, text: unitLabel(u) + ' ' + u.sku, score: this._slScore(lineLabel(src), unitLabel(u)), taken: h && h.id !== src.id ? h : null };
+      });
+      items.forEach(s => { s.own = s.taken ? this._slScore(lineLabel(s.taken), s.title) : 0; });
+      srcTxt = `<b>${U.esc(lineLabel(src))}</b> (SumUp) — SKU actuel : ${src.sku ? `<span class="sku-txt">${U.esc(src.sku)}</span>` : '<i>aucun</i>'}`;
+    } else {
+      src = Ventes.units().find(x => x.sku && x.sku.trim() === key); if (!src) return;
+      const used = new Set(Object.values(links).map(String));
+      items = r.unknown.concat(r.noSku).filter(l => l.id && !used.has(l.id)).map(l => ({ ref: l.id, title: lineLabel(l), sku: l.sku, price: l.price, text: lineLabel(l) + ' ' + (l.sku || ''), score: this._slScore(unitLabel(src), lineLabel(l)), taken: null, own: 0 }));
+      srcTxt = `<b>${U.esc(unitLabel(src))}</b> (appli) — SKU : <span class="sku-txt">${U.esc(src.sku)}</span>`;
+    }
+    this._sl = { mode, src, all: items.sort((a, b) => b.score - a.score || U.sortFr(a.title, b.title)) };
+    U.modal({
+      title: mode === 'line' ? '🔗 Relier à un produit de l\'appli' : '🔗 Relier à une ligne SumUp', wide: true, hideOk: true,
+      body: `<p class="muted" style="margin-top:0;">Choisis ${mode === 'line' ? 'le produit de l\'appli' : 'la ligne SumUp'} qui correspond à ${srcTxt}. Le SKU de l'<b>appli</b> sera mis dans SumUp à l'import. <b>Les autres formats du même produit se relient tout seuls</b> quand leur format est identique (100G ↔ 100g).</p>
+        <input id="woo_sl_q" style="width:100%;" placeholder="Rechercher…" oninput="Woo._slRender()">
+        <div id="woo_sl_list" style="max-height:52vh;overflow:auto;margin-top:8px;"></div>`
+    });
+    this._slRender();
+    setTimeout(() => document.getElementById('woo_sl_q')?.focus(), 50);
+  },
+  _slRender() {
+    const box = document.getElementById('woo_sl_list'); if (!box || !this._sl) return;
+    const q = (document.getElementById('woo_sl_q')?.value || '').trim(), line = this._sl.mode === 'line';
+    // Suggestions : noms proches ; un produit dont le SKU est DÉJÀ sur une autre ligne SumUp n'est suggéré que si la ressemblance est nette (SKU collé par erreur sur la mauvaise ligne)
+    const pool = q ? this._sl.all.filter(s => U.has(s.text, q)) : this._sl.all.filter(s => s.taken ? (s.score >= 0.75 && s.score > s.own + 0.05) : s.score > 0);
+    this._slShown = pool.slice(0, q ? 40 : 12);
+    box.innerHTML = (q ? '' : '<div class="muted" style="font-size:.8rem;margin-bottom:6px;">Suggestions (noms proches) — tape un mot pour chercher ailleurs.</div>')
+      + (this._slShown.map((s, i) => `<button type="button" class="btn-ghost" style="display:block;width:100%;text-align:left;margin-bottom:6px;" onclick="Woo.doSumupLink(${i})"><b>${U.esc(s.title)}</b><div class="sub" style="font-size:.8rem;">${line ? 'SKU appli' : 'SKU SumUp'} : ${s.sku ? `<span class="sku-txt">${U.esc(s.sku)}</span>` : '<i>aucun</i>'}${s.price != null ? ' · ' + U.eur(s.price) : ''}${s.taken ? `<br>⚠️ ce SKU est déjà sur « ${U.esc(s.taken.name + (s.taken.variant ? ' — ' + s.taken.variant : ''))} » dans SumUp : il y restera en double tant que tu ne relies pas aussi cette ligne` : ''}</div></button>`).join('')
+      || '<p class="muted">Rien trouvé. Les éléments déjà reliés ne sont pas proposés.</p>');
+  },
+  doSumupLink(i) {
+    const s = (this._slShown || [])[i], sl = this._sl; if (!s || !sl) return;
+    const st = Store.state.settings; if (!st.sumupLinks) st.sumupLinks = {};
+    const r = this._sumupReport();
+    const line = sl.mode === 'line' ? sl.src : this._sumup.lines.find(l => l.id === s.ref);
+    const unit = sl.mode === 'line' ? Ventes.units().find(u => u.sku && u.sku.trim() === s.ref) : sl.src;
+    if (!line || !unit) return;
+    st.sumupLinks[unit.sku.trim()] = line.id;
+    // Les autres formats du MÊME produit (même article SumUp, même produit appli) : reliés d'un coup quand le format est identique, seulement pour les lignes encore à corriger
+    const nk = n => U.normSearch(n || '').replace(/[^a-z0-9]/g, ''), fk = v => this._fmtKey(v);
+    const used = new Set(Object.values(st.sumupLinks).map(String)), linked = new Set(Object.keys(st.sumupLinks).map(k => k.toUpperCase())), todo = new Set(r.unknown.concat(r.noSku).map(l => l.id)); let extra = 0;
+    if (fk(line.variant) !== '—') this._sumup.lines.filter(l => l.id && !used.has(l.id) && todo.has(l.id) && nk(l.name) === nk(line.name) && fk(l.variant) !== '—').forEach(l => {
+      const t = r.appOnly.find(u => u.name === unit.name && !linked.has(u.sku.trim().toUpperCase()) && fk(u.label) === fk(l.variant));
+      if (t) { st.sumupLinks[t.sku.trim()] = l.id; used.add(l.id); linked.add(t.sku.trim().toUpperCase()); extra++; }
+    });
+    Store.save('settings');
+    U.closeModal();
+    this.render();
+    U.toast(`Relié : ${unit.name}${unit.label ? ' — ' + unit.label : ''} ↔ SumUp${extra ? ` + ${extra} autre(s) format(s) du même produit` : ''}. Coche-le dans « Exporter » : le fichier mettra le SKU de l'appli dans SumUp.`);
+  },
+  unlinkSumup(sku) {
+    const L = Store.state.settings.sumupLinks; if (!L || !(sku in L)) return;
+    delete L[sku]; Store.save('settings'); this.render(); U.toast('Liaison retirée.');
+  },
+
   /* ───── Fichier d'IMPORT SumUp (2026-09-28, demande d'Antho) ─────
      Repart du fichier SumUp déposé (toutes ses lignes, identifiants « Item id / Variant id (Do not change) »
      intacts → SumUp met à jour l'existant au lieu de créer des doublons) et ne change QUE, pour les articles
@@ -519,7 +603,6 @@ const Woo = {
   },
   async exportSumupImport() {
     if (!this._sumup || !this._sumup.raw) { U.toast('Dépose d\'abord ton export d\'articles SumUp.', true); return; }
-    if (!this.sumupExpQty && !this.sumupExpPrice) { U.toast('Coche au moins « quantités » ou « prix ».', true); return; }
     const r = this._sumupReport();
     // Les articles exclus (réglage persistant, carte d'export) ne sont JAMAIS mis à jour, même
     // s'ils restaient cochés d'une sélection précédente.
@@ -528,17 +611,20 @@ const Woo = {
     const n = this._sumupSelCount();
     const chosen = n ? allExportable.filter(m => this._sumupSel[m.sku.toUpperCase()]) : allExportable;
     if (!chosen.length) { U.toast('Aucun article sélectionné à exporter.', true); return; }
+    const nLinked = chosen.filter(m => m.link).length;   // lignes reliées à la main : leur SKU est remplacé par celui de l'appli (même sans prix ni quantité)
+    if (!this.sumupExpQty && !this.sumupExpPrice && !nLinked) { U.toast('Coche au moins « quantités » ou « prix » (ou relie des articles dont le SKU est à corriger).', true); return; }
     const untracked = this.sumupExpQty ? chosen.filter(m => !m.track).length : 0;
-    const changes = chosen.filter(m => (this.sumupExpQty && m.track && !m.qtyOk) || (this.sumupExpPrice && !m.priceOk)).length;
+    const changes = chosen.filter(m => m.link || (this.sumupExpQty && m.track && !m.qtyOk) || (this.sumupExpPrice && !m.priceOk)).length;
     const catTxt = this.cat === 'A' ? ' (accessoires)' : this.cat === 'M' ? ' (mastication)' : '';
-    if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${catTxt}${this.sumupExpQty ? ' (quantités' + (this.sumupExpPrice ? ' + prix' : '') + ')' : ' (prix)'}.\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
+    if (!n && !await U.confirm(`Aucune sélection : le fichier mettra à jour les ${chosen.length} articles reliés par SKU${catTxt} (${[this.sumupExpQty ? 'quantités' : '', this.sumupExpPrice ? 'prix' : '', nLinked ? 'SKU des ' + nLinked + ' reliés' : ''].filter(Boolean).join(' + ')}).\n\nPour un premier essai, coche plutôt 1 ou 2 articles. Continuer ?`, { title: '📥 Fichier d\'import SumUp', okLabel: 'Générer le fichier' })) return;
     const raw = this._sumup.raw.map(row => row.slice());
     const lines = this._sumup.rawText.slice();
     const sameCount = lines.length === raw.length;
-    const { iPrice, iQty } = this._sumup.cols;
+    const { iPrice, iQty, iSku } = this._sumup.cols;
     const touched = new Set();
     chosen.forEach(m => {
       const row = raw[m.ri]; if (!row) return;
+      if (m.link && iSku >= 0) row[iSku] = m.sku;   // ligne reliée : SumUp reçoit le SKU de l'appli (prioritaire)
       if (this.sumupExpQty) row[iQty] = String(Math.round(U.num(m.appQty)));
       if (this.sumupExpPrice) row[iPrice] = U.num(m.appPrice).toFixed(2);
       touched.add(m.ri);
@@ -548,7 +634,9 @@ const Woo = {
       ? lines.map((t, i) => touched.has(i) ? raw[i].map(f => this._csvField(f)).join(',') : t)
       : raw.map(row => row.map(f => this._csvField(f)).join(','))).join('\n') + '\n';
     U.download('sumup-import-' + U.today() + '.csv', text, 'text/csv;charset=utf-8');
-    U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.\n\nToutes les autres lignes sont identiques à ton export SumUp.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
+    // SKU qui resteraient en double dans SumUp : une ligne NON reliée porte encore le SKU qu'une ligne reliée va recevoir
+    const taking = new Set(chosen.filter(m => m.link).map(m => m.sku.toUpperCase())), dups = r.unknown.filter(l => l.taken && taking.has(l.sku.toUpperCase()));
+    U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${nLinked ? `, dont ${nLinked} avec SKU corrigé` : ''}${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.${dups.length ? `\n\n⚠️ ${dups.length} ligne(s) SumUp gardent un SKU qu'un autre article va recevoir (${dups.slice(0, 3).map(l => l.sku).join(', ')}${dups.length > 3 ? '…' : ''}) : relie-les aussi, sinon SumUp aura ces SKU en double.` : ''}\n\nToutes les autres lignes sont identiques à ton export SumUp.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
   },
   compareSumup(inp) {
     this._readPicked(inp, 'woo_sumup_file', 'Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', (text, file) => {
@@ -557,7 +645,8 @@ const Woo = {
       const head = rows[0].map(h => h.trim());
       const col = n => head.indexOf(n);
       const iName = col('Item name'), iVar = col('Variations'), iPrice = col('Price'), iTrack = col('Track inventory? (Yes/No)'),
-        iQty = col('Quantity'), iSku = col('SKU'), iCat = col('Category');
+        iQty = col('Quantity'), iSku = col('SKU'), iCat = col('Category'), iItemId = col('Item id (Do not change)'), iVarId = col('Variant id (Do not change)');
+      const idOf = r => ((iVarId >= 0 ? r[iVarId] : '') || (iItemId >= 0 ? r[iItemId] : '') || '').trim();   // identifiant stable de la ligne (reste le même quand le SKU change)
       if (iName < 0 || iSku < 0 || iPrice < 0) { U.toast('Ce fichier ne ressemble pas à un export d\'articles SumUp (colonnes Item name / Price / SKU introuvables).', true); return; }
       const num = v => { const n = parseFloat(String(v || '').replace(',', '.')); return isFinite(n) ? n : null; };
       const lines = [];
@@ -567,14 +656,15 @@ const Woo = {
         const name = (r[iName] || '').trim();
         if (name) {
           parent = { name, track: (r[iTrack] || '').trim() === 'Yes', cat: iCat >= 0 ? (r[iCat] || '').trim() : '' };
-          if ((r[iPrice] || '').trim() !== '') lines.push({ ri, name, variant: '', sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
+          if ((r[iPrice] || '').trim() !== '') lines.push({ ri, id: idOf(r), name, variant: '', sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
           return;
         }
         if (!parent) return;
-        lines.push({ ri, name: parent.name, variant: (r[iVar] || '').trim(), sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
+        lines.push({ ri, id: idOf(r), name: parent.name, variant: (r[iVar] || '').trim(), sku: (r[iSku] || '').trim(), price: num(r[iPrice]), qty: num(r[iQty]), track: parent.track, cat: parent.cat });
       });
-      // Fichier brut conservé : le fichier d'import SumUp repart de CE fichier (mêmes lignes, mêmes « Item id / Variant id »).
-      this._sumup = { lines, file: file.name, raw: rows, rawText: this._splitRecords(text), cols: { iPrice, iQty } };
+      // Fichier brut conservé : le fichier d'import SumUp repart de CE fichier (mêmes lignes, mêmes « Item id / Variant id »). v:2 = les lignes portent leur identifiant (liaison manuelle possible).
+      this._sumup = { v: 2, lines, file: file.name, raw: rows, rawText: this._splitRecords(text), cols: { iPrice, iQty, iSku } };
+      this._pruneSumupLinks();
       this._sumupSel = {};
       try { localStorage.setItem('touffu_sumupRef', JSON.stringify(this._sumup)); } catch (e) {}
       this.render();
@@ -605,15 +695,25 @@ const Woo = {
     const qOf = u => u.availE;
     const seen = new Set();
     const matched = [], unknown = [], noSku = [];
-    this._sumup.lines.forEach(l => {
-      if (!l.sku) { noSku.push(l); return; }
-      const u = bySku.get(l.sku.toUpperCase());
-      if (!u) { unknown.push(l); return; }
-      seen.add(l.sku.toUpperCase());
+    // Liaisons manuelles (l'appli est prioritaire) : la ligne SumUp reliée reçoit le SKU de l'appli. Elles l'emportent sur la correspondance par SKU.
+    const links = (this._sumup.v === 2 && Store.state.settings.sumupLinks) || {}, byLine = new Map();
+    Object.keys(links).forEach(k => { const u = bySku.get(k.toUpperCase()); if (u) byLine.set(String(links[k]), u); });
+    const claimed = new Set([...byLine.values()].map(u => u.sku.trim().toUpperCase()));
+    const push = (l, u, link) => {
+      seen.add(u.sku.trim().toUpperCase());
       const appQty = qOf(u);
       const priceOk = l.price != null && Math.round(l.price * 100) === Math.round(u.price * 100);
       const qtyOk = !l.track ? null : (l.qty != null && Math.abs(l.qty - appQty) < 0.0005);
-      matched.push({ ...l, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind, appType: u.kind === 'A' ? 'Accessoires' : (u.type || '') });
+      matched.push({ ...l, sku: link ? u.sku.trim() : l.sku, link: link ? { sumupSku: l.sku } : null, appName: u.name + (u.label ? ' — ' + u.label : ''), appPrice: u.price, appQty, priceOk, qtyOk, kind: u.kind, appType: u.kind === 'A' ? 'Accessoires' : (u.type || '') });
+    };
+    this._sumup.lines.forEach(l => {
+      const lu = l.id ? byLine.get(l.id) : null;
+      if (lu) { push(l, lu, (l.sku || '').toUpperCase() !== lu.sku.trim().toUpperCase()); return; }
+      if (!l.sku) { noSku.push(l); return; }
+      const u = bySku.get(l.sku.toUpperCase());
+      if (!u) { unknown.push(l); return; }
+      if (claimed.has(l.sku.toUpperCase())) { unknown.push({ ...l, taken: true }); return; }   // son SKU est celui d'un produit relié à une AUTRE ligne SumUp
+      push(l, u, false);
     });
     // Catégorie des lignes SumUp SANS équivalent dans l'appli : d'après leur catégorie SumUp (« Accessoires » ou une viande ; vide = non classée)
     const lineKind = l => { const c = this._sumupCatOf(l); return /accessoire/i.test(c) ? 'A' : c === 'Sans catégorie' ? '?' : 'M'; };
@@ -660,17 +760,17 @@ const Woo = {
     const nL = r.noSku.length + r.unknown.length;
     const sku = t => `<span class="tag" style="cursor:copy;" title="Cliquer pour copier" onclick="Woo._copySku('${U.esc(t).replace(/&#39;/g, "\\'")}')">${U.esc(t)} 📋</span>`;
     return `<h3 class="mt">🔗 À relier, par viande <span class="muted" style="font-size:.85rem;font-weight:400;">— ${nL} article(s) SumUp à corriger · ${r.appOnly.length} produit(s) de l'appli absents de SumUp (hors 500 g et plus, jamais sur les marchés)</span></h3>
-      <p class="muted help">À gauche, les articles SumUp sans SKU ou avec un SKU que l'appli ne connaît pas ; à droite, les produits de l'appli (avec leur SKU) qui ne sont pas dans SumUp, pour la même viande. Repère les correspondances, clique le SKU de l'appli pour le copier, et colle-le dans SumUp. Rien n'est relié automatiquement.</p>
+      <p class="muted help">À gauche, les articles SumUp sans SKU ou avec un SKU que l'appli ne connaît pas ; à droite, les produits de l'appli (avec leur SKU) qui ne sont pas dans SumUp, pour la même viande. Repère les correspondances puis clique 🔗 (ou « Relier à un produit de l'appli » dans le tableau) : le SKU de l'appli sera mis dans SumUp par le fichier d'import (onglet Exporter). Tu peux aussi cliquer le SKU de l'appli pour le copier. Rien n'est relié sans ton clic.</p>
       ${list.map(x => {
         const k = this._sumupGroupKey(x.label);
         const open = this._sumupOpen[k] !== undefined ? this._sumupOpen[k] : false;
         return `<details class="fold mt" ${open ? 'open' : ''} ontoggle="Woo._sumupOpen['${k}']=this.open"><summary><b>${U.esc(x.label)}</b> <span class="muted" style="font-size:.85rem;">— SumUp à corriger : ${x.left.length} · appli absent de SumUp : ${x.right.length}</span></summary>
           <div class="sumup-pairs">
             <div><div class="muted" style="font-size:.8rem;margin-bottom:4px;">💳 SumUp</div>
-              ${x.left.sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).map(l => `<div class="sp-row"><span><b>${U.esc(l.name)}</b>${l.variant ? ' — ' + U.esc(l.variant) : ''}</span><span>${l.why === 'sans SKU' ? '<span class="badge warn">sans SKU</span>' : `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(l.sku)}</span>`} <span class="muted">${l.price != null ? U.eur(l.price) : ''}</span></span></div>`).join('') || '<div class="muted">Rien à corriger</div>'}
+              ${x.left.sort((a, b) => U.sortFr(a.name + a.variant, b.name + b.variant)).map(l => `<div class="sp-row"><span><b>${U.esc(l.name)}</b>${l.variant ? ' — ' + U.esc(l.variant) : ''}</span><span>${l.why === 'sans SKU' ? '<span class="badge warn">sans SKU</span>' : `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(l.sku)}</span>`} <span class="muted">${l.price != null ? U.eur(l.price) : ''}</span>${l.id ? ` <button class="btn-ghost btn-sm fit" data-id="${U.esc(l.id)}" onclick="Woo.openSumupLink('line', this.dataset.id)" title="Relier à un produit de l'appli : son SKU sera mis dans SumUp à l'import">🔗</button>` : ''}</span></div>`).join('') || '<div class="muted">Rien à corriger</div>'}
             </div>
             <div><div class="muted" style="font-size:.8rem;margin-bottom:4px;">📦 Appli (pas dans SumUp)</div>
-              ${x.right.sort((a, b) => U.sortFr(a.name + a.label, b.name + b.label)).map(u => `<div class="sp-row"><span><b>${U.esc(u.name)}</b>${u.label ? ' — ' + U.esc(u.label) : ''}</span><span>${sku(u.sku)} <span class="muted">${U.eur(u.price)}</span></span></div>`).join('') || '<div class="muted">—</div>'}
+              ${x.right.sort((a, b) => U.sortFr(a.name + a.label, b.name + b.label)).map(u => `<div class="sp-row"><span><b>${U.esc(u.name)}</b>${u.label ? ' — ' + U.esc(u.label) : ''}</span><span>${sku(u.sku)} <span class="muted">${U.eur(u.price)}</span> <button class="btn-ghost btn-sm fit" data-sku="${U.esc(u.sku)}" onclick="Woo.openSumupLink('app', this.dataset.sku)" title="Relier à une ligne SumUp : le SKU de l'appli sera mis dans SumUp à l'import">🔗</button></span></div>`).join('') || '<div class="muted">—</div>'}
             </div>
           </div></details>`;
       }).join('')}`;
@@ -680,8 +780,8 @@ const Woo = {
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const f = v => v == null ? '' : String(v.toFixed ? v.toFixed(2) : v).replace('.', ',');
     const out = [['Article SumUp', 'Variante', 'SKU', 'Problème', 'Prix SumUp', 'Prix appli', 'Qté SumUp', 'Qté appli'].map(q).join(';')];
-    r.matched.filter(m => !m.priceOk || m.qtyOk === false).forEach(m => out.push([m.name, m.variant, m.sku,
-      [!m.priceOk ? 'prix différent' : '', m.qtyOk === false ? 'quantité différente' : ''].filter(Boolean).join(' + '),
+    r.matched.filter(m => !m.priceOk || m.qtyOk === false || m.link).forEach(m => out.push([m.name, m.variant, m.sku,
+      [m.link ? 'SKU SumUp à remplacer (' + (m.link.sumupSku || 'vide') + ')' : '', !m.priceOk ? 'prix différent' : '', m.qtyOk === false ? 'quantité différente' : ''].filter(Boolean).join(' + '),
       f(m.price), f(m.appPrice), m.track ? m.qty : 'non suivi', m.appQty].map(q).join(';')));
     r.unknown.forEach(l => out.push([l.name, l.variant, l.sku, 'SKU inconnu dans l\'appli', f(l.price), '', l.track ? l.qty : '', ''].map(q).join(';')));
     r.noSku.forEach(l => out.push([l.name, l.variant, '', 'pas de SKU dans SumUp', f(l.price), '', l.track ? l.qty : '', ''].map(q).join(';')));
@@ -762,7 +862,7 @@ const Woo = {
           <td>${m.appType ? `<span class="badge info">${U.esc(m.appType)}</span>` : '—'}</td>
           <td class="num">${this.sumupExpPrice ? U.eur(m.appPrice) : '—'}</td>
           <td class="num">${this.sumupExpQty ? U.qty(m.appQty) : '—'}</td>
-          <td>${!r ? '<span class="muted">—</span>' : inSumup.has(sku) ? '<span class="pos">✅</span>' : '<span class="badge warn">absent</span>'}</td>
+          <td>${!r ? '<span class="muted">—</span>' : inSumup.has(sku) ? (inSumup.get(sku).link ? '<span class="badge info" title="Ligne SumUp reliée à la main : le fichier d\'import y met le SKU de l\'appli">🔗 SKU à corriger</span>' : '<span class="pos">✅</span>') : '<span class="badge warn">absent</span>'}</td>
           <td><button class="btn-icon" title="Exclure définitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">🚫</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
         ${visible.length > 200 ? `<p class="muted">… et ${visible.length - 200} autres non affichés (affine la recherche pour les voir — « Tout sélectionner » couvre bien les ${visible.length}).</p>` : ''}
       </div>
@@ -789,13 +889,15 @@ const Woo = {
     ];
     const matched = m => m.st === 'matched';
     const isOk = m => matched(m) && m.priceOk && m.qtyOk !== false;
+    const skuOk = m => matched(m) && !m.link;   // relié à la main = SKU encore à corriger dans SumUp (par l'import)
+    const lnk = { l: '🔗 SKU à corriger par l\'import', f: m => !!m.link };
     const bad = '⚠️ À corriger', unk = { l: '❓ SKU inconnu dans l\'appli', f: m => m.st === 'unknown' }, nos = { l: '🏷️ Sans SKU dans SumUp', f: m => m.st === 'nosku' };
     const FS = {
       all: {
-        issues: { l: bad, f: m => !isOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: isOk },
-        price: { l: '💶 Prix différent', f: m => matched(m) && !m.priceOk }, qty: { l: '📦 Quantité différente', f: m => m.qtyOk === false }, unknown: unk, nosku: nos
+        issues: { l: bad, f: m => !isOk(m) || !!m.link }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ Identiques', f: m => isOk(m) && !m.link },
+        linked: lnk, price: { l: '💶 Prix différent', f: m => matched(m) && !m.priceOk }, qty: { l: '📦 Quantité différente', f: m => m.qtyOk === false }, unknown: unk, nosku: nos
       },
-      sku: { issues: { l: bad, f: m => !matched(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: matched }, unknown: unk, nosku: nos },
+      sku: { issues: { l: bad, f: m => !skuOk(m) }, all: { l: 'Tout', f: () => true }, ok: { l: '✅ SKU reconnus', f: skuOk }, linked: lnk, unknown: unk, nosku: nos },
       price: { issues: { l: bad, f: m => matched(m) && !m.priceOk }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => matched(m) && !!m.priceOk } },
       stock: { issues: { l: bad, f: m => m.qtyOk === false }, all: { l: 'Tout', f: matched }, ok: { l: '✅ Identiques', f: m => m.qtyOk === true }, untracked: { l: '🚫 Suivi désactivé dans SumUp', f: m => matched(m) && !m.track } }
     };
@@ -853,7 +955,7 @@ const Woo = {
         : `<span class="neg">❌ ${sgn(m.dQty)}${U.qty(m.dQty)}</span><div class="sub">SumUp ${U.qty(m.qty)} · évén. ${U.qty(m.appQty)}</div>`;
       return `<tr>${i === 0 ? `<td rowspan="${g.rows.length}"><b>${U.esc(g.m.name)}</b></td><td rowspan="${g.rows.length}"><span class="muted">${U.esc(g.m.meat || '—')}</span></td>` : ''}
           <td><b>${U.esc(m.fmt)}</b>${m.appName && !same ? `<div class="sub">appli : ${U.esc(m.appName)}</div>` : ''}</td>
-          ${has('sku') ? `<td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="SKU inconnu dans l'appli">${U.esc(m.sku)}</span>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}</td>` : ''}
+          ${has('sku') ? `<td>${m.st === 'nosku' ? '<span class="badge warn">sans SKU</span>' : m.st === 'unknown' ? `<span class="badge bad" title="${m.taken ? 'Ce SKU est celui d\'un produit de l\'appli relié à une autre ligne SumUp' : 'SKU inconnu dans l\'appli'}">${U.esc(m.sku)}</span>${m.taken ? '<div class="sub">⚠️ SKU pris par une autre ligne reliée</div>' : ''}` : m.link ? `<span class="sku-txt">${U.esc(m.sku)}</span><div class="sub">🔗 SumUp : ${m.link.sumupSku ? U.esc(m.link.sumupSku) : 'vide'} → remplacé par l'appli</div><div style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-sku="${U.esc(m.sku)}" onclick="Woo.unlinkSumup(this.dataset.sku)">Délier</button></div>` : `<span class="sku-txt">${U.esc(m.sku)}</span>`}${(m.st === 'unknown' || m.st === 'nosku') && m.id ? `<div style="margin-top:4px;"><button class="btn-ghost btn-sm fit" data-id="${U.esc(m.id || '')}" onclick="Woo.openSumupLink('line', this.dataset.id)">🔗 Relier à l'appli</button></div>` : ''}</td>` : ''}
           ${has('price') ? `<td>${price}</td>` : ''}
           ${has('stock') ? `<td>${qty}</td>` : ''}
         </tr>`;
