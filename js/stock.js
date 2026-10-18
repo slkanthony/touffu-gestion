@@ -299,6 +299,7 @@ const Stock = {
         <span class="prod-actions act-grid"><span class="act-row">
           ${Store.hideSupplierInfo() ? '' : `<button class="btn-icon" title="${p.url ? 'Ouvrir la page sur le site Touffu' : 'Ajouter le lien site Touffu'}" onclick="event.preventDefault();event.stopPropagation();Stock.openProductLink('${p.id}')">${p.url ? '🔗' : '🔗＋'}</button>`}
           ${cat ? `<button class="btn-icon" title="Resynchroniser prix/variantes depuis le catalogue (ex: une taille ajoutée côté calcul de prix après coup)" onclick="event.preventDefault();event.stopPropagation();Stock.resyncFromCatalog('${p.id}')">🔄</button>` : `<button class="btn-icon" title="Créer la fiche de calcul de prix à partir de ce produit (reprend nom, viande et conditionnement — tu complètes fournisseur et prix)" onclick="event.preventDefault();event.stopPropagation();Stock.createCatalogFromStock('${p.id}')">📋</button>`}
+          <button class="btn-icon" title="Dupliquer le produit (mêmes formats, sans stock ni SKU) — pour créer un autre produit à partir de celui-ci" onclick="event.preventDefault();event.stopPropagation();Stock.dupProduct('${p.id}')">📑</button>
           </span><span class="act-row">
           <button class="btn-ghost btn-sm" title="Modifier le produit" onclick="event.preventDefault();event.stopPropagation();Stock.editProduct('${p.id}')">Modifier</button>
           <button class="btn-icon" title="Supprimer le produit" onclick="event.preventDefault();event.stopPropagation();Stock.delProduct('${p.id}')">🗑️</button>
@@ -1411,6 +1412,39 @@ const Stock = {
       }))
     };
     location.hash = '/catalogue/new';
+  },
+
+  /* 📑 Dupliquer un produit du stock (Antho 2026-10-18) : on part d'un produit existant (« Boudin cerf »), on change le nom (et la viande) → « Boudin sanglier » avec les mêmes formats.
+     Gardés : formats, prix, seuils, étiquettes (poil, résistance…), déclinaisons (« sans stock propre » rebranchées sur les nouvelles variantes). Repartent vides : stock et lots, SKU (recalculés),
+     lien site, lien au catalogue prix (la liaison reste un choix manuel). Annulable en un coup. */
+  dupProduct(id) {
+    const src = Store.state.stockM.find(x => x.id === id); if (!src) return;
+    const S = Store.state.settings;
+    U.modal({
+      title: '📑 Dupliquer le produit', okLabel: 'Dupliquer',
+      body: `<p class="muted" style="margin:0 0 10px;">Copie « <b>${U.esc(src.name)}</b> » avec ses ${src.variants.length} variante(s) : formats, prix et seuils sont gardés ; le stock, les SKU, le lien site et la liaison au catalogue prix repartent vides.</p>
+        <div class="frow">
+          <div class="fg" style="flex:2;"><label>Nom du nouveau produit</label><input id="dp_name" value="${U.esc(src.name)}" autofocus onfocus="this.select()"></div>
+          <div class="fg"><label>Viande</label><select id="dp_meat">${(src.meatType && !S.meatTypes.some(m => m.toLowerCase() === src.meatType.toLowerCase()) ? `<option value="${U.esc(src.meatType)}" selected>${U.esc(src.meatType)} (hors liste)</option>` : '')}${S.meatTypes.slice().sort(U.sortFr).map(m => `<option ${(src.meatType || '').toLowerCase() === m.toLowerCase() ? 'selected' : ''}>${U.esc(m)}</option>`).join('')}</select></div>
+        </div>`,
+      onOk: () => {
+        const name = U.val('dp_name').trim(), meat = U.val('dp_meat');
+        if (!name) { U.toast('Indique le nom du nouveau produit.', true); return false; }
+        if (Store.state.stockM.some(x => U.normSearch(x.name) === U.normSearch(name) && (x.meatType || '').toLowerCase() === meat.toLowerCase())) { U.toast('Un produit « ' + name + ' » (' + meat + ') existe déjà : change le nom ou la viande.', true); return false; }
+        const c = JSON.parse(JSON.stringify(src)), ids = new Map();
+        c.id = U.uid(); c.name = name; c.meatType = meat; c.catalogId = ''; c.url = '';
+        c.variants.forEach(v => { const nid = U.uid(); ids.set(v.id, nid); v.id = nid; });
+        c.variants.forEach(v => {
+          v.lots = []; v.sku = ''; v.catalogId = ''; v.catalogVariantId = '';
+          if (v.parentId) v.parentId = ids.get(v.parentId) || '';   // déclinaison : rebranchée sur la variante mère de la COPIE
+        });
+        c.variants.forEach(v => { v.sku = this.suggestSku(c, v); });   // base tirée du nouveau nom + format de chaque variante
+        Store.state.stockM.push(c);
+        const entry = Store.log('stock', `Produit dupliqué — ${src.name} → ${name} (${c.variants.length} variante(s))`, { type: 'restoreBatch', data: [{ domain: 'stockM', id: c.id, before: null }] });
+        Store.save('stockM'); U.closeModal(); App.rerender();
+        U.toast(`Produit « ${name} » créé (${c.variants.length} variante(s), sans stock).`, false, entry.id);
+      }
+    });
   },
 
   _pickRecv(val) {   // choix d'une réception d'achat dans « ＋ Ajouter un lot » → pré-remplit n° de lot et DLUO
