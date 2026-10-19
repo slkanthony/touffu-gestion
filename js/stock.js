@@ -2149,7 +2149,7 @@ const Stock = {
           <td>${U.esc(r.variante)}</td>
           <td class="num">${U.qty(minOf(r))}</td>
           <td class="num">${U.qty(stockOf(r))}</td>
-          <td>${this._faibleStatus(r, stockOf(r), minOf(r))}${r.kind === 'M' ? this._reoBtn(r) : ''}</td>
+          <td style="white-space:nowrap;">${this._faibleStatus(r, stockOf(r), minOf(r))}${r.kind === 'M' ? this._reoBtn(r) : ''}</td>
         </tr>`).join('') + '</tbody>';
         }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun résultat pour ces filtres.</td></tr></tbody>'}
       </table>`;
@@ -2210,10 +2210,11 @@ const Stock = {
   /* Statut d'une ligne de Faible stock ; un format qui « ne compte pas pour la commande » est grisé */
   _faibleStatus(r, s, m) {
     const b = s <= 0 ? '<span class="badge bad">Rupture</span>' : s <= m ? '<span class="badge warn">Stock faible</span>' : '<span class="badge ok">OK</span>';
-    return r.noReo ? `<span style="opacity:.55;">${b}</span> <span class="badge info" title="Ce format ne déclenche pas de commande : choix de la case du Stock, ou produit acheté au kilo (fiche Prix mastication) dont seuls les petits formats comptent">hors commande</span>` : b;
+    // largeur fixe : le bouton 🚫 / ↩ qui suit reste aligné d'une ligne à l'autre, quelle que soit la longueur du badge
+    return `<span style="display:inline-block;min-width:92px;${r.noReo ? 'opacity:.5;' : ''}"${r.noReo ? ' title="Hors commande : ce format ne déclenche pas de commande (case du Stock, ou produit acheté au kilo d\'après sa fiche Prix mastication : seuls les petits formats comptent)"' : ''}>${b}</span>`;
   },
   _reoBtn(r) {
-    return ` <button class="btn-icon" title="${r.noReo ? 'Remettre ce format dans les commandes' : 'Ce format ne doit plus déclencher de commande'}" onclick="Stock.toggleReorder('${r.pid}','${r.vid}')">${r.noReo ? '↩' : '🚫'}</button>`;
+    return `<button class="btn-icon" style="vertical-align:middle;" title="${r.noReo ? 'Hors commande — cliquer pour remettre ce format dans les commandes' : 'Ce format ne doit plus déclencher de commande'}" onclick="Stock.toggleReorder('${r.pid}','${r.vid}')">${r.noReo ? '↩' : '🚫'}</button>`;
   },
   /* Case « compte pour la commande » d'un format (Antho 2026-10-19) : décochée = ce format n'apparaît plus dans « Stock faible » ni dans la commande (ex. 250G / 500G d'un produit acheté au kilo) */
   toggleReorder(pId, vId) {
