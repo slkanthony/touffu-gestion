@@ -2214,7 +2214,7 @@ const Stock = {
     return `<span style="display:inline-block;min-width:92px;${r.noReo ? 'opacity:.5;' : ''}"${r.noReo ? ' title="Hors commande : ce format ne déclenche pas de commande (case du Stock, ou produit acheté au kilo d\'après sa fiche Prix mastication : seuls les petits formats comptent)"' : ''}>${b}</span>`;
   },
   _reoBtn(r) {
-    return `<button class="btn-icon" style="vertical-align:middle;" title="${r.noReo ? 'Hors commande — cliquer pour remettre ce format dans les commandes' : 'Ce format ne doit plus déclencher de commande'}" onclick="Stock.toggleReorder('${r.pid}','${r.vid}')">${r.noReo ? '↩' : '🚫'}</button>`;
+    return `<button class="btn-icon" style="vertical-align:middle;width:30px;padding:0;text-align:center;" title="${r.noReo ? 'Hors commande — cliquer pour remettre ce format dans les commandes' : 'Ce format ne doit plus déclencher de commande'}" onclick="Stock.toggleReorder('${r.pid}','${r.vid}')">${r.noReo ? '↩' : '🚫'}</button>`;
   },
   /* Case « compte pour la commande » d'un format (Antho 2026-10-19) : décochée = ce format n'apparaît plus dans « Stock faible » ni dans la commande (ex. 250G / 500G d'un produit acheté au kilo) */
   toggleReorder(pId, vId) {
