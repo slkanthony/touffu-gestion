@@ -2199,12 +2199,18 @@ const Stock = {
     if (v.noReorder === false) return true;
     if (v.mode !== 'gram' || this.parentOf(p, v)) return true;
     const g = U.num(v.value);
-    return !(g >= 250 && p.variants.some(x => x !== v && x.mode === 'gram' && !this.parentOf(p, x) && U.num(x.value) > 0 && U.num(x.value) < g));
+    if (!(g >= 250 && p.variants.some(x => x !== v && x.mode === 'gram' && !this.parentOf(p, x) && U.num(x.value) > 0 && U.num(x.value) < g))) return true;
+    return !this.boughtByKilo(p, v);
+  },
+  /* Produit ACHETÉ AU KILO d'après sa fiche Prix mastication (ligne du fournisseur principal : unité « kilo ») ; fiche absente ou achat à la pièce → faux (donc le format compte : jamais d'alerte ratée en silence). */
+  boughtByKilo(p, v) {
+    const id = this.ficheOf(p, v), cat = id && Store.state.catalogM.find(c => c.id === id), e = cat && Pricing.mainEntry(cat);
+    return !!(e && e.unit === 'kilo');
   },
   /* Statut d'une ligne de Faible stock ; un format qui « ne compte pas pour la commande » est grisé */
   _faibleStatus(r, s, m) {
     const b = s <= 0 ? '<span class="badge bad">Rupture</span>' : s <= m ? '<span class="badge warn">Stock faible</span>' : '<span class="badge ok">OK</span>';
-    return r.noReo ? `<span style="opacity:.55;">${b}</span> <span class="badge info" title="Ce format ne déclenche pas de commande (case du Stock)">hors commande</span>` : b;
+    return r.noReo ? `<span style="opacity:.55;">${b}</span> <span class="badge info" title="Ce format ne déclenche pas de commande : choix de la case du Stock, ou produit acheté au kilo (fiche Prix mastication) dont seuls les petits formats comptent">hors commande</span>` : b;
   },
   _reoBtn(r) {
     return ` <button class="btn-icon" title="${r.noReo ? 'Remettre ce format dans les commandes' : 'Ce format ne doit plus déclencher de commande'}" onclick="Stock.toggleReorder('${r.pid}','${r.vid}')">${r.noReo ? '↩' : '🚫'}</button>`;
