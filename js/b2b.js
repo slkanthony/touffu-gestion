@@ -96,21 +96,34 @@ const B2B = {
   _capThr(kind) { const S = Store.state.settings; return U.qty(U.num(this._capKind(kind) === 'acc' ? (S.accCoeffThreshold || S.b2bCoeffThreshold) : S.b2bCoeffThreshold)); },
   _capList(kind) {
     const out = [], blocked = [], acc = this._capKind(kind) === 'acc';
-    const add = (name, variant, vat, discPct, r) => {
+    const add = (name, variant, vat, discPct, r, extra) => {
       const view = x => this._pct1(this._discView(x, vat, this._client()));
-      const o = { name, variant, req: view(discPct), max: view(r.discMax), coeff: r.coeffB2B };
+      const o = { name, gname: name, gk: name, variant, req: view(discPct), max: view(r.discMax), coeff: r.coeffB2B, ...extra };
       if (r.capped && r.discMax > 0) out.push(o); else if (r.capped) blocked.push(o);
     };
-    if (acc) Accessoires.crafted().forEach(a => { const it = this.accStats(a), w = this.accWidths(a); add(a.name, a.mainWidth || w[0] || 'Standard', Pricing.vatRate(a), it.discPct, it); });
+    // Accessoires : un bloc par FAMILLE (produit), ses longueurs / personnalisations en variantes ; `name` reste le nom de la fiche (utilisé par _capNote)
+    if (acc) Accessoires.crafted().forEach(a => {
+      const it = this.accStats(a), w = this.accWidths(a), fam = a.groupName || Accessoires._familyName(a), base = Accessoires._baseName(a), nm = String(a.name || '');
+      const rest = base && nm.toLowerCase().startsWith(base.toLowerCase()) ? nm.slice(base.length).replace(/^\s*[—–-]\s*/, '').trim() : nm;
+      const wd = a.mainWidth || w[0] || 'Standard';
+      add(a.name, (rest || nm) + (fam.toLowerCase().includes(String(wd).toLowerCase()) ? '' : ' · ' + wd), Pricing.vatRate(a), it.discPct, it, { gname: fam, gk: a.groupId || fam, a });
+    });
     else Store.state.catalogM.forEach(p => { const it = this.productStats(p); it.rows.forEach(r => add(p.name, r.label, Pricing.vatRate(p), it.discPct, r)); });
-    const srt = (a, b) => U.sortFr(a.name, b.name) || U.sortFr(a.variant, b.variant);
+    const srt = (a, b) => U.sortFr(a.gname, b.gname) || (a.a && b.a ? Accessoires._cmpAcc(a.a, b.a) : 0) || U.sortFr(a.variant, b.variant);
     return { capped: out.sort(srt), blocked: blocked.sort(srt) };
   },
   _capBanner() {
     const { capped, blocked } = this._capList(), thr = this._capThr();
     if (!capped.length && !blocked.length) return '';
-    const tbl = (rows, withMax) => `<div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Remise demandée</th><th class="num">Remise appliquée</th></tr></thead><tbody>${rows.map(o => `<tr><td class="col-name">${U.esc(o.name)}</td><td>${U.esc(o.variant)}</td><td class="num">${o.req} %</td><td class="num"><b>${o.max} %</b></td></tr>`).join('')}</tbody></table></div>`;
-    const nProd = n => new Set(n.map(o => o.name)).size;
+    // Un bloc par produit (nom une seule fois, variantes dessous) ; fiches sur téléphone
+    const tbl = (rows, withMax) => {
+      const gs = [], m = {};
+      rows.forEach(o => { if (!m[o.gk]) { m[o.gk] = { rows: [] }; gs.push(m[o.gk]); } m[o.gk].rows.push(o); });
+      return `<div class="table-wrap perem-desk"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th class="num">Remise demandée</th><th class="num">Remise appliquée</th></tr></thead>`
+        + gs.map((g, gi) => `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((o, i) => `<tr>${i === 0 ? `<td class="col-name perem-name" rowspan="${g.rows.length}"><b>${U.esc(o.gname)}</b></td>` : ''}<td>${U.esc(o.variant)}</td><td class="num">${o.req} %</td><td class="num"><b>${o.max} %</b></td></tr>`).join('') + '</tbody>').join('')
+        + `</table></div><div class="perem-mob no-print">` + gs.map(g => `<div class="pm-card"><div class="pm-head"><b>${U.esc(g.rows[0].gname)}</b></div>${g.rows.map(o => `<div class="pm-row nochk"><div class="pm-main"><div><b>${U.esc(o.variant)}</b></div><div class="pm-sub">demandée ${o.req} % → appliquée <b>${o.max} %</b></div></div></div>`).join('')}</div>`).join('') + '</div>';
+    };
+    const nProd = n => new Set(n.map(o => o.gk)).size;
     return `<details class="fold" ${this._capOpen ? 'open' : ''} ontoggle="B2B._capOpen=this.open" style="border-left:4px solid var(--warn);">
       <summary>🔒 <b>Remises plafonnées</b> <span class="muted" style="font-weight:400;">· le coeff entreprise ne descend jamais sous ${thr}</span>
         ${capped.length ? `<span class="badge warn">${capped.length} variante${capped.length > 1 ? 's' : ''} (${nProd(capped)} produit${nProd(capped) > 1 ? 's' : ''}) plafonnée${capped.length > 1 ? 's' : ''}</span>` : ''}
