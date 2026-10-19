@@ -400,7 +400,7 @@ const Stock = {
     return `<tr>
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
       <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
-      <td class="num v-ming"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"><span style="font-size:.8rem;" aria-hidden="true">🛒</span><input type="checkbox" ${v.noReorder ? '' : 'checked'} title="Coché : ce format compte pour la commande (Faible stock). Décoché : il ne déclenche plus de commande (ex. 250G / 500G d'un produit acheté au kilo)." onchange="Stock.toggleReorder('${p.id}','${v.id}')" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></td>
+      <td class="num v-ming"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"><span style="font-size:.8rem;" aria-hidden="true">🛒</span><input type="checkbox" ${this.reorderOn(p, v) ? 'checked' : ''} title="Coché : ce format compte pour la commande (Faible stock). Décoché : il ne déclenche plus de commande (ex. 250G / 500G d'un produit acheté au kilo)." onchange="Stock.toggleReorder('${p.id}','${v.id}')" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></td>
       <td class="num v-mine"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
       <td class="num v-stg ${lowCls}"><b>${U.qty(qg)}</b></td>
       <td class="num v-ste">${U.qty(qe)}${lowE>0&&qe<=lowE?` <span class="warn-txt" style="font-size:.75rem;">(min ${lowE})</span>`:''}</td>
@@ -2058,7 +2058,7 @@ const Stock = {
         if (f.variants.length && !f.variants.includes(label)) return;
         const qg = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
         const qe = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
-        rows.push({ key: this.ftKey('M', p.id, v.id), pk: 'M|' + p.id, kind: 'M', cat: 'Mastication', produit: p.name, meat: p.meatType || '', variante: label, ref: v.ref || '', qg, qe, total: qg + qe, minG: U.num(v.low), minE: U.num(v.lowEvent), pid: p.id, vid: v.id, noReo: !!v.noReorder });
+        rows.push({ key: this.ftKey('M', p.id, v.id), pk: 'M|' + p.id, kind: 'M', cat: 'Mastication', produit: p.name, meat: p.meatType || '', variante: label, ref: v.ref || '', qg, qe, total: qg + qe, minG: U.num(v.low), minE: U.num(v.lowEvent), pid: p.id, vid: v.id, noReo: !this.reorderOn(p, v) });
       }));
     }
     if (!eventView && (typeEff === 'all' || typeEff === 'materiaux')) {
@@ -2191,6 +2191,16 @@ const Stock = {
       </div>
       <div class="card"><div class="perem-mob no-print">${mob}</div><div class="table-wrap perem-desk">${table}</div></div>`;
   },
+  /* Le format compte-t-il pour la commande ? Choix d'Antho (`v.noReorder` true / false) sinon règle par défaut (2026-10-19) :
+     un format AU GRAMME de 250 g ou plus qui a un format au gramme plus petit dans le même produit (250G / 500G / 1KG à côté d'un 100G) ne déclenche pas de commande — le produit est acheté au kilo et détaillé.
+     Jamais pour un produit dont le plus petit format est déjà ≥ 250 g (sinon plus aucune alerte), ni pour les tailles / pièces / déclinaisons. */
+  reorderOn(p, v) {
+    if (v.noReorder === true) return false;
+    if (v.noReorder === false) return true;
+    if (v.mode !== 'gram' || this.parentOf(p, v)) return true;
+    const g = U.num(v.value);
+    return !(g >= 250 && p.variants.some(x => x !== v && x.mode === 'gram' && !this.parentOf(p, x) && U.num(x.value) > 0 && U.num(x.value) < g));
+  },
   /* Statut d'une ligne de Faible stock ; un format qui « ne compte pas pour la commande » est grisé */
   _faibleStatus(r, s, m) {
     const b = s <= 0 ? '<span class="badge bad">Rupture</span>' : s <= m ? '<span class="badge warn">Stock faible</span>' : '<span class="badge ok">OK</span>';
@@ -2203,7 +2213,7 @@ const Stock = {
   toggleReorder(pId, vId) {
     const p = Store.state.stockM.find(x => x.id === pId), v = p && p.variants.find(x => x.id === vId); if (!v) return;
     const snap = Store.snapshot('stockM', p);
-    if (v.noReorder) delete v.noReorder; else v.noReorder = true;
+    v.noReorder = this.reorderOn(p, v);   // choix explicite d'Antho (true = hors commande, false = compte), il remplace la règle par défaut
     const entry = Store.commitSnapshot(snap, 'stock', `${v.noReorder ? 'Format hors commande' : 'Format remis en commande'} — ${p.name} (${Pricing.labelVariant(v)})`);
     Store.save('stockM'); App.rerender();
     U.toast(v.noReorder ? `${Pricing.labelVariant(v)} ne déclenche plus de commande.` : `${Pricing.labelVariant(v)} compte de nouveau pour la commande.`, false, entry.id);
