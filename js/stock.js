@@ -2058,17 +2058,17 @@ const Stock = {
         if (f.variants.length && !f.variants.includes(label)) return;
         const qg = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
         const qe = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
-        rows.push({ key: this.ftKey('M', p.id, v.id), kind: 'M', cat: 'Mastication', produit: p.name, meat: p.meatType || '', variante: label, ref: v.ref || '', qg, qe, total: qg + qe, minG: U.num(v.low), minE: U.num(v.lowEvent) });
+        rows.push({ key: this.ftKey('M', p.id, v.id), pk: 'M|' + p.id, kind: 'M', cat: 'Mastication', produit: p.name, meat: p.meatType || '', variante: label, ref: v.ref || '', qg, qe, total: qg + qe, minG: U.num(v.low), minE: U.num(v.lowEvent) });
       }));
     }
     if (!eventView && (typeEff === 'all' || typeEff === 'materiaux')) {
       Store.state.materials.forEach(m => {
-        rows.push({ key: this.ftKey('MT', m.id), kind: 'MT', cat: 'Matière première', produit: m.product || m.name, meat: '', variante: m.variant || m.name, ref: '', qg: U.num(m.qty), qe: 0, total: U.num(m.qty), minG: U.num(m.low), minE: 0 });
+        rows.push({ key: this.ftKey('MT', m.id), pk: 'MT|' + U.normSearch(m.product || m.name), kind: 'MT', cat: 'Matière première', produit: m.product || m.name, meat: '', variante: m.variant || m.name, ref: '', qg: U.num(m.qty), qe: 0, total: U.num(m.qty), minG: U.num(m.low), minE: 0 });
       });
     }
     if (!eventView && (typeEff === 'all' || typeEff === 'conso')) {
       Store.state.consumables.forEach(c => {
-        rows.push({ key: this.ftKey('C', c.id), kind: 'C', cid: c.id, cat: 'Consommable', produit: c.name, meat: '', variante: '—', ref: '', qg: U.num(c.qty), qe: 0, total: U.num(c.qty), minG: U.num(c.low), minE: 0 });
+        rows.push({ key: this.ftKey('C', c.id), pk: 'C|' + c.id, kind: 'C', cid: c.id, cat: 'Consommable', produit: c.name, meat: '', variante: '—', ref: '', qg: U.num(c.qty), qe: 0, total: U.num(c.qty), minG: U.num(c.low), minE: 0 });
       });
     }
 
@@ -2101,6 +2101,9 @@ const Stock = {
     if (!f.excluded) f.excluded = [];
     f.excluded = f.excluded.filter(k => rows.some(r => r.key === k)); // impression événement : opt-out
     const allEvtChecked = rows.every(r => !f.excluded.includes(r.key));
+    // Un bloc par PRODUIT (nom, catégorie et viande écrits une fois, variantes dessous), comme Péremptions ; l'ordre des blocs suit le tri choisi (1re ligne de chaque produit)
+    const groups = [], gmap = {};
+    rows.forEach(r => { if (!gmap[r.pk]) { gmap[r.pk] = { pk: r.pk, rows: [] }; groups.push(gmap[r.pk]); } gmap[r.pk].rows.push(r); });
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Stock.setFaibleSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     const btn = (v, l) => ({ l, on: view === v, js: `Stock._setFaibleView('${v}')` });
 
@@ -2115,32 +2118,53 @@ const Stock = {
     if (eventView) {
       table = `<table>
         <thead><tr><th class="no-print"><input type="checkbox" ${allEvtChecked ? 'checked' : ''} onchange="Stock.faibleSetAllExcluded(this.checked)"></th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Type viande')}</th><th>${sortHead('variant', 'Variante')}</th><th class="num">${sortHead('stock', 'Stock évén.')}</th><th class="num">${sortHead('min', 'Seuil min évén.')}</th><th class="num">${sortHead('gen', 'Stock général dispo.')}</th><th>${sortHead('status', 'Statut')}</th></tr></thead>
-        <tbody>${rows.map(r => { const checked = !f.excluded.includes(r.key); return `<tr class="${checked ? '' : 'excluded-from-print'}">
-          <td class="no-print"><input type="checkbox" ${checked ? 'checked' : ''} onchange="Stock.faibleToggleExcluded('${r.key}')"></td>
-          <td class="col-name"><b>${U.esc(r.produit)}</b></td>
-          <td>${r.meat ? `<span class="badge info">${U.esc(r.meat)}</span>` : '—'}</td>
-          <td>${U.esc(r.variante)}</td>
-          <td class="num">${U.qty(r.qe)}</td>
-          <td class="num">${U.qty(r.minE)}</td>
-          <td class="num ${r.qg > 0 ? 'pos' : ''}">${U.qty(r.qg)}</td>
-          <td>${r.qe <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>'}</td>
-        </tr>`; }).join('') || '<tr><td colspan="8" class="muted">Aucun résultat pour ces filtres.</td></tr>'}</tbody>
+        ${groups.map((g, gi) => {
+          const rs = g.rows.map(r => ({ r, on: !f.excluded.includes(r.key) }));
+          let first = rs.findIndex(x => x.on); if (first < 0) first = 0;   // nom fusionné porté par la 1re ligne COCHÉE (les décochées ne s'impriment pas)
+          return `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + rs.map((x, i) => `<tr class="${x.on ? '' : 'excluded-from-print'}">
+          <td class="no-print"><input type="checkbox" ${x.on ? 'checked' : ''} onchange="Stock.faibleToggleExcluded('${x.r.key}')"></td>
+          ${i <= first ? `<td class="col-name perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}><b>${U.esc(x.r.produit)}</b></td>
+          <td class="perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}>${x.r.meat ? `<span class="badge info">${U.esc(x.r.meat)}</span>` : '—'}</td>` : ''}
+          <td>${U.esc(x.r.variante)}</td>
+          <td class="num">${U.qty(x.r.qe)}</td>
+          <td class="num">${U.qty(x.r.minE)}</td>
+          <td class="num ${x.r.qg > 0 ? 'pos' : ''}">${U.qty(x.r.qg)}</td>
+          <td>${x.r.qe <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>'}</td>
+        </tr>`).join('') + '</tbody>';
+        }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun résultat pour ces filtres.</td></tr></tbody>'}
       </table>`;
     } else {
       table = `<table>
         <thead><tr><th class="no-print"><input type="checkbox" ${rows.length && f.sel.length === rows.length ? 'checked' : ''} onchange="Stock.faibleSetAllSel(this.checked)"></th><th>${sortHead('cat', 'Catégorie')}</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Type viande')}</th><th>${sortHead('variant', 'Variante principale')}</th><th class="num">${sortHead('min', 'Stock minimal')}</th><th class="num">${sortHead('stock', 'Stock (' + viewLabel + ')')}</th><th>${sortHead('status', 'Statut')}</th></tr></thead>
-        <tbody>${rows.map(r => `<tr>
+        ${groups.map((g, gi) => {
+          const r0 = g.rows[0], rsp = ` rowspan="${g.rows.length}"`;
+          return `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((r, i) => `<tr>
           <td class="no-print"><input type="checkbox" ${f.sel.includes(r.key) ? 'checked' : ''} onchange="Stock.faibleToggleSel('${r.key}')"></td>
-          <td><span class="badge info">${U.esc(r.cat)}</span></td>
-          <td class="col-name"><b>${U.esc(r.produit)}</b>${r.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r.cid)) : ''}</td>
-          <td>${r.meat ? `<span class="badge info">${U.esc(r.meat)}</span>` : '—'}</td>
+          ${i === 0 ? `<td class="perem-name"${rsp}><span class="badge info">${U.esc(r0.cat)}</span></td>
+          <td class="col-name perem-name"${rsp}><b>${U.esc(r0.produit)}</b>${r0.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r0.cid)) : ''}</td>
+          <td class="perem-name"${rsp}>${r0.meat ? `<span class="badge info">${U.esc(r0.meat)}</span>` : '—'}</td>` : ''}
           <td>${U.esc(r.variante)}</td>
           <td class="num">${U.qty(minOf(r))}</td>
           <td class="num">${U.qty(stockOf(r))}</td>
           <td>${stockOf(r) <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>'}</td>
-        </tr>`).join('') || '<tr><td colspan="8" class="muted">Aucun résultat pour ces filtres.</td></tr>'}</tbody>
+        </tr>`).join('') + '</tbody>';
+        }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun résultat pour ces filtres.</td></tr></tbody>'}
       </table>`;
     }
+
+    // Téléphone : une fiche par produit, une ligne par variante (le tableau à cellules fusionnées ne tient pas sur 375 px)
+    const so = [['gap', 'Écart au seuil'], ['name', 'Produit'], ...(eventView ? [] : [['cat', 'Catégorie']]), ['meat', 'Type de viande'], ['stock', 'Stock'], ['status', 'Statut']];
+    const mobSort = `<div class="pm-sort"><label>Trier par</label><select onchange="Stock.setFaibleSortTo(this.value)">${so.map(([k, l]) => `<option value="${k}" ${f.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn-ghost btn-sm fit" onclick="Stock.setFaibleSort(Stock.faible.sort)" title="Inverser l'ordre">${f.sortDir === 'asc' ? '▲' : '▼'}</button></div>`;
+    const mob = !groups.length ? '<p class="muted">Aucun résultat pour ces filtres.</p>' : mobSort + groups.map(g => {
+      const r0 = g.rows[0];
+      return `<div class="pm-card"><div class="pm-head"><b>${U.esc(r0.produit)}</b>${r0.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r0.cid)) : ''}<span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">${eventView ? '' : `<span class="badge info">${U.esc(r0.cat)}</span>`}${r0.meat ? `<span class="badge info">${U.esc(r0.meat)}</span>` : ''}</span></div>${g.rows.map(r => {
+        const on = eventView ? !f.excluded.includes(r.key) : f.sel.includes(r.key);
+        const s = stockOf(r);
+        const sub = `seuil ${U.qty(minOf(r))} · stock ${viewLabel} ${U.qty(s)}${eventView ? ` · gén. dispo ${U.qty(r.qg)}` : ''}`;
+        return `<div class="pm-row${eventView && !on ? ' off' : ''}"><input type="checkbox" ${on ? 'checked' : ''} onchange="${eventView ? 'Stock.faibleToggleExcluded' : 'Stock.faibleToggleSel'}('${r.key}')" aria-label="${eventView ? 'Inclure dans l\'impression' : 'Ajouter à la commande'}">
+          <div class="pm-main">${r.variante && r.variante !== '—' ? `<div><b>${U.esc(r.variante)}</b></div>` : ''}<div class="pm-sub">${sub}</div></div>${s <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>'}</div>`;
+      }).join('')}</div>`;
+    }).join('');
 
     const hint = eventView
       ? `<p class="muted help mb0">Avant un marché : vérifie que ton stock événement respecte le seuil. La colonne « général dispo » indique ce que tu peux transférer depuis le général.</p>`
@@ -2162,8 +2186,9 @@ const Stock = {
             <span class="muted" style="margin-left:auto;">${rows.length} ligne(s)</span>
           </div>`}
       </div>
-      <div class="card"><div class="table-wrap">${table}</div></div>`;
+      <div class="card"><div class="perem-mob no-print">${mob}</div><div class="table-wrap perem-desk">${table}</div></div>`;
   },
+  setFaibleSortTo(key) { this.faible.sort = key; this.faible.sortDir = 'asc'; this.renderFaible(); },
   setFaibleSort(key) {
     const f = this.faible;
     if (f.sort === key) f.sortDir = f.sortDir === 'asc' ? 'desc' : 'asc';
