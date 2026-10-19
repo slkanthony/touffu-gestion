@@ -2111,8 +2111,8 @@ const Stock = {
     const btn = (v, l) => ({ l, on: view === v, js: `Stock._setFaibleView('${v}')` });
 
     const filters = `
-      <div class="grid ${eventView ? 'c2' : 'c3'}">
-        ${eventView ? '' : `<div class="fg mb0"><label>Type de produit</label>${U.customSelect({ value: f.type, options: [{ v: 'all', l: 'Tous les produits' }, { v: 'mastication', l: 'Mastication' }, { v: 'materiaux', l: 'Matières premières' }, { v: 'conso', l: 'Consommables' }], onPick: 'Stock._setFaibleType' })}</div>`}
+      ${eventView ? '' : `<div style="margin-bottom:12px;">${U.seg([['all', '📋 Tout'], ['mastication', '🥩 Mastication'], ['materiaux', '🧵 Matières premières'], ['conso', '📦 Consommables']].map(([v, l]) => ({ l, on: f.type === v, js: `Stock._setFaibleType('${v}')` })), { full: true, scroll: true, label: 'Type de produit' })}</div>`}
+      <div class="grid c2">
         <div class="fg mb0"><label>Variantes</label>${U.multiSelect({ groups: varGroups, selected: f.variants, toggle: 'Stock.faibleToggleVariant', setAll: 'Stock.faibleSetAllVariant', open: f.variantsOpen, onOpen: 'Stock.faibleSetOpen' })}</div>
         <div class="fg mb0"><label>Statut</label>${U.customSelect({ value: f.status, options: [{ v: 'low', l: 'Stock faible (qté > 0)' }, { v: 'out', l: 'Rupture de stock' }, { v: 'all', l: 'Tout afficher' }], onPick: 'Stock._setFaibleStatus' })}</div>
       </div>`;
@@ -2281,12 +2281,12 @@ const Stock = {
         }
       } else if (kind === 'MT') {
         const m = Store.state.materials.find(x => x.id === id); if (!m) return;
-        pName = m.product || m.variant || m.name; fmt = m.product ? (m.variant || '') : ''; meat = 'Matières premières'; pKey = 'MT|' + pName;
-        if (m.supplierId) supplier = Store.supplierName(m.supplierId);
-        supplierUrl = m.url || '';
+        pName = m.product || m.variant || m.name; fmt = m.product ? (m.variant || '') : ''; meat = this.matKindLabel[m.kind] || 'Matières premières'; pKey = 'MT|' + pName;
+        ref = m.ref || ''; supplierUrl = m.url || '';
+        supplier = m.supplierId ? Store.supplierName(m.supplierId) : this._hostOf(supplierUrl);   // pas de fournisseur saisi sur les matières : le site du lien en tient lieu (un bloc par site, pour « Ouvrir les liens »)
       } else {
         const c = Store.state.consumables.find(x => x.id === id); if (!c) return;
-        pName = c.name; ref = c.ref || ''; supplierUrl = c.url || ''; meat = 'Consommables';
+        pName = c.name; ref = c.ref || ''; supplierUrl = c.url || ''; meat = c.category || 'Consommables'; supplier = this._hostOf(supplierUrl);
         const ri = this.replaceInfo(c); if (ri) pName += ' — ' + ri.txt;
       }
       const ukey = kind + '|' + id + '|' + (vId || '');
@@ -2308,6 +2308,8 @@ const Stock = {
     });
   },
 
+  /* Nom de site d'un lien (« pethardware.com ») : sert de fournisseur aux matières et consommables, qui n'ont pas de fournisseur saisi */
+  _hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } },
   /* Une entrée par produit ET fournisseur : formats réunis, références / liens / notes sans doublon */
   _orderBuild(items) {
     const map = new Map(), uniq = a => [...new Set(a.filter(Boolean))];
