@@ -2126,7 +2126,7 @@ const Stock = {
           let first = rs.findIndex(x => x.on); if (first < 0) first = 0;   // nom fusionné porté par la 1re ligne COCHÉE (les décochées ne s'impriment pas)
           return `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + rs.map((x, i) => `<tr class="${x.on ? '' : 'excluded-from-print'}">
           <td class="no-print"><input type="checkbox" ${x.on ? 'checked' : ''} onchange="Stock.faibleToggleExcluded('${x.r.key}')"></td>
-          ${i <= first ? `<td class="col-name perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}><b>${U.esc(x.r.produit)}</b></td>
+          ${i <= first ? `<td class="col-name perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}>${this._faibleName(x.r)}</td>
           <td class="perem-name"${i === first ? ` rowspan="${rs.length - first}"` : ''}>${x.r.meat ? `<span class="badge info">${U.esc(x.r.meat)}</span>` : '—'}</td>` : ''}
           <td>${U.esc(x.r.variante)}</td>
           <td class="num">${U.qty(x.r.qe)}</td>
@@ -2144,7 +2144,7 @@ const Stock = {
           return `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((r, i) => `<tr>
           <td class="no-print"><input type="checkbox" ${f.sel.includes(r.key) ? 'checked' : ''} onchange="Stock.faibleToggleSel('${r.key}')"></td>
           ${i === 0 ? `<td class="perem-name"${rsp}><span class="badge info">${U.esc(r0.cat)}</span></td>
-          <td class="col-name perem-name"${rsp}><b>${U.esc(r0.produit)}</b>${r0.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r0.cid)) : ''}</td>
+          <td class="col-name perem-name"${rsp}>${this._faibleName(r0)}${r0.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r0.cid)) : ''}</td>
           <td class="perem-name"${rsp}>${r0.meat ? `<span class="badge info">${U.esc(r0.meat)}</span>` : '—'}</td>` : ''}
           <td>${U.esc(r.variante)}</td>
           <td class="num">${U.qty(minOf(r))}</td>
@@ -2160,7 +2160,7 @@ const Stock = {
     const mobSort = `<div class="pm-sort"><label>Trier par</label><select onchange="Stock.setFaibleSortTo(this.value)">${so.map(([k, l]) => `<option value="${k}" ${f.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn-ghost btn-sm fit" onclick="Stock.setFaibleSort(Stock.faible.sort)" title="Inverser l'ordre">${f.sortDir === 'asc' ? '▲' : '▼'}</button></div>`;
     const mob = !groups.length ? '<p class="muted">Aucun résultat pour ces filtres.</p>' : mobSort + groups.map(g => {
       const r0 = g.rows[0];
-      return `<div class="pm-card"><div class="pm-head"><b>${U.esc(r0.produit)}</b>${r0.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r0.cid)) : ''}<span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">${eventView ? '' : `<span class="badge info">${U.esc(r0.cat)}</span>`}${r0.meat ? `<span class="badge info">${U.esc(r0.meat)}</span>` : ''}</span></div>${g.rows.map(r => {
+      return `<div class="pm-card"><div class="pm-head">${this._faibleName(r0)}${r0.kind === 'C' ? this.replaceBadge(Store.state.consumables.find(x => x.id === r0.cid)) : ''}<span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">${eventView ? '' : `<span class="badge info">${U.esc(r0.cat)}</span>`}${r0.meat ? `<span class="badge info">${U.esc(r0.meat)}</span>` : ''}</span></div>${g.rows.map(r => {
         const on = eventView ? !f.excluded.includes(r.key) : f.sel.includes(r.key);
         const s = stockOf(r);
         const sub = `seuil ${U.qty(minOf(r))} · stock ${viewLabel} ${U.qty(s)}${eventView ? ` · gén. dispo ${U.qty(r.qg)}` : ''}`;
@@ -2197,6 +2197,8 @@ const Stock = {
   reorderOn(p, v) {
     if (v.noReorder === true) return false;
     if (v.noReorder === false) return true;
+    // Lot (2 pièces ou plus) : hors commande dès que le produit a son format à l'UNITÉ (1 pièce / PCS / unité) ou que le lot est la déclinaison d'une variante principale ; seul format du produit → il compte
+    if (v.mode === 'piece' && U.num(v.value) >= 2) return !(this.parentOf(p, v) || p.variants.some(x => x !== v && x.mode === 'piece' && U.num(x.value) === 1 && !this.parentOf(p, x)));
     if (v.mode !== 'gram' || this.parentOf(p, v)) return true;
     const g = U.num(v.value);
     if (!(g >= 250 && p.variants.some(x => x !== v && x.mode === 'gram' && !this.parentOf(p, x) && U.num(x.value) > 0 && U.num(x.value) < g))) return true;
@@ -2206,6 +2208,12 @@ const Stock = {
   boughtByKilo(p, v) {
     const id = this.ficheOf(p, v), cat = id && Store.state.catalogM.find(c => c.id === id), e = cat && Pricing.mainEntry(cat);
     return !!(e && e.unit === 'kilo');
+  },
+  /* Nom du produit d'une ligne de Faible stock : lien vers sa fiche dans Stock → Mastication (voir les autres variantes, les quantités…) ; clic molette / Ctrl+clic = nouvel onglet */
+  _faibleName(r) {
+    const nm = `<b>${U.esc(r.produit)}</b>`;
+    if (r.kind !== 'M' || !r.pid) return nm;
+    return `<a class="pn-link" href="#/stock/mastication/${r.pid}" title="Ouvrir la fiche du produit dans Stock (clic molette / Ctrl+clic : nouvel onglet)">${nm}</a>`;
   },
   /* Statut d'une ligne de Faible stock ; un format qui « ne compte pas pour la commande » est grisé */
   _faibleStatus(r, s, m) {
