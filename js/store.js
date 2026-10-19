@@ -427,6 +427,7 @@ const Store = {
   TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta', 'clients', 'baskets'],   // baskets = paniers / devis en attente (2026-10-14 : l'équipe en crée) → il faut aussi la règle RLS (supabase_schema.sql)
 
   save(...domains) {
+    if (typeof Accessoires !== 'undefined') Accessoires._famC = null;   // cache des familles de matières : périmé dès qu'on enregistre
     if (window.App && window.App.isViewer) {
       if (typeof U !== 'undefined' && U.toast) U.toast('Lecture seule : cette modification ne sera pas enregistree.', true);
       else alert('Lecture seule : cette modification ne sera pas enregistree.');

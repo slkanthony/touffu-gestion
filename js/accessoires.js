@@ -345,7 +345,15 @@ const Accessoires = {
 
   /* ---------- familles de matières (coût moyen) ---------- */
   families() {
-    const mats = Store.state.materials;
+    // Cache de courte durée (2026-10-19, page Artisanat lente : families() était recalculée ~200 fois par affichage — tri compris). Vidé à chaque sauvegarde / nouvel affichage (`_famC = null`) et à la fin du tour de boucle.
+    if (this._famC) return this._famC;
+    const res = this._families();
+    this._famC = res;
+    Promise.resolve().then(() => { if (this._famC === res) this._famC = null; });
+    return res;
+  },
+  _families() {
+    const mats = Store.state.materials, kindLabel = Stock.matKindLabel;
     const groups = {};
     for (const m of mats) {
       let key, label;
@@ -353,7 +361,7 @@ const Accessoires = {
         // une famille par (catégorie de sangle, largeur) : « Sangle 16mm », « Sangle HEXA 16mm »… (clé « sangle:16mm » inchangée pour la catégorie de base)
         const width = m.variant || m.name;
         key = m.kind + ':' + width;
-        label = (Stock.matKindLabel[m.kind] || 'Sangle') + ' ' + width;
+        label = (kindLabel[m.kind] || 'Sangle') + ' ' + width;
       } else {
         const prod = m.product || m.name;
         key = (m.kind || 'autre') + ':' + prod;
@@ -370,7 +378,7 @@ const Accessoires = {
       if (Store.isSangleKind(m.kind) || m.unit !== 'piece') continue;
       const size = this._sizeOf(m); if (!size) continue;
       const key = 'size:' + (m.kind || 'autre') + ':' + size;
-      (bySize[key] = bySize[key] || { key, label: (Stock.matKindLabel[m.kind] || 'Matière') + ' ' + size, kind: m.kind, unit: 'piece', size, bySize: true, materials: [], totalCost: 0, prods: new Set() });
+      (bySize[key] = bySize[key] || { key, label: (kindLabel[m.kind] || 'Matière') + ' ' + size, kind: m.kind, unit: 'piece', size, bySize: true, materials: [], totalCost: 0, prods: new Set() });
       const g = bySize[key]; g.materials.push(m); g.totalCost += this.matCost(m); g.prods.add(m.product || m.name);
     }
     Object.values(bySize).forEach(g => { if (g.prods.size >= 2) groups[g.key] = g; });

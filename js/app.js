@@ -330,6 +330,7 @@ const App = {
   },
   rerender() {
     // Prix du Stock = copie de la fiche Prix mastication : remise à jour AUTOMATIQUEMENT à chaque affichage (jamais besoin du bouton 🔄).
+    Accessoires._famC = null;
     try { Stock.refreshPrices(); } catch (e) { console.error(e); }
     // Vider puis redessiner ramenait la page tout en haut (rechargement automatique au retour sur l'appli, synchro d'un autre appareil…) : on garde la position
     const y = window.scrollY;
