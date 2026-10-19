@@ -400,7 +400,7 @@ const Stock = {
     return `<tr>
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
       <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
-      <td class="num v-ming"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"></td>
+      <td class="num v-ming"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"><span style="font-size:.8rem;" aria-hidden="true">🛒</span><input type="checkbox" ${v.noReorder ? '' : 'checked'} title="Coché : ce format compte pour la commande (Faible stock). Décoché : il ne déclenche plus de commande (ex. 250G / 500G d'un produit acheté au kilo)." onchange="Stock.toggleReorder('${p.id}','${v.id}')" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></td>
       <td class="num v-mine"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
       <td class="num v-stg ${lowCls}"><b>${U.qty(qg)}</b></td>
       <td class="num v-ste">${U.qty(qe)}${lowE>0&&qe<=lowE?` <span class="warn-txt" style="font-size:.75rem;">(min ${lowE})</span>`:''}</td>
@@ -2058,7 +2058,7 @@ const Stock = {
         if (f.variants.length && !f.variants.includes(label)) return;
         const qg = v.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0);
         const qe = v.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0);
-        rows.push({ key: this.ftKey('M', p.id, v.id), pk: 'M|' + p.id, kind: 'M', cat: 'Mastication', produit: p.name, meat: p.meatType || '', variante: label, ref: v.ref || '', qg, qe, total: qg + qe, minG: U.num(v.low), minE: U.num(v.lowEvent) });
+        rows.push({ key: this.ftKey('M', p.id, v.id), pk: 'M|' + p.id, kind: 'M', cat: 'Mastication', produit: p.name, meat: p.meatType || '', variante: label, ref: v.ref || '', qg, qe, total: qg + qe, minG: U.num(v.low), minE: U.num(v.lowEvent), pid: p.id, vid: v.id, noReo: !!v.noReorder });
       }));
     }
     if (!eventView && (typeEff === 'all' || typeEff === 'materiaux')) {
@@ -2074,11 +2074,14 @@ const Stock = {
 
     // Métrique active selon la vue
     const stockOf = (r) => view === 'event' ? r.qe : view === 'total' ? r.total : r.qg;
-    const minOf = (r) => view === 'event' ? r.minE : view === 'total' ? (r.minG + r.minE) : r.minG;
+    // Seuil de commande (Antho 2026-10-19) : le stock TOTAL (général + événement) est comparé au mini GÉNÉRAL ; le mini événement ne sert qu'à recharger la boîte de marché (vue Événement)
+    const minOf = (r) => view === 'event' ? r.minE : r.minG;
     const viewLabel = view === 'event' ? 'évén.' : view === 'total' ? 'total' : 'gén.';
 
     // Ne garder que les lignes ayant un seuil défini pour la vue (sinon pas d'alerte pertinente)
     rows = rows.filter(r => minOf(r) > 0);
+    // Formats qui « ne comptent pas pour la commande » (case du Stock) : cachés de la liste « faible / rupture », visibles (grisés) avec « Tout afficher » ; sans effet sur la vue Événement
+    rows = rows.filter(r => eventView || !r.noReo || f.status === 'all');
     rows = rows.filter(r => {
       const s = stockOf(r), m = minOf(r);
       if (f.status === 'out') return s <= 0;
@@ -2135,7 +2138,7 @@ const Stock = {
       </table>`;
     } else {
       table = `<table>
-        <thead><tr><th class="no-print"><input type="checkbox" ${rows.length && f.sel.length === rows.length ? 'checked' : ''} onchange="Stock.faibleSetAllSel(this.checked)"></th><th>${sortHead('cat', 'Catégorie')}</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Type viande')}</th><th>${sortHead('variant', 'Variante principale')}</th><th class="num">${sortHead('min', 'Stock minimal')}</th><th class="num">${sortHead('stock', 'Stock (' + viewLabel + ')')}</th><th>${sortHead('status', 'Statut')}</th></tr></thead>
+        <thead><tr><th class="no-print"><input type="checkbox" ${rows.length && f.sel.length === rows.length ? 'checked' : ''} onchange="Stock.faibleSetAllSel(this.checked)"></th><th>${sortHead('cat', 'Catégorie')}</th><th class="col-name">${sortHead('name', 'Produit')}</th><th>${sortHead('meat', 'Type viande')}</th><th>${sortHead('variant', 'Variante principale')}</th><th class="num">${sortHead('min', view === 'total' ? 'Mini général' : 'Stock minimal')}</th><th class="num">${sortHead('stock', 'Stock (' + viewLabel + ')')}</th><th>${sortHead('status', 'Statut')}</th></tr></thead>
         ${groups.map((g, gi) => {
           const r0 = g.rows[0], rsp = ` rowspan="${g.rows.length}"`;
           return `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((r, i) => `<tr>
@@ -2146,7 +2149,7 @@ const Stock = {
           <td>${U.esc(r.variante)}</td>
           <td class="num">${U.qty(minOf(r))}</td>
           <td class="num">${U.qty(stockOf(r))}</td>
-          <td>${stockOf(r) <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>'}</td>
+          <td>${this._faibleStatus(r, stockOf(r), minOf(r))}${r.kind === 'M' ? this._reoBtn(r) : ''}</td>
         </tr>`).join('') + '</tbody>';
         }).join('') || '<tbody><tr><td colspan="8" class="muted">Aucun résultat pour ces filtres.</td></tr></tbody>'}
       </table>`;
@@ -2162,13 +2165,13 @@ const Stock = {
         const s = stockOf(r);
         const sub = `seuil ${U.qty(minOf(r))} · stock ${viewLabel} ${U.qty(s)}${eventView ? ` · gén. dispo ${U.qty(r.qg)}` : ''}`;
         return `<div class="pm-row${eventView && !on ? ' off' : ''}"><input type="checkbox" ${on ? 'checked' : ''} onchange="${eventView ? 'Stock.faibleToggleExcluded' : 'Stock.faibleToggleSel'}('${r.key}')" aria-label="${eventView ? 'Inclure dans l\'impression' : 'Ajouter à la commande'}">
-          <div class="pm-main">${r.variante && r.variante !== '—' ? `<div><b>${U.esc(r.variante)}</b></div>` : ''}<div class="pm-sub">${sub}</div></div>${s <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>'}</div>`;
+          <div class="pm-main">${r.variante && r.variante !== '—' ? `<div><b>${U.esc(r.variante)}</b></div>` : ''}<div class="pm-sub">${sub}</div></div><span style="display:flex;align-items:center;gap:4px;">${eventView ? (s <= 0 ? '<span class="badge bad">Rupture</span>' : '<span class="badge warn">Stock faible</span>') : this._faibleStatus(r, s, minOf(r))}${!eventView && r.kind === 'M' ? this._reoBtn(r) : ''}</span></div>`;
       }).join('')}</div>`;
     }).join('');
 
     const hint = eventView
       ? `<p class="muted help mb0">Avant un marché : vérifie que ton stock événement respecte le seuil. La colonne « général dispo » indique ce que tu peux transférer depuis le général.</p>`
-      : `<p class="muted mb0">Coche les produits à recommander puis « Générer la commande ».</p>`;
+      : `<p class="muted help mb0">Coche les produits à recommander puis « Générer la commande ». En vue « total », le stock général + événement est comparé au <b>mini général</b> (le mini événement sert seulement à recharger ta boîte de marché). Le bouton 🚫 d'une ligne retire ce format des commandes (ex. 250G / 500G d'un produit acheté au kilo) ; la même case est dans Stock → Mastication.</p>`;
 
     document.getElementById('stockBody').innerHTML = `
       <div class="card" style="padding:12px 16px;">
@@ -2188,6 +2191,23 @@ const Stock = {
       </div>
       <div class="card"><div class="perem-mob no-print">${mob}</div><div class="table-wrap perem-desk">${table}</div></div>`;
   },
+  /* Statut d'une ligne de Faible stock ; un format qui « ne compte pas pour la commande » est grisé */
+  _faibleStatus(r, s, m) {
+    const b = s <= 0 ? '<span class="badge bad">Rupture</span>' : s <= m ? '<span class="badge warn">Stock faible</span>' : '<span class="badge ok">OK</span>';
+    return r.noReo ? `<span style="opacity:.55;">${b}</span> <span class="badge info" title="Ce format ne déclenche pas de commande (case du Stock)">hors commande</span>` : b;
+  },
+  _reoBtn(r) {
+    return ` <button class="btn-icon" title="${r.noReo ? 'Remettre ce format dans les commandes' : 'Ce format ne doit plus déclencher de commande'}" onclick="Stock.toggleReorder('${r.pid}','${r.vid}')">${r.noReo ? '↩' : '🚫'}</button>`;
+  },
+  /* Case « compte pour la commande » d'un format (Antho 2026-10-19) : décochée = ce format n'apparaît plus dans « Stock faible » ni dans la commande (ex. 250G / 500G d'un produit acheté au kilo) */
+  toggleReorder(pId, vId) {
+    const p = Store.state.stockM.find(x => x.id === pId), v = p && p.variants.find(x => x.id === vId); if (!v) return;
+    const snap = Store.snapshot('stockM', p);
+    if (v.noReorder) delete v.noReorder; else v.noReorder = true;
+    const entry = Store.commitSnapshot(snap, 'stock', `${v.noReorder ? 'Format hors commande' : 'Format remis en commande'} — ${p.name} (${Pricing.labelVariant(v)})`);
+    Store.save('stockM'); App.rerender();
+    U.toast(v.noReorder ? `${Pricing.labelVariant(v)} ne déclenche plus de commande.` : `${Pricing.labelVariant(v)} compte de nouveau pour la commande.`, false, entry.id);
+  },
   setFaibleSortTo(key) { this.faible.sort = key; this.faible.sortDir = 'asc'; this.renderFaible(); },
   setFaibleSort(key) {
     const f = this.faible;
@@ -2200,7 +2220,7 @@ const Stock = {
   faibleSetOpen(open) { this.faible.variantsOpen = open; },
   faibleToggleSel(key) { this._toggleIn(this.faible.sel, key); this.renderFaible(); },
   faibleSetAllSel(all) {
-    this.faible.sel = all ? (this._faibleRowsCache || []).map(r => r.key) : [];
+    this.faible.sel = all ? (this._faibleRowsCache || []).filter(r => !r.noReo).map(r => r.key) : [];
     this.renderFaible();
   },
   // Vue Événement : impression opt-out (tout coché par défaut, décoche pour exclure de l'impression)
