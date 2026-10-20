@@ -70,6 +70,7 @@ const Facture = {
       .pay p { margin: 4px 0; }
       .legal { margin-top: 22px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 11px; color: #444; }
       .legal p { margin: 3px 0; }
+      @media screen and (max-width: 560px) { body { padding: 12px; font-size: 12px; } .top { flex-direction: column; gap: 10px; } .meta { text-align: left; } .top h1 { font-size: 18px; } .cl { margin-left: 0; } .tot { width: 100%; } }   /* aperçu sur téléphone ; l'impression A4 ne change pas */
     </style></head><body>
       <div class="top">
         <div class="seller"><b class="nm">${e(sl.name || '')}</b>${sl.legal ? '<br>' + e(sl.legal) : ''}<br>${nl(sl.address || '')}${sl.siret ? '<br>SIRET : ' + e(sl.siret) : ''}${sl.email ? '<br>' + e(sl.email) : ''}${sl.phone ? ' · ' + e(sl.phone) : ''}</div>

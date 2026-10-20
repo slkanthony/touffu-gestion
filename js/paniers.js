@@ -680,7 +680,7 @@ const Paniers = {
   /* Fenêtre « client » : produit, variante, prix TTC seulement (pas de coeff, DLUO, viande…) — pour capture d'écran ou copie du texte */
   _shareData() {
     const dn = this._dogChoices();
-    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price, dog: (b.dog && dn.length >= 2) ? b.dog : '' }));
+    const lines = this.basket.map(b => ({ name: b.name, variant: b.variant, qty: b.qty, total: b.price * b.qty, unit: b.price, dog: (b.dog && dn.length >= 2) ? b.dog : '', det: this._optLinesOf(b) }));
     const sub = lines.reduce((a, l) => a + l.total, 0);
     const ship = this.livraison > 0 ? this.livraison : 0;
     const red = this._disc() > 0 ? Math.round(sub * this._disc() * 100) / 100 : 0;
@@ -688,7 +688,7 @@ const Paniers = {
     const av = this._balOn !== false && bal > 0 ? Math.round(Math.min(bal, Math.max(0, pre)) * 100) / 100 : 0;   // avoir déduit
     const det = this._balOn !== false && bal < 0 ? -bal : 0;   // dette à régler
     // n° de devis : prévu tant que rien n'est sorti ; lettre suivante si le contenu a changé depuis la dernière sortie (voir devis.js)
-    const h = Devis.hash({ l: lines.map(l => [l.name, l.variant, l.qty, l.unit, l.dog]), r: red, s: ship, a: av, t: det, m: this._shMode || '' });
+    const h = Devis.hash({ l: lines.map(l => [l.name, l.variant, l.qty, l.unit, l.dog].concat(l.det.length ? [l.det.join('|')] : [])), r: red, s: ship, a: av, t: det, m: this._shMode || '' });
     if (!this._dv) this._dv = Devis.blank();
     return { lines, sub, red, redPct: this.reduction, ship, av, det, bal, total: pre - av + det, no: Devis.show(this._dv, h), h, x: this._shareExtras() };
   },
@@ -737,7 +737,7 @@ const Paniers = {
     return no;
   },
   _shareInner(d) {
-    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:center;font-weight:700;">${U.qty(l.qty)}</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(l.unit)}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
+    const rows = d.lines.map(l => `<tr><td style="padding:7px 10px;text-align:left;font-weight:700;">${U.esc(l.name)}${l.det.length ? `<div style="font-weight:500;font-size:.85rem;line-height:1.35;">${l.det.map(U.esc).join('<br>')}</div>` : ''}${l.dog ? `<div style="font-weight:600;font-size:.85rem;color:var(--caramel);">→ pour ${U.esc(l.dog)}</div>` : ''}</td><td style="padding:7px 10px;text-align:center;">${U.esc(l.variant || '')}</td><td style="padding:7px 10px;text-align:center;font-weight:700;">${U.qty(l.qty)}</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(l.unit)}</td><td style="padding:7px 10px;text-align:right;font-weight:700;white-space:nowrap;">${U.eur(l.total)}</td></tr>`).join('');
     const x = d.x;
     return `${d.no ? `<p style="margin:0 10px 6px;font-weight:800;">Devis n° ${U.esc(d.no)}</p>` : ''}${x.who ? `<p style="margin:0 10px 8px;font-weight:700;color:var(--caramel);">${U.esc(x.who)}</p>` : ''}<table style="width:100%;border-collapse:collapse;font-size:1rem;">
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:center;">Qté</th><th style="padding:7px 10px;text-align:right;">Prix unit.</th><th style="padding:7px 10px;text-align:right;">Sous-total</th></tr></thead>
@@ -984,10 +984,10 @@ const Paniers = {
   },
   async _sendRecToSale(rec) {
     const units = Ventes.units(), merged = new Map(), warns = [], general = [];
-    (rec.items || []).forEach(b => {
-      const key = b.kind === 'A' ? 'A|' + b.pId : 'M|' + b.pId + '|' + b.vId;
+    (rec.items || []).forEach((b, bi) => {
+      const ukey = b.kind === 'A' ? 'A|' + b.pId : 'M|' + b.pId + '|' + b.vId, det = this._optLinesOf(b), key = det.length ? ukey + '#' + bi : ukey;
       if (merged.has(key)) { const m = merged.get(key); m.qty += U.num(b.qty); if (m.lotId !== (b.lotId || '')) m.lotId = ''; }   // plusieurs lots différents du même produit : le lot se choisit dans le ticket
-      else merged.set(key, { key, name: b.name, variant: b.variant, price: U.num(b.price), qty: U.num(b.qty), lotId: b.kind === 'A' ? '' : (b.lotId || '') });
+      else merged.set(key, { key: ukey, name: b.name, variant: b.variant, price: U.num(b.price), qty: U.num(b.qty), lotId: b.kind === 'A' ? '' : (b.lotId || ''), det });
     });
     const lines = [];
     merged.forEach(m => {
@@ -996,9 +996,9 @@ const Paniers = {
       if (u.kind === 'A' && U.num(u.availE) + U.num(u.availG) < m.qty) warns.push(`🐕 <b>${U.esc(m.name)}</b> : stock fini insuffisant (${U.qty(m.qty)} demandé, ${U.qty(U.num(u.availE) + U.num(u.availG))} en stock) — à fabriquer.`);
       // Règle : toujours le stock ÉVÉNEMENT d'abord ; le manquant vient du stock général (confirmé dans la fenêtre)
       const e = Math.min(m.qty, Math.max(0, U.num(u.availE))), g = m.qty - e;
-      if (e > 0) lines.push({ u, qty: e, price: m.price, src: 'event', lotId: m.lotId });
+      if (e > 0) lines.push({ u, qty: e, price: m.price, src: 'event', lotId: m.lotId, det: m.det });
       if (g > 0) {
-        lines.push({ u, qty: g, price: m.price, src: 'general', lotId: m.lotId });
+        lines.push({ u, qty: g, price: m.price, src: 'general', lotId: m.lotId, det: m.det });
         general.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : ${e > 0 ? `${U.qty(e)} en événement + ` : ''}<b>${U.qty(g)} en stock général</b>`);
         if (g > U.num(u.availG)) warns.push(`<b>${U.esc(m.name)}</b> ${U.esc(u.label)} : stock général insuffisant (${U.qty(g)} à prendre, ${U.qty(u.availG)} dispo).`);
       }
@@ -1061,7 +1061,8 @@ const Paniers = {
     if (d.x.mode) blocks.unshift({ f: font(700, 16), l: [d.x.mode] });
     const whoH = d.x.who ? 30 : 0;
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
-    const H = pad + 50 + whoH + 44 + rows * rowH + 70 + extraH + pad;
+    const OL = 21, detH = d.lines.reduce((a, l) => a + l.det.length * OL, 0);   // détails d'accessoire : une ligne de 21 px chacun sous le nom
+    const H = pad + 50 + whoH + 44 + rows * rowH + detH + 70 + extraH + pad;
     const k = 2, cv = document.createElement('canvas');
     cv.width = W * k; cv.height = H * k;
     const x = cv.getContext('2d'); x.scale(k, k);
@@ -1079,7 +1080,8 @@ const Paniers = {
     y += 38;
     x.strokeStyle = car; x.lineWidth = 2; x.beginPath(); x.moveTo(pad, y); x.lineTo(W - pad, y); x.stroke();
     d.lines.forEach((l, i) => {
-      if (i % 2) { x.fillStyle = th; x.globalAlpha = .45; x.fillRect(pad, y, W - 2 * pad, rowH); x.globalAlpha = 1; }
+      const rh = rowH + l.det.length * OL;
+      if (i % 2) { x.fillStyle = th; x.globalAlpha = .45; x.fillRect(pad, y, W - 2 * pad, rh); x.globalAlpha = 1; }
       x.fillStyle = fg; x.font = font(700, 18); x.textAlign = 'left';
       let nm = l.name;
       while (x.measureText(nm).width > inner * 0.40 && nm.length > 4) nm = nm.slice(0, -2);
@@ -1089,7 +1091,8 @@ const Paniers = {
       x.font = font(700, 18); x.fillText(U.qty(l.qty), cQty, y + rowH / 2);
       x.font = font(500, 17); x.textAlign = 'right'; x.fillText(U.eur(l.unit), rUnit, y + rowH / 2);
       x.font = font(700, 18); x.fillText(U.eur(l.total), rTot, y + rowH / 2);
-      y += rowH;
+      if (l.det.length) { x.font = font(500, 15); x.fillStyle = fg; x.textAlign = 'left'; l.det.forEach((t, k) => { let tt = t; while (x.measureText(tt).width > inner * 0.62 && tt.length > 6) tt = tt.slice(0, -2); x.fillText(tt + (tt.length < t.length ? '…' : ''), pad + 28, y + rowH - 4 + k * OL + OL / 2); }); }
+      y += rh;
     });
     if (d.red > 0) {
       x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
@@ -1141,7 +1144,7 @@ const Paniers = {
     const d = this._shareData();
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu' + (d.no ? ' — Devis n° ' + d.no : '')].concat(d.x.who ? [d.x.who] : [], [''],
-      d.lines.map(l => `• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`),
+      d.lines.flatMap(l => [`• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`].concat(l.det.map(t => '     – ' + t))),
       [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], [(d.x.vatMention ? 'Total' : 'Total TTC') + ' : ' + eur(d.total)],
       d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines, d.x.refHint ? [d.x.refHint] : []) : [], d.x.msg ? ['', d.x.msg] : [], d.x.vatMention ? ['', d.x.vatMention] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
@@ -1261,11 +1264,28 @@ const Paniers = {
     this.addOpen = false; this.render();
   },
   /* silent = depuis le sélecteur plein écran du téléphone : on ajoute sans redessiner la page (elle l'est une seule fois à la fermeture) */
+  /* Détails d'un accessoire du panier (motif, sangles, mousqueton, bouclerie, texte libre) — fenêtre partagée Accessoires.optEdit (Antho 2026-10-20 : d'abord pour les clients particuliers). */
+  _optLinesOf(b) { return b && b.kind === 'A' && b.opts ? Accessoires.optLines(Accessoires.optOf(b.pId), b.opts) : []; },
+  _optSum(b) { const L = this._optLinesOf(b); return L.length ? `<div style="font-weight:500;font-size:.8rem;color:var(--caramel);line-height:1.35;margin-top:3px;min-width:180px;">${L.map(U.esc).join(' · ')}</div>` : ''; },   // tableau : une ligne compacte (le devis, lui, met une ligne par détail)
+  async itemOpts(i) {
+    const b = this.basket[i]; if (!b || b.kind !== 'A') return;
+    const res = await Accessoires.optEdit(Accessoires.optOf(b.pId), b.opts, b.name);
+    if (res === null) return;
+    if (Accessoires.optEmpty(res)) delete b.opts; else b.opts = res;
+    this._draft(); this.render();
+  },
+  /* ⧉ même accessoire sur une nouvelle ligne (quantité 1, mêmes détails à modifier) : deux laisses de couleurs différentes = deux lignes */
+  dupItem(i) {
+    const b = this.basket[i]; if (!b) return;
+    const c = JSON.parse(JSON.stringify(b)); c.qty = 1;
+    this.basket.splice(i + 1, 0, c); this._draft(); this.render();
+    U.toast('Ligne dupliquée — change ses détails avec « ✏️ Détails ».');
+  },
   pickManual(pId, vId, lotId, kind, silent) {
     const done = () => { if (silent) this._draft(); else { this.addQ = ''; this.addOpen = false; this.render(); } };
     if (kind === 'A') {   // accessoire : pas de lot ni de DLUO
       const c = this.accCandidates().find(x => x.pId === pId); if (!c) { U.toast('Accessoire introuvable.', true); return; }
-      const ex = this.basket.find(b => b.kind === 'A' && b.pId === pId);
+      const ex = this.basket.find(b => b.kind === 'A' && b.pId === pId && Accessoires.optEmpty(b.opts));
       if (ex) ex.qty++;
       else this.basket.push({ kind: 'A', pId: c.pId, vId: '', lotId: '', name: c.name, meat: '', category: c.category, variant: '', price: c.price, qty: 1, dluo: '', daysLeft: 9999, coeff: c.coeff, lotNumber: '', locked: true });
       done();
@@ -1688,8 +1708,8 @@ const Paniers = {
             const dluoClass = daysLeft !== null && daysLeft < 0 ? 'bad' : daysLeft !== null && daysLeft <= 30 ? 'warn' : '';
             return `<tr${b.locked ? ' style="background:var(--th-bg);"' : ''}>
               <td class="pl-lk"><button class="btn-icon" onclick="Paniers.toggleLock(${i})" title="${b.locked ? 'Déverrouiller (sera remplacé à la régénération)' : 'Verrouiller (sera gardé à la régénération)'}">${b.locked ? '🔒' : '🔓'}</button></td>
-              <td class="col-name">${U.esc(b.name)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.concat(b.dog && !dogOpts.includes(b.dog) ? [b.dog] : []).map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
-              <td class="pl-var${b.kind === 'A' || !b.variant ? ' pl-none' : ''}">${b.kind === 'A' ? '<span class="muted">—</span>' : `<span class="tag">${U.esc(b.variant)}</span>`}</td>
+              <td class="col-name">${U.esc(b.name)}${this._optSum(b)}${dogOpts.length ? `<div><select onchange="Paniers.setItemDog(${i},this.value)" title="Pour quel chien ? (vide = convient à tous, rien n'est affiché au client)"><option value="">🐕 tous</option>${dogOpts.concat(b.dog && !dogOpts.includes(b.dog) ? [b.dog] : []).map(n => `<option value="${U.esc(n)}" ${b.dog === n ? 'selected' : ''}>pour ${U.esc(n)}</option>`).join('')}</select></div>` : ''}</td>
+              <td class="pl-var${b.kind !== 'A' && !b.variant ? ' pl-none' : ''}">${b.kind === 'A' ? `<button class="btn-ghost btn-sm" style="white-space:nowrap;" onclick="Paniers.itemOpts(${i})" title="Motif, couleurs de sangle, mousqueton, bouclerie, texte libre… (affichés sous le produit dans le devis, le ticket et la facture)">✏️ Détails</button>` : `<span class="tag">${U.esc(b.variant)}</span>`}</td>
               <td class="pl-meat">${b.kind === 'A' ? `<span class="badge info">🐕 ${U.esc(b.category || 'Accessoire')}</span>` : `<span class="badge info">${U.esc(b.meat || '—')}</span>`}</td>
               <td class="num pl-price"><input type="number" step="0.1" min="0" value="${(Math.round(U.num(b.price) * 100) / 100)}" style="width:84px;text-align:right;" title="Prix TTC modifiable pour ce panier (le prix du stock ne change pas)" onchange="Paniers.setItemPrice(${i},this.value)"></td>
               <td class="num pl-qty" style="white-space:nowrap;">
@@ -1700,7 +1720,7 @@ const Paniers = {
               <td class="num pl-sub"><b>${U.eur(b.price * b.qty)}</b></td>
               <td class="pl-dluo${b.dluo ? '' : ' pl-none'}">${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
               <td class="num pl-coef${b.coeff > 0 ? '' : ' pl-none'}">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
-              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? '' : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
+              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? `<button class="btn-icon" onclick="Paniers.dupItem(${i})" title="Dupliquer la ligne (même accessoire, autres couleurs / autre motif)">⧉</button>` : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
             </tr>`;
           }).join('')}</tbody>
         </table></div>

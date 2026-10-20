@@ -699,28 +699,13 @@ const B2B = {
   /* Lignes de détails d'une ligne accessoire (motif, sangles, mousqueton…) — voir Accessoires.optLines */
   _qtOptLines(r) { return r && r.aId && r.opts ? Accessoires.optLines(Accessoires.optOf(r.aId), r.opts) : []; },
   _qtOptSum(r) { const L = this._qtOptLines(r); return L.length ? `<div class="qt-os">${L.map(U.esc).join('<br>')}</div>` : ''; },
-  _optSet(k, v) { const d = this._optDraft; if (!d) return; if (/^c\d$/.test(k)) { d.c = d.c || {}; d.c[k.slice(1)] = v; } else d[k] = v; },
-  /* Fenêtre « Détails » d'une ligne accessoire : posée au-dessus de la fenêtre du devis, qui reste ouverte. */
+  /* Fenêtre « Détails » d'une ligne accessoire (Accessoires.optEdit) : posée au-dessus de la fenêtre du devis, qui reste ouverte. */
   async qtOpts(i) {
     const r = this._qtRows(true).all[i]; if (!r || !r.aId) return;
-    const a = Accessoires.optOf(r.aId), ch = Accessoires.optChoices(), parts = Accessoires.optParts(a);
-    const d = this._optDraft = JSON.parse(JSON.stringify((this._qt.opts || {})[r.key] || {})); d.c = d.c || {};
-    const dl = (id, arr) => `<datalist id="${id}">${arr.map(x => `<option value="${U.esc(x)}">`).join('')}</datalist>`;
-    const fld = (label, key, val, list, ph, full) => `<div class="fg" style="margin:0;${full ? 'grid-column:1/-1;' : ''}"><label style="white-space:nowrap;">${label}</label><input type="text" ${list ? `list="${list}"` : ''} value="${U.esc(val || '')}" placeholder="${U.esc(ph || '')}" oninput="B2B._optSet('${key}',this.value)" style="width:100%;"></div>`;
-    const html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 12px;">
-      ${fld('Motif / personnalisation', 'motif', d.motif, '', 'ex : Motif Stitch sur mesure', true)}
-      ${parts.map(p => fld(p.label + (parts.length > 1 && p.hint ?' <span class="muted">(' + U.esc(p.hint) + ')</span>' : ''), 'c' + p.k, d.c[p.k], 'ol_col', 'couleur')).join('')}
-      ${fld('Longueur / taille', 'len', d.len, '', 'ex : 1m50 · Taille M — 42/43 cm')}
-      ${fld('Mousqueton', 'snap', d.snap, 'ol_snap', 'type')}
-      ${fld('Bouclerie', 'fin', d.fin, 'ol_fin', 'couleur / finition')}
-      ${fld('Note', 'note', d.note, '', 'texte libre', true)}
-    </div>${dl('ol_col', ch.colors)}${dl('ol_snap', ch.snaps)}${dl('ol_fin', ch.fins)}<p class="muted" style="margin:8px 0 0;font-size:.82rem;">Propositions tirées de tes Matières premières — tu peux aussi taper librement. Ces lignes s'affichent sous le produit dans le devis (image, texte, tableau).</p>`;
-    if (!await U.ask({ title: '✏️ Détails — ' + U.esc(r.name), html, okLabel: 'Enregistrer', cancelLabel: 'Annuler' })) return;
-    const clean = { c: {} };
-    Object.keys(d.c).forEach(k => { if (String(d.c[k] || '').trim()) clean.c[k] = String(d.c[k]).trim(); });
-    ['motif', 'len', 'snap', 'fin', 'note'].forEach(k => { const v = String(d[k] || '').trim(); if (v) clean[k] = v; });
+    const res = await Accessoires.optEdit(Accessoires.optOf(r.aId), (this._qt.opts || {})[r.key], r.name);
+    if (res === null) return;
     this._qt.opts = this._qt.opts || {};
-    if (Object.keys(clean).length === 1 && !Object.keys(clean.c).length) delete this._qt.opts[r.key]; else this._qt.opts[r.key] = clean;
+    if (Accessoires.optEmpty(res)) delete this._qt.opts[r.key]; else this._qt.opts[r.key] = res;
     this._qtRefresh();
   },
   /* Un clic n'importe où sur la ligne (variante, prix…) coche / décoche sa case — sauf sur le nom du produit, la quantité et les boutons. */
