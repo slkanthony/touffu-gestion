@@ -396,11 +396,15 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .qt-t { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .92rem; }
 .qt-t th { position: sticky; top: 0; z-index: 1; white-space: normal; padding: 6px 8px; font-size: .7rem; line-height: 1.2; }
 .qt-t td { padding: 2px 8px; border-bottom: 1px solid var(--card-border); line-height: 1.25; }
-.qt-t tr.grp td { border-top: 1px solid var(--caramel); }
+.qt-t tr.grp td { border-top: 2px solid var(--caramel); }
+.qt-t tr.g1 td { background: rgba(166, 113, 83, 0.13); }   /* produits en alternance : un produit = un bloc */
+.qt-t .nm { font-size: 1rem; }
+.qt-t .va { font-size: .95rem; }
+.qt-v { display: inline-block; min-width: 54px; padding: 1px 8px; white-space: nowrap; border-radius: 999px; background: rgba(166, 113, 83, 0.28); font-weight: 800; color: var(--texte); }
 .qt-t .ck { text-align: center; padding-left: 4px; padding-right: 4px; }
 .qt-t .ctr { text-align: center; }
 .qt-t .nm { font-weight: 700; word-break: break-word; }
-.qt-t .pr { font-weight: 700; white-space: nowrap; }
+.qt-t .pr { font-weight: 600; white-space: nowrap; }
 .qt-t td.num, .qt-t th.num { text-align: right; white-space: nowrap; }
 .qt-t input[type=number] { width: 58px; height: 24px; text-align: center; padding: 1px 4px; }
 .qt-t input[type=checkbox] { margin: 0; }
@@ -417,7 +421,7 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
   .qt-t td.ck { grid-area: ck; align-self: center; }
   .qt-t td.nm { grid-area: nm; }
   .qt-t td.nm:empty { display: none; }
-  .qt-t td.va { grid-area: va; text-align: left; color: var(--gris); }
+  .qt-t td.va { grid-area: va; text-align: left; }
   .qt-t td.pc { grid-area: pc; }
   .qt-t td.sb { grid-area: sb; min-width: 56px; }
   .qt-t td.qy { grid-area: qy; }

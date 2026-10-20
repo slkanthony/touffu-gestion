@@ -665,17 +665,17 @@ const B2B = {
     const search = String(q.q || '').trim(), showOff = !!q.showOff;
     const vis = [];
     all.forEach((r, i) => { if (search ? U.has(r.name + ' ' + r.variant, search) : (r.on || showOff)) vis.push({ r, i }); });
-    let prev = null;
+    let prev = null, gi = 0;
     const rows = vis.map(({ r, i }) => {
-      const first = r.name !== prev; prev = r.name;
-      return `<tr id="qt_row_${i}" class="${first ? 'grp' : ''}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va">${U.esc(r.variant)}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`;
+      const first = r.name !== prev; prev = r.name; if (first) gi++;
+      return `<tr id="qt_row_${i}" class="${first ? 'grp' : ''}${gi % 2 ? ' g1' : ''}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`;
     }).join('');
     // Recherche : on propose AUSSI les produits de l'onglet actif qui ne sont pas dans le devis ; une case les ajoute.
     const found = this._qtFound(); this._qtFoundList = found;
-    let prevF = null;
+    let prevF = null, gf = 0;
     const foundRows = found.length ? `<tr><td colspan="7" class="muted" style="padding:8px;text-align:center;background:var(--card-border);">➕ Pas encore dans le devis — coche pour ajouter</td></tr>` + found.map((r, i) => {
-      const first = r.name !== prevF; prevF = r.name;
-      return `<tr class="${first ? 'grp' : ''}"><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va">${U.esc(r.variant)}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`;
+      const first = r.name !== prevF; prevF = r.name; if (first) gf++;
+      return `<tr class="${first ? 'grp' : ''}${gf % 2 ? ' g1' : ''}"><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`;
     }).join('') : '';
     const empty = `<tr><td colspan="7" class="muted" style="padding:16px;text-align:center;">${search ? 'Aucun produit pour cette recherche.' : 'Aucune ligne cochée — tape un nom dans la recherche pour ajouter un produit, ou utilise « Afficher les décochées ».'}</td></tr>`;
     return `<table class="qt-t"><colgroup><col style="width:36px"><col><col style="width:118px"><col style="width:84px"><col class="c-reco" style="width:92px"><col style="width:72px"><col style="width:92px"></colgroup>
@@ -985,7 +985,8 @@ const B2B = {
     if (addOther) {   // on passe à l'autre catégorie : le devis reste « en cours » jusqu'à ce qu'il soit complété (ou abandonné)
       const next = (this.tab || 'mast') === 'acc' ? 'mast' : 'acc';
       this._link = rec.id; this.tab = next; this.render();
-      U.toast(`Devis n° ${no} gardé. Coche tes ${next === 'acc' ? 'accessoires' : 'produits de mastication'}, puis « Partager le devis » : ils seront ajoutés au devis de ${who}.`);
+      this.resumePro(rec.id);   // la fenêtre se rouvre aussitôt sur l'autre onglet (recherche = produits de cet onglet)
+      U.toast(`Devis n° ${no} gardé — cherche ${next === 'acc' ? 'tes accessoires' : 'tes produits de mastication'} dans la barre de recherche.`);
       return;
     }
     this._link = null; this.render();
