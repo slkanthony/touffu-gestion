@@ -1619,6 +1619,15 @@ const Accessoires = {
     const srt = x => [...x].sort(U.sortFr);
     return { colors: srt(colors), snaps: srt(snaps), fins: srt(fins) };
   },
+  /* Longueurs proposées pour une laisse / longe… : celles des fiches du même produit (même nom de base + même catégorie, toutes largeurs confondues) ;
+     s'il y en a moins de 2, celles de la catégorie. Au format que tape Antho (« 1m20 », « 2m50 », « 10m »). La saisie libre reste toujours possible. */
+  optLengths(a) {
+    const fmt = l => { const m = Math.floor(l + 1e-6), cm = Math.round((l - m) * 100); return m > 0 ? m + 'm' + (cm ? String(cm).padStart(2, '0') : '') : cm + 'cm'; };
+    const pool = this.crafted().filter(x => this._lenOf(x) > 0), cat = U.normSearch((a && a.category) || '');
+    let L = a ? pool.filter(x => U.normSearch(this._baseName(x)) === U.normSearch(this._baseName(a)) && U.normSearch(x.category || '') === cat) : [];
+    if (new Set(L.map(x => this._lenOf(x))).size < 2) L = pool.filter(x => U.normSearch(x.category || '') === cat);
+    return [...new Set(L.map(x => this._lenOf(x)))].sort((x, y) => x - y).map(fmt);
+  },
   optParts(a) {
     const n = a ? this._colorCount(a) : 1;
     if (n < 2) return [{ k: 1, label: 'Sangle', hint: '' }];
@@ -1644,17 +1653,17 @@ const Accessoires = {
   /* Fenêtre « ✏️ Détails » d'un accessoire (posée AU-DESSUS de la fenêtre ou de la page ouverte, qui reste en place).
      Renvoie une promesse : l'objet de détails nettoyé ({} si tout a été vidé) ou null si annulé. Utilisée par Paniers (devis client) et Revente pro. */
   async optEdit(a, cur, title) {
-    const parts = this.optParts(a);
+    const parts = this.optParts(a); this._optA = a;
     const d = this._optDraft = JSON.parse(JSON.stringify(cur || {})); d.c = d.c || {};
     const fld = (label, key, val, list, ph, full) => `<div class="fg" style="margin:0;${full ? 'grid-column:1/-1;' : ''}"><label style="white-space:nowrap;">${label}</label><input type="text" ${list ? `data-clcombo="opt:${list}" autocomplete="off"` : ''} value="${U.esc(val || '')}" placeholder="${U.esc(ph || '')}" oninput="Accessoires._optSet('${key}',this.value)" style="width:100%;"></div>`;
     const html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 12px;">
       ${fld('Motif / personnalisation', 'motif', d.motif, '', 'ex : Motif Stitch sur mesure', true)}
       ${parts.map(p => fld(p.label + (parts.length > 1 && p.hint ? ' <span class="muted">(' + U.esc(p.hint) + ')</span>' : ''), 'c' + p.k, d.c[p.k], 'colors', 'couleur')).join('')}
-      ${fld('Longueur / taille', 'len', d.len, '', 'ex : 1m50 · Taille M — 42/43 cm')}
+      ${fld('Longueur / taille', 'len', d.len, 'lens', 'choisis ou tape : 1m50 · Taille M — 42/43 cm')}
       ${fld('Mousqueton', 'snap', d.snap, 'snaps', 'type')}
       ${fld('Bouclerie', 'fin', d.fin, 'fins', 'couleur / finition')}
       <div class="fg" style="margin:0;grid-column:1/-1;"><label style="white-space:nowrap;">Texte libre <span class="muted">(une ligne = une ligne du devis)</span></label><textarea rows="3" style="width:100%;" placeholder="ex : prénom brodé « Ulysse », boucle côté gauche…" oninput="Accessoires._optSet('note',this.value)">${U.esc(d.note || '')}</textarea></div>
-    </div><p class="muted" style="margin:8px 0 0;font-size:.82rem;">Propositions tirées de tes Matières premières — tu peux aussi taper librement. Seules les cases remplies s'affichent, sous le produit, dans le devis (image, texte, tableau) puis sur le ticket et la facture.</p>`;
+    </div><p class="muted" style="margin:8px 0 0;font-size:.82rem;">Propositions tirées de tes Matières premières et des longueurs de tes fiches — tu peux toujours taper librement (longueur intermédiaire…). Seules les cases remplies s'affichent, sous le produit, dans le devis (image, texte, tableau) puis sur le ticket et la facture.</p>`;
     if (!await U.ask({ title: '✏️ Détails — ' + U.esc(title || (a && a.name) || 'accessoire'), html, okLabel: 'Enregistrer', cancelLabel: 'Annuler' })) return null;
     const clean = { c: {} };
     Object.keys(d.c).forEach(k => { const v = String(d.c[k] || '').trim(); if (v) clean.c[k] = v; });

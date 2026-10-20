@@ -19,7 +19,7 @@ const Clients = {
      les onchange / oninput existants des champs font le reste. Le nom tapé librement (nouveau client) reste accepté. */
   _cb: null,
   _cbRows(q, mode) {
-    if (mode.startsWith('opt:')) return ((Accessoires.optChoices()[mode.slice(4)]) || []).filter(x => !q || U.has(x, q)).map(x => ({ show: x, dogs: [] }));   // détails d'accessoire : couleurs / mousquetons / finitions des Matières premières
+    if (mode.startsWith('opt:')) return ((mode === 'opt:lens' ? Accessoires.optLengths(Accessoires._optA) : Accessoires.optChoices()[mode.slice(4)]) || []).filter(x => !q || U.has(x, q)).map(x => ({ show: x, dogs: [] }));   // détails d'accessoire : couleurs / mousquetons / finitions des Matières premières
     if (mode === 'codes') {   // codes des partenaires : on montre la réduction du client, jamais le % reversé au partenaire
       if (this.ro()) return [];
       return Partners.list().flatMap(p => (p.codes || []).filter(c => c.code).map(c => ({ show: c.code, pname: p.name, disc: U.num(c.discPct) })))
@@ -34,7 +34,7 @@ const Clients = {
     const mode = inp.dataset.clcombo || '', q = inp.value.trim(); cb.rows = this._cbRows(q, mode).slice(0, 60); cb.i = -1;
     let el = document.getElementById('clCombo');
     if (!el) { el = document.createElement('div'); el.id = 'clCombo'; el.className = 'ac-list'; el.onmousedown = e => e.preventDefault(); document.body.appendChild(el); }
-    if (mode.startsWith('opt:')) el.innerHTML = cb.rows.length ? cb.rows.map((r, k) => `<div class="ac-item cb-row" data-k="${k}" onclick="Clients._cbPick(${k})"><span class="cb-n">${U.esc(r.show)}</span></div>`).join('') : `<div class="ac-item muted">${q ? 'Pas dans tes Matières premières : « ' + U.esc(q) + ' » sera gardé tel quel.' : 'Aucune proposition : tape ce que tu veux.'}</div>`;
+    if (mode.startsWith('opt:')) el.innerHTML = cb.rows.length ? cb.rows.map((r, k) => `<div class="ac-item cb-row" data-k="${k}" onclick="Clients._cbPick(${k})"><span class="cb-n">${U.esc(r.show)}</span></div>`).join('') : `<div class="ac-item muted">${q ? '« ' + U.esc(q) + ' » sera gardé tel quel (saisie libre).' : 'Aucune proposition : tape ce que tu veux.'}</div>`;
     else el.innerHTML = mode === 'codes' ? (cb.rows.length ? cb.rows.map((r, k) => `<div class="ac-item cb-row" data-k="${k}" onclick="Clients._cbPick(${k})"><span class="cb-n">🏷️ ${U.esc(r.show)}${r.disc ? ` <span class="cb-pct">−${U.qty(r.disc)} %</span>` : ''}</span><span class="cb-d">🤝 ${U.esc(r.pname)}</span></div>`).join('') : `<div class="ac-item muted">${q ? 'Aucun code partenaire ne correspond : « ' + U.esc(q) + ' » sera gardé comme simple note (sans réduction automatique).' : 'Aucun code partenaire créé (Statistiques → Partenaires).'}</div>`) : cb.rows.length ? cb.rows.map((r, k) => {
       const dm = q ? r.dogs.filter(d => U.has(d, q)) : [];   // chiens qui correspondent à la recherche : mis en avant
       const dogTxt = r.dogs.map(d => `<span class="${dm.includes(d) ? 'cb-hit' : ''}">🐕 ${U.esc(d)}</span>`).join(' · ');
