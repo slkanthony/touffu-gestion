@@ -79,6 +79,7 @@ const B2B = {
     App.mount(`
       <div class="view-title"><h1>Revente pro (B2B)</h1><span class="sub">remise & fiches par produit</span></div>
       ${controls}
+      ${this._linkBanner()}
       ${this._proPendingCard()}
       ${this._capBanner()}
       ${tab === 'acc' ? this.renderAcc() : this.renderMast()}`);
@@ -600,8 +601,11 @@ const B2B = {
         list.push({ key: this._expKeyM(x.it.p.id, r.label), pId: x.it.p.id, vid: r.vid, name: x.it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B });
       });
     });
+    // Lignes de l'AUTRE catégorie, reprises du devis en attente de la même entreprise (prix figés au moment de la mise en attente), placées en premier.
+    const carried = ((this._qt && this._qt.carry) || []).map(l => ({ key: l.key, pId: l.pId, vid: l.vid, aId: l.aId, name: l.name, variant: l.variant, price: U.num(l.price), reco: U.num(l.reco), ht: U.num(l.ht != null ? l.ht : l.price), base: l.qty, carry: true }));
+    list.unshift(...carried);
     const q = (this._qt && this._qt.qty) || {};
-    list.forEach(r => { r.qty = Math.max(1, Math.round(U.num(q[r.key])) || 1); r.on = !(this._qt && this._qt.off && this._qt.off[r.key]); r.sub = r.on ? r.qty * r.price : 0; r.subReco = r.on ? r.qty * r.reco : 0; });
+    list.forEach(r => { r.qty = Math.max(1, Math.round(U.num(q[r.key] != null ? q[r.key] : r.base)) || 1); r.on = !(this._qt && this._qt.off && this._qt.off[r.key]); r.sub = r.on ? r.qty * r.price : 0; r.subReco = r.on ? r.qty * r.reco : 0; });
     // Dès qu'une quantité est saisie : mode « devis » (seules les lignes avec une quantité, + Qté / Sous-total / Total). Sinon : simple liste de prix.
     const devis = list.some(r => r.on);
     const rows = all ? list : list.filter(r => r.on);
@@ -698,7 +702,13 @@ const B2B = {
     this._qtNoRefresh();
   },
   _qtRefresh() { const b = document.getElementById('qt_box'); if (b) b.innerHTML = this._qtInner(); this._qtChrome(); },
+  /* Si un devis est « en cours » (bouton ➕ Ajouter…), on rouvre CE devis en y ajoutant les lignes de l'onglet actif ; sinon nouveau devis. */
   openQuote(type) {
+    const L = this._linkRec();
+    if (L) return this.resumePro(L.id, true);
+    this._openQuote(type);
+  },
+  _openQuote(type) {
     this._qt = { type, who: '', iban: true, msg: null, per: 20, qty: {}, off: {} };
     const rows = this._qtRows(true).all;
     rows.forEach(r => { if (this._isOffVar(r.variant)) this._qt.off[r.key] = true; });   // formats non proposés aux pros (mémorisés)
@@ -735,6 +745,7 @@ const B2B = {
     // Boutons d'action dans le pied FIXE de la fenêtre (toujours visibles), avec « Fermer » et « Copier le texte ».
     bg.querySelector('.actions').insertAdjacentHTML('afterbegin', `<label class="muted qt-per">lignes max. par image <input type="number" min="5" max="60" step="1" value="20" onchange="B2B._qt.per=this.value"></label>
       <button class="btn-ghost btn-sm" onclick="B2B.quotePending()" title="Garde ce devis (numéro attribué) pour le retrouver plus bas, le modifier ou le passer en vente quand le client accepte">💾 Mettre en attente</button>
+      <button class="btn-ghost btn-sm" onclick="B2B.quotePending(true)" title="Met ce devis en attente (nom de l'entreprise obligatoire) et te ramène sur l'autre onglet : tu coches tes produits, puis « Partager le devis » les ajoute au MÊME devis (même numéro, même total)">➕ Ajouter ${(this.tab || 'mast') === 'acc' ? 'la mastication' : 'les accessoires'}</button>
       <button class="btn-cta btn-sm" onclick="B2B.quoteImages()" title="Découpe le tarif en plusieurs images lisibles">🖼️ Créer les images</button>`);
   },
   _qtTitle() { const w = String(this._qt.who || '').trim(); return 'Tarif Touffu' + (w ? ' — ' + w : ''); },
@@ -891,7 +902,7 @@ const B2B = {
   },
   _qtVarChips() {
     const groups = new Map();
-    this._qtRows(true).all.forEach(r => { const k = this._vk(r.variant); if (!groups.has(k)) groups.set(k, { label: r.variant, n: 0, on: 0 }); const g = groups.get(k); g.n++; if (r.on) g.on++; });
+    this._qtRows(true).all.filter(r => !r.carry).forEach(r => { const k = this._vk(r.variant); if (!groups.has(k)) groups.set(k, { label: r.variant, n: 0, on: 0 }); const g = groups.get(k); g.n++; if (r.on) g.on++; });
     const list = [...groups.values()].sort((a, b) => Ventes._labelCmp(a.label, b.label));
     this._qtVarList = list.map(g => g.label);
     if (list.length < 2) return '';
@@ -899,7 +910,7 @@ const B2B = {
   },
   _qtVar(i) {
     const label = (this._qtVarList || [])[i]; if (label == null) return;
-    const k = this._vk(label), rows = this._qtRows(true).all.filter(r => this._vk(r.variant) === k), turnOff = rows.every(r => r.on);
+    const k = this._vk(label), rows = this._qtRows(true).all.filter(r => !r.carry && this._vk(r.variant) === k), turnOff = rows.every(r => r.on);
     this._qt.off = this._qt.off || {};
     rows.forEach(r => { if (turnOff) this._qt.off[r.key] = true; else delete this._qt.off[r.key]; });
     this._setOffVar(label, turnOff);
@@ -915,14 +926,14 @@ const B2B = {
     if (!list.length) return '';
     const rows = list.map(r => {
       const nb = (r.lines || []).reduce((a, l) => a + U.num(l.qty), 0), d = Math.floor((Date.now() - (r.updated || r.ts || Date.now())) / 86400000);
-      return `<tr><td class="col-name"><b>${U.esc(r.name)}</b> ${r.dv && r.dv.base ? `<span class="badge info" title="N° de devis">${U.esc(Devis.no(r.dv))}</span>` : ''} <span class="badge">${r.type === 'micro' ? '🧑‍💼 micro-entreprise' : '🏢 entreprise'}</span></td>
+      return `<tr><td class="col-name"><b>${U.esc(r.name)}</b> ${r.dv && r.dv.base ? `<span class="badge info" title="N° de devis">${U.esc(Devis.no(r.dv))}</span>` : ''} <span class="badge">${r.type === 'micro' ? '🧑‍💼 micro-entreprise' : '🏢 entreprise'}</span>${(r.lines || []).some(l => l.aId) && (r.lines || []).some(l => !l.aId) ? ' <span class="badge info">🥩 + 🐕 mastication & accessoires</span>' : ''}</td>
         <td><span class="badge ${d >= 7 ? 'warn' : ''}">⏳ ${d <= 0 ? 'aujourd\'hui' : d === 1 ? 'depuis 1 jour' : 'depuis ' + d + ' jours'}</span></td>
         <td class="num" style="white-space:nowrap;">${nb} art.<br><b>${U.eur(r.total)}</b></td>
         <td style="white-space:nowrap;text-align:right;"><button class="btn-ghost btn-sm" onclick="B2B.resumePro('${r.id}')" title="Rouvrir ce devis pour le modifier">✏️ Reprendre</button> <button class="btn-cta btn-sm" onclick="B2B.sendProToSale('${r.id}')" title="Le client est d'accord : charge les produits, aux prix du devis, dans le ticket de la page Ventes">🛒 Envoyer en vente</button> <button class="btn-icon" onclick="B2B.delPro('${r.id}')" title="Supprimer">🗑️</button></td></tr>`;
     }).join('');
     return `<div class="card" style="margin-top:16px;border-left:4px solid var(--caramel);"><h2>⏳ Devis pro en attente (${list.length})</h2><div class="table-wrap"><table><thead><tr><th class="col-name">Entreprise</th><th>En attente</th><th class="num">Devis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   },
-  quotePending() {
+  quotePending(addOther) {
     const who = String(this._qt.who || '').trim();
     if (!who) { U.toast('Indique le nom de l\'entreprise pour mettre le devis en attente.', true); const e = document.getElementById('qt_who'); if (e) e.focus(); return; }
     const { rows, total } = this._qtRows();
@@ -931,26 +942,58 @@ const B2B = {
     const list = Store.state.baskets = Store.state.baskets || [], now = Date.now();
     const data = { kind: 'pro', type: this._qt.type, tab: this.tab || 'mast', name: who, sel: this._curItems().filter(x => this._sel[x.id]).map(x => x.id),
       qty: { ...(this._qt.qty || {}) }, off: { ...(this._qt.off || {}) }, iban: this._qt.iban !== false, msg: this._qt.msg == null ? null : this._qt.msg, per: this._qt.per, dv: { ...this._dvState() }, updated: now,
-      lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco })),
+      lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco, ht: r.ht })),
       total: Math.round(total * 100) / 100 };
     let rec = this._qt.pendId ? list.find(x => x.id === this._qt.pendId) : null;
     if (rec) Object.assign(rec, data); else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._qt.pendId = rec.id;
     Store.log('devis pro', `Devis pro en attente — ${who} (${no})`);
     Store.save('baskets', 'journal', 'meta');
-    U.closeModal(); this.render();
+    U.closeModal();
+    if (addOther) {   // on passe à l'autre catégorie : le devis reste « en cours » jusqu'à ce qu'il soit complété (ou abandonné)
+      const next = (this.tab || 'mast') === 'acc' ? 'mast' : 'acc';
+      this._link = rec.id; this.tab = next; this.render();
+      U.toast(`Devis n° ${no} gardé. Coche tes ${next === 'acc' ? 'accessoires' : 'produits de mastication'}, puis « Partager le devis » : ils seront ajoutés au devis de ${who}.`);
+      return;
+    }
+    this._link = null; this.render();
     U.toast(`Devis pro n° ${no} mis en attente (« Reprendre » ou « Envoyer en vente » plus bas).`);
   },
-  resumePro(id) {
+  /* Devis « en cours » : en attente, que l'on complète avec l'autre catégorie (id mémorisé seulement le temps de la session). */
+  _link: null,
+  _linkRec() {
+    const r = this._link ? this._proPending().find(x => x.id === this._link) : null;
+    if (!r) this._link = null;
+    return r || null;
+  },
+  linkStop() { this._link = null; this.render(); },
+  _linkBanner() {
+    const r = this._linkRec(); if (!r) return '';
+    const n = (r.lines || []).length, next = (this.tab || 'mast') === 'acc' ? 'tes accessoires' : 'tes produits de mastication';
+    return `<div class="card" style="margin-top:16px;border-left:4px solid var(--caramel);display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+      <span>📎 <b>Devis en cours pour ${U.esc(r.name)}</b> <span class="muted">(${n} ligne${n > 1 ? 's' : ''} · ${U.eur(r.total)})</span> — coche ${next}, puis « Partager le devis » : ils seront ajoutés à ce devis.</span>
+      <button class="btn-ghost btn-sm" onclick="B2B.linkStop()" title="Le devis reste dans « Devis pro en attente » ; le prochain « Partager le devis » sera un nouveau devis">✖ Ne plus compléter</button></div>`;
+  },
+  resumePro(id, link) {
     const rec = this._proPending().find(x => x.id === id); if (!rec) return;
-    this.tab = rec.tab || 'mast';
+    if (link) {   // on garde l'onglet actif ; si rien n'est coché, on recoche les produits de cette catégorie déjà présents dans le devis
+      if (!this._selCount()) (rec.lines || []).filter(l => (this.tab === 'acc') === !!l.aId).forEach(l => { this._sel[l.aId || l.pId] = true; });
+      if (!this._selCount()) { U.toast('Coche d\'abord les produits à ajouter au devis de ' + rec.name + '.', true); return; }
+    } else {
+      this._link = null;
+      this.tab = rec.tab || 'mast';
+      this._sel = {}; (rec.sel || []).forEach(i => { this._sel[i] = true; });
+    }
     this._setClientQuiet(rec.type);   // le sélecteur suit le type du devis rouvert
-    this._sel = {}; (rec.sel || []).forEach(i => { this._sel[i] = true; });
     if (rec.dv && rec.dv.base) { const m = Store.state.meta; m.devisB2B = m.devisB2B || {}; m.devisB2B[rec.type + '|' + String(rec.name).trim().toLowerCase()] = { ...rec.dv, ts: Date.now() }; }
     this.render();
-    this.openQuote(rec.type);
+    this._openQuote(rec.type);
     if (!document.getElementById('qt_box')) return;
-    Object.assign(this._qt, { who: rec.name, qty: { ...(rec.qty || {}) }, off: { ...(rec.off || {}) }, iban: rec.iban !== false, msg: rec.msg == null ? null : rec.msg, per: rec.per || 20, pendId: rec.id });
+    // autre catégorie : lignes reprises telles quelles (prix figés) ; formats décochés d'office : on ne garde que ceux des lignes déjà au devis
+    const carry = (rec.lines || []).filter(l => (this.tab === 'acc') !== !!l.aId);
+    const off = link ? { ...this._qt.off } : {};
+    if (link) (rec.lines || []).forEach(l => { delete off[l.key]; });
+    Object.assign(this._qt, { who: rec.name, qty: { ...(rec.qty || {}) }, off: { ...off, ...(rec.off || {}) }, carry, iban: rec.iban !== false, msg: rec.msg == null ? null : rec.msg, per: rec.per || 20, pendId: rec.id });
     const w = document.getElementById('qt_who'); if (w) w.value = rec.name;
     const ta = document.querySelector('#modalBg textarea.note-area'); if (ta && rec.msg != null) ta.value = rec.msg;
     const ib = document.querySelector('#modalBg input[type=checkbox][onchange*="_qt.iban"]'); if (ib) ib.checked = rec.iban !== false;
@@ -960,6 +1003,7 @@ const B2B = {
     const rec = this._proPending().find(x => x.id === id); if (!rec) return;
     if (!await U.confirm('Supprimer le devis pro en attente de ' + rec.name + ' ?', { okLabel: 'Supprimer' })) return;
     Store.state.baskets = (Store.state.baskets || []).filter(x => x.id !== id);
+    if (this._link === id) this._link = null;
     Store.save('baskets'); this.render();
   },
   /* variante de stock reliée à une ligne de fiche prix (même fiche + même ligne de variante) */
@@ -996,6 +1040,7 @@ const B2B = {
       ${warns.length ? `<p style="margin-top:10px;"><b>⚠️ À vérifier :</b></p><ul style="padding-left:18px;">${warns.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}`;
     if (!await U.ask({ title: '🛒 Envoyer le devis pro en vente', okLabel: 'Envoyer en vente', cancelLabel: 'Annuler', html })) return;
     if (Ventes.cart.length && !await U.confirm('Le ticket en cours de la page Ventes contient déjà des articles. Le remplacer par le devis de ' + rec.name + ' ?', { okLabel: 'Remplacer' })) return;
+    if (this._link === id) this._link = null;
     Ventes.loadFromBasket(rec, lines);
   },
 
