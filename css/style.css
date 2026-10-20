@@ -396,9 +396,10 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .qt-t { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .92rem; }
 .qt-t th { position: sticky; top: 0; z-index: 1; white-space: normal; padding: 6px 8px; font-size: .7rem; line-height: 1.2; }
 .qt-t td { padding: 2px 8px; border-bottom: 1px solid var(--card-border); line-height: 1.25; }
-.qt-t tr.grp td { border-top: 2px solid var(--caramel); }
-.qt-t tr.g1 td { background: rgba(166, 113, 83, 0.13); }   /* produits en alternance : un produit = un bloc */
-.qt-t .nm { font-size: 1rem; }
+.qt-prod > tr:first-child > td { border-top: 2px solid var(--card-border); }
+.qt-prod.alt { background: rgba(166, 113, 83, .07); }
+:root[data-theme="dark"] .qt-prod.alt { background: rgba(255, 255, 255, .045); }
+.qt-t td.nm { vertical-align: middle; text-align: center; font-size: 1rem; border-right: 3px solid var(--caramel); }   /* nom fusionné, centré sur ses variantes ; trait caramel = « ces variantes sont à ce produit » */
 .qt-t .va { font-size: .95rem; }
 .qt-v { display: inline-block; min-width: 54px; padding: 1px 8px; white-space: nowrap; border-radius: 999px; background: rgba(166, 113, 83, 0.28); font-weight: 800; color: var(--texte); }
 .qt-t .ck { text-align: center; padding-left: 4px; padding-right: 4px; }
@@ -416,8 +417,9 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
   .qt-t, .qt-t tbody { display: block; }
   .qt-t colgroup, .qt-t thead, .qt-t .c-reco { display: none !important; }
   .qt-t tr { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto 54px; grid-template-areas: "ck nm nm nm nm" "ck va pc sb qy"; align-items: center; border-bottom: 1px solid var(--card-border); padding: 3px 0; }
-  .qt-t tr.grp { border-top: 1px solid var(--caramel); }
-  .qt-t td, .qt-t tr.grp td { display: block; border: 0; padding: 1px 4px; }
+  .qt-t td.nm { text-align: left; border-right: 0; }
+  .qt-prod > tr:first-child { border-top: 2px solid var(--card-border); }
+  .qt-t td { display: block; border: 0; padding: 1px 4px; }
   .qt-t td.ck { grid-area: ck; align-self: center; }
   .qt-t td.nm { grid-area: nm; }
   .qt-t td.nm:empty { display: none; }

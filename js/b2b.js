@@ -665,22 +665,22 @@ const B2B = {
     const search = String(q.q || '').trim(), showOff = !!q.showOff;
     const vis = [];
     all.forEach((r, i) => { if (search ? U.has(r.name + ' ' + r.variant, search) : (r.on || showOff)) vis.push({ r, i }); });
-    let prev = null, gi = 0;
-    const rows = vis.map(({ r, i }) => {
-      const first = r.name !== prev; prev = r.name; if (first) gi++;
-      return `<tr id="qt_row_${i}" class="${first ? 'grp' : ''}${gi % 2 ? ' g1' : ''}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`;
-    }).join('');
+    // Un produit = un bloc (<tbody class="qt-prod">) : nom fusionné et centré sur toutes ses variantes, comme Péremptions / Faible stock.
+    const blocks = (items, rowFn) => {
+      const gs = [];
+      items.forEach(x => { const g = gs[gs.length - 1]; if (g && g[0].r.name === x.r.name) g.push(x); else gs.push([x]); });
+      return gs.map((g, gi) => `<tbody class="qt-prod${gi % 2 ? ' alt' : ''}">` + g.map((x, k) => rowFn(x, k === 0 ? `<td class="nm" rowspan="${g.length}">${U.esc(x.r.name)}</td>` : '')).join('') + '</tbody>').join('');
+    };
+    const rows = blocks(vis, ({ r, i }, nm) =>
+      `<tr id="qt_row_${i}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`);
     // Recherche : on propose AUSSI les produits de l'onglet actif qui ne sont pas dans le devis ; une case les ajoute.
     const found = this._qtFound(); this._qtFoundList = found;
-    let prevF = null, gf = 0;
-    const foundRows = found.length ? `<tr><td colspan="7" class="muted" style="padding:8px;text-align:center;background:var(--card-border);">➕ Pas encore dans le devis — coche pour ajouter</td></tr>` + found.map((r, i) => {
-      const first = r.name !== prevF; prevF = r.name; if (first) gf++;
-      return `<tr class="${first ? 'grp' : ''}${gf % 2 ? ' g1' : ''}"><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`;
-    }).join('') : '';
+    const foundRows = found.length ? `<tbody><tr><td colspan="7" class="muted" style="padding:8px;text-align:center;background:var(--card-border);">➕ Pas encore dans le devis — coche pour ajouter</td></tr></tbody>` + blocks(found.map((r, i) => ({ r, i })), ({ r, i }, nm) =>
+      `<tr><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`) : '';
     const empty = `<tr><td colspan="7" class="muted" style="padding:16px;text-align:center;">${search ? 'Aucun produit pour cette recherche.' : 'Aucune ligne cochée — tape un nom dans la recherche pour ajouter un produit, ou utilise « Afficher les décochées ».'}</td></tr>`;
     return `<table class="qt-t"><colgroup><col style="width:36px"><col><col style="width:118px"><col style="width:84px"><col class="c-reco" style="width:92px"><col style="width:72px"><col style="width:92px"></colgroup>
       <thead><tr><th class="ck"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th><th>Produit</th><th class="ctr">Variante</th><th class="num">${U.esc(c.price)}</th><th class="num c-reco" title="${U.esc(c.reco.replace(/\n/g, ' '))}">Conseillé</th><th class="ctr">Qté</th><th class="num">Sous-total</th></tr></thead>
-      <tbody>${rows + foundRows || empty}</tbody></table>`;
+      ${rows + foundRows || `<tbody>${empty}</tbody>`}</table>`;
   },
   /* Bouton « Afficher / Masquer les N décochées » (absent s'il n'y en a aucune). */
   _qtOffBtn() {
