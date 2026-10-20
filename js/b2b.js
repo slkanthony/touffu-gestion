@@ -594,12 +594,12 @@ const B2B = {
     }
     return it.rows.map(r => ({ key: this._expKeyM(it.p.id, r.label), pId: it.p.id, vid: r.vid, kind: 'M', name: it.p.name, variant: r.label, price: price(r), reco: r.priceTTCPublic, ht: r.priceHTB2B }));
   },
-  /* Catalogue COMPLET (mastication + accessoires, sans les filtres de la page) pour la recherche de la fenêtre : calculé à la demande, mémorisé le temps du devis. */
+  /* Catalogue COMPLET de l'ONGLET ACTIF (sans les filtres ni la sélection de la page) pour la recherche de la fenêtre : calculé à la demande, mémorisé le temps du devis. */
   _qtCat() {
     const q = this._qt; if (q.catC) return q.catC;
     const out = [];
-    Store.state.catalogM.map(p => this.productStats(p)).filter(it => it.rows.length).sort((a, b) => U.sortFr(a.p.name, b.p.name)).forEach(it => out.push(...this._qtItemRows('M', it)));
-    Accessoires.crafted().map(a => this.accStats(a)).sort((a, b) => U.sortFr(a.a.name, b.a.name)).forEach(it => out.push(...this._qtItemRows('A', it)));
+    if ((this.tab || 'mast') === 'acc') Accessoires.crafted().map(a => this.accStats(a)).sort((a, b) => U.sortFr(a.a.name, b.a.name)).forEach(it => out.push(...this._qtItemRows('A', it)));
+    else Store.state.catalogM.map(p => this.productStats(p)).filter(it => it.rows.length).sort((a, b) => U.sortFr(a.p.name, b.p.name)).forEach(it => out.push(...this._qtItemRows('M', it)));
     return q.catC = out;
   },
   _qtRows(all) {
@@ -670,12 +670,12 @@ const B2B = {
       const first = r.name !== prev; prev = r.name;
       return `<tr id="qt_row_${i}" class="${first ? 'grp' : ''}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va">${U.esc(r.variant)}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`;
     }).join('');
-    // Recherche : on propose AUSSI les produits (mastication ET accessoires) qui ne sont pas dans le devis ; une case les ajoute.
+    // Recherche : on propose AUSSI les produits de l'onglet actif qui ne sont pas dans le devis ; une case les ajoute.
     const found = this._qtFound(); this._qtFoundList = found;
     let prevF = null;
     const foundRows = found.length ? `<tr><td colspan="7" class="muted" style="padding:8px;text-align:center;background:var(--card-border);">➕ Pas encore dans le devis — coche pour ajouter</td></tr>` + found.map((r, i) => {
       const first = r.name !== prevF; prevF = r.name;
-      return `<tr class="${first ? 'grp' : ''}"><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td><td class="nm">${first ? (r.kind === 'A' ? '🐕 ' : '🥩 ') + U.esc(r.name) : ''}</td><td class="ctr va">${U.esc(r.variant)}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`;
+      return `<tr class="${first ? 'grp' : ''}"><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td><td class="nm">${first ? U.esc(r.name) : ''}</td><td class="ctr va">${U.esc(r.variant)}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`;
     }).join('') : '';
     const empty = `<tr><td colspan="7" class="muted" style="padding:16px;text-align:center;">${search ? 'Aucun produit pour cette recherche.' : 'Aucune ligne cochée — tape un nom dans la recherche pour ajouter un produit, ou utilise « Afficher les décochées ».'}</td></tr>`;
     return `<table class="qt-t"><colgroup><col style="width:36px"><col><col style="width:118px"><col style="width:84px"><col class="c-reco" style="width:92px"><col style="width:72px"><col style="width:92px"></colgroup>
@@ -689,7 +689,7 @@ const B2B = {
   },
   _qtToggleOff() { this._qt.showOff = !this._qt.showOff; this._qtRefresh(); },
   _qtSearch(v) { this._qt.q = v; this._qtRefresh(); },
-  /* Produits du catalogue (les deux catégories) qui correspondent à la recherche et ne sont pas déjà dans le devis. */
+  /* Produits de l'onglet actif qui correspondent à la recherche et ne sont pas déjà dans le devis. */
   _qtFound() {
     const q = String(this._qt.q || '').trim(); if (!q) return [];
     const have = new Set(this._qtRows(true).all.map(r => r.key));
@@ -737,7 +737,7 @@ const B2B = {
   /* Si un devis est « en cours » (bouton ➕ Ajouter…), on rouvre CE devis en y ajoutant les lignes de l'onglet actif ; sinon nouveau devis. */
   openQuote(type) {
     const L = this._linkRec();
-    if (L) return this.resumePro(L.id, true);
+    if (L) return this.resumePro(L.id);
     this._openQuote(type);
   },
   _openQuote(type, init) {
@@ -757,7 +757,7 @@ const B2B = {
         </div>
         <div class="qt-bar">
           <div id="qt_total" class="qt-total">${this._qtTotalsTxt()}</div>
-          <input type="text" id="qt_search" class="qt-search" placeholder="🔍 Chercher un produit (même hors devis)…" oninput="B2B._qtSearch(this.value)">
+          <input type="text" id="qt_search" class="qt-search" placeholder="🔍 Chercher un produit (même non sélectionné)…" oninput="B2B._qtSearch(this.value)">
           <span id="qt_offwrap">${this._qtOffBtn()}</span>
         </div>
         <details class="qt-fold"><summary>⚙️ Options du devis — formats proposés, pied de page (IBAN, message)</summary>
@@ -973,8 +973,7 @@ const B2B = {
     const no = this._dvCommit();   // mise en attente = le devis « sort » : numéro attribué (lettre suivante si modifié)
     const list = Store.state.baskets = Store.state.baskets || [], now = Date.now();
     let rec = this._qt.pendId ? list.find(x => x.id === this._qt.pendId) : null;
-    const tabSaved = rec ? (rec.tab || 'mast') : (this.tab || 'mast');   // l'onglet « d'origine » du devis ne change pas quand on le complète depuis l'autre
-    const data = { kind: 'pro', type: this._qt.type, tab: tabSaved, name: who, sel: [...new Set(rows.filter(r => (r.aId ? 'acc' : 'mast') === tabSaved).map(r => r.aId || r.pId))],
+    const data = { kind: 'pro', type: this._qt.type, tab: this.tab || 'mast', name: who, sel: this._curItems().filter(x => this._sel[x.id]).map(x => x.id),
       qty: { ...(this._qt.qty || {}) }, off: { ...(this._qt.off || {}) }, iban: this._qt.iban !== false, msg: this._qt.msg == null ? null : this._qt.msg, per: this._qt.per, dv: { ...this._dvState() }, updated: now,
       lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco, ht: r.ht })),
       total: Math.round(total * 100) / 100 };
@@ -1004,28 +1003,23 @@ const B2B = {
     const r = this._linkRec(); if (!r) return '';
     const n = (r.lines || []).length, next = (this.tab || 'mast') === 'acc' ? 'tes accessoires' : 'tes produits de mastication';
     return `<div class="card" style="margin-top:16px;border-left:4px solid var(--caramel);display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
-      <span>📎 <b>Devis en cours pour ${U.esc(r.name)}</b> <span class="muted">(${n} ligne${n > 1 ? 's' : ''} · ${U.eur(r.total)})</span> — coche ${next}, puis « Partager le devis » : ils seront ajoutés à ce devis.</span>
+      <span>📎 <b>Devis en cours pour ${U.esc(r.name)}</b> <span class="muted">(${n} ligne${n > 1 ? 's' : ''} · ${U.eur(r.total)})</span> — coche ${next} (ou cherche-les dans la fenêtre du devis), puis « Partager le devis » : ils seront ajoutés à ce devis.</span>
       <button class="btn-ghost btn-sm" onclick="B2B.linkStop()" title="Le devis reste dans « Devis pro en attente » ; le prochain « Partager le devis » sera un nouveau devis">✖ Ne plus compléter</button></div>`;
   },
-  resumePro(id, link) {
+  /* Rouvre un devis en attente SUR L'ONGLET ACTIF (on ne change jamais d'onglet) : ses lignes de cet onglet sont recochées, celles de l'autre catégorie
+     sont reprises telles quelles (prix figés) ; la recherche de la fenêtre permet d'ajouter d'autres produits de l'onglet. */
+  resumePro(id) {
     const rec = this._proPending().find(x => x.id === id); if (!rec) return;
-    if (link) {   // on garde l'onglet actif ; si rien n'est coché, on recoche les produits de cette catégorie déjà présents dans le devis
-      if (!this._selCount()) (rec.lines || []).filter(l => (this.tab === 'acc') === !!l.aId).forEach(l => { this._sel[l.aId || l.pId] = true; });
-      if (!this._selCount()) { U.toast('Coche d\'abord les produits à ajouter au devis de ' + rec.name + '.', true); return; }
-    } else {
-      this._link = null;
-      this.tab = rec.tab || 'mast';
-      this._sel = {}; (rec.sel || []).forEach(i => { this._sel[i] = true; });
-    }
+    if (this._link !== id) this._link = null;
+    (rec.lines || []).filter(l => (this.tab === 'acc') === !!l.aId).forEach(l => { this._sel[l.aId || l.pId] = true; });
     this._setClientQuiet(rec.type);   // le sélecteur suit le type du devis rouvert
     if (rec.dv && rec.dv.base) { const m = Store.state.meta; m.devisB2B = m.devisB2B || {}; m.devisB2B[rec.type + '|' + String(rec.name).trim().toLowerCase()] = { ...rec.dv, ts: Date.now() }; }
     this.render();
-    // autre catégorie : lignes reprises telles quelles (prix figés) ; devis repris = seulement ses lignes (jamais « tout l'onglet »)
-    const carry = (rec.lines || []).filter(l => (this.tab === 'acc') !== !!l.aId);
-    this._openQuote(rec.type, { strict: true, carry });
+    // toutes les lignes en réserve : celles de l'onglet actif sont remplacées par leur version à jour (même clé), les autres restent figées
+    this._openQuote(rec.type, { strict: true, carry: (rec.lines || []).slice() });
     if (!document.getElementById('qt_box')) return;
-    const off = link ? { ...this._qt.off } : {};
-    if (link) (rec.lines || []).forEach(l => { delete off[l.key]; });
+    const off = { ...this._qt.off };   // formats décochés d'office, sauf ceux des lignes déjà au devis
+    (rec.lines || []).forEach(l => { delete off[l.key]; });
     Object.assign(this._qt, { who: rec.name, qty: { ...(rec.qty || {}) }, off: { ...off, ...(rec.off || {}) }, iban: rec.iban !== false, msg: rec.msg == null ? null : rec.msg, per: rec.per || 20, pendId: rec.id });
     const w = document.getElementById('qt_who'); if (w) w.value = rec.name;
     const ta = document.querySelector('#modalBg textarea.note-area'); if (ta && rec.msg != null) ta.value = rec.msg;
