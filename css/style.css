@@ -401,6 +401,8 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 :root[data-theme="dark"] .qt-prod.alt { background: rgba(255, 255, 255, .045); }
 .qt-t td.nm { vertical-align: middle; text-align: center; font-size: 1rem; border-right: 3px solid var(--caramel); }   /* nom fusionné, centré sur ses variantes ; trait caramel = « ces variantes sont à ce produit » */
 .qt-t .va { font-size: .95rem; }
+.qt-t tr[onclick] { cursor: pointer; }
+.qt-t tr[onclick]:hover td:not(.nm) { background: rgba(166, 113, 83, .2); }   /* seule la ligne survolée (jamais le nom fusionné) : on voit quelle variante sera cochée */
 .qt-v { display: inline-block; min-width: 54px; padding: 1px 8px; white-space: nowrap; border-radius: 999px; background: rgba(166, 113, 83, 0.28); font-weight: 800; color: var(--texte); }
 .qt-t .ck { text-align: center; padding-left: 4px; padding-right: 4px; }
 .qt-t .ctr { text-align: center; }
@@ -627,6 +629,9 @@ hr.sep { border: none; border-top: 1px dashed var(--input-border); margin: 14px 
 .sheet-nav .btn-icon { padding: 0 8px; font-size: .8rem; }
 .sheet-nav .btn-icon:disabled { opacity: .3; cursor: default; }
 .sheet-prod .sheet-name { text-align: left !important; vertical-align: top; font-weight: 700; padding-top: 6px; }
+/* À l'écran : nom centré sur ses variantes + trait caramel (même présentation que la fenêtre du devis pro) ; à l'impression : inchangé */
+@media screen { .sheet-prod td.sheet-name { text-align: center !important; vertical-align: middle; padding-top: 0; border-right: 3px solid var(--caramel); } }
+.sheet-prod td.sheet-var { font-weight: 800; white-space: nowrap; }
 /* Péremptions : un bloc par produit (nom + viande une seule fois) */
 .perem-prod .perem-name { vertical-align: top; padding-top: 10px; }
 /* Blocs par produit (Fiche de contrôle, Péremptions) : l'alternance de teinte se fait PAR BLOC (un produit = une teinte), jamais par ligne — sinon cases à cocher et nom fusionné sont teintés à moitié */

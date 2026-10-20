@@ -672,11 +672,11 @@ const B2B = {
       return gs.map((g, gi) => `<tbody class="qt-prod${gi % 2 ? ' alt' : ''}">` + g.map((x, k) => rowFn(x, k === 0 ? `<td class="nm" rowspan="${g.length}">${U.esc(x.r.name)}</td>` : '')).join('') + '</tbody>').join('');
     };
     const rows = blocks(vis, ({ r, i }, nm) =>
-      `<tr id="qt_row_${i}" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`);
+      `<tr id="qt_row_${i}" onclick="B2B._qtRowTap(event,this)" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`);
     // Recherche : on propose AUSSI les produits de l'onglet actif qui ne sont pas dans le devis ; une case les ajoute.
     const found = this._qtFound(); this._qtFoundList = found;
     const foundRows = found.length ? `<tbody><tr><td colspan="7" class="muted" style="padding:8px;text-align:center;background:var(--card-border);">➕ Pas encore dans le devis — coche pour ajouter</td></tr></tbody>` + blocks(found.map((r, i) => ({ r, i })), ({ r, i }, nm) =>
-      `<tr><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`) : '';
+      `<tr onclick="B2B._qtRowTap(event,this)"><td class="ck"><input type="checkbox" onchange="B2B._qtAdd(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="qy"></td><td class="sb"></td></tr>`) : '';
     const empty = `<tr><td colspan="7" class="muted" style="padding:16px;text-align:center;">${search ? 'Aucun produit pour cette recherche.' : 'Aucune ligne cochée — tape un nom dans la recherche pour ajouter un produit, ou utilise « Afficher les décochées ».'}</td></tr>`;
     return `<table class="qt-t"><colgroup><col style="width:36px"><col><col style="width:118px"><col style="width:84px"><col class="c-reco" style="width:92px"><col style="width:72px"><col style="width:92px"></colgroup>
       <thead><tr><th class="ck"><input type="checkbox" id="qt_all" ${all.every(r => r.on) ? 'checked' : ''} onchange="B2B._qtAll(this.checked)" title="Tout cocher / tout décocher"></th><th>Produit</th><th class="ctr">Variante</th><th class="num">${U.esc(c.price)}</th><th class="num c-reco" title="${U.esc(c.reco.replace(/\n/g, ' '))}">Conseillé</th><th class="ctr">Qté</th><th class="num">Sous-total</th></tr></thead>
@@ -695,6 +695,8 @@ const B2B = {
     const have = new Set(this._qtRows(true).all.map(r => r.key));
     return this._qtCat().filter(r => !have.has(r.key) && U.has(r.name + ' ' + r.variant, q)).slice(0, 80);
   },
+  /* Un clic n'importe où sur la ligne (variante, prix…) coche / décoche sa case — sauf sur le nom du produit, la quantité et les boutons. */
+  _qtRowTap(e, tr) { if (e.target.closest('input,button,a,.nm')) return; const c = tr.querySelector('.ck input'); if (c) c.click(); },
   _qtAdd(i, on) {
     const r = (this._qtFoundList || [])[i]; if (!r || !on) return;
     this._qt.add = this._qt.add || {}; this._qt.add[r.key] = true;
