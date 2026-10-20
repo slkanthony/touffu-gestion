@@ -203,7 +203,7 @@ const U = {
         <div class="actions">${cancelLabel ? `<button class="btn-ghost" id="askNo">${cancelLabel}</button>` : ''}<button class="${danger ? 'btn-danger' : 'btn-cta'}" id="askYes">${okLabel}</button></div></div>`;
       document.body.appendChild(bg);
       const done = v => { bg.remove(); document.removeEventListener('keydown', key, true); resolve(v); };
-      const key = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } else if (e.key === 'Enter' && !(e.target && e.target.tagName === 'TEXTAREA')) { e.preventDefault(); e.stopPropagation(); done(true); } };
+      const key = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } else if (e.key === 'Enter' && !(e.target && e.target.tagName === 'TEXTAREA') && !(typeof Clients !== 'undefined' && Clients._cb && Clients._cb.i >= 0)) { e.preventDefault(); e.stopPropagation(); done(true); } };
       document.addEventListener('keydown', key, true);
       bg.addEventListener('click', e => { if (e.target === bg) done(false); });
       if (bg.querySelector('#askNo')) bg.querySelector('#askNo').onclick = () => done(false);

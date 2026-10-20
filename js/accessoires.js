@@ -1622,14 +1622,15 @@ const Accessoires = {
   optParts(a) {
     const n = a ? this._colorCount(a) : 1;
     if (n < 2) return [{ k: 1, label: 'Sangle', hint: '' }];
-    const out = [{ k: n, label: 'Sangle', hint: this._colorTitle(a, n) }];
-    for (let k = 1; k < n; k++) out.push({ k, label: 'Sangle secondaire', hint: this._colorTitle(a, k) });
+    const hint = k => this._colorTitle(a, k).replace(/longueur interne/i, 'longueur principale');   // le devis dit « principale » (la fiche, elle, garde « interne »)
+    const out = [{ k: n, label: 'Sangle', hint: hint(n) }];
+    for (let k = 1; k < n; k++) out.push({ k, label: n > 2 ? 'Sangle secondaire ' + k : 'Sangle secondaire', hint: hint(k) });
     return out;
   },
   optLines(a, o) {
     o = o || {}; const t = x => String(x == null ? '' : x).trim(), L = [], parts = this.optParts(a);
     if (t(o.motif)) L.push(t(o.motif));
-    parts.forEach(p => { const v = t((o.c || {})[p.k]); if (v) L.push(p.label + (parts.length > 2 && p.hint ? ' (' + p.hint + ')' : '') + ' : ' + v); });
+    parts.forEach(p => { const v = t((o.c || {})[p.k]); if (v) L.push(p.label + ' : ' + v); });   // jamais le texte entre parenthèses (rabat + poignée…) : réservé à l'écran de saisie
     if (t(o.len)) L.push(t(o.len));
     if (t(o.snap)) L.push(t(o.snap));
     if (t(o.fin)) L.push('Bouclerie : ' + t(o.fin));
@@ -1643,18 +1644,17 @@ const Accessoires = {
   /* Fenêtre « ✏️ Détails » d'un accessoire (posée AU-DESSUS de la fenêtre ou de la page ouverte, qui reste en place).
      Renvoie une promesse : l'objet de détails nettoyé ({} si tout a été vidé) ou null si annulé. Utilisée par Paniers (devis client) et Revente pro. */
   async optEdit(a, cur, title) {
-    const ch = this.optChoices(), parts = this.optParts(a);
+    const parts = this.optParts(a);
     const d = this._optDraft = JSON.parse(JSON.stringify(cur || {})); d.c = d.c || {};
-    const dl = (id, arr) => `<datalist id="${id}">${arr.map(x => `<option value="${U.esc(x)}">`).join('')}</datalist>`;
-    const fld = (label, key, val, list, ph, full) => `<div class="fg" style="margin:0;${full ? 'grid-column:1/-1;' : ''}"><label style="white-space:nowrap;">${label}</label><input type="text" ${list ? `list="${list}"` : ''} value="${U.esc(val || '')}" placeholder="${U.esc(ph || '')}" oninput="Accessoires._optSet('${key}',this.value)" style="width:100%;"></div>`;
+    const fld = (label, key, val, list, ph, full) => `<div class="fg" style="margin:0;${full ? 'grid-column:1/-1;' : ''}"><label style="white-space:nowrap;">${label}</label><input type="text" ${list ? `data-clcombo="opt:${list}" autocomplete="off"` : ''} value="${U.esc(val || '')}" placeholder="${U.esc(ph || '')}" oninput="Accessoires._optSet('${key}',this.value)" style="width:100%;"></div>`;
     const html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 12px;">
       ${fld('Motif / personnalisation', 'motif', d.motif, '', 'ex : Motif Stitch sur mesure', true)}
-      ${parts.map(p => fld(p.label + (parts.length > 1 && p.hint ? ' <span class="muted">(' + U.esc(p.hint) + ')</span>' : ''), 'c' + p.k, d.c[p.k], 'ol_col', 'couleur')).join('')}
+      ${parts.map(p => fld(p.label + (parts.length > 1 && p.hint ? ' <span class="muted">(' + U.esc(p.hint) + ')</span>' : ''), 'c' + p.k, d.c[p.k], 'colors', 'couleur')).join('')}
       ${fld('Longueur / taille', 'len', d.len, '', 'ex : 1m50 · Taille M — 42/43 cm')}
-      ${fld('Mousqueton', 'snap', d.snap, 'ol_snap', 'type')}
-      ${fld('Bouclerie', 'fin', d.fin, 'ol_fin', 'couleur / finition')}
+      ${fld('Mousqueton', 'snap', d.snap, 'snaps', 'type')}
+      ${fld('Bouclerie', 'fin', d.fin, 'fins', 'couleur / finition')}
       <div class="fg" style="margin:0;grid-column:1/-1;"><label style="white-space:nowrap;">Texte libre <span class="muted">(une ligne = une ligne du devis)</span></label><textarea rows="3" style="width:100%;" placeholder="ex : prénom brodé « Ulysse », boucle côté gauche…" oninput="Accessoires._optSet('note',this.value)">${U.esc(d.note || '')}</textarea></div>
-    </div>${dl('ol_col', ch.colors)}${dl('ol_snap', ch.snaps)}${dl('ol_fin', ch.fins)}<p class="muted" style="margin:8px 0 0;font-size:.82rem;">Propositions tirées de tes Matières premières — tu peux aussi taper librement. Seules les cases remplies s'affichent, sous le produit, dans le devis (image, texte, tableau) puis sur le ticket et la facture.</p>`;
+    </div><p class="muted" style="margin:8px 0 0;font-size:.82rem;">Propositions tirées de tes Matières premières — tu peux aussi taper librement. Seules les cases remplies s'affichent, sous le produit, dans le devis (image, texte, tableau) puis sur le ticket et la facture.</p>`;
     if (!await U.ask({ title: '✏️ Détails — ' + U.esc(title || (a && a.name) || 'accessoire'), html, okLabel: 'Enregistrer', cancelLabel: 'Annuler' })) return null;
     const clean = { c: {} };
     Object.keys(d.c).forEach(k => { const v = String(d.c[k] || '').trim(); if (v) clean.c[k] = v; });
