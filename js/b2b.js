@@ -618,7 +618,8 @@ const B2B = {
     const ord = new Map(); list.forEach(r => { if (!ord.has(r.name)) ord.set(r.name, ord.size); });
     list.sort((x, y) => ord.get(x.name) - ord.get(y.name));   // les variantes d'un même produit restent côte à côte (tri stable)
     const q = (this._qt && this._qt.qty) || {};
-    list.forEach(r => { r.qty = Math.max(1, Math.round(U.num(q[r.key] != null ? q[r.key] : r.base)) || 1); r.on = !(this._qt && this._qt.off && this._qt.off[r.key]); r.sub = r.on ? r.qty * r.price : 0; r.subReco = r.on ? r.qty * r.reco : 0; });
+    const op = q0.opts || {};
+    list.forEach(r => { r.opts = r.aId ? op[r.key] : null; r.qty = Math.max(1, Math.round(U.num(q[r.key] != null ? q[r.key] : r.base)) || 1); r.on = !(this._qt && this._qt.off && this._qt.off[r.key]); r.sub = r.on ? r.qty * r.price : 0; r.subReco = r.on ? r.qty * r.reco : 0; });
     // Dès qu'une quantité est saisie : mode « devis » (seules les lignes avec une quantité, + Qté / Sous-total / Total). Sinon : simple liste de prix.
     const devis = list.some(r => r.on);
     const rows = all ? list : list.filter(r => r.on);
@@ -647,7 +648,7 @@ const B2B = {
     if (!st.base && !st.pre) st.pre = 'P';   // devis pro : numéro préfixé « P » (P261003-1A) ; un devis déjà sorti garde son numéro
     return st;
   },
-  _dvHash() { const { rows } = this._qtRows(); return Devis.hash({ t: this._qt.type, r: rows.map(r => [r.key, r.qty, Math.round(r.price * 100)]) }); },
+  _dvHash() { const { rows } = this._qtRows(); return Devis.hash({ t: this._qt.type, r: rows.map(r => [r.key, r.qty, Math.round(r.price * 100), this._qtOptLines(r).join('|')]) }); },
   _dvShow() { return Devis.show(this._dvState(), this._dvHash()); },
   _dvCommit() { const st = this._dvState(), no = Devis.commit(st, this._dvHash()); st.ts = Date.now(); Store.save('meta'); this._qtNoRefresh(); return no; },
   _qtNoRefresh() { const e = document.getElementById('qt_no'); if (e) e.textContent = this._dvShow(); },
@@ -669,10 +670,10 @@ const B2B = {
     const blocks = (items, rowFn) => {
       const gs = [];
       items.forEach(x => { const g = gs[gs.length - 1]; if (g && g[0].r.name === x.r.name) g.push(x); else gs.push([x]); });
-      return gs.map((g, gi) => `<tbody class="qt-prod${gi % 2 ? ' alt' : ''}">` + g.map((x, k) => rowFn(x, k === 0 ? `<td class="nm" rowspan="${g.length}">${U.esc(x.r.name)}</td>` : '')).join('') + '</tbody>').join('');
+      return gs.map((g, gi) => `<tbody class="qt-prod${gi % 2 ? ' alt' : ''}">` + g.map((x, k) => rowFn(x, k === 0 ? `<td class="nm" rowspan="${g.length}">${U.esc(x.r.name)}${g.length === 1 && x.r.aId ? this._qtOptSum(x.r) : ''}</td>` : '')).join('') + '</tbody>').join('');
     };
     const rows = blocks(vis, ({ r, i }, nm) =>
-      `<tr id="qt_row_${i}" onclick="B2B._qtRowTap(event,this)" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span></td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`);
+      `<tr id="qt_row_${i}" onclick="B2B._qtRowTap(event,this)" style="${r.on ? '' : 'opacity:.4;'}"><td class="ck"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="B2B._qtOn(${i},this.checked)"></td>${nm}<td class="ctr va"><span class="qt-v">${U.esc(r.variant)}</span>${r.aId ? `<button type="button" class="qt-ed" onclick="B2B.qtOpts(${i})" title="Motif, couleurs de sangle, mousqueton, bouclerie… (affichés sous le produit dans le devis)">✏️ Détails</button>` : ''}</td><td class="num pr pc">${U.eur(r.price)}</td><td class="num c-reco">${U.eur(r.reco)}</td><td class="ctr qy"><input type="number" id="qt_q_${i}" min="1" step="1" value="${r.qty}" onchange="B2B._qtQty(${i},this.value)"></td><td id="qt_sub_${i}" class="num pr sb">${r.on ? U.eur(r.sub) : ''}</td></tr>`);
     // Recherche : on propose AUSSI les produits de l'onglet actif qui ne sont pas dans le devis ; une case les ajoute.
     const found = this._qtFound(); this._qtFoundList = found;
     const foundRows = found.length ? `<tbody><tr><td colspan="7" class="muted" style="padding:8px;text-align:center;background:var(--card-border);">➕ Pas encore dans le devis — coche pour ajouter</td></tr></tbody>` + blocks(found.map((r, i) => ({ r, i })), ({ r, i }, nm) =>
@@ -694,6 +695,33 @@ const B2B = {
     const q = String(this._qt.q || '').trim(); if (!q) return [];
     const have = new Set(this._qtRows(true).all.map(r => r.key));
     return this._qtCat().filter(r => !have.has(r.key) && U.has(r.name + ' ' + r.variant, q)).slice(0, 80);
+  },
+  /* Lignes de détails d'une ligne accessoire (motif, sangles, mousqueton…) — voir Accessoires.optLines */
+  _qtOptLines(r) { return r && r.aId && r.opts ? Accessoires.optLines(Accessoires.optOf(r.aId), r.opts) : []; },
+  _qtOptSum(r) { const L = this._qtOptLines(r); return L.length ? `<div class="qt-os">${L.map(U.esc).join('<br>')}</div>` : ''; },
+  _optSet(k, v) { const d = this._optDraft; if (!d) return; if (/^c\d$/.test(k)) { d.c = d.c || {}; d.c[k.slice(1)] = v; } else d[k] = v; },
+  /* Fenêtre « Détails » d'une ligne accessoire : posée au-dessus de la fenêtre du devis, qui reste ouverte. */
+  async qtOpts(i) {
+    const r = this._qtRows(true).all[i]; if (!r || !r.aId) return;
+    const a = Accessoires.optOf(r.aId), ch = Accessoires.optChoices(), parts = Accessoires.optParts(a);
+    const d = this._optDraft = JSON.parse(JSON.stringify((this._qt.opts || {})[r.key] || {})); d.c = d.c || {};
+    const dl = (id, arr) => `<datalist id="${id}">${arr.map(x => `<option value="${U.esc(x)}">`).join('')}</datalist>`;
+    const fld = (label, key, val, list, ph, full) => `<div class="fg" style="margin:0;${full ? 'grid-column:1/-1;' : ''}"><label style="white-space:nowrap;">${label}</label><input type="text" ${list ? `list="${list}"` : ''} value="${U.esc(val || '')}" placeholder="${U.esc(ph || '')}" oninput="B2B._optSet('${key}',this.value)" style="width:100%;"></div>`;
+    const html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 12px;">
+      ${fld('Motif / personnalisation', 'motif', d.motif, '', 'ex : Motif Stitch sur mesure', true)}
+      ${parts.map(p => fld(p.label + (parts.length > 1 && p.hint ?' <span class="muted">(' + U.esc(p.hint) + ')</span>' : ''), 'c' + p.k, d.c[p.k], 'ol_col', 'couleur')).join('')}
+      ${fld('Longueur / taille', 'len', d.len, '', 'ex : 1m50 · Taille M — 42/43 cm')}
+      ${fld('Mousqueton', 'snap', d.snap, 'ol_snap', 'type')}
+      ${fld('Bouclerie', 'fin', d.fin, 'ol_fin', 'couleur / finition')}
+      ${fld('Note', 'note', d.note, '', 'texte libre', true)}
+    </div>${dl('ol_col', ch.colors)}${dl('ol_snap', ch.snaps)}${dl('ol_fin', ch.fins)}<p class="muted" style="margin:8px 0 0;font-size:.82rem;">Propositions tirées de tes Matières premières — tu peux aussi taper librement. Ces lignes s'affichent sous le produit dans le devis (image, texte, tableau).</p>`;
+    if (!await U.ask({ title: '✏️ Détails — ' + U.esc(r.name), html, okLabel: 'Enregistrer', cancelLabel: 'Annuler' })) return;
+    const clean = { c: {} };
+    Object.keys(d.c).forEach(k => { if (String(d.c[k] || '').trim()) clean.c[k] = String(d.c[k]).trim(); });
+    ['motif', 'len', 'snap', 'fin', 'note'].forEach(k => { const v = String(d[k] || '').trim(); if (v) clean[k] = v; });
+    this._qt.opts = this._qt.opts || {};
+    if (Object.keys(clean).length === 1 && !Object.keys(clean.c).length) delete this._qt.opts[r.key]; else this._qt.opts[r.key] = clean;
+    this._qtRefresh();
   },
   /* Un clic n'importe où sur la ligne (variante, prix…) coche / décoche sa case — sauf sur le nom du produit, la quantité et les boutons. */
   _qtRowTap(e, tr) { if (e.target.closest('input,button,a,.nm')) return; const c = tr.querySelector('.ck input'); if (c) c.click(); },
@@ -810,7 +838,8 @@ const B2B = {
     if (last && x.vatMention) blocks.push({ f: font(500, 15), l: wrap(x.vatMention, font(500, 15)) });
     const extraH = blocks.reduce((a, b) => a + b.l.length * 24 + 12, 0);
     const totalH = last && devis ? 84 : 0;
-    const H = pad + 56 + 54 + pageRows.length * rowH + totalH + (extraH ? 24 : 0) + extraH + pad;
+    const dOf = r => this._qtOptLines(r), OL = 19, rowsH = pageRows.reduce((a, r) => a + rowH + dOf(r).length * OL, 0);
+    const H = pad + 56 + 54 + rowsH + totalH + (extraH ? 24 : 0) + extraH + pad;
     const k = 2, cv = document.createElement('canvas');
     cv.width = W * k; cv.height = H * k;
     const g = cv.getContext('2d'); g.scale(k, k);
@@ -838,7 +867,8 @@ const B2B = {
     y += 54; g.strokeStyle = car; g.lineWidth = 2; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
     const nameW = innerW * (devis ? .31 : .46);
     pageRows.forEach((r, i) => {
-      if (i % 2) { g.fillStyle = th; g.globalAlpha = .45; g.fillRect(pad, y, innerW, rowH); g.globalAlpha = 1; }
+      const det = dOf(r), rh = rowH + det.length * OL;
+      if (i % 2) { g.fillStyle = th; g.globalAlpha = .45; g.fillRect(pad, y, innerW, rh); g.globalAlpha = 1; }
       g.fillStyle = fg; g.font = font(700, 16); g.textAlign = 'left';
       let nm = r.name; while (g.measureText(nm).width > nameW && nm.length > 4) nm = nm.slice(0, -2);
       g.fillText(nm + (nm.length < r.name.length ? '…' : ''), pad + 12, y + rowH / 2);
@@ -846,7 +876,8 @@ const B2B = {
       g.font = font(700, 16); g.textAlign = 'right'; g.fillText(U.eur(r.price), cP, y + rowH / 2);
       if (devis) { g.font = font(700, 16); g.textAlign = 'center'; g.fillText(String(r.qty), cQ, y + rowH / 2); g.textAlign = 'right'; g.fillText(U.eur(r.sub), cS, y + rowH / 2); }
       g.font = font(500, 16); g.textAlign = 'right'; g.fillText(U.eur(r.reco), cR, y + rowH / 2);
-      y += rowH;
+      if (det.length) { g.font = font(500, 14); g.fillStyle = car; g.textAlign = 'left'; det.forEach((t, k) => { let tt = t; while (g.measureText(tt).width > innerW * .52 && tt.length > 6) tt = tt.slice(0, -2); g.fillText((tt.length < t.length ? tt + '…' : tt), pad + 26, y + rowH - 6 + (k + 1) * OL - 4); }); g.fillStyle = fg; }
+      y += rh;
     });
     g.strokeStyle = car; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
     if (totalH) { g.fillStyle = fg; g.font = font(800, 20); g.textAlign = 'right'; g.fillText(this._qtTotalLabel(), cS - 90, y + 26); g.fillText(U.eur(total), cS, y + 26); g.fillStyle = car; g.font = font(700, 17); g.fillText(this._qtRecoLabel(), cR - 120, y + 60); g.fillText(U.eur(totalReco), cR, y + 60); y += totalH; }
@@ -908,7 +939,7 @@ const B2B = {
     const { rows, keys, devis, total, totalReco } = this._qtRows(), x = this._qtExtras(), micro = this._qt.type === 'micro';
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = [this._qtTitle(), 'Devis n° ' + dvNo, ''].concat(
-      rows.map(r => `• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${devis ? r.qty + ' × ' : ''}${micro || x.vatMention ? '' : 'HT '}${eur(r.price)}${devis ? ' = ' + eur(r.sub) : ''} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`),
+      rows.flatMap(r => [`• ${r.name}${r.variant ? ' (' + r.variant + ')' : ''} — ${devis ? r.qty + ' × ' : ''}${micro || x.vatMention ? '' : 'HT '}${eur(r.price)}${devis ? ' = ' + eur(r.sub) : ''} · prix de vente conseillé${micro ? '' : ' TTC'} : ${eur(r.reco)}`].concat(this._qtOptLines(r).map(t => '     – ' + t))),
       devis ? ['', this._qtTotalLabel() + ' : ' + eur(total), this._qtRecoLabel() + ' : ' + eur(totalReco)] : [],
       x.ibanLines.length ? [''].concat(x.ibanLines, x.refHint ? [x.refHint] : []) : [], x.msg ? ['', x.msg] : [], x.vatMention ? ['', x.vatMention] : []).join('\n');
     this._recordExport(keys);
@@ -976,8 +1007,8 @@ const B2B = {
     const list = Store.state.baskets = Store.state.baskets || [], now = Date.now();
     let rec = this._qt.pendId ? list.find(x => x.id === this._qt.pendId) : null;
     const data = { kind: 'pro', type: this._qt.type, tab: this.tab || 'mast', name: who, sel: this._curItems().filter(x => this._sel[x.id]).map(x => x.id),
-      qty: { ...(this._qt.qty || {}) }, off: { ...(this._qt.off || {}) }, iban: this._qt.iban !== false, msg: this._qt.msg == null ? null : this._qt.msg, per: this._qt.per, dv: { ...this._dvState() }, updated: now,
-      lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco, ht: r.ht })),
+      qty: { ...(this._qt.qty || {}) }, off: { ...(this._qt.off || {}) }, opts: JSON.parse(JSON.stringify(this._qt.opts || {})), iban: this._qt.iban !== false, msg: this._qt.msg == null ? null : this._qt.msg, per: this._qt.per, dv: { ...this._dvState() }, updated: now,
+      lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco, ht: r.ht, opts: r.aId && r.opts ? r.opts : undefined })),
       total: Math.round(total * 100) / 100 };
     if (rec) Object.assign(rec, data); else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._qt.pendId = rec.id;
@@ -1023,7 +1054,7 @@ const B2B = {
     if (!document.getElementById('qt_box')) return;
     const off = { ...this._qt.off };   // formats décochés d'office, sauf ceux des lignes déjà au devis
     (rec.lines || []).forEach(l => { delete off[l.key]; });
-    Object.assign(this._qt, { who: rec.name, qty: { ...(rec.qty || {}) }, off: { ...off, ...(rec.off || {}) }, iban: rec.iban !== false, msg: rec.msg == null ? null : rec.msg, per: rec.per || 20, pendId: rec.id });
+    Object.assign(this._qt, { who: rec.name, opts: JSON.parse(JSON.stringify(rec.opts || {})), qty: { ...(rec.qty || {}) }, off: { ...off, ...(rec.off || {}) }, iban: rec.iban !== false, msg: rec.msg == null ? null : rec.msg, per: rec.per || 20, pendId: rec.id });
     const w = document.getElementById('qt_who'); if (w) w.value = rec.name;
     const ta = document.querySelector('#modalBg textarea.note-area'); if (ta && rec.msg != null) ta.value = rec.msg;
     const ib = document.querySelector('#modalBg input[type=checkbox][onchange*="_qt.iban"]'); if (ib) ib.checked = rec.iban !== false;

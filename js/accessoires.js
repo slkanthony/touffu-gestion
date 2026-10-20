@@ -1601,6 +1601,42 @@ const Accessoires = {
      mais SANS recette : `a.manual = true`, coût dans `a.extraCost`, prix dans `a.priceTTCManual` (donc `Pricing.accCalc` marche tel quel). Elles n'apparaissent PAS dans Artisanat, Revente pro, Paniers,
      stats de prix ni export du site (`Accessoires.crafted()`) ; elles comptent dans le stock fini et le Tableau de bord. « Fabriquer » peut partir d'une de ces pièces (`fab_src`). */
   crafted() { return Store.state.catalogA.filter(a => !a.manual); },
+
+  /* ═══ Détails d'un accessoire sur mesure dans un devis (Antho 2026-10-20) ═══
+     Une ligne de devis accessoire peut porter des détails : motif / personnalisation, couleur(s) de sangle, longueur ou taille, mousqueton, couleur de bouclerie, note.
+     Les propositions viennent des Matières premières (couleurs de sangle SANS le texte entre parenthèses ; types de mousqueton sans leur largeur ; finitions = variantes
+     des mousquetons) — la saisie reste libre. Jamais de largeur sur les sangles « en dessous » : seule celle de l'accessoire choisi compte (déjà dans son nom).
+     Objet des détails : { motif, c: {1:'…', 2:'…'}, len, snap, fin, note }. Sangle « principale » = la dernière couleur de la fiche (longueur interne), les autres = secondaires. */
+  _optClean(t) { return String(t || '').replace(/\s*\([^)]*\)/g, '').replace(/\s+/g, ' ').trim(); },
+  _optCap(t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; },
+  optChoices() {
+    const colors = new Set(), snaps = new Set(), fins = new Set(), nw = t => this._optClean(String(t || '').replace(/\s*\d+(?:[.,]\d+)?\s*mm\b/gi, ''));
+    (Store.state.materials || []).forEach(m => {
+      const p = nw(m.product || m.name);
+      if (Store.isSangleKind(m.kind)) { if (p && !/^x{3,}/i.test(p)) colors.add(p); }
+      else if (m.kind === 'mousqueton') { if (p) snaps.add(this._optCap(p)); const v = this._optClean(m.variant); if (v) fins.add(this._optCap(v)); }
+    });
+    const srt = x => [...x].sort(U.sortFr);
+    return { colors: srt(colors), snaps: srt(snaps), fins: srt(fins) };
+  },
+  optParts(a) {
+    const n = a ? this._colorCount(a) : 1;
+    if (n < 2) return [{ k: 1, label: 'Sangle', hint: '' }];
+    const out = [{ k: n, label: 'Sangle', hint: this._colorTitle(a, n) }];
+    for (let k = 1; k < n; k++) out.push({ k, label: 'Sangle secondaire', hint: this._colorTitle(a, k) });
+    return out;
+  },
+  optLines(a, o) {
+    o = o || {}; const t = x => String(x == null ? '' : x).trim(), L = [], parts = this.optParts(a);
+    if (t(o.motif)) L.push(t(o.motif));
+    parts.forEach(p => { const v = t((o.c || {})[p.k]); if (v) L.push(p.label + (parts.length > 2 && p.hint ? ' (' + p.hint + ')' : '') + ' : ' + v); });
+    if (t(o.len)) L.push(t(o.len));
+    if (t(o.snap)) L.push(t(o.snap));
+    if (t(o.fin)) L.push('Bouclerie : ' + t(o.fin));
+    if (t(o.note)) L.push(t(o.note));
+    return L;
+  },
+  optOf(aId) { return (Store.state.catalogA || []).find(x => x.id === aId) || null; },
   editManual(id) {
     if (App.isViewer) return;
     const S = Store.state.settings, ex = id ? Store.state.catalogA.find(x => x.id === id) : null;
