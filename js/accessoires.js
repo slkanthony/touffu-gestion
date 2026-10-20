@@ -1631,8 +1631,8 @@ const Accessoires = {
   optParts(a) {
     const n = a ? this._colorCount(a) : 1;
     if (n < 2) return [{ k: 1, label: 'Sangle', hint: '' }];
-    const hint = k => this._colorTitle(a, k).replace(/longueur interne/i, 'longueur principale');   // le devis dit « principale » (la fiche, elle, garde « interne »)
-    const out = [{ k: n, label: 'Sangle', hint: hint(n) }];
+    const hint = k => this._colorTitle(a, k);   // texte entre parenthèses = écran de saisie seulement (« longueur interne », « Rabat + Poignée »), jamais sur le devis
+    const out = [{ k: n, label: 'Sangle principale', hint: hint(n) }];   // plusieurs couleurs : « Sangle principale (longueur interne) » + « Sangle secondaire (Rabat + Poignée) »
     for (let k = 1; k < n; k++) out.push({ k, label: n > 2 ? 'Sangle secondaire ' + k : 'Sangle secondaire', hint: hint(k) });
     return out;
   },
