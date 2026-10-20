@@ -457,7 +457,7 @@ const Ventes = {
      le ticket n'est pas validé. */
   loadFromBasket(rec, lines) {
     this.source = lines.some(l => l.src === 'event') ? 'event' : 'general'; this.kind = 'M';
-    this.cart = lines.map(({ u, qty, price, src, lotId }) => { const lot = lotId && !u.vLots ? (u.lots || []).find(l => l.id === lotId && this.lotQtyS(l, src) > 0) : null; return ({ key: u.key, kind: u.kind || 'M', pId: u.pId, vId: u.vId, lotId: lot ? lot.id : '', lotLabel: lot ? (lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') : (u.vLots ? 'pris sur la variante principale' : ''), name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: u.kind !== 'A' && !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}) }); });
+    this.cart = lines.map(({ u, qty, price, src, lotId, det }) => { const lot = lotId && !u.vLots ? (u.lots || []).find(l => l.id === lotId && this.lotQtyS(l, src) > 0) : null; return ({ key: u.key, kind: u.kind || 'M', pId: u.pId, vId: u.vId, lotId: lot ? lot.id : '', lotLabel: lot ? (lot.lotNumber || 'sans n°') + (lot.dluo ? ' · ' + U.frDate(lot.dluo) : '') : (u.vLots ? 'pris sur la variante principale' : ''), name: u.name, label: u.label, sku: u.sku, price, qty, src, needLot: u.kind !== 'A' && !u.vLots, ...(u.vLots ? { vLots: u.vLots } : {}), ...(det && det.length ? { det } : {}) }); });
     this._basketOthers = rec.others || []; this._fromComposer = !!rec.fromComposer;
     this.customerName = rec.name; this._basketId = rec.id; this._pro = rec.kind === 'pro'; this.balOn = rec.balOn !== false; this._devisNo = Devis.no(rec.dv);
     const rp = U.num(rec.reduction); this.discOn = rp > 0; if (rp > 0) this.discPct = rp; this.discCode = rec.reductionCode || ''; this._discAuto = false; this._discFor = Clients.key(rec.name);   // réduction (+ code) du panier → réduction du ticket
@@ -517,7 +517,7 @@ const Ventes = {
       ${this.cart.some(c => c.needLot) ? `<div class="badge warn" style="margin-bottom:8px;white-space:normal;">📋 Venant d'un panier — choisis le lot de chaque ligne (vérifie le n° de lot / la DLUO du produit que tu as en main). La validation est bloquée tant qu'un lot manque.</div>` : ''}
       <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th>Lot</th><th>DLUO</th><th class="num">Prix</th><th class="num">Qté</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${this.cart.map((c, i) => `<tr>
-          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.kind === 'C' ? this._consoDimsTxt(c.pId) + ' <span class="badge info">conso</span>' : ''}${c.src && c.src !== this.source ? ` <span class="badge warn" title="Cette ligne sera déduite d'un autre stock que le reste du ticket">stock ${c.src === 'event' ? 'événement' : 'général'}</span>` : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
+          <td class="col-name"><b>${U.esc(c.name)}</b> <span class="muted">${U.esc(c.label)}</span>${c.det && c.det.length ? `<div class="muted" style="font-size:.8rem;">${c.det.map(U.esc).join(' · ')}</div>` : ''}${c.kind === 'C' ? this._consoDimsTxt(c.pId) + ' <span class="badge info">conso</span>' : ''}${c.src && c.src !== this.source ? ` <span class="badge warn" title="Cette ligne sera déduite d'un autre stock que le reste du ticket">stock ${c.src === 'event' ? 'événement' : 'général'}</span>` : ''}${U.num(c.vLots) >= 2 ? ` <span class="badge info">lot de ${c.vLots} · ${U.qty(c.qty * c.vLots)} pièces</span>` : ''}</td>
           ${(() => { const lp = this._lotParts(c.lotLabel); return `<td>${c.needLot ? this._lotPicker(c, i) : (lp.lots ? lp.lots : '—')}</td><td>${lp.dluos || '—'}</td>`; })()}
           <td class="num"><input type="number" step="0.01" value="${c.price.toFixed(2)}" style="width:80px;" onchange="Ventes.cart[${i}].price=U.num(this.value);Ventes.render()"></td>
           <td class="num"><input type="number" step="1" min="1" value="${c.qty}" style="width:74px;" onchange="Ventes.cart[${i}].qty=Math.max(1,Math.round(U.num(this.value)));Ventes.render()"></td>
@@ -682,7 +682,7 @@ const Ventes = {
           if (c.qty - take > 0) shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: c.qty - take, src: source });
         }
       }
-      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(c.auto ? { auto: c.auto } : {}), ...(missing > 0 ? { missing } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
+      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(c.det && c.det.length ? { det: c.det } : {}), ...(c.auto ? { auto: c.auto } : {}), ...(missing > 0 ? { missing } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
       sale.total += c.price * c.qty;
     }
     touched.forEach(v => { v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0); });
@@ -718,7 +718,7 @@ const Ventes = {
   async cancelSale(id) {
     const s = Store.state.sales.find(x => x.id === id);
     if (!s || s.cancelled) return;
-    if (!await U.confirm('Annuler cette sortie et re-créditer le stock ?')) return;
+    if (!await U.confirm((s.invoice ? 'Cette vente a déjà une facture émise (n° ' + s.invoice.no + ') : elle reste numérotée et ne disparaît pas, mais pense à régulariser avec le client (l\'appli ne gère pas encore les avoirs).\n\n' : '') + 'Annuler cette sortie et re-créditer le stock ?')) return;
     (s.undoOps || []).forEach(op => this.applyUndoOp(op));
     s.cancelled = true;
     if (s.balanceApplied) Clients.adjustBalance(s.customerName, s.balanceApplied, 'Vente annulée — solde remis');
@@ -1224,6 +1224,8 @@ const Ventes = {
     ids = [].concat(ids).filter(id => Store.state.sales.some(s => s.id === id));
     if (!ids.length) return;
     const sales = Store.state.sales.filter(s => ids.includes(s.id));
+    const invd = sales.filter(s => s.invoice);
+    if (invd.length) { U.alert('Une facture a été émise pour ' + (invd.length > 1 ? 'ces ventes' : 'cette vente') + ' (' + invd.map(s => s.invoice.no).join(', ') + ') : une facture se conserve (10 ans), on ne la supprime pas. Tu peux annuler la vente si besoin.', '🧾 Suppression impossible'); return; }
     const withStock = sales.filter(s => !s.historical && !s.cancelled && (s.undoOps || []).length);
     const tot = sales.reduce((a, s) => a + (s.cancelled ? 0 : U.num(s.total)), 0);
     const what = sales.length === 1 ? `la vente du ${U.frDateTime(sales[0].ts)} (${U.eur(sales[0].total)})` : `${sales.length} ventes (${U.eur(tot)})`;
@@ -1320,7 +1322,7 @@ const Ventes = {
           <button class="btn-ghost btn-sm" title="Replier cette vente" onclick="Ventes.toggleHistOpen('${s.id}')">▴ Replier</button>
           ${field('Origine', `<select class="hist-origin" onchange="Ventes.setSaleOrigin('${s.id}',this.value)"><option value="online" ${kind === 'online' ? 'selected' : ''}>🌐 En ligne</option><option value="direct" ${kind === 'direct' ? 'selected' : ''}>🏪 Directe</option><option value="event" ${kind === 'event' ? 'selected' : ''}>🎪 Événement</option></select>`)}
           ${field('Client', `<input type="text" data-clcombo autocomplete="off" placeholder="client ou chien…" value="${U.esc(Clients.show(s.customerName || ''))}" style="width:170px;" onchange="Ventes.setCustomerName('${s.id}',this.value)">`)}
-          ${s.devisNo ? field('Devis n°', U.esc(s.devisNo)) : ''}${s.pro ? field('Vente', '🏢 pro (revente)') : ''}
+          ${s.devisNo ? field('Devis n°', U.esc(s.devisNo)) : ''}${s.invoice || (!s.cancelled && !s.historical && !Clients.ro()) ? field('Facture', `<button class="btn-ghost btn-sm" onclick="Facture.open('${s.id}')" title="${s.invoice ? 'Revoir / réimprimer la facture émise' : 'Créer la facture de cette vente (coordonnées du client, numéro attribué à l\'émission)'}">${s.invoice ? '🧾 ' + U.esc(s.invoice.no) : '🧾 Créer la facture'}</button>`) : ''}${s.pro ? field('Vente', '🏢 pro (revente)') : ''}
           ${s.cancelled ? '' : field('Paiement', this.paySelect(s))}
           ${field('Remise', this.deliveryLabel(s))}
           ${s.balanceApplied ? field(s.balanceApplied > 0 ? 'Avoir déduit' : 'Solde réglé', U.eur(Math.abs(s.balanceApplied))) : ''}

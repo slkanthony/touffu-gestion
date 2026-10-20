@@ -18,7 +18,7 @@ const Params = {
     const S = Store.state.settings;
     const vp = S.variantPresets || { gram: [], piece: [], size: [] };
     // Ordre déplaçable des blocs de Réglages financiers (↑↓). Stocké dans S.finOrder ; les blocs absents/nouveaux sont ajoutés à la fin.
-    const finDef = ['general', 'amort', 'masti', 'acc', 'conso', 'port', 'paniers', 'events'];
+    const finDef = ['general', 'amort', 'masti', 'acc', 'conso', 'port', 'paniers', 'facture', 'events'];
     let finOrder = Array.isArray(S.finOrder) ? S.finOrder.filter(k => finDef.includes(k)) : [];
     finDef.forEach(k => { if (!finOrder.includes(k)) finOrder.push(k); });
     const finPos = k => finOrder.indexOf(k);
@@ -176,6 +176,21 @@ const Params = {
           <div class="fg"><label>BIC (option)</label><input id="p_pay_bic" onchange="Params.savePay()" value="${U.esc(S.payBic || '')}" onkeydown="if(event.key==='Enter')Params.saveSettings()"></div>
           <div class="fg" style="grid-column:span 2;"><label>Message (option)</label><textarea id="p_pay_msg" onchange="Params.savePay()" class="note-area" rows="2" placeholder="Ex : Merci pour votre confiance 🐾">${U.esc(S.payMessage || '')}</textarea></div>
         </div>
+        </div>
+        <div class="fin-block" style="order:${finPos('facture')}">${finTools('facture')}
+        <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🧾 Facturation ${U.info("Tes coordonnées de vendeur, imprimées sur chaque facture (Ventes → Historique des sorties → 🧾 Créer la facture). Elles sont figées sur chaque facture au moment de l'émission. Le n° de facture est attribué par l'appli (F2026-0001, suite sans trou) ; la mention de TVA suit la case « assujetti ».")}</div>
+        <div class="grid c3">
+          <div class="fg"><label>Nom affiché</label><input id="p_fa_name" onchange="Params.saveFa()" value="${U.esc(S.faName || '')}" placeholder="Prénom Nom — Touffu Shop"></div>
+          <div class="fg"><label>Statut (option)</label><input id="p_fa_legal" onchange="Params.saveFa()" value="${U.esc(S.faLegal || '')}" placeholder="Entrepreneur individuel — micro-entreprise"></div>
+          <div class="fg"><label>SIRET</label><input id="p_fa_siret" onchange="Params.saveFa()" value="${U.esc(S.faSiret || '')}" placeholder="14 chiffres"></div>
+          <div class="fg" style="grid-column:span 2;"><label>Adresse</label><textarea id="p_fa_address" onchange="Params.saveFa()" class="note-area" rows="2" placeholder="n°, rue&#10;code postal, ville">${U.esc(S.faAddress || '')}</textarea></div>
+          <div class="fg"><label>Email</label><input id="p_fa_email" onchange="Params.saveFa()" value="${U.esc(S.faEmail || '')}"></div>
+          <div class="fg"><label>Téléphone</label><input id="p_fa_phone" onchange="Params.saveFa()" value="${U.esc(S.faPhone || '')}"></div>
+          <div class="fg"><label>Conditions de règlement</label><input id="p_fa_terms" onchange="Params.saveFa()" value="${U.esc(S.faTerms ?? 'Paiement à réception de facture')}"></div>
+          <div class="fg" style="grid-column:span 2;"><label>Pénalités de retard (affichées pour les clients professionnels)</label><textarea id="p_fa_pen" onchange="Params.saveFa()" class="note-area" rows="2">${U.esc(S.faPenalties ?? 'En cas de retard de paiement : pénalité de 3 fois le taux d\'intérêt légal et indemnité forfaitaire de recouvrement de 40 €. Pas d\'escompte pour paiement anticipé.')}</textarea></div>
+          <div class="fg" style="grid-column:span 3;"><label>Autre mention (option)</label><input id="p_fa_note" onchange="Params.saveFa()" value="${U.esc(S.faNote || '')}" placeholder="ex : Merci pour votre confiance 🐾"></div>
+        </div>
+        <p class="muted" style="margin:6px 0 0;font-size:.82rem;">Prochain n° de facture : <b>${U.esc(Facture.peek())}</b></p>
         </div>
         <div class="fin-block" style="order:${finPos('events')}">${finTools('events')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🚗 Événements & déplacements ${U.info("Sert à calculer les frais de déplacement de chaque événement (km aller-retour de sa fiche × consommation × prix du litre), pré-remplis au retour d'événement. Les fiches se gèrent dans Paramètres → Référentiels → Événements.")}</div>
@@ -717,7 +732,7 @@ const Params = {
   /* Réordonnancement des blocs de Réglages financiers (↑↓). L'ordre est stocké dans S.finOrder ; l'affichage suit via CSS flex `order`. */
   moveFin(key, dir) {
     const S = Store.state.settings;
-    const def = ['general', 'amort', 'masti', 'acc', 'conso', 'port', 'paniers', 'events'];
+    const def = ['general', 'amort', 'masti', 'acc', 'conso', 'port', 'paniers', 'facture', 'events'];
     let order = (Array.isArray(S.finOrder) ? S.finOrder.filter(k => def.includes(k)) : []);
     def.forEach(k => { if (!order.includes(k)) order.push(k); });
     const i = order.indexOf(key), j = i + dir;
@@ -738,6 +753,13 @@ const Params = {
     S.payHolder = U.val('p_pay_holder'); S.payIban = U.val('p_pay_iban'); S.payBic = U.val('p_pay_bic'); S.payMessage = U.val('p_pay_msg');
     Store.save('settings');
   },
+  /* Coordonnées de facturation : enregistrées dès qu'on quitte la case. */
+  saveFa() {
+    const S = Store.state.settings, v = id => (document.getElementById(id) || {}).value || '';
+    S.faName = v('p_fa_name').trim(); S.faLegal = v('p_fa_legal').trim(); S.faSiret = v('p_fa_siret').trim(); S.faAddress = v('p_fa_address').trim();
+    S.faEmail = v('p_fa_email').trim(); S.faPhone = v('p_fa_phone').trim(); S.faTerms = v('p_fa_terms').trim(); S.faPenalties = v('p_fa_pen').trim(); S.faNote = v('p_fa_note').trim();
+    Store.save('settings');
+  },
   saveSettings() {
     const S = Store.state.settings;
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
@@ -756,6 +778,7 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
       S.payCash = U.chk('p_pay_cash'); S.payVirement = U.chk('p_pay_vir'); S.payOther = U.val('p_pay_other');
       S.payHolder = U.val('p_pay_holder'); S.payIban = U.val('p_pay_iban'); S.payBic = U.val('p_pay_bic'); S.payMessage = U.val('p_pay_msg');
     }
+    if (document.getElementById('p_fa_name')) this.saveFa();
     // recalcule les prix TTC du stock lié
     Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
     Store.log('paramètres', 'Réglages financiers mis à jour');

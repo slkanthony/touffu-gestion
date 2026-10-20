@@ -1079,10 +1079,11 @@ const B2B = {
     const units = Ventes.units(), lines = [], warns = [], general = [];
     (rec.lines || []).forEach(l => {
       const nm = `<b>${U.esc(l.name)}</b> ${U.esc(l.variant || '')}`, qty = U.num(l.qty), price = U.num(l.price);
+      const det = l.aId && l.opts ? Accessoires.optLines(Accessoires.optOf(l.aId), l.opts) : [];
       const u = l.aId ? units.find(x => x.key === 'A|' + l.aId) : (l.pId && l.vid ? this._stockUnitFor(units, l.pId, l.vid) : null);
       if (!u) { warns.push(`${nm} : aucun produit du stock n'est relié à cette fiche prix — ligne ignorée (relie-la dans Stock ou ajoute-la à la main).`); return; }
       if (u.kind === 'A') {   // accessoire : fait à la commande, jamais bloquant
-        lines.push({ u, qty, price, src: 'general' });
+        lines.push({ u, qty, price, src: 'general', det });
         if (qty > U.num(u.availG)) warns.push(`${nm} : stock fini insuffisant (${U.qty(u.availG)} dispo) — fait à la commande, tu pourras l'ajouter quand même.`);
         return;
       }
