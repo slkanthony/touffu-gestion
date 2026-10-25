@@ -369,6 +369,8 @@ details.fold.b2b-fold .fold-body table th { white-space: normal; }
 .seg.scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; overscroll-behavior-x: contain; }
 .seg.scroll::-webkit-scrollbar { display: none; }
 .seg.wrap > * { white-space: normal; text-align: center; line-height: 1.2; }
+.seg.full.grid { display: grid; grid-template-columns: repeat(var(--seg-cols, 2), minmax(0, 1fr)); }
+.seg.full.grid > * { flex: none; padding: 8px 6px; }
 .seg.sm { border-radius: 10px; }
 .seg.sm > button, .seg.sm > a { padding: 4px 11px; font-size: 0.8rem; font-weight: 600; border-radius: 7px; }
 .seg-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }

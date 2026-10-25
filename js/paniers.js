@@ -27,7 +27,7 @@ const Paniers = {
   gabaritInclude: ['petit','moyen','grand'],
   odeurInclude: ['faible','moyenne','forte'],
   grasInclude: ['non','peu','moyen','gras'],
-  paymentMode: 'sumup', // 'sumup' | 'stripe' | 'virement'
+  paymentMode: 'sumup', // 'sumup' | 'stripe' | 'virement' | 'cash' (mêmes clés que Ventes.PAYMENTS ; sert à estimer la commission)
   basket: [],          // [{pId, vId, lotId, name, variant, price, qty, dluo, coeff, meat, locked}]
   maxPerProduct: 2,
 
@@ -1589,7 +1589,7 @@ const Paniers = {
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💳 Paiement</label>
-            ${U.seg([{ l: `SumUp (${U.pct(S.cardFeeRate)})`, on: this.paymentMode === 'sumup', js: "Paniers.setPayment('sumup')" }, { l: `Stripe (${U.pct(S.stripeFeeRate || 0)})`, on: this.paymentMode === 'stripe', js: "Paniers.setPayment('stripe')" }, { l: 'Virement (0%)', on: this.paymentMode === 'virement', js: "Paniers.setPayment('virement')" }], { full: true, wrap: true })}
+            ${U.seg([{ l: `SumUp (${U.pct(S.cardFeeRate)})`, on: this.paymentMode === 'sumup', js: "Paniers.setPayment('sumup')" }, { l: `Stripe (${U.pct(S.stripeFeeRate || 0)})`, on: this.paymentMode === 'stripe', js: "Paniers.setPayment('stripe')" }, { l: 'Virement (0 %)', on: this.paymentMode === 'virement', js: "Paniers.setPayment('virement')" }, { l: 'Espèces (0 %)', on: this.paymentMode === 'cash', js: "Paniers.setPayment('cash')" }], { full: true, wrap: true, cols: 2 })}
           </div>
         </div>
 
@@ -1813,7 +1813,7 @@ const Paniers = {
     const nViandes = [...new Set(this.basket.map(b => b.meat))].filter(Boolean).length;
     const nProduits = [...new Set(this.basket.map(b => b.pId))].length;
     const feeRate = this.paymentMode === 'sumup' ? U.num(S.cardFeeRate) : this.paymentMode === 'stripe' ? U.num(S.stripeFeeRate) : 0;
-    const feeName = this.paymentMode === 'sumup' ? 'SumUp' : this.paymentMode === 'stripe' ? 'Stripe' : 'Virement';
+    const feeName = this.paymentMode === 'sumup' ? 'SumUp' : this.paymentMode === 'stripe' ? 'Stripe' : this.paymentMode === 'cash' ? 'Espèces' : 'Virement';
     const cbFee = totVente * feeRate / 100;
 
     return `<div style="margin-top:12px;padding:12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--card-border);">

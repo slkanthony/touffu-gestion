@@ -330,9 +330,9 @@ const U = {
 
   /* Bascule « un seul choix actif » en bloc fusionné (même style que Entreprise / Micro de Revente pro).
      items = [{ l: libellé HTML, on: actif ?, js: code du onclick, href?: lien (vrai <a>, clic molette), tone?: 'ok' (vert) | 'danger' (rouge) pour un bouton d'action coloré }]
-     opts.wrap : libellés sur 2 lignes si la colonne est étroite (au lieu de glisser) ; opts.sm : version compacte (paires d'actions comme Tout déplier / Tout replier, sans `on`) ; opts.full : occupe toute la largeur (boutons de même taille) ; opts.scroll : se fait glisser au doigt si trop étroit (écran de téléphone). */
-  seg(items, { full, scroll, sm, wrap, label } = {}) {
-    return `<div class="seg${full ? ' full' : ''}${scroll ? ' scroll' : ''}${sm ? ' sm' : ''}${wrap ? ' wrap' : ''}" role="group"${label ? ` aria-label="${U.esc(label)}"` : ''}>${items.map(it => it.href
+     opts.wrap : libellés sur 2 lignes si la colonne est étroite (au lieu de glisser) ; opts.sm : version compacte (paires d'actions comme Tout déplier / Tout replier, sans `on`) ; opts.full : occupe toute la largeur (boutons de même taille) ; opts.scroll : se fait glisser au doigt si trop étroit (écran de téléphone) ; opts.cols : N colonnes de même largeur en grille (4 choix dans une colonne étroite → cols: 2 = 2 × 2, rien n'est coupé). */
+  seg(items, { full, scroll, sm, wrap, label, cols } = {}) {
+    return `<div class="seg${full ? ' full' : ''}${scroll ? ' scroll' : ''}${sm ? ' sm' : ''}${wrap ? ' wrap' : ''}${cols ? ' grid' : ''}"${cols ? ` style="--seg-cols:${Math.max(1, Math.round(cols))}"` : ''} role="group"${label ? ` aria-label="${U.esc(label)}"` : ''}>${items.map(it => it.href
       ? `<a href="${it.href}" class="${it.on ? 'on' : ''}" onclick="${it.js}">${it.l}</a>`
       : `<button type="button" class="${it.on ? 'on' : ''}${it.tone ? ' ' + it.tone : ''}"${it.on === undefined ? '' : ` aria-pressed="${it.on}"`} onclick="${it.js}">${it.l}</button>`).join('')}</div>`;
   },
