@@ -1393,6 +1393,17 @@ const Paniers = {
       localStorage.setItem(this._DK, JSON.stringify(out));
     } catch (e) {}
   },
+  /* Synchro entre ONGLETS (Antho 2026-10-25) : un ajout fait dans un autre onglet (ex. « Ajouter » depuis Stock → Péremptions) s'affiche ici tout de suite.
+     Avant : cet onglet gardait un vieux panier en mémoire et le réécrivait par-dessus le brouillon (au prochain rendu / retour sur l'onglet) → l'ajout disparaissait,
+     même après un F5. Désormais l'événement `storage` (déclenché dans les AUTRES onglets seulement) recharge le brouillon en mémoire : plus jamais de panier périmé à réécrire. */
+  _adoptDraft(raw) {
+    try {
+      const d = JSON.parse(raw || 'null'); if (!d) return;
+      ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'].forEach(k => { if (k in d) this[k] = d[k]; });
+      this._draftLoaded = true;
+      if (typeof App !== 'undefined' && App.current === 'paniers') App.rerender();   // garde le champ en cours de saisie (App.rerender)
+    } catch (e) { console.error(e); }
+  },
   _disc() { return Math.min(99, Math.max(0, U.num(this.reduction))) / 100; },
   _avail() { return (this.budget - this.livraison) / (1 - this._disc()); },   // budget utilisable, exprimé en prix publics (avant réduction)
   setReduction(v) { this.reduction = Math.min(99, Math.max(0, U.num(v))); this._redAuto = false; this._updateKPI(); },
@@ -1860,6 +1871,8 @@ const Paniers = {
     this.render();
   }
 };
+
+window.addEventListener('storage', e => { if (e.key === Paniers._DK) Paniers._adoptDraft(e.newValue); });
 
 /* Valeurs d'origine de la configuration (avant toute valeur mémorisée) : sert à « repartir comme pour un nouveau panier » */
 Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
