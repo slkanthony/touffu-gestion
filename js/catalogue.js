@@ -889,16 +889,16 @@ const Catalogue = {
           <input type="radio" name="cp_main" ${this._d.mainSupplierId === s.supplierId ? 'checked' : ''} onchange="Catalogue._d.mainSupplierId='${s.supplierId}'" style="width:20px;height:20px;"></div></div>
         <div class="fg"><label>Fournisseur</label>
           <select onchange="Catalogue._d.suppliers[${i}].supplierId=this.value;Catalogue.drawSuppliers()">${App.supplierOptions(s.supplierId)}</select></div>
-        <div class="fg"><label>Prix d'achat</label><input type="number" step="0.01" value="${s.price ?? ''}" onchange="Catalogue._d.suppliers[${i}].price=this.value;Catalogue.drawSuppliers()">
+        <div class="fg"><label>Prix d'achat</label><input type="number" step="0.01" value="${s.price ?? ''}" oninput="Catalogue._d.suppliers[${i}].price=this.value;Catalogue.drawVars()" onchange="Catalogue._d.suppliers[${i}].price=this.value;Catalogue.drawSuppliers()">
           <span class="muted" style="font-size:.78rem;">→ ${U.eur(this.supUnitHT(s))}/${s.unit === 'kilo' ? 'kg' : 'pc'} HT</span></div>
         <div class="fg"><label>HT / TTC</label><select onchange="Catalogue._d.suppliers[${i}].taxType=this.value;Catalogue.drawSuppliers()">
           <option ${(s.taxType || 'HT') === 'HT' ? 'selected' : ''}>HT</option><option ${s.taxType === 'TTC' ? 'selected' : ''}>TTC</option></select></div>
-        <div class="fg"><label title="TVA d'achat (%)">TVA achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Pricing.purchaseVatOf(s.supplierId, '')}" title="Vide = suit le taux du fournisseur (Paramètres → Référentiels), sinon le taux global. Un taux tapé ici ne concerne que ce produit." onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
+        <div class="fg"><label title="TVA d'achat (%)">TVA achat (%)</label><input type="number" step="0.1" value="${s.vatRate ?? ''}" placeholder="${Pricing.purchaseVatOf(s.supplierId, '')}" title="Vide = suit le taux du fournisseur (Paramètres → Référentiels), sinon le taux global. Un taux tapé ici ne concerne que ce produit." oninput="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawVars()" onchange="Catalogue._d.suppliers[${i}].vatRate=this.value;Catalogue.drawSuppliers()"></div>
         <div class="fg"><label>Acheté</label><select onchange="Catalogue._d.suppliers[${i}].unit=this.value;Catalogue.drawSuppliers()">
           <option value="kilo" ${(s.unit || 'kilo') === 'kilo' ? 'selected' : ''}>au kilo</option>
           <option value="piece" ${s.unit === 'piece' ? 'selected' : ''}>à la pièce</option></select></div>
-        <div class="fg"><label>Poids (kg) / Qté</label><input type="number" step="0.01" value="${s.unit === 'piece' ? (s.quantity ?? 1) : (s.weight ?? 1)}" onchange="Catalogue.setSupDiv(${i},this.value)"></div>
-        <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value"></div>
+        <div class="fg"><label>Poids (kg) / Qté</label><input type="number" step="0.01" value="${s.unit === 'piece' ? (s.quantity ?? 1) : (s.weight ?? 1)}" oninput="Catalogue.setSupDiv(${i},this.value,true)" onchange="Catalogue.setSupDiv(${i},this.value)"></div>
+        <div class="fg"><label>Pièces / kilo</label><input type="number" step="0.1" value="${s.piecesPerKilo ?? ''}" placeholder="si revente pièce" oninput="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value;Catalogue.drawVars()" onchange="Catalogue._d.suppliers[${i}].piecesPerKilo=this.value;Catalogue.drawSuppliers()"></div>
         <div class="fg"><label>&nbsp;</label><div class="sup-cell"><button class="btn-icon" title="Retirer ce fournisseur" onclick="Catalogue.delSupplier(${i})">🗑️</button></div></div>
       </div>
       <div class="muted" style="font-size:.78rem;margin:-2px 4px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${s.priceDate ? `📅 Prix d'achat mis à jour le <b>${this._ageTxt(U.num(s.priceDate))}</b>` : ''}
@@ -927,10 +927,11 @@ const Catalogue = {
     if (!this._d.mainSupplierId) this._d.mainSupplierId = supplierId;
     this.drawSuppliers();
   },
-  setSupDiv(i, val) {
+  /* `live` = pendant la frappe : seul le tableau des variantes est redessiné (le champ en cours de saisie garde son focus) ; à la sortie du champ, le bloc fournisseur aussi. */
+  setSupDiv(i, val, live) {
     const s = this._d.suppliers[i];
     if (s.unit === 'piece') s.quantity = val; else s.weight = val;
-    this.drawSuppliers();
+    if (live) this.drawVars(); else this.drawSuppliers();
   },
   markPriceChecked(i) {
     this._d.suppliers[i].priceDate = Date.now();
