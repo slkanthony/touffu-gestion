@@ -598,16 +598,23 @@ const Params = {
       <div class="ref-add"><input id="add_matkind" placeholder="Ajouter une catégorie…" onkeydown="if(event.key==='Enter')Params.addMaterialKind()"><button class="btn-ghost btn-sm" onclick="Params.addMaterialKind()">＋ Ajouter</button></div>
     </div>`;
   },
-  addMaterialKind() {
-    const label = U.val('add_matkind').trim(); if (!label) return;
+  /* Crée la catégorie (enregistrée) et la renvoie ; null si le nom est vide ou déjà pris. Utilisée aussi par le « ＋ » de la fenêtre « Nouvelle matière » (Stock). */
+  _createMaterialKind(label) {
+    label = String(label || '').trim(); if (!label) return null;
     const S = Store.state.settings;
     if (!Array.isArray(S.materialKinds)) S.materialKinds = Store.materialKinds().slice();
-    if (S.materialKinds.some(k => k.label.toLowerCase() === label.toLowerCase())) { U.toast('Déjà présent', true); return; }
+    if (S.materialKinds.some(k => k.label.toLowerCase() === label.toLowerCase())) { U.toast('Déjà présent', true); return null; }
     let value = (Pricing.slugify(label) || '').toLowerCase() || ('cat-' + Date.now());
     while (S.materialKinds.some(k => k.value === value)) value += '-2';
-    S.materialKinds.push({ value, label });
-    Store.save('settings'); App.rerender();
-    U.toast('Catégorie « ' + label + ' » ajoutée.');
+    const k = { value, label };
+    S.materialKinds.push(k);
+    Store.save('settings');
+    return k;
+  },
+  addMaterialKind() {
+    const k = this._createMaterialKind(U.val('add_matkind')); if (!k) return;
+    App.rerender();
+    U.toast('Catégorie « ' + k.label + ' » ajoutée.');
   },
   async delMaterialKind(value) {
     const S = Store.state.settings;

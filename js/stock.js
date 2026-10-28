@@ -3216,6 +3216,16 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     this._calcMatUnit();
     this._matSizeRefresh(kind);
   },
+  /* « ＋ » du menu Type : une zone de saisie apparaît sous le menu ; la nouvelle catégorie est créée (comme dans Paramètres) puis choisie. */
+  _showKindNew() { const r = document.getElementById('m_kind_new_row'); if (!r) return; r.style.display = 'flex'; const i = document.getElementById('m_kind_new'); if (i) i.focus(); },
+  _addKindInline() {
+    const i = document.getElementById('m_kind_new'), sel = document.getElementById('m_kind'); if (!i || !sel) return;
+    const k = Params._createMaterialKind(i.value); if (!k) return;
+    const o = document.createElement('option'); o.value = k.value; o.textContent = k.label; sel.appendChild(o);
+    sel.value = k.value; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    i.value = ''; document.getElementById('m_kind_new_row').style.display = 'none';
+    U.toast('Catégorie « ' + k.label + ' » ajoutée.');
+  },
   _matSizeRefresh(kindArg) {
     const m = this._matEditing, fg = document.getElementById('m_size_fg'); if (!m || !fg) return;
     const kind = kindArg || U.val('m_kind') || m.kind, sang = Store.isSangleKind(kind);
@@ -3278,8 +3288,9 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
       </div>
       ${this._matVariantRow(m, m.kind)}
       <div class="frow">
-        <div class="fg"><label>Type</label><select id="m_kind" onchange="Stock._matKindChanged(this.value)">
-          ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select></div>
+        <div class="fg"><label>Type</label><select id="m_kind" data-add data-add-title="Nouvelle catégorie" onchange="Stock._matKindChanged(this.value)">
+          ${Store.materialKinds().map(k => `<option value="${U.esc(k.value)}" ${m.kind === k.value ? 'selected' : ''}>${U.esc(k.label)}${Store.isSangleKind(k.value) ? ' (rouleaux)' : ''}</option>`).join('')}</select>
+          <div id="m_kind_new_row" style="display:none;gap:6px;align-items:center;margin-top:6px;"><input id="m_kind_new" placeholder="Nom de la nouvelle catégorie" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();Stock._addKindInline();}"><button type="button" class="btn-ghost btn-sm" style="white-space:nowrap;" onclick="Stock._addKindInline()">Ajouter</button></div></div>
         <div class="fg"><label>Unité ${U.info("Proposée automatiquement selon le type (mètre pour les sangles, pièce pour le reste) ; tu peux la changer si une matière sort de la règle.")}</label><select id="m_unit" onchange="Stock._calcMatUnit()">
           <option value="m" ${m.unit === 'm' ? 'selected' : ''}>mètre</option>
           <option value="piece" ${m.unit !== 'm' && m.unit !== 'g' ? 'selected' : ''}>pièce</option>
@@ -3413,3 +3424,6 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     else this.editMat(id);
   }
 };
+
+/* « ＋ » du menu Type de la fenêtre « Nouvelle matière » (utils.js, data-add) */
+document.addEventListener('nseladd', e => { if (e.target && e.target.id === 'm_kind') Stock._showKindNew(); });
