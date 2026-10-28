@@ -614,6 +614,8 @@ const Achats = {
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_pv_' + i); if (e) e.textContent = this._pvText(l); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_ph_' + i); if (e) e.textContent = this._phText(l); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_up_' + i); if (e) e.textContent = this._upText(l); });
+    d.lines.forEach((l, i) => { const e = document.getElementById('ach_tt_' + i); if (e) e.textContent = this._ttcOf(this.lineTotal(l)); });
+    { const e = document.getElementById('ach_shiptt'); if (e) e.textContent = this._ttcOf(d.shipping); }
     this._autoVat();
     if ((d.vat || []).length === 1 && d.vat[0].auto) { const e = document.getElementById('ach_vatamt_0'); if (e && document.activeElement !== e) e.value = d.vat[0].amount || ''; }
     const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot'), b = document.getElementById('ach_base'), v = document.getElementById('ach_vat');
@@ -640,6 +642,9 @@ const Achats = {
   },
   /* Matière / consommable : le prix saisi est celui de la LIGNE (Antho 2026-10-28) ; le prix unitaire = prix ÷ quantité (l.price, utilisé partout ailleurs). Mastication : inchangée (prix unitaire). */
   _totalMode(l) { return l.cat === 'matiere' || l.cat === 'conso'; },
+  /* Facture saisie en HT : montant TTC de la ligne (HT × (1 + TVA totale / base HT)), à comparer avec la colonne « TVA inc » de la facture du fournisseur. */
+  _ttcOf(amount) { const d = this._d; if (!d || !this.isHT(d)) return ''; const rates = (d.vat || []).filter(v => U.num(v.rate) > 0), f = rates.length === 1 ? 1 + U.num(rates[0].rate) / 100 : this.ttcFactor(d);   // un seul taux : HT × (1 + taux), comme sur la facture ; plusieurs taux : proportion TVA / base
+    return f > 1.00001 && U.num(amount) > 0 ? '= ' + U.eur(U.num(amount) * f) + ' TTC' : ''; },
   _upText(l) { return U.num(l.qty) > 0 && U.num(l.price) > 0 ? U.eur(l.price) + (l.unit ? ' / ' + l.unit : '') : '—'; },
   /* Sangle au rouleau : prix du mètre ; consommable en lot : prix de la pièce — à comparer avec la facture du fournisseur */
   _phText(l) {
@@ -668,7 +673,7 @@ const Achats = {
     const label = `<input value="${U.esc(l.label)}" placeholder="${c.detail ? 'désignation' : 'ex : visseuse, assurance, timbres…'}" onchange="Achats.setText(${i},'label',this.value)">`;
     const r1 = [fg('Catégorie', catSel, '1fr')], r2 = [];
     if (!c.detail) {
-      r1.push(fg('Désignation', label, '3fr', true), fg('Montant (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr'));
+      r1.push(fg('Désignation', label, '3fr', true), fg('Montant (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '1fr'));
     } else {
       if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)"${c.link === 'M' ? '' : ` data-add data-add-line="${i}" data-add-title="${c.link === 'T' ? 'Nouvelle matière première' : 'Nouveau consommable'}"`}>${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
       r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
@@ -679,10 +684,10 @@ const Achats = {
       if (this._totalMode(l)) {   // matière / consommable : on tape le prix de la ligne (comme sur la facture), l'appli divise par la quantité
         const tot = l.tot !== undefined ? l.tot : (this.lineTotal(l) || '');
         r2.push(fg('Prix ligne (€ ' + ht + ')', `<input type="number" step="any" value="${tot}" placeholder="0" oninput="Achats.setLineTot(${i},this.value)">`, '1fr', false, 3));
-        r2.push(fg('Prix unitaire', `<div class="ach-tot sensitive" id="ach_up_${i}">${this._upText(l)}</div><div class="muted sensitive" id="ach_ph_${i}" style="font-size:.78rem;">${this._phText(l)}</div>`, '.9fr', false, 4));
+        r2.push(fg('Prix unitaire', `<div class="ach-tot sensitive" id="ach_up_${i}">${this._upText(l)}</div><div class="muted sensitive" id="ach_ph_${i}" style="font-size:.78rem;">${this._phText(l)}</div><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
       } else {
         r2.push(fg('Prix unitaire (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
-        r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div>`, '.9fr', false, 4));
+        r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
       }
       const box = (c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : '';
       if (box) r2.push({ h: box.replace('<div class="fg">', '<div class="fg" style="grid-column:5;">'), fr: '1.2fr' });
@@ -725,7 +730,7 @@ const Achats = {
         <button class="btn-ghost btn-sm" onclick="Achats.addLine()">＋ Ajouter une ligne</button>
         <div class="ach-sum">
           <div><span class="muted">Sous-total ${this.isHT(d) ? 'HT' : ''}</span> <b class="sensitive" id="ach_sub">${U.eur(this.subTotal(d))}</b></div>
-          <div class="fg"><label>Frais de livraison (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.shipping || ''}" placeholder="0" oninput="Achats.setHead('shipping',this.value)"></div>
+          <div class="fg"><label>Frais de livraison (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.shipping || ''}" placeholder="0" oninput="Achats.setHead('shipping',this.value)"><div class="muted sensitive" id="ach_shiptt" style="font-size:.78rem;">${this._ttcOf(d.shipping)}</div></div>
           <div class="fg"><label>Remise (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.discount || ''}" placeholder="0" oninput="Achats.setHead('discount',this.value)"></div>
           ${this.isHT(d) ? `<div><span class="muted">Total HT</span> <b class="sensitive" id="ach_base">${U.eur(this.base(d))}</b></div>` : ''}
           <div class="ach-grand">Total payé <b class="sensitive" id="ach_tot">${U.eur(this.grandTotal(d))}</b></div>
