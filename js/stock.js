@@ -3026,6 +3026,26 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     if (Math.abs(drift) > 0.0001) m.rolls[m.rolls.length - 1].qty = Math.max(0, U.num(m.rolls[m.rolls.length - 1].qty) + drift);
   },
 
+  /* Rouleaux d'une sangle pour la fabrication (Antho 2026-10-28) : entamés d'abord (le plus court en premier), puis les autres dans l'ordre. */
+  rollsSorted(m) {
+    this.reconcileRolls(m);
+    const rs = (m.rolls || []).map((r, i) => ({ r, i })), e = x => (x.r.entame ? 0 : 1);
+    return rs.sort((a, b) => e(a) - e(b) || (e(a) === 0 ? U.num(a.r.qty) - U.num(b.r.qty) : a.i - b.i)).map(x => x.r);
+  },
+  /* Rouleau proposé par défaut pour une longueur `need` : un rouleau entamé qui suffit, sinon un rouleau entier qui suffit, sinon le premier (trop court → l'utilisateur est prévenu). */
+  defaultRoll(m, need) {
+    const rs = this.rollsSorted(m), ok = r => U.num(r.qty) >= need - 1e-6;
+    return rs.find(r => r.entame && ok(r)) || rs.find(ok) || rs[0] || null;
+  },
+  /* Retire `need` mètres du rouleau choisi : il devient « entamé » s'il en reste, il disparaît s'il est fini ; les rouleaux « Rouleau N » sont renumérotés (le 2 devient le 1…). */
+  consumeRoll(m, rollId, need) {
+    const r = (m.rolls || []).find(x => x.id === rollId); if (!r) { m.qty = Math.max(0, U.num(m.qty) - need); return; }
+    r.qty = Math.max(0, Math.round((U.num(r.qty) - need) * 10000) / 10000);
+    if (r.qty > 0.0001) r.entame = true; else m.rolls = m.rolls.filter(x => x.id !== rollId);
+    m.rolls.forEach((x, i) => { if (/^Rouleau \d+$/.test(x.label || '')) x.label = 'Rouleau ' + (i + 1); });
+    m.qty = m.rolls.reduce((a, x) => a + U.num(x.qty), 0);
+  },
+
   materialRow(m, i, items) {
     const isSangle = Store.isSangleKind(m.kind);
     if (isSangle) this.reconcileRolls(m);

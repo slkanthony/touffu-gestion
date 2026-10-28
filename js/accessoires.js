@@ -1559,6 +1559,22 @@ const Accessoires = {
       return null;
     }).filter(Boolean);
   },
+  /* Sangle en rouleaux : on choisit sur quel rouleau couper (quantités restantes affichées) ; un rouleau trop court pour la longueur nécessaire est grisé. */
+  _fabMat(i) { const b = this._fabBom[i]; return !b ? null : b.type === 'family' ? Store.material(b.selectedId) : b.m; },
+  _fabNeed(i) { const el = document.getElementById('fab_qty'); return U.num(this._fabBom[i].qty) * (el ? U.num(el.value) || 1 : 1); },
+  _fabRollsHTML(i) {
+    const b = this._fabBom[i], m = this._fabMat(i);
+    if (!m || !Store.isSangleKind(m.kind) || !(m.rolls && m.rolls.length)) return '';
+    const need = this._fabNeed(i), rs = Stock.rollsSorted(m), unit = Store.matUnitLabel(m.unit), ok = r => U.num(r.qty) >= need - 1e-6;
+    if (!b.rollManual || !rs.some(r => r.id === b.rollId)) { const d = Stock.defaultRoll(m, need); b.rollId = d ? d.id : ''; }
+    const any = rs.some(ok);
+    return `<div style="margin-top:6px;font-size:.88rem;"><div class="muted" style="margin-bottom:3px;">Dans quel rouleau couper ? <span class="muted">(il faut ${U.qty(need)} ${unit})</span></div>`
+      + rs.map(r => `<label style="display:flex;align-items:center;gap:8px;padding:2px 0;text-transform:none;letter-spacing:0;${ok(r) ? 'cursor:pointer;' : 'opacity:.5;'}"><input type="radio" name="fab_roll_${i}" value="${r.id}" style="width:auto;" ${r.id === b.rollId ? 'checked' : ''} ${ok(r) ? '' : 'disabled'} onchange="Accessoires._fabPickRoll(${i},'${r.id}')"> <b>${U.esc(r.label || 'Rouleau')}</b>${r.entame ? ' <span class="badge info">entamé</span>' : ''} <span class="muted">— ${U.qty(r.qty)} ${unit} restant${ok(r) ? '' : ' · trop court'}</span></label>`).join('')
+      + (any ? '' : `<div style="color:var(--alerte);margin-top:3px;">⚠ Aucun rouleau n'a assez : baisse la quantité à fabriquer.</div>`) + '</div>';
+  },
+  _fabPickRoll(i, id) { const b = this._fabBom[i]; if (b) { b.rollId = id; b.rollManual = true; } },
+  _fabRollsRefresh(i, reset) { const b = this._fabBom[i], e = document.getElementById('fab_rolls_' + i); if (!b || !e) return; if (reset) b.rollManual = false; e.innerHTML = this._fabRollsHTML(i); },
+  _fabRollsRefreshAll() { (this._fabBom || []).forEach((b, i) => this._fabRollsRefresh(i, false)); },
   _fabBomHTML() {
     return this._fabBom.map((b, i) => {
       if (b.type === 'family') {
@@ -1570,7 +1586,8 @@ const Accessoires = {
           ${b.tag ? `<div style="font-weight:700;font-size:.85rem;color:var(--caramel);margin-bottom:4px;">${U.esc(b.tag)}</div>` : ''}
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <b>${U.esc(b.fam.label)}</b><span class="muted">${U.qty(b.qty)} ${unit} par pièce</span></div>
-          <select id="fab_mat_${i}" style="width:100%;" onchange="Accessoires._fabBom[${i}].selectedId=this.value">${opts}</select>
+          <select id="fab_mat_${i}" style="width:100%;" onchange="Accessoires._fabBom[${i}].selectedId=this.value;Accessoires._fabRollsRefresh(${i},true)">${opts}</select>
+          <div id="fab_rolls_${i}">${this._fabRollsHTML(i)}</div>
         </div>`;
       }
       if (b.type === 'direct' && b.m) {
@@ -1579,6 +1596,7 @@ const Accessoires = {
           ${b.tag ? `<div style="font-weight:700;font-size:.85rem;color:var(--caramel);margin-bottom:4px;">${U.esc(b.tag)}</div>` : ''}
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <b>${U.esc(b.m.name)}</b><span class="muted">${U.qty(b.qty)} ${unit} — stock : ${U.qty(b.m.qty)} ${unit}</span></div>
+          <div id="fab_rolls_${i}">${this._fabRollsHTML(i)}</div>
         </div>`;
       }
       return `<div class="card" style="padding:8px 12px;margin-bottom:6px;color:var(--alerte);">⚠ Famille introuvable : ${U.esc(b.label)}</div>`;
@@ -1767,7 +1785,7 @@ const Accessoires = {
     const srcRow = srcOpts ? `<div class="frow"><div class="fg"><label>Partir d'une pièce prête à finir ${U.info("Option. Choisis la pièce faite à l'avance (ex. porte-clés pas fini) : elle perd autant de pièces que tu en fabriques, et l'accessoire fini en gagne autant. Les matières de la recette ci-dessous sont quand même retirées : le filament et la sangle n'ont pas été retirés quand tu as ajouté la pièce à la main.")}</label><select id="fab_src"><option value="">— Non, fabriquer de zéro —</option>${srcOpts}</select></div></div>` : '';
     U.modal({
       title: '🛠 Fabriquer — ' + U.esc(a.name), okLabel: 'Fabriquer',
-      body: `<div class="frow"><div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1"></div>
+      body: `<div class="frow"><div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1" oninput="Accessoires._fabRollsRefreshAll()"></div>
         <div class="fg"><label>Pièces ajoutées au stock ${U.info("Les pièces fabriquées entrent dans le stock fini de cet accessoire (visible dans Stock → Accessoires et au Tableau de bord). Général = site / atelier ; Événement = emporté en marché (SumUp).")}</label><select id="fab_dest"><option value="stockGeneral">Général</option><option value="stockEvent">Événement</option></select></div></div>
         ${srcRow}
         <h2 style="font-size:.95rem;margin-top:12px;">Matières à utiliser</h2>
@@ -1776,21 +1794,32 @@ const Accessoires = {
       onOk: () => {
         const n = U.numVal('fab_qty');
         if (n <= 0) return false;
-        const resolved = [];
+        const resolved = [], usedRoll = {};
         for (let i = 0; i < this._fabBom.length; i++) {
           const b = this._fabBom[i];
           const need = U.num(b.qty) * n;
+          let m;
           if (b.type === 'direct') {
             if (!b.m) { U.toast('Matière introuvable', true); return false; }
             if (U.num(b.m.qty) < need) { U.toast(`Stock insuffisant : ${b.m.name} (${U.qty(b.m.qty)} restant)`, true); return false; }
-            resolved.push({ m: b.m, need });
+            m = b.m;
           } else if (b.type === 'family') {
             const selId = document.getElementById('fab_mat_' + i)?.value || b.selectedId;
-            const m = Store.material(selId);
+            m = Store.material(selId);
             if (!m) { U.toast(`Matière non trouvée dans "${b.fam.label}"`, true); return false; }
             if (U.num(m.qty) < need) { U.toast(`Stock insuffisant : ${m.name} (${U.qty(m.qty)} restant, besoin de ${U.qty(need)})`, true); return false; }
-            resolved.push({ m, need });
           } else { U.toast(`Famille introuvable : ${b.label}`, true); return false; }
+          let rollId = '';
+          if (Store.isSangleKind(m.kind) && m.rolls && m.rolls.length) {   // sangle en rouleaux : on coupe dans UN rouleau, choisi dans la fenêtre
+            Stock.reconcileRolls(m);
+            rollId = (document.querySelector(`input[name="fab_roll_${i}"]:checked`) || {}).value || b.rollId;
+            const r = m.rolls.find(x => x.id === rollId);
+            if (!r) { U.toast(`Choisis le rouleau à utiliser pour ${m.name}.`, true); return false; }
+            const left = U.num(r.qty) - U.num(usedRoll[r.id]);
+            if (left < need - 1e-6) { U.toast(`${r.label} : il ne reste que ${U.qty(left)} ${Store.matUnitLabel(m.unit)}, il en faut ${U.qty(need)}. Choisis un autre rouleau.`, true); return false; }
+            usedRoll[r.id] = U.num(usedRoll[r.id]) + need;
+          }
+          resolved.push({ m, need, rollId });
         }
         const pool = U.val('fab_dest') === 'stockEvent' ? 'stockEvent' : 'stockGeneral';
         const [srcId, srcPool] = (U.val('fab_src') || '').split('|'), srcAcc = srcId ? Store.state.catalogA.find(x => x.id === srcId && x.manual) : null;
@@ -1798,13 +1827,14 @@ const Accessoires = {
         const undo = { accId: a.id, n, mats: [], fid: U.uid(), pool };
         if (srcAcc) { srcAcc[srcPool] = U.num(srcAcc[srcPool]) - n; undo.src = { id: srcAcc.id, pool: srcPool, n }; }   // pièce prête à finir consommée
         a[pool] = U.num(a[pool]) + n;   // stock FINI crédité (avant 2026-10-17 la fabrication ne faisait que retirer les matières)
-        for (const { m, need } of resolved) {
-          m.qty = U.num(m.qty) - need;
-          undo.mats.push({ id: m.id, qty: need });
+        for (const { m, need, rollId } of resolved) {
+          const before = rollId ? JSON.parse(JSON.stringify(m.rolls)) : null;   // rouleaux avant : l'annulation les remet exactement
+          if (rollId) Stock.consumeRoll(m, rollId, need); else m.qty = U.num(m.qty) - need;
+          undo.mats.push(before ? { id: m.id, qty: need, rolls: before } : { id: m.id, qty: need });
         }
         const entry = Store.log('fabrication', `Fabrication de ${n} × ${a.name}`, { type: 'fabricate', data: undo });
         // Historique PERMANENT des fabrications (le journal ne garde que 600 actions) : sert aux stats « sangles / couleurs les plus utilisées » (Statistiques → Prix & marges → Accessoires)
-        const S = Store.state.settings; (S.fabHistory = S.fabHistory || []).push({ id: undo.fid, ts: Date.now(), accId: a.id, n, mats: undo.mats.map(x => ({ ...x })) });
+        const S = Store.state.settings; (S.fabHistory = S.fabHistory || []).push({ id: undo.fid, ts: Date.now(), accId: a.id, n, mats: undo.mats.map(x => ({ id: x.id, qty: x.qty })) });
         if (S.fabHistory.length > 5000) S.fabHistory.splice(0, S.fabHistory.length - 5000);
         Store.save('materials', 'settings', 'catalogA');
         U.closeModal(); App.rerender();
