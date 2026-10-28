@@ -164,7 +164,10 @@ const Achats = {
     if (this._draftLoaded) return; this._draftLoaded = true;
     try {
       const x = JSON.parse(localStorage.getItem(this._DK) || 'null');
-      if (x && x.d && Array.isArray(x.d.lines)) { this._d = x.d; this._editId = x.editId || ''; this._dirty = !!x.dirty; this.mode = 'edit'; }
+      if (x && x.d && Array.isArray(x.d.lines)) {
+        this._d = x.d; this._editId = x.editId || ''; this._dirty = !!x.dirty; this.mode = 'edit';
+        if (this._d.supplierId && this._adaptLinesToSupplier()) this._saveDraft();   // brouillon enregistré avant la correction : on remet la catégorie du fournisseur (sauf choix manuel)
+      }
     } catch (e) {}
   },
 
@@ -507,12 +510,13 @@ const Achats = {
     return list.length ? list : this.CATS;
   },
   /* Fournisseur choisi : les lignes encore VIDES (ni produit, ni désignation, ni prix) prennent une catégorie vendue par ce fournisseur ; une ligne déjà remplie n'est jamais modifiée. */
-  _adaptLinesToSupplier() {
+  _adaptLinesToSupplier(fromPick) {
     const d = this._d, ok = this._catsFor(d.supplierId).map(c => c.id); if (!ok.length) return false;
     let changed = false;
     d.lines.forEach(l => {
       const empty = !l.ref && !String(l.label || '').trim() && !U.num(l.price);
-      if (empty && !ok.includes(l.cat)) {
+      if (fromPick) delete l.catManual;   // choisir le fournisseur reprend la main sur les lignes encore vides
+      if (empty && !l.catManual && !ok.includes(l.cat)) {
         const c = this.cat(ok[0]);
         l.cat = c.id; l.ref = ''; l.toStock = false;
         if (!c.detail) { l.qty = 1; l.unit = ''; } else l.unit = c.id === 'mastication' ? 'kg' : 'pièce';
@@ -528,8 +532,9 @@ const Achats = {
       const s = (Store.state.settings.suppliers || []).find(x => x.id === sel.value);   // reprend le dernier taux de TVA utilisé avec ce fournisseur
       const sv = s ? (s.vatRate !== undefined && s.vatRate !== '' ? s.vatRate : s.purchaseVatRate) : undefined;   // dernier taux utilisé, sinon TVA d'achat du fournisseur (Paramètres)
       if (sv !== undefined && sv !== '' && (this._d.vatRate === undefined || this._d.vatRate === '')) { this._d.vatRate = U.num(sv); this._touch(); }
-      this._adaptLinesToSupplier();
-      this.render();   // le menu « Catégorie » de chaque ligne ne propose plus que les catégories de ce fournisseur
+      this._adaptLinesToSupplier(true);
+      this._touch();   // enregistrer le brouillon APRÈS le changement de catégorie, sinon F5 ramène l'ancienne
+      this.render();
       return;
     }
     sel.value = this._d.supplierId || '';
@@ -555,7 +560,7 @@ const Achats = {
   setLineCat(i, v) {
     const l = this._d.lines[i], c = this.cat(v);
     if (l.cat !== c.id) { if (l.cat === 'mastication' && l.unit === 'kg') l.unit = ''; l.cat = c.id; l.ref = ''; if (!c.detail) { l.qty = 1; l.unit = ''; } else if (!l.unit && c.id === 'mastication') l.unit = 'kg'; }
-    this._lastCat = c.id; this._touch(); this.render();
+    l.catManual = true; this._lastCat = c.id; this._touch(); this.render();
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
@@ -619,7 +624,7 @@ const Achats = {
   _lineHTML(l, i) {
     const c = this.cat(l.cat), ht = this._d && this.isHT(this._d) ? 'HT' : 'TTC';
     const fg = (lab, inner, fr, wide, col) => ({ h: `<div class="fg${wide ? ' ach-wide' : ''}"${col ? ` style="grid-column:${col};"` : ''}><label>${lab}</label>${inner}</div>`, fr });
-    const catList = this._catsFor(this._d && this._d.supplierId), catOpts = catList.some(x => x.id === l.cat) ? catList : catList.concat([this.cat(l.cat)]);   // une ligne déjà saisie garde sa catégorie même si le fournisseur ne la vend pas
+    const catOpts = this.CATS;   // menu libre (Antho 2026-10-28) : le fournisseur règle la catégorie d'office, mais on peut la changer à la main
     const catSel = `<select onchange="Achats.setLineCat(${i},this.value)">${catOpts.map(x => `<option value="${x.id}" ${x.id === l.cat ? 'selected' : ''}>${x.ico} ${x.label}</option>`).join('')}</select>`;
     const label = `<input value="${U.esc(l.label)}" placeholder="${c.detail ? 'désignation' : 'ex : visseuse, assurance, timbres…'}" onchange="Achats.setText(${i},'label',this.value)">`;
     const r1 = [fg('Catégorie', catSel, '1fr')], r2 = [];
