@@ -2693,7 +2693,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     U.toast('Coût mis à jour.', false, entry.id);
     Store.save('consumables'); App.rerender();
   },
-  editConso(id){
+  editConso(id, onCreated){   // onCreated(c) : appelé après la création (ex. facture d'achat qui lie sa ligne au nouveau consommable)
     const S=Store.state.settings;
     const c=id?Store.state.consumables.find(x=>x.id===id):{id:U.uid(),name:'',category:S.consCategories[0],unit:'PCS',qty:0,low:0,costUnit:0};
     const isBl = c.category === 'Blisters';
@@ -2765,6 +2765,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
           id ? { type:'restoreItem', data:snap } : { type:'deleteCreated', data:{ domain:'consumables', id:c.id } });
         Store.save('consumables'); U.closeModal(); App.rerender();
         U.toast(id?'Modification enregistrée.':'Consommable créé.', false, entry.id);
+        if (!id && onCreated) onCreated(c);
       }
     });
   },
@@ -3260,7 +3261,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     });
   },
 
-  editMat(id, presetProduct, tpl) {
+  editMat(id, presetProduct, tpl, onCreated) {   // onCreated(m) : appelé après la création (ex. facture d'achat qui lie sa ligne à la nouvelle matière)
     this._matEditing = null; this._matPreset = presetProduct || '';
     const ref = tpl || (presetProduct ? Store.state.materials.find(x => (x.product || x.name) === presetProduct) : null);
     this._matPresetSize = ref?.allSizes ? '__all' : (ref?.size || '');
@@ -3332,6 +3333,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
           id ? { type:'restoreItem', data:snap } : { type:'deleteCreated', data:{ domain:'materials', id:m.id } });
         Store.save('materials'); U.closeModal(); App.rerender();
         U.toast(id?'Modification enregistrée.':'Matière créée.', false, entry.id);
+        if (!id && onCreated) onCreated(m);
       }
     });
   },

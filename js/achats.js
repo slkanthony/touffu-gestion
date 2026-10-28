@@ -571,7 +571,7 @@ const Achats = {
   setLineCat(i, v) {
     const l = this._d.lines[i], c = this.cat(v);
     if (l.cat !== c.id) { if (l.cat === 'mastication' && l.unit === 'kg') l.unit = ''; l.cat = c.id; l.ref = ''; if (!c.detail) { l.qty = 1; l.unit = ''; } else if (!l.unit && c.id === 'mastication') l.unit = 'kg'; }
-    delete l.tot; l.catManual = true; this._lastCat = c.id; this._touch(); this.render();
+    delete l.tot; if (l.unit === 'rouleau' || l.unit === 'lot') l.unit = c.id === 'mastication' ? 'kg' : c.detail ? 'pièce' : ''; l.catManual = true; this._lastCat = c.id; this._touch(); this.render();
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
@@ -590,6 +590,13 @@ const Achats = {
     if (!cat) return true;
     const act = (cat.variants || []).filter(v => v.enabled !== false);
     return !(Pricing.baseUnitCost(cat).unit === 'kilo' && act.length > 0 && act.every(v => v.mode === 'gram'));
+  },
+  /* « ＋ » du menu « Matière / Consommable du stock » : fenêtre de création vide (comme dans Stock), puis la ligne se lie à la nouvelle fiche.
+     La quantité de la facture s'ajoute au stock à l'enregistrement : laisser « Quantité en stock » à 0 dans cette fenêtre. */
+  newItem(i) {
+    const l = this._d && this._d.lines[i]; if (!l) return;
+    const done = it => { const ix = this._d.lines.findIndex(x => x.id === l.id); if (ix >= 0) this.pickLink(ix, it.id); };
+    if (l.cat === 'matiere') Stock.editMat(null, null, null, done); else if (l.cat === 'conso') Stock.editConso(null, done);
   },
   setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
   setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); if (k === 'unit') this.render(); },   // l'unité (rouleau ⇄ m) change l'aperçu du stock et le prix au mètre
@@ -660,7 +667,7 @@ const Achats = {
     if (!c.detail) {
       r1.push(fg('Désignation', label, '3fr', true), fg('Montant (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr'));
     } else {
-      if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
+      if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)"${c.link === 'M' ? '' : ` data-add data-add-line="${i}" data-add-title="${c.link === 'T' ? 'Nouvelle matière première' : 'Nouveau consommable'}"`}>${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
       r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
       r2.push(fg('Quantité', `<input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)">`, '.8fr', false, 1));
       const itL = c.id === 'matiere' || c.id === 'conso' ? this._item(l) : null;
@@ -850,3 +857,6 @@ const Achats = {
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 };
+
+/* « ＋ » du menu de choix d'une matière / d'un consommable (utils.js, data-add) */
+document.addEventListener('nseladd', e => { const s = e.target; if (s && s.dataset && s.dataset.addLine !== undefined) Achats.newItem(+s.dataset.addLine); });

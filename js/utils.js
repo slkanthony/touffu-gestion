@@ -644,7 +644,9 @@ U.nsel = {
     const cols3 = opts.some(x => { const p = this.parts(x.o); return p[1] && p[2]; });
     const p = document.createElement('div');
     p.className = 'nsel-panel' + (cols3 ? ' c3' : '') + (sel.dataset.panelClass ? ' ' + sel.dataset.panelClass : '');   // data-panel-class : style propre à un menu (ex. codes partenaires)
-    p.innerHTML = (opts.length > 10 ? `<input class="nsel-q" placeholder="Rechercher…" autocomplete="off">` : '') + `<div class="nsel-list">${items.map(x => {
+    // data-add (sur le <select>) : petit « ＋ » à droite de la recherche ; au clic, l'évènement « nseladd » part du <select> (data-add-title = info-bulle)
+    const addBtn = sel.hasAttribute('data-add') ? `<button type="button" class="nsel-add" title="${U.esc(sel.dataset.addTitle || 'Ajouter')}">＋</button>` : '';
+    p.innerHTML = (opts.length > 10 || addBtn ? `<div class="nsel-qrow"><input class="nsel-q" placeholder="Rechercher…" autocomplete="off">${addBtn}</div>` : '') + `<div class="nsel-list">${items.map(x => {
       if (x.head) return `<div class="pp-head">${U.esc(x.head)}</div>`;
       if (x.o.hidden) return '';
       const [a, b, c] = this.parts(x.o);
@@ -664,6 +666,7 @@ U.nsel = {
     t.classList.add('open');
     p.addEventListener('mousedown', e => e.stopPropagation());
     p.addEventListener('click', e => {
+      if (e.target.closest('.nsel-add')) { this.close(); sel.dispatchEvent(new CustomEvent('nseladd', { bubbles: true })); return; }
       const row = e.target.closest('.pp-row'); if (!row || row.classList.contains('off')) return;
       this.pick(sel, +row.dataset.i);
     });

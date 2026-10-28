@@ -1020,6 +1020,10 @@ select.nsel-native { position: absolute !important; opacity: 0 !important; point
 }
 :root[data-theme="dark"] .nsel-panel { color-scheme: dark; }
 .nsel-panel .nsel-q { margin: 4px 8px 6px; width: calc(100% - 16px); padding: 7px 10px; }
+.nsel-panel .nsel-qrow { display: flex; align-items: center; gap: 6px; margin: 4px 8px 6px; }
+.nsel-panel .nsel-qrow .nsel-q { margin: 0; width: auto; flex: 1 1 auto; min-width: 0; }
+.nsel-panel .nsel-add { flex: 0 0 auto; width: 36px; height: 36px; padding: 0; border-radius: 8px; border: 1px solid var(--caramel); background: transparent; color: var(--caramel); font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.nsel-panel .nsel-add:hover { background: var(--caramel); color: #fff; }
 .nsel-panel .pp-row { grid-template-columns: 1fr auto auto; }
 .nsel-panel .pp-row:not(.active):nth-child(even) { background: rgba(166, 113, 83, 0.05); }
 .nsel-panel .pp-row:not(.active):hover { background: rgba(166, 113, 83, 0.18); }
