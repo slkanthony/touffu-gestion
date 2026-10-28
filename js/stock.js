@@ -2781,12 +2781,13 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     const i = document.getElementById('c_cat_new'), sel = document.getElementById('c_cat'); if (!i || !sel) return;
     const val = i.value.trim(); if (!val) return;
     const S = Store.state.settings;
-    if (S.consCategories.some(x => x.toLowerCase() === val.toLowerCase())) { U.toast('Déjà présent', true); return; }
-    S.consCategories.push(val); Store.save('settings');
-    const o = document.createElement('option'); o.textContent = val; sel.appendChild(o);
-    sel.value = val; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const had = S.consCategories.find(x => x.toLowerCase() === val.toLowerCase());   // déjà existante : on la choisit (pas d'erreur)
+    const name = had || val;
+    if (!had) { S.consCategories.push(val); Store.save('settings'); }
+    if (![...sel.options].some(x => x.value === name)) { const o = document.createElement('option'); o.textContent = name; sel.appendChild(o); }
+    sel.value = name; sel.dispatchEvent(new Event('change', { bubbles: true }));
     i.value = ''; document.getElementById('c_cat_new_row').style.display = 'none';
-    U.toast('Catégorie « ' + val + ' » ajoutée.');
+    U.toast(had ? 'Catégorie « ' + name + ' » choisie.' : 'Catégorie « ' + name + ' » ajoutée.');
   },
   _onConsoCatChange() {
     const cat = U.val('c_cat');
@@ -3233,11 +3234,13 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
   _showKindNew() { const r = document.getElementById('m_kind_new_row'); if (!r) return; r.style.display = 'flex'; const i = document.getElementById('m_kind_new'); if (i) i.focus(); },
   _addKindInline() {
     const i = document.getElementById('m_kind_new'), sel = document.getElementById('m_kind'); if (!i || !sel) return;
-    const k = Params._createMaterialKind(i.value); if (!k) return;
-    const o = document.createElement('option'); o.value = k.value; o.textContent = k.label; sel.appendChild(o);
+    const typed = i.value.trim(); if (!typed) return;
+    const had = Store.materialKinds().find(x => x.label.toLowerCase() === typed.toLowerCase());   // déjà existante : on la choisit (pas d'erreur)
+    const k = had || Params._createMaterialKind(typed); if (!k) return;
+    if (![...sel.options].some(x => x.value === k.value)) { const o = document.createElement('option'); o.value = k.value; o.textContent = k.label; sel.appendChild(o); }
     sel.value = k.value; sel.dispatchEvent(new Event('change', { bubbles: true }));
     i.value = ''; document.getElementById('m_kind_new_row').style.display = 'none';
-    U.toast('Catégorie « ' + k.label + ' » ajoutée.');
+    U.toast(had ? 'Catégorie « ' + k.label + ' » choisie.' : 'Catégorie « ' + k.label + ' » ajoutée.');
   },
   _matSizeRefresh(kindArg) {
     const m = this._matEditing, fg = document.getElementById('m_size_fg'); if (!m || !fg) return;
