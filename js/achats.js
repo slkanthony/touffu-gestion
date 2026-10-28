@@ -496,12 +496,40 @@ const Achats = {
   addVat() { const d = this._d; d.vat = d.vat || []; d.vat.forEach(v => v.auto = false); d.vat.push({ rate: d.vat.length ? 10 : U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: false }); this._touch(); this.render(); },
   delVat(i) { this._d.vat.splice(i, 1); this._touch(); this.render(); },
   setVatRate(v) { this._d.vatRate = String(v).trim() === '' ? '' : U.num(v); this._touch(); },
+  /* Catégories de ligne proposées pour un fournisseur (Antho 2026-10-28 : « chez ce fournisseur je ne peux pas acheter une autre catégorie ») :
+     celles qui correspondent à ses types (Paramètres → Fournisseurs) — mastication / matière / consommable ; « autre » = investissement, outillage, frais.
+     Sans fournisseur choisi : toutes. */
+  _catType(id) { return id === 'mastication' || id === 'matiere' || id === 'conso' ? id : 'autre'; },
+  _catsFor(supplierId) {
+    const s = supplierId ? (Store.state.settings.suppliers || []).find(x => x.id === supplierId) : null;
+    if (!s) return this.CATS;
+    const t = Store.supplierTypes(s), list = this.CATS.filter(c => t.includes(this._catType(c.id)));
+    return list.length ? list : this.CATS;
+  },
+  /* Fournisseur choisi : les lignes encore VIDES (ni produit, ni désignation, ni prix) prennent une catégorie vendue par ce fournisseur ; une ligne déjà remplie n'est jamais modifiée. */
+  _adaptLinesToSupplier() {
+    const d = this._d, ok = this._catsFor(d.supplierId).map(c => c.id); if (!ok.length) return false;
+    let changed = false;
+    d.lines.forEach(l => {
+      const empty = !l.ref && !String(l.label || '').trim() && !U.num(l.price);
+      if (empty && !ok.includes(l.cat)) {
+        const c = this.cat(ok[0]);
+        l.cat = c.id; l.ref = ''; l.toStock = false;
+        if (!c.detail) { l.qty = 1; l.unit = ''; } else l.unit = c.id === 'mastication' ? 'kg' : 'pièce';
+        changed = true;
+      }
+    });
+    if (!ok.includes(this._lastCat)) this._lastCat = ok[0];
+    return changed;
+  },
   _pickSup(sel) {
     if (sel.value !== '__new') {
       this._d.supplierId = sel.value; this._touch();
       const s = (Store.state.settings.suppliers || []).find(x => x.id === sel.value);   // reprend le dernier taux de TVA utilisé avec ce fournisseur
       const sv = s ? (s.vatRate !== undefined && s.vatRate !== '' ? s.vatRate : s.purchaseVatRate) : undefined;   // dernier taux utilisé, sinon TVA d'achat du fournisseur (Paramètres)
-      if (sv !== undefined && sv !== '' && (this._d.vatRate === undefined || this._d.vatRate === '')) { this._d.vatRate = U.num(sv); this._touch(); this.render(); }
+      if (sv !== undefined && sv !== '' && (this._d.vatRate === undefined || this._d.vatRate === '')) { this._d.vatRate = U.num(sv); this._touch(); }
+      this._adaptLinesToSupplier();
+      this.render();   // le menu « Catégorie » de chaque ligne ne propose plus que les catégories de ce fournisseur
       return;
     }
     sel.value = this._d.supplierId || '';
@@ -518,7 +546,11 @@ const Achats = {
       } });
     setTimeout(() => { const i = document.getElementById('ach_newsup'); if (i) i.focus(); }, 50);
   },
-  addLine() { const l = this._newLine(this._d.lines.length ? this._d.lines[this._d.lines.length - 1].cat : this._lastCat); this._d.lines.push(l); this._touch(); this.render(); },
+  addLine() {
+    const ok = this._catsFor(this._d.supplierId).map(c => c.id), prev = this._d.lines.length ? this._d.lines[this._d.lines.length - 1].cat : this._lastCat;
+    const l = this._newLine(ok.includes(prev) ? prev : ok.includes(this._lastCat) ? this._lastCat : ok[0]);   // même catégorie que la ligne d'avant si ce fournisseur la vend
+    this._d.lines.push(l); this._touch(); this.render();
+  },
   delLine(i) { this._d.lines.splice(i, 1); if (!this._d.lines.length) this._d.lines.push(this._newLine(this._lastCat)); this._touch(); this.render(); },
   setLineCat(i, v) {
     const l = this._d.lines[i], c = this.cat(v);
@@ -586,7 +618,8 @@ const Achats = {
   _lineHTML(l, i) {
     const c = this.cat(l.cat), ht = this._d && this.isHT(this._d) ? 'HT' : 'TTC';
     const fg = (lab, inner, fr, wide, col) => ({ h: `<div class="fg${wide ? ' ach-wide' : ''}"${col ? ` style="grid-column:${col};"` : ''}><label>${lab}</label>${inner}</div>`, fr });
-    const catSel = `<select onchange="Achats.setLineCat(${i},this.value)">${this.CATS.map(x => `<option value="${x.id}" ${x.id === l.cat ? 'selected' : ''}>${x.ico} ${x.label}</option>`).join('')}</select>`;
+    const catList = this._catsFor(this._d && this._d.supplierId), catOpts = catList.some(x => x.id === l.cat) ? catList : catList.concat([this.cat(l.cat)]);   // une ligne déjà saisie garde sa catégorie même si le fournisseur ne la vend pas
+    const catSel = `<select onchange="Achats.setLineCat(${i},this.value)">${catOpts.map(x => `<option value="${x.id}" ${x.id === l.cat ? 'selected' : ''}>${x.ico} ${x.label}</option>`).join('')}</select>`;
     const label = `<input value="${U.esc(l.label)}" placeholder="${c.detail ? 'désignation' : 'ex : visseuse, assurance, timbres…'}" onchange="Achats.setText(${i},'label',this.value)">`;
     const r1 = [fg('Catégorie', catSel, '1fr')], r2 = [];
     if (!c.detail) {
