@@ -3051,7 +3051,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
         <div class="table-wrap"><table class="lots-table">
           <thead><tr><th>Rouleau</th><th style="width:90px;text-align:center;">Entamé</th><th class="num">Restant</th><th></th></tr></thead>
           <tbody>${sortedRolls.length ? sortedRolls.map(r => `<tr${r.entame ? ' style="background:rgba(201,122,26,0.08);"' : ''}>
-              <td><input value="${U.esc(r.label || '')}" placeholder="ex: Sangle 1…" style="width:160px;" onchange="Stock.setMatRollField('${m.id}','${r.id}','label',this.value)"></td>
+              <td><input value="${U.esc(r.label || '')}" placeholder="ex: Sangle 1…" style="width:240px;max-width:100%;" onchange="Stock.setMatRollField('${m.id}','${r.id}','label',this.value)"></td>
               <td style="text-align:center;"><input type="checkbox" ${r.entame ? 'checked' : ''} onchange="Stock.setMatRollField('${m.id}','${r.id}','entame',this.checked)"></td>
               <td class="num"><input type="number" step="0.01" value="${r.qty}" style="width:80px;" onchange="Stock.setMatRollField('${m.id}','${r.id}','qty',this.value)"> ${unit}</td>
               <td class="right"><button class="btn-icon" title="Supprimer ce rouleau" onclick="Stock.delMatRoll('${m.id}','${r.id}')">🗑️</button></td>

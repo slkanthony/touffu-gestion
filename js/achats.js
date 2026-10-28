@@ -153,8 +153,8 @@ const Achats = {
           if (pack > 1) {   // N rouleaux entiers (+ un rouleau partiel si quantité décimale)
             const q = U.num(l.qty), n = Math.floor(q + 1e-9), rem = Math.round((q - n) * pack * 100) / 100;
             ap.rollIds = [];
-            for (let k = 0; k < n; k++) { const r = { id: U.uid(), label: n > 1 ? lab + ' · rouleau ' + (k + 1) : lab, qty: pack, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
-            if (rem > 0) { const r = { id: U.uid(), label: lab + ' · reste', qty: rem, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
+            for (let k = 0; k < n; k++) { const r = { id: U.uid(), label: 'Rouleau ' + (k + 1) + ' · ' + lab.replace(/^Achat/, 'achat'), qty: pack, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
+            if (rem > 0) { const r = { id: U.uid(), label: 'Reste · ' + lab.replace(/^Achat/, 'achat'), qty: rem, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
           } else { const r = { id: U.uid(), label: lab, qty: add, entame: false }; it.rolls.push(r); ap.rollId = r.id; }
           it.qty = it.rolls.reduce((a, x) => a + U.num(x.qty), 0);
         } else it.qty = prevQty + add;
