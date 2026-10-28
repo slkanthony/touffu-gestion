@@ -2718,8 +2718,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
         <div class="fg"><label>Seuil</label><input id="c_low" type="number" step="1" value="${c.low}"></div>
       </div>
       <div class="frow" style="align-items:flex-end;">
-        <div class="fg"><label>Prix d'achat (€)</label><div class="tax-in"><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"><button type="button" id="c_tax" class="tax-tag" data-tax="${c.costTax==='TTC'?'TTC':'HT'}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleConsoTax()">${c.costTax==='TTC'?'TTC':'HT'}</button></div></div>
-        <div class="fg"><label id="c_costQty_lbl">${isBl?'Pour (longueur achetée)':'Pour (qté achetée)'}</label><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div>
+        <div class="fg" style="flex:2;"><label id="c_costQty_lbl">${isBl?"Prix / longueur":"Prix / quantité"}</label><div class="cost-split-form"><input id="c_costTotal" type="number" step="0.01" value="${c.costTotal!=null?U.num(c.costTotal):U.num(c.costUnit)}" oninput="Stock._calcConsoUnit()"><button type="button" id="c_tax" class="tax-tag" data-tax="${c.costTax==='TTC'?'TTC':'HT'}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleConsoTax()">${c.costTax==='TTC'?'TTC':'HT'}</button><span class="cost-split-sep">/</span><input id="c_costQty" type="number" step="0.01" min="0.01" value="${U.num(c.costQtyPer)||1}" oninput="Stock._calcConsoUnit()"></div></div>
         <div class="fg"><label>Coût unitaire</label><span id="c_costResult" style="display:block;padding:8px 0;font-weight:600;">${(() => { const sh = this.costShown(c.costUnit, Store.state.settings.vatRate ?? 20); return U.eur(sh.v) + ' ' + sh.lab; })()} /u</span></div>
       </div>
       <div class="fg" id="c_uvyear_wrap" style="${c.category==='Entretien UV'?'':'display:none'}"><label>Utilisé / remplacé par an (en unités) <span class="muted help">Entretien imprimante UV : nombre d'unités de ce consommable (flacon d'alcool, tampon feutre, tapis adhésif…) que tu utilises sur l'année. Prix unitaire × ce nombre = coût annuel, ajouté à « Entretien imprimante » (Paramètres → Impression UV).</span></label><input id="c_uvyear" type="number" step="0.01" min="0" value="${U.num(c.uvPerYear)||''}" placeholder="ex : 4"></div>
@@ -2800,7 +2799,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     if (bl) bl.style.display = isBl ? '' : 'none';
     if (dw) dw.style.display = isBl ? 'none' : '';
     const ql = document.getElementById('c_qty_lbl'); if (ql) ql.textContent = isBl ? 'En stock (longueur restante)' : 'Quantité';
-    const cl = document.getElementById('c_costQty_lbl'); if (cl) cl.textContent = isBl ? 'Pour (longueur achetée)' : 'Pour (qté achetée)';
+    const cl = document.getElementById('c_costQty_lbl'); if (cl) cl.textContent = isBl ? "Prix / longueur" : "Prix / quantité";
     if (isBl) {
       const unitEl = document.getElementById('c_unit');
       if (unitEl && unitEl.value === 'PCS') unitEl.value = 'm';
@@ -3314,10 +3313,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
         <div class="fg"><label>SKU</label><input id="m_sku" value="${U.esc(m.sku || '')}"></div>
         <div class="fg"><label>TVA d'achat (%)</label><input id="m_vat" type="number" step="0.1" value="${m.costVat ?? ''}" placeholder="${Store.state.settings.vatRate} (global)" oninput="Stock._calcMatUnit()"></div>
       </div>
-      <div class="frow">
-        <div class="fg"><label>Prix d'achat (€, hors port)</label><div class="tax-in"><input id="m_costTotal" type="number" step="0.01" value="${mTotal}" oninput="Stock._calcMatUnit()"><button type="button" id="m_tax" class="tax-tag" data-tax="${mTax}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleMatTaxIn()">${mTax}</button></div></div>
-        <div class="fg"><label>Pour (quantité achetée)</label><input id="m_costQty" type="number" step="0.01" min="0.01" value="${mQper}" oninput="Stock._calcMatUnit()"></div>
-      </div>
+      <div class="fg"><label>Prix d'achat (€, hors port) / quantité achetée ${U.info("Le prix payé, puis la quantité qu'il couvre : 34,74 € / 30 m (un rouleau), 11,80 € / 100 (un sachet de 100). L'appli en déduit le coût par unité, juste en dessous.")}</label><div class="cost-split-form"><input id="m_costTotal" type="number" step="0.01" value="${mTotal}" oninput="Stock._calcMatUnit()"><button type="button" id="m_tax" class="tax-tag" data-tax="${mTax}" title="Clique pour basculer HT ⇄ TTC" onclick="Stock._toggleMatTaxIn()">${mTax}</button><span class="cost-split-sep">/</span><input id="m_costQty" type="number" step="0.01" min="0.01" value="${mQper}" oninput="Stock._calcMatUnit()"></div></div>
       <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : m.unit === 'g' ? 'g' : 'pièce'}</span></div>
       <div class="frow">
         <div class="fg" id="m_qty_fg" style="${Store.isSangleKind(m.kind) ? 'display:none;' : ''}"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
