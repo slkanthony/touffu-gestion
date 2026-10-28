@@ -571,7 +571,7 @@ const Achats = {
   setLineCat(i, v) {
     const l = this._d.lines[i], c = this.cat(v);
     if (l.cat !== c.id) { if (l.cat === 'mastication' && l.unit === 'kg') l.unit = ''; l.cat = c.id; l.ref = ''; if (!c.detail) { l.qty = 1; l.unit = ''; } else if (!l.unit && c.id === 'mastication') l.unit = 'kg'; }
-    l.catManual = true; this._lastCat = c.id; this._touch(); this.render();
+    delete l.tot; l.catManual = true; this._lastCat = c.id; this._touch(); this.render();
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
@@ -579,7 +579,7 @@ const Achats = {
     if (v) {
       const name = this.itemName(c.link, v); if (name && (!String(l.label || '').trim() || l.label === l._auto)) { l.label = name; l._auto = name; }   // la désignation suit le produit choisi tant que tu ne l'as pas retapée
       if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m) { if (this._rollLen(m)) l.unit = 'rouleau'; else if (!l.unit || l.unit === 'rouleau') l.unit = this.unitFrom(m.unit); } }   // sangle au rouleau : on saisit un nombre de rouleaux
-      if (c.link === 'C') { const k = Store.state.consumables.find(x => x.id === v); if (k && !l.unit) l.unit = this.unitFrom(k.unit); }
+      if (c.link === 'C') { const k = Store.state.consumables.find(x => x.id === v); if (k) { if (U.num(k.costQtyPer) > 1) l.unit = 'lot'; else if (!l.unit || l.unit === 'lot') l.unit = this.unitFrom(k.unit); } }   // fiche « prix / 100 » : on achète des lots de 100
     }
     this._touch(); this.render();
   },
@@ -593,12 +593,18 @@ const Achats = {
   },
   setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
   setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); if (k === 'unit') this.render(); },   // l'unité (rouleau ⇄ m) change l'aperçu du stock et le prix au mètre
-  setNum(i, k, v) { this._d.lines[i][k] = U.num(v); this._touch(); this._refreshTotals(); },
+  setNum(i, k, v) {
+    const l = this._d.lines[i];
+    if (k === 'qty' && this._totalMode(l)) { if (l.tot === undefined) l.tot = this.lineTotal(l); l.qty = U.num(v); l.price = l.qty > 0 ? l.tot / l.qty : 0; }   // changer la quantité garde le prix de la ligne
+    else l[k] = U.num(v);
+    this._touch(); this._refreshTotals();
+  },
   _refreshTotals() {
     const d = this._d; if (!d) return;
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_lt_' + i); if (e) e.textContent = U.eur(this.lineTotal(l)); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_pv_' + i); if (e) e.textContent = this._pvText(l); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_ph_' + i); if (e) e.textContent = this._phText(l); });
+    d.lines.forEach((l, i) => { const e = document.getElementById('ach_up_' + i); if (e) e.textContent = this._upText(l); });
     this._autoVat();
     if ((d.vat || []).length === 1 && d.vat[0].auto) { const e = document.getElementById('ach_vatamt_0'); if (e && document.activeElement !== e) e.value = d.vat[0].amount || ''; }
     const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot'), b = document.getElementById('ach_base'), v = document.getElementById('ach_vat');
@@ -621,13 +627,18 @@ const Achats = {
     const pv = this._stockPreview(l); if (!pv) return '';
     const pack = this._packOf(l, pv.it);
     const roll = l.cat === 'matiere' && l.unit === 'rouleau' && pack > 1;
-    return (l.applied ? 'déjà ajouté · ' : '') + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (roll ? ' m · ' + U.qty(U.num(l.qty)) + ' rouleau' + (U.num(l.qty) > 1 ? 'x' : '') + ' de ' + U.qty(pack) + ' m' : pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
+    return (l.applied ? 'déjà ajouté · ' : '') + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (roll ? ' m · ' + U.qty(U.num(l.qty)) + ' rouleau' + (U.num(l.qty) > 1 ? 'x' : '') + ' de ' + U.qty(pack) + ' m' : pack > 1 ? ' · ' + U.qty(U.num(l.qty)) + ' lot' + (U.num(l.qty) > 1 ? 's' : '') + ' de ' + U.qty(pack) : '');
   },
-  /* Sangle au rouleau : prix du mètre, à comparer avec la facture du fournisseur */
+  /* Matière / consommable : le prix saisi est celui de la LIGNE (Antho 2026-10-28) ; le prix unitaire = prix ÷ quantité (l.price, utilisé partout ailleurs). Mastication : inchangée (prix unitaire). */
+  _totalMode(l) { return l.cat === 'matiere' || l.cat === 'conso'; },
+  _upText(l) { return U.num(l.qty) > 0 && U.num(l.price) > 0 ? U.eur(l.price) + (l.unit ? ' / ' + l.unit : '') : '—'; },
+  /* Sangle au rouleau : prix du mètre ; consommable en lot : prix de la pièce — à comparer avec la facture du fournisseur */
   _phText(l) {
+    if (!this._totalMode(l) || !(U.num(l.price) > 0)) return '';
     const it = this._item(l), pack = it ? this._packOf(l, it) : 1;
-    return l.cat === 'matiere' && l.unit === 'rouleau' && pack > 1 && U.num(l.price) > 0 ? '= ' + U.eur(U.num(l.price) / pack) + ' / m' : '';
+    return pack > 1 ? '= ' + U.eur(U.num(l.price) / pack) + ' / ' + (l.cat === 'matiere' ? 'm' : 'pièce') : '';
   },
+  setLineTot(i, v) { const l = this._d.lines[i]; l.tot = U.num(v); l.price = U.num(l.qty) > 0 ? l.tot / U.num(l.qty) : 0; this._touch(); this._refreshTotals(); },
   _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — cochée d'office (voir _compareWanted)
     const st = l.recv ? (l.recv.closed ? 'tri terminé' : (l.recv.dist || []).length + ' lot(s) rangé(s)') : '';
     return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Cochée d'office (sauf produit acheté au kilo et vendu seulement au poids) pour pouvoir comparer avec ta fiche prix. Suit ce lot : il sera proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></label></div>`;
@@ -652,10 +663,17 @@ const Achats = {
       if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
       r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
       r2.push(fg('Quantité', `<input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)">`, '.8fr', false, 1));
-      const itL = c.id === 'matiere' ? this._item(l) : null, units = l.unit === 'rouleau' || (itL && this._rollLen(itL)) ? ['rouleau', 'm'] : this.UNITS;   // sangle au rouleau : nombre de rouleaux ou mètres
+      const itL = c.id === 'matiere' || c.id === 'conso' ? this._item(l) : null;
+      const units = c.id === 'conso' && l.unit === 'lot' && itL && U.num(itL.costQtyPer) > 1 ? ['lot'] : l.unit === 'rouleau' || (c.id === 'matiere' && itL && this._rollLen(itL)) ? ['rouleau', 'm'] : this.UNITS;   // sangle au rouleau : rouleaux ou mètres ; consommable en lot : lots
       r2.push(fg('Unité', `<select onchange="Achats.setText(${i},'unit',this.value)">${(units.includes(l.unit) || !l.unit ? units : units.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select>`, '.9fr', false, 2));
-      r2.push(fg('Prix unitaire (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
-      r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div><div class="muted sensitive" id="ach_ph_${i}" style="font-size:.78rem;">${this._phText(l)}</div>`, '.9fr', false, 4));
+      if (this._totalMode(l)) {   // matière / consommable : on tape le prix de la ligne (comme sur la facture), l'appli divise par la quantité
+        const tot = l.tot !== undefined ? l.tot : (this.lineTotal(l) || '');
+        r2.push(fg('Prix ligne (€ ' + ht + ')', `<input type="number" step="any" value="${tot}" placeholder="0" oninput="Achats.setLineTot(${i},this.value)">`, '1fr', false, 3));
+        r2.push(fg('Prix unitaire', `<div class="ach-tot sensitive" id="ach_up_${i}">${this._upText(l)}</div><div class="muted sensitive" id="ach_ph_${i}" style="font-size:.78rem;">${this._phText(l)}</div>`, '.9fr', false, 4));
+      } else {
+        r2.push(fg('Prix unitaire (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
+        r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div>`, '.9fr', false, 4));
+      }
       const box = (c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : '';
       if (box) r2.push({ h: box.replace('<div class="fg">', '<div class="fg" style="grid-column:5;">'), fr: '1.2fr' });
       if (c.id === 'mastication') {
