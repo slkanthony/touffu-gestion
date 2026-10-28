@@ -8,7 +8,7 @@
    Montants = ce qui a été PAYÉ (TTC). Aucune écriture dans le stock ni dans les prix à cette étape : rien n'est modifié ailleurs.
    Réservé à l'admin (ni viewer, ni équipe). */
 const Achats = {
-  mode: 'list', _priceOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
+  mode: 'list', _priceOpen: true, _ppkOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
   f: { period: 'year', from: '', to: '', supplier: '', cat: '', pay: '', q: '', refund: false, sort: 'date', sortDir: 'desc' },
   CATS: [
     { id: 'mastication', ico: '🥩', label: 'Mastication', detail: true, link: 'M' },
@@ -255,6 +255,7 @@ const Achats = {
       </div>
       ${this._recvCard()}
       ${this._priceCard()}
+      ${this._ppkCard()}
       <div class="card">
         ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>${sh('date', 'Date')}</th><th style="text-align:left;">${sh('supplier', 'Fournisseur')}</th><th style="text-align:left;">N° facture</th><th style="text-align:left;">Contenu</th><th>Paiement</th><th>Payé par</th><th class="num">Livraison</th><th class="num">${sh('total', 'Total')}</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`
         : `<p class="muted">${this.list().length ? 'Aucune facture avec ces filtres.' : 'Aucune facture pour l\'instant. Clique sur « ＋ Nouvelle facture » pour saisir ton premier achat.'}</p>`}
@@ -278,6 +279,53 @@ const Achats = {
     rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
     return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent (ou de ta fiche prix) : pense à vérifier les fiches concernées</span></summary>
       <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span></div>`).join('')}</div></details>`;
+  },
+
+  /* ---------- Pièces / kilo MESURÉ (Antho 2026-10-28) ----------
+     Ligne mastication achetée au KILO + tri : pièces rangées ÷ kg achetés = pièces / kilo RÉEL de ce lot, comparé au champ « Pièces / kilo » de la fiche prix liée
+     (fournisseur principal). Seuil volontairement bas : alerte dès 1 pièce / kg d'écart (≥ 3 : rouge) ; fiche vide : la valeur mesurée est proposée.
+     Les kilos de pertes restent comptés (comme dans le coût de revient). Jamais appliqué sans clic d'Antho. */
+  PPK_TOL: 1,
+  _ppkFiche(l) {
+    const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
+    if (!cat) return null;
+    const b = Pricing.baseUnitCost(cat);
+    if (b.unit !== 'kilo') return null;   // fiche achetée à la pièce : « pièces / kilo » sans objet
+    return { cat, fiche: U.num(b.ppk) };
+  },
+  /* { measured, fiche, delta, level: 'ok' | 'warn' | 'bad' | 'empty', cat } ou null (ligne non concernée : pas au kilo, pas de fiche liée, pas de pièces) */
+  ppkInfo(l, pieces) {
+    if (String(l.unit || '').toLowerCase() !== 'kg' || !(U.num(l.qty) > 0) || !(U.num(pieces) > 0)) return null;
+    const f = this._ppkFiche(l); if (!f) return null;
+    const measured = Math.round(U.num(pieces) / U.num(l.qty) * 10) / 10;
+    if (!(f.fiche > 0)) return { measured, fiche: 0, delta: 0, level: 'empty', cat: f.cat };
+    const delta = Math.round((measured - f.fiche) * 10) / 10, ad = Math.abs(delta);
+    return { measured, fiche: f.fiche, delta, level: ad < this.PPK_TOL ? 'ok' : ad >= 3 ? 'bad' : 'warn', cat: f.cat };
+  },
+  _ppkAlert(info) { return !!info && info.level !== 'ok'; },
+  _ppkBadge(info) {
+    if (!this._ppkAlert(info)) return '';
+    const e = info.level === 'empty';
+    return ` <span class="badge ${info.level === 'bad' ? 'bad' : 'warn'}" title="${e ? 'La fiche prix n\'a pas de « Pièces / kilo »' : 'Écart entre la fiche prix et ce lot'} : ouvre la fiche pour la corriger">📏 pièces/kg ${e ? 'mesuré ' + U.qty(info.measured) + ' (fiche vide)' : 'fiche ' + U.qty(info.fiche) + ' → mesuré ' + U.qty(info.measured)}</span>`;
+  },
+  /* Tous les « pièces / kilo » mesurés (tris terminés) pour une fiche prix, du plus récent au plus ancien — affichés dans l'éditeur de la fiche */
+  measuredPpk(catId) {
+    const out = [];
+    this.list().forEach(p => (p.lines || []).forEach(l => {
+      if (l.cat !== 'mastication' || !l.recv || !l.recv.closed) return;
+      if (String(l.unit || '').toLowerCase() !== 'kg' || !(U.num(l.qty) > 0) || !(U.num(l.recv.pieces) > 0)) return;
+      const sp = (Store.state.stockM || []).find(x => x.id === l.ref); if (!sp || sp.catalogId !== catId) return;
+      out.push({ date: p.date, ppk: Math.round(U.num(l.recv.pieces) / U.num(l.qty) * 10) / 10, kg: U.num(l.qty), pieces: U.num(l.recv.pieces) });
+    }));
+    return out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  },
+  _ppkCard() {   // lots triés dont le « pièces / kilo » réel s'écarte de la fiche prix : de quoi savoir quelles fiches corriger
+    const rows = [];
+    this.list().forEach(p => (p.lines || []).forEach(l => { if (l.cat === 'mastication' && l.recv && l.recv.closed) { const i = this.ppkInfo(l, l.recv.pieces); if (this._ppkAlert(i)) rows.push({ p, l, i }); } }));
+    if (!rows.length) return '';
+    rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
+    return `<details class="fold card" ${this._ppkOpen ? 'open' : ''} ontoggle="Achats._ppkOpen=this.open"><summary><b>📏 Pièces / kilo à vérifier (${rows.length})</b> <span class="muted">— nombre de pièces réellement obtenues par kilo différent de ta fiche prix (dès 1 pièce / kg d'écart)</span></summary>
+      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, i }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);align-items:center;"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span>${U.qty(l.recv.pieces)} pièces ÷ ${U.qty(l.qty)} kg = <b>${U.qty(i.measured)}</b> / kg · ${i.level === 'empty' ? 'fiche vide' : 'fiche ' + U.qty(i.fiche) + ' <span class="' + (i.level === 'bad' ? 'neg' : 'warn') + '">(' + (i.delta > 0 ? '+' : '') + U.qty(i.delta) + ')</span>'}</span><a class="btn btn-ghost btn-sm" style="text-decoration:none;" href="#/catalogue/edit/${i.cat.id}">Ouvrir la fiche</a></div>`).join('')}</div></details>`;
   },
 
   /* ---------- mastication : réceptions à ranger (lot → plusieurs tailles) ----------
@@ -333,7 +381,7 @@ const Achats = {
         const by = {}; dist.forEach(d => { const k = vlabel(l.ref, d.vId); by[k] = (by[k] || 0) + U.num(d.qty); });
         return `<div style="padding:8px 0;border-bottom:1px solid var(--row-border);display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) auto;gap:10px;align-items:center;">
           <div><b>${U.esc(l.label)}</b><div class="muted" style="font-size:.82rem;">${U.frDate(p.date)} · ${U.esc(this.supplierLabel(p))} · ${U.qty(l.qty)} ${U.esc(l.unit || '')}${l.lot ? ' · lot ' + U.esc(l.lot) : ''}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</div></div>
-          <div>${dist.length ? Object.entries(by).map(([k, q]) => `<span class="badge info">${U.esc(k)} : ${U.qty(q)}</span>`).join(' ') + ` <span class="muted">= ${U.qty(sum)} pièce(s)</span>` : '<span class="muted">rien de rangé pour l\'instant</span>'}</div>
+          <div>${dist.length ? Object.entries(by).map(([k, q]) => `<span class="badge info">${U.esc(k)} : ${U.qty(q)}</span>`).join(' ') + ` <span class="muted">= ${U.qty(sum)} pièce(s)</span>` + (() => { const pi = this.ppkInfo(l, sum); return pi ? (this._ppkAlert(pi) ? this._ppkBadge(pi) : ` <span class="muted" title="Pièces rangées ÷ kg achetés, comparé à la fiche prix">📏 ${U.qty(pi.measured)} pièces/kg ✓</span>`) : ''; })() : '<span class="muted">rien de rangé pour l\'instant</span>'}</div>
           <div style="white-space:nowrap;text-align:right;"><a class="btn btn-ghost btn-sm" style="text-decoration:none;" href="#/stock/mastication/${l.ref}">Ouvrir le produit</a> <button class="btn-cta btn-sm" onclick="Achats.closeRecv('${p.id}','${l.id}')" ${dist.length ? '' : 'disabled'}>✔ Terminer le tri</button></div></div>`;
       }).join('')}</div>`;
   },
@@ -343,28 +391,50 @@ const Achats = {
     const kg = String(l.unit || '').toLowerCase() === 'kg';
     U.modal({ title: 'Terminer le tri — ' + U.esc(l.label), okLabel: 'Terminer le tri', body: `
       <p>${U.qty(l.qty)} ${U.esc(l.unit || '')} acheté(s) · ${U.qty(sum)} pièce(s) rangée(s) en stock.</p>
-      <div class="frow"><div class="fg"><label>Pièces triées au total</label><input id="rc_pieces" type="number" step="1" min="1" value="${sum}"></div>
+      <div class="frow"><div class="fg"><label>Pièces triées au total</label><input id="rc_pieces" type="number" step="1" min="1" value="${sum}" oninput="Achats._rcPpk('${p.id}','${l.id}')"></div>
       <div class="fg"><label>Pertes / déchets (${kg ? 'kg' : 'pièces'}, option)</label><input id="rc_loss" type="number" step="any" min="0" value="${U.num(r.loss) || ''}" placeholder="0"></div></div>
-      <p class="muted">Le coût réel par pièce = total HT de la ligne (hors livraison, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception. La livraison est comptée à part, comme une charge, dans la Compta.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>`,
+      <p class="muted">Le coût réel par pièce = total HT de la ligne (hors livraison, ${U.eur(eff)}) ÷ pièces triées. Il est appliqué aux lots de cette réception. La livraison est comptée à part, comme une charge, dans la Compta.${kg ? ' Le poids moyen par pièce est calculé aussi.' : ''}</p>
+      <div id="rc_ppk"></div>`,
       onOk: () => {
         const pieces = U.numVal('rc_pieces'), loss = U.numVal('rc_loss');
         if (!(pieces > 0)) { U.toast('Indique le nombre de pièces triées.', true); return false; }
         const ht = Math.round(eff / pieces * 10000) / 10000;
         const snaps = [Store.snapshot('purchases', p)], sp = Store.state.stockM.find(x => x.id === l.ref);
         if (sp) snaps.push(Store.snapshot('stockM', sp));
+        // « Mettre à jour la fiche prix » (case cochée par Antho dans l'alerte) : « Pièces / kilo » du fournisseur principal = valeur mesurée
+        const pi = this.ppkInfo(l, pieces), upd = document.getElementById('rc_ppk_upd');
+        let ppkUpdated = false;
+        if (pi && upd && upd.checked) {
+          const main = Pricing.mainEntry(pi.cat);
+          if (main) { snaps.push(Store.snapshot('catalogM', pi.cat)); main.piecesPerKilo = pi.measured; ppkUpdated = true; }
+        }
         let n = 0;
         dist.forEach(d => { (sp ? sp.variants : []).forEach(v => (v.lots || []).forEach(lot => { if (lot.id === d.lotId) { lot.costUnit = Math.round(ht * Stock.buyK(sp, v) * 10000) / 10000; lot.costFinal = true; n++; } })); });
         Object.assign(r, { closed: true, closedAt: Date.now(), pieces, loss, costPerPiece: ht, avgG: kg ? Math.round((U.num(l.qty) - loss) * 1000 / pieces) : 0 });
-        const entry = Store.log('achat', `Tri terminé — ${l.label} (${U.qty(pieces)} pièces, ${U.eur(ht)} HT / pièce)`, { type: 'restoreBatch', data: snaps });
-        Store.save('purchases', 'stockM'); U.closeModal(); this.render();
-        U.toast(`Tri terminé : ${U.eur(ht)} HT / pièce${r.avgG ? ' · ' + r.avgG + ' g en moyenne' : ''} · ${n} lot(s) mis à jour.`, false, entry.id);
+        const entry = Store.log('achat', `Tri terminé — ${l.label} (${U.qty(pieces)} pièces, ${U.eur(ht)} HT / pièce)${ppkUpdated ? ' · fiche prix : ' + U.qty(pi.measured) + ' pièces/kg' : ''}`, { type: 'restoreBatch', data: snaps });
+        Store.save(...(ppkUpdated ? ['purchases', 'stockM', 'catalogM'] : ['purchases', 'stockM'])); U.closeModal(); this.render();
+        U.toast(`Tri terminé : ${U.eur(ht)} HT / pièce${r.avgG ? ' · ' + r.avgG + ' g en moyenne' : ''} · ${n} lot(s) mis à jour${ppkUpdated ? ' · fiche prix : ' + U.qty(pi.measured) + ' pièces/kg' : ''}.`, false, entry.id);
       } });
+    this._rcPpk(pid, lid);
+  },
+  /* Pièces / kilo mesuré, en direct dans « Terminer le tri » (pièces saisies ÷ kg achetés) — avec, si ça diffère de la fiche prix, la case « Mettre à jour la fiche prix » (jamais cochée d'office) */
+  _rcPpk(pid, lid) {
+    const box = document.getElementById('rc_ppk'); if (!box) return;
+    const p = this.list().find(x => x.id === pid), l = p && p.lines.find(x => x.id === lid); if (!l) return;
+    const pi = this.ppkInfo(l, U.numVal('rc_pieces'));
+    if (!pi) { box.innerHTML = ''; return; }
+    const m = U.qty(pi.measured), checked = (document.getElementById('rc_ppk_upd') || {}).checked ? 'checked' : '';
+    box.innerHTML = pi.level === 'ok'
+      ? `<p class="muted" style="margin:8px 0 0;">📏 ${m} pièces / kg — conforme à la fiche prix (${U.qty(pi.fiche)}).</p>`
+      : `<div style="margin-top:10px;padding:10px 12px;border-radius:8px;border:1.5px solid var(--${pi.level === 'bad' ? 'alerte' : 'warn'});">
+          <b>📏 ${m} pièces / kg</b> (${U.qty(U.numVal('rc_pieces'))} pièces ÷ ${U.qty(l.qty)} kg) — ${pi.level === 'empty' ? 'la fiche prix n\'a pas de « Pièces / kilo ».' : `ta fiche prix dit <b>${U.qty(pi.fiche)}</b> (${pi.delta > 0 ? '+' : ''}${U.qty(pi.delta)}). Vérifie le nombre de pièces saisi, ou corrige la fiche.`}
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;"><input type="checkbox" id="rc_ppk_upd" ${checked}> Mettre à jour la fiche prix « ${U.esc(pi.cat.name)} » : Pièces / kilo = ${m}</label></div>`;
   },
   _detailRow(p) {
     const lines = (p.lines || []).map(l => {
       const c = this.cat(l.cat);
       return `<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);">
-        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from)} → ${U.eur(this._chgInfo(l).to)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
+        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from)} → ${U.eur(this._chgInfo(l).to)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${l.recv && l.recv.closed ? this._ppkBadge(this.ppkInfo(l, l.recv.pieces)) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');

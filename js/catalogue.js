@@ -903,6 +903,7 @@ const Catalogue = {
       </div>
       <div class="muted" style="font-size:.78rem;margin:-2px 4px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${s.priceDate ? `📅 Prix d'achat mis à jour le <b>${this._ageTxt(U.num(s.priceDate))}</b>` : ''}
         <button type="button" class="btn-ghost btn-sm" title="Le prix est inchangé mais tu viens de le vérifier chez le fournisseur : met la date à aujourd'hui" onclick="Catalogue.markPriceChecked(${i})">✓ Prix vérifié aujourd'hui</button></div>
+      ${this._ppkHint(s, i)}
       <div class="sup-grid2" data-team-ok style="${Store.hideSupplierInfo() ? 'display:none;' : ''}">
         <div class="fg"><label>Réf. fournisseur</label><input value="${U.esc(s.ref || '')}" placeholder="ex : C-23012" onchange="Catalogue._d.suppliers[${i}].ref=this.value.trim()"></div>
         <div class="fg"><label>Lien page fournisseur (URL)</label>
@@ -926,6 +927,21 @@ const Catalogue = {
     this._d.suppliers.push({ id: U.uid(), supplierId, price: '', taxType: 'HT', vatRate: '', unit: 'kilo', weight: 1, quantity: 1, piecesPerKilo: '', url: '', notes: '' });
     if (!this._d.mainSupplierId) this._d.mainSupplierId = supplierId;
     this.drawSuppliers();
+  },
+  /* « Pièces / kilo » MESURÉ aux achats (pièces rangées ÷ kg achetés, tris terminés dans Achats) — affiché sous le fournisseur PRINCIPAL, avec un bouton pour l'utiliser.
+     Orange dès 1 pièce / kg d'écart avec la valeur saisie (même seuil que dans Achats : `Achats.PPK_TOL`). */
+  _ppkHint(s, i) {
+    if (typeof Achats === 'undefined' || this._d.mainSupplierId !== s.supplierId || (s.unit || 'kilo') !== 'kilo') return '';
+    let m = []; try { m = Achats.measuredPpk(this._d.id); } catch (e) { return ''; }
+    if (!m.length) return '';
+    const kg = m.reduce((a, x) => a + x.kg, 0), pc = m.reduce((a, x) => a + x.pieces, 0), avg = Math.round(pc / kg * 10) / 10;
+    const cur = U.num(s.piecesPerKilo), diff = cur > 0 ? Math.abs(avg - cur) >= Achats.PPK_TOL : true;
+    return `<div class="muted" style="font-size:.78rem;margin:-2px 4px 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">📏 Mesuré à l'achat : ${m.slice(0, 4).map(x => `<b>${U.qty(x.ppk)}</b> (${U.frDate(x.date).slice(0, 5)})`).join(' · ')}${m.length > 4 ? ' …' : ''} → moyenne <b${diff ? ' style="color:var(--warn);"' : ''}>${U.qty(avg)}</b> pièces / kg${diff ? ` <button type="button" class="btn-ghost btn-sm" onclick="Catalogue.usePpk(${i},${avg})" title="Remplace « Pièces / kilo » par la moyenne mesurée (pense à enregistrer la fiche)">Utiliser ${U.qty(avg)}</button>` : ' ✓'}</div>`;
+  },
+  usePpk(i, v) {
+    this._d.suppliers[i].piecesPerKilo = v;
+    this.drawSuppliers();
+    U.toast('Pièces / kilo = ' + U.qty(v) + ' — pense à enregistrer la fiche.');
   },
   /* `live` = pendant la frappe : seul le tableau des variantes est redessiné (le champ en cours de saisie garde son focus) ; à la sortie du champ, le bloc fournisseur aussi. */
   setSupDiv(i, val, live) {
