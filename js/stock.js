@@ -3051,7 +3051,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
         <div class="table-wrap"><table class="lots-table">
           <thead><tr><th>Rouleau</th><th style="width:90px;text-align:center;">Entamé</th><th class="num">Restant</th><th></th></tr></thead>
           <tbody>${sortedRolls.length ? sortedRolls.map(r => `<tr${r.entame ? ' style="background:rgba(201,122,26,0.08);"' : ''}>
-              <td><input value="${U.esc(r.label || '')}" placeholder="ex: Sangle 1…" style="width:240px;max-width:100%;" onchange="Stock.setMatRollField('${m.id}','${r.id}','label',this.value)"></td>
+              <td><input value="${U.esc(r.label || '')}" placeholder="ex: Rouleau 1…" style="width:240px;max-width:100%;" onchange="Stock.setMatRollField('${m.id}','${r.id}','label',this.value)"></td>
               <td style="text-align:center;"><input type="checkbox" ${r.entame ? 'checked' : ''} onchange="Stock.setMatRollField('${m.id}','${r.id}','entame',this.checked)"></td>
               <td class="num"><input type="number" step="0.01" value="${r.qty}" style="width:80px;" onchange="Stock.setMatRollField('${m.id}','${r.id}','qty',this.value)"> ${unit}</td>
               <td class="right"><button class="btn-icon" title="Supprimer ce rouleau" onclick="Stock.delMatRoll('${m.id}','${r.id}')">🗑️</button></td>
@@ -3086,10 +3086,10 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     const m = Store.state.materials.find(x => x.id === id); if (!m) return;
     const snap = Store.snapshot('materials', m);
     if (!m.rolls || !m.rolls.length) {
-      m.rolls = [{ id: U.uid(), label: 'Sangle 1', qty: U.num(m.qty), entame: false }];
+      m.rolls = [{ id: U.uid(), label: 'Rouleau 1', qty: U.num(m.qty), entame: false }];
     } else {
       const num = m.rolls.length + 1;
-      m.rolls.push({ id: U.uid(), label: 'Sangle ' + num, qty: 0, entame: false });
+      m.rolls.push({ id: U.uid(), label: 'Rouleau ' + num, qty: 0, entame: false });
     }
     m.qty = m.rolls.reduce((a, r) => a + U.num(r.qty), 0);
     this._matRollsOpen[id] = true;
@@ -3117,7 +3117,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
       m.rolls = [];
     } else {
       m.rolls = m.rolls.filter(x => x.id !== rId);
-      m.rolls.forEach((r, i) => { r.label = 'Sangle ' + (i + 1); });
+      m.rolls.forEach((r, i) => { r.label = 'Rouleau ' + (i + 1); });
       m.qty = m.rolls.reduce((a, x) => a + U.num(x.qty), 0);
     }
     const entry = Store.commitSnapshot(snap, 'stock', 'Rouleau supprimé — ' + (m.product ? m.product + ' ' : '') + (m.variant || m.name));

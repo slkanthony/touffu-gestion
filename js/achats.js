@@ -149,13 +149,12 @@ const Achats = {
         it.costTax = 'HT';
         if (Store.isSangleKind(it.kind)) {
           if (!Array.isArray(it.rolls)) it.rolls = prevQty > 0 ? [{ id: U.uid(), label: 'Stock avant achat', qty: prevQty }] : [];
-          const lab = 'Achat ' + U.frDate(rec.date) + (rec.invoiceNo ? ' · ' + rec.invoiceNo : '');
           if (pack > 1) {   // N rouleaux entiers (+ un rouleau partiel si quantité décimale)
             const q = U.num(l.qty), n = Math.floor(q + 1e-9), rem = Math.round((q - n) * pack * 100) / 100;
             ap.rollIds = [];
-            for (let k = 0; k < n; k++) { const r = { id: U.uid(), label: 'Rouleau ' + (k + 1) + ' · ' + lab.replace(/^Achat/, 'achat'), qty: pack, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
-            if (rem > 0) { const r = { id: U.uid(), label: 'Reste · ' + lab.replace(/^Achat/, 'achat'), qty: rem, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
-          } else { const r = { id: U.uid(), label: lab, qty: add, entame: false }; it.rolls.push(r); ap.rollId = r.id; }
+            for (let k = 0; k < n; k++) { const r = { id: U.uid(), label: 'Rouleau ' + (it.rolls.length + 1), qty: pack, entame: false, src: rec.id }; it.rolls.push(r); ap.rollIds.push(r.id); }
+            if (rem > 0) { const r = { id: U.uid(), label: 'Rouleau ' + (it.rolls.length + 1), qty: rem, entame: false, src: rec.id }; it.rolls.push(r); ap.rollIds.push(r.id); }   // reste décimal = dernier rouleau, plus court
+          } else { const r = { id: U.uid(), label: 'Rouleau ' + (it.rolls.length + 1), qty: add, entame: false, src: rec.id }; it.rolls.push(r); ap.rollId = r.id; }
           it.qty = it.rolls.reduce((a, x) => a + U.num(x.qty), 0);
         } else it.qty = prevQty + add;
       }
