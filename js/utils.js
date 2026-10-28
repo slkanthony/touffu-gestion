@@ -648,7 +648,7 @@ U.nsel = {
       if (x.head) return `<div class="pp-head">${U.esc(x.head)}</div>`;
       if (x.o.hidden) return '';
       const [a, b, c] = this.parts(x.o);
-      return `<div class="pp-row${x.o.selected ? ' active' : ''}${x.o.disabled ? ' off' : ''}" data-i="${x.o.index}"><span class="pp-a">${U.esc(a) || '&nbsp;'}</span><span class="pp-b">${U.esc(b)}</span><span class="pp-c">${U.esc(c)}</span></div>`;
+      return `<div class="pp-row${x.o.selected ? ' active' : ''}${x.o.disabled ? ' off' : ''}" data-i="${x.o.index}"${x.o.dataset.s ? ` data-s="${U.esc(x.o.dataset.s)}"` : ''}><span class="pp-a">${U.esc(a) || '&nbsp;'}</span><span class="pp-b">${U.esc(b)}</span><span class="pp-c">${U.esc(c)}</span></div>`;
     }).join('')}</div>`;
     document.body.appendChild(p);
     const r = t.getBoundingClientRect();
@@ -687,7 +687,8 @@ U.nsel = {
     if (q) {
       q.addEventListener('input', () => {
         const s = U.normSearch(q.value).trim();
-        p.querySelectorAll('.pp-row').forEach(x => { x.style.display = !s || U.has(x.textContent, s) ? '' : 'none'; x.classList.remove('hl'); });
+        // data-s (sur l'<option>) = mots de recherche NON affichés (réf. fournisseur, SKU…) : trouvés par la recherche sans changer l'affichage du menu
+        p.querySelectorAll('.pp-row').forEach(x => { x.style.display = !s || U.has(x.textContent + ' ' + (x.dataset.s || ''), s) ? '' : 'none'; x.classList.remove('hl'); });
         p.querySelectorAll('.pp-head').forEach(hd => {
           let n = hd.nextElementSibling, any = false;
           while (n && !n.classList.contains('pp-head')) { if (n.style.display !== 'none') any = true; n = n.nextElementSibling; }

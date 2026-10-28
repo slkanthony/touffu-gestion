@@ -592,12 +592,13 @@ const Achats = {
     let items;
     if (kind === 'M') items = (Store.state.stockM || []).map(p => {
       const n = (p.variants || []).filter(v => !Stock.isVirtual(p, v)).reduce((t, v) => t + (v.lots || []).reduce((q, l) => q + U.num(l.qtyGeneral) + U.num(l.qtyEvent), 0), 0);
-      return { id: p.id, a: p.name, b: p.meatType || '', c: 'stock ' + U.qty(n) };
+      return { id: p.id, a: p.name, b: p.meatType || '', c: 'stock ' + U.qty(n), s: [p.sku].concat((p.variants || []).map(v => [v.sku, v.ref, v.label].join(' '))).join(' ') };
     });
-    else if (kind === 'T') items = (Store.state.materials || []).map(m => ({ id: m.id, a: m.product || m.name || '', b: m.product ? (m.variant || m.name || '') : (m.variant || ''), c: 'stock ' + U.qty(m.qty) + ' ' + this.unitFrom(m.unit) + (U.num(m.costUnit) ? ' · ' + U.eur(m.costUnit) + '/u' : '') }));
-    else items = (Store.state.consumables || []).map(c => ({ id: c.id, a: c.name, b: Stock.consoDims(c), c: 'stock ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : ''), vol: Stock._dimVolume(Stock.consoDims(c)) }));
+    // `s` = mots de recherche non affichés : référence fournisseur et SKU (le fournisseur peut nommer / colorier un produit autrement que toi)
+    else if (kind === 'T') items = (Store.state.materials || []).map(m => ({ id: m.id, a: m.product || m.name || '', b: m.product ? (m.variant || m.name || '') : (m.variant || ''), c: 'stock ' + U.qty(m.qty) + ' ' + this.unitFrom(m.unit) + (U.num(m.costUnit) ? ' · ' + U.eur(m.costUnit) + '/u' : ''), s: [m.name, m.product, m.variant, m.sku, m.ref].join(' ') }));
+    else items = (Store.state.consumables || []).map(c => ({ id: c.id, a: c.name, b: Stock.consoDims(c), c: 'stock ' + U.qty(c.qty) + (U.num(c.costUnit) ? ' · ' + U.eur(c.costUnit) + '/u' : ''), vol: Stock._dimVolume(Stock.consoDims(c)), s: [c.dimensions, c.sku, c.ref].join(' ') }));
     items.sort((x, y) => U.sortFr(x.a, y.a) || (U.num(x.vol) - U.num(y.vol)) || U.sortFr(x.b, y.b));
-    return `<option value="">— choisir (optionnel) —</option>` + items.map(o => `<option value="${U.esc(o.id)}" data-a="${U.esc(o.a)}" data-b="${U.esc(o.b)}" data-c="${U.esc(o.c)}" ${o.id === cur ? 'selected' : ''}>${U.esc([o.a, o.b, o.c].filter(Boolean).join(' — '))}</option>`).join('');
+    return `<option value="">— choisir (optionnel) —</option>` + items.map(o => `<option value="${U.esc(o.id)}" data-a="${U.esc(o.a)}" data-b="${U.esc(o.b)}" data-c="${U.esc(o.c)}" data-s="${U.esc(o.s || '')}" ${o.id === cur ? 'selected' : ''}>${U.esc([o.a, o.b, o.c].filter(Boolean).join(' — '))}</option>`).join('');
   },
   _pvText(l) {
     const pv = this._stockPreview(l); if (!pv) return '';
