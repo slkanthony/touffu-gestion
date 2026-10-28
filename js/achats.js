@@ -79,7 +79,10 @@ const Achats = {
      retire la quantité ajoutée (le prix, lui, reste celui du dernier achat). Jamais de création de fiche. Annulable (Journal). */
   _recent(date) { return !date || date >= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10); },   // facture ancienne → case décochée par défaut
   _item(l) { return l.cat === 'conso' ? (Store.state.consumables || []).find(x => x.id === l.ref) : l.cat === 'matiere' ? (Store.state.materials || []).find(x => x.id === l.ref) : null; },
-  _packOf(l, it) { return l.cat === 'conso' && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : 1; },   // prix saisi « par lot de N » : on ajoute N × quantité
+  /* Longueur d'un rouleau de sangle = la case « pour (quantité achetée) » de la fiche matière (ex. 34,74 € / 30 m). 0 si ce n'est pas une sangle au rouleau. */
+  _rollLen(it) { return it && Store.isSangleKind(it.kind) && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : 0; },
+  /* Prix saisi « par lot de N » : on ajoute N × quantité. Sangle achetée « au rouleau » : 1 rouleau = longueur de la fiche (en mètres). */
+  _packOf(l, it) { return l.cat === 'conso' && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : l.cat === 'matiere' && l.unit === 'rouleau' ? (this._rollLen(it) || 1) : 1; },
   _stockPreview(l) {
     const it = this._item(l); if (!it) return null;
     const add = U.num(l.qty) * this._packOf(l, it);
@@ -121,7 +124,7 @@ const Achats = {
       const ap = l.applied; if (!ap) return;
       const it = this._item(l); if (!it) return;
       this._snapOnce(l.cat === 'conso' ? 'consumables' : 'materials', it, snaps);
-      if (ap.rollId && Array.isArray(it.rolls)) { it.rolls = it.rolls.filter(r => r.id !== ap.rollId); it.qty = it.rolls.reduce((a, r) => a + U.num(r.qty), 0); }
+      if ((ap.rollId || ap.rollIds) && Array.isArray(it.rolls)) { const gone = [ap.rollId].concat(ap.rollIds || []); it.rolls = it.rolls.filter(r => !gone.includes(r.id)); it.qty = it.rolls.reduce((a, r) => a + U.num(r.qty), 0); }
       else it.qty = Math.max(0, U.num(it.qty) - U.num(ap.qty));
     });
   },
@@ -138,12 +141,20 @@ const Achats = {
         it.costTotal = Math.round(perPack * 10000) / 10000; it.costQtyPer = pack > 1 ? pack : 1; it.costTax = 'HT';
         it.costUnit = Stock.consoUnitCost(it.costTotal, it.costQtyPer, 'HT'); it.qty = prevQty + add;
       } else {
-        it.costUnit = Math.round(perPack * 10000) / 10000;
-        it.costTotal = it.costUnit; it.costQtyPer = 1; it.costTax = 'HT';   // coût réel HT (port compris) : les champs « prix / quantité » suivent
+        it.costUnit = Math.round(perPack / pack * 10000) / 10000;
+        // coût réel HT (port compris) : les champs « prix / quantité » suivent (au rouleau : prix d'un rouleau / longueur du rouleau)
+        if (pack > 1) { it.costTotal = Math.round(perPack * 10000) / 10000; it.costQtyPer = pack; } else { it.costTotal = it.costUnit; it.costQtyPer = 1; }
+        it.costTax = 'HT';
         if (Store.isSangleKind(it.kind)) {
           if (!Array.isArray(it.rolls)) it.rolls = prevQty > 0 ? [{ id: U.uid(), label: 'Stock avant achat', qty: prevQty }] : [];
-          const r = { id: U.uid(), label: 'Achat ' + U.frDate(rec.date) + (rec.invoiceNo ? ' · ' + rec.invoiceNo : ''), qty: add };
-          it.rolls.push(r); ap.rollId = r.id; it.qty = it.rolls.reduce((a, x) => a + U.num(x.qty), 0);
+          const lab = 'Achat ' + U.frDate(rec.date) + (rec.invoiceNo ? ' · ' + rec.invoiceNo : '');
+          if (pack > 1) {   // N rouleaux entiers (+ un rouleau partiel si quantité décimale)
+            const q = U.num(l.qty), n = Math.floor(q + 1e-9), rem = Math.round((q - n) * pack * 100) / 100;
+            ap.rollIds = [];
+            for (let k = 0; k < n; k++) { const r = { id: U.uid(), label: n > 1 ? lab + ' · rouleau ' + (k + 1) : lab, qty: pack, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
+            if (rem > 0) { const r = { id: U.uid(), label: lab + ' · reste', qty: rem, entame: false }; it.rolls.push(r); ap.rollIds.push(r.id); }
+          } else { const r = { id: U.uid(), label: lab, qty: add, entame: false }; it.rolls.push(r); ap.rollId = r.id; }
+          it.qty = it.rolls.reduce((a, x) => a + U.num(x.qty), 0);
         } else it.qty = prevQty + add;
       }
       ap.newCost = it.costUnit; l.applied = ap;
@@ -567,7 +578,7 @@ const Achats = {
     l.toStock = !!v && (c.link === 'C' || c.link === 'T' || (c.id === 'mastication' && this._compareWanted(v))) && this._recent(this._d.date);   // cochée par défaut (sauf facture ancienne) ; mastication : voir _compareWanted
     if (v) {
       const name = this.itemName(c.link, v); if (name && (!String(l.label || '').trim() || l.label === l._auto)) { l.label = name; l._auto = name; }   // la désignation suit le produit choisi tant que tu ne l'as pas retapée
-      if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m && !l.unit) l.unit = this.unitFrom(m.unit); }
+      if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m) { if (this._rollLen(m)) l.unit = 'rouleau'; else if (!l.unit || l.unit === 'rouleau') l.unit = this.unitFrom(m.unit); } }   // sangle au rouleau : on saisit un nombre de rouleaux
       if (c.link === 'C') { const k = Store.state.consumables.find(x => x.id === v); if (k && !l.unit) l.unit = this.unitFrom(k.unit); }
     }
     this._touch(); this.render();
@@ -581,12 +592,13 @@ const Achats = {
     return !(Pricing.baseUnitCost(cat).unit === 'kilo' && act.length > 0 && act.every(v => v.mode === 'gram'));
   },
   setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
-  setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); },
+  setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); if (k === 'unit') this.render(); },   // l'unité (rouleau ⇄ m) change l'aperçu du stock et le prix au mètre
   setNum(i, k, v) { this._d.lines[i][k] = U.num(v); this._touch(); this._refreshTotals(); },
   _refreshTotals() {
     const d = this._d; if (!d) return;
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_lt_' + i); if (e) e.textContent = U.eur(this.lineTotal(l)); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_pv_' + i); if (e) e.textContent = this._pvText(l); });
+    d.lines.forEach((l, i) => { const e = document.getElementById('ach_ph_' + i); if (e) e.textContent = this._phText(l); });
     this._autoVat();
     if ((d.vat || []).length === 1 && d.vat[0].auto) { const e = document.getElementById('ach_vatamt_0'); if (e && document.activeElement !== e) e.value = d.vat[0].amount || ''; }
     const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot'), b = document.getElementById('ach_base'), v = document.getElementById('ach_vat');
@@ -608,7 +620,13 @@ const Achats = {
   _pvText(l) {
     const pv = this._stockPreview(l); if (!pv) return '';
     const pack = this._packOf(l, pv.it);
-    return (l.applied ? 'déjà ajouté · ' : '') + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
+    const roll = l.cat === 'matiere' && l.unit === 'rouleau' && pack > 1;
+    return (l.applied ? 'déjà ajouté · ' : '') + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (roll ? ' m · ' + U.qty(U.num(l.qty)) + ' rouleau' + (U.num(l.qty) > 1 ? 'x' : '') + ' de ' + U.qty(pack) + ' m' : pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
+  },
+  /* Sangle au rouleau : prix du mètre, à comparer avec la facture du fournisseur */
+  _phText(l) {
+    const it = this._item(l), pack = it ? this._packOf(l, it) : 1;
+    return l.cat === 'matiere' && l.unit === 'rouleau' && pack > 1 && U.num(l.price) > 0 ? '= ' + U.eur(U.num(l.price) / pack) + ' / m' : '';
   },
   _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — cochée d'office (voir _compareWanted)
     const st = l.recv ? (l.recv.closed ? 'tri terminé' : (l.recv.dist || []).length + ' lot(s) rangé(s)') : '';
@@ -634,9 +652,10 @@ const Achats = {
       if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)">${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
       r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
       r2.push(fg('Quantité', `<input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)">`, '.8fr', false, 1));
-      r2.push(fg('Unité', `<select onchange="Achats.setText(${i},'unit',this.value)">${(this.UNITS.includes(l.unit) || !l.unit ? this.UNITS : this.UNITS.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select>`, '.9fr', false, 2));
+      const itL = c.id === 'matiere' ? this._item(l) : null, units = l.unit === 'rouleau' || (itL && this._rollLen(itL)) ? ['rouleau', 'm'] : this.UNITS;   // sangle au rouleau : nombre de rouleaux ou mètres
+      r2.push(fg('Unité', `<select onchange="Achats.setText(${i},'unit',this.value)">${(units.includes(l.unit) || !l.unit ? units : units.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select>`, '.9fr', false, 2));
       r2.push(fg('Prix unitaire (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
-      r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div>`, '.9fr', false, 4));
+      r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div><div class="muted sensitive" id="ach_ph_${i}" style="font-size:.78rem;">${this._phText(l)}</div>`, '.9fr', false, 4));
       const box = (c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : '';
       if (box) r2.push({ h: box.replace('<div class="fg">', '<div class="fg" style="grid-column:5;">'), fr: '1.2fr' });
       if (c.id === 'mastication') {

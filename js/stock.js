@@ -3005,7 +3005,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
   _matRollsOpen: {},
 
   reconcileRolls(m) {
-    if (!m.rolls || m.rolls.length < 2) return;
+    if (!m.rolls || m.rolls.length < 1) return;
     const sum = m.rolls.reduce((a, r) => a + U.num(r.qty), 0);
     const drift = U.num(m.qty) - sum;
     if (Math.abs(drift) > 0.0001) m.rolls[m.rolls.length - 1].qty = Math.max(0, U.num(m.rolls[m.rolls.length - 1].qty) + drift);
@@ -3051,7 +3051,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
       <td class="muted">${U.esc(m.sku || '—')}</td>
       ${Store.hideSupplierInfo() ? '' : `<td><input class="mat-ref" value="${U.esc(m.ref || '')}" placeholder="réf." title="Référence chez le fournisseur" onchange="Stock.setMatText('${m.id}','ref',this.value)"></td>`}
       <td class="sensitive"><div class="cost-split"><input type="number" step="0.01" value="${costTotal}" onchange="Stock.setMatCost('${m.id}','costTotal',this.value)"><span class="cost-split-sep">/</span><input type="number" step="0.01" value="${costQtyPer}" onchange="Stock.setMatCost('${m.id}','costQtyPer',this.value)"></div>${costQtyPer !== 1 || Math.abs(shown.v - costTotal) > 0.0005 ? `<div class="muted" style="font-size:.78rem;margin-top:3px;">= ${U.eur(shown.v)} ${shown.lab} / ${unit}${unit === 'g' ? ` (${U.eur(shown.v * 1000)} / kg)` : ''}</div>` : ''}</td>
-      <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${hasRolls
+      <td class="${low > 0 && qty <= low ? 'warn-txt' : ''}">${isSangle
         ? `<b>${U.qty(qty)}</b> ${unit}`
         : `<input type="number" step="0.01" value="${qty}" onchange="Stock.setMatField('${m.id}','qty',this.value)"> ${unit}`}</td>
       <td><input type="number" step="0.01" value="${low}" title="Seuil d'alerte" onchange="Stock.setMatField('${m.id}','low',this.value)"></td>
@@ -3095,11 +3095,10 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
   async delMatRoll(mId, rId) {
     const m = Store.state.materials.find(x => x.id === mId); if (!m || !m.rolls) return;
     const isLast = m.rolls.length <= 1;
-    if (!await U.confirm(isLast ? 'Supprimer le dernier rouleau et revenir au champ simple ?' : 'Supprimer ce rouleau ?')) return;
+    if (!await U.confirm(isLast ? 'Supprimer le dernier rouleau ? Le stock de cette taille passera à 0.' : 'Supprimer ce rouleau ?')) return;
     const snap = Store.snapshot('materials', m);
     if (isLast) {
-      const r = m.rolls.find(x => x.id === rId);
-      m.qty = r ? U.num(r.qty) : 0;
+      m.qty = 0;   // le stock d'une sangle = ses rouleaux : plus de rouleau, plus de stock
       m.rolls = [];
     } else {
       m.rolls = m.rolls.filter(x => x.id !== rId);
@@ -3209,6 +3208,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
   _matKindChanged(kind) {
     const m = this._matEditing; if (!m) return;
     const row = document.getElementById('m_vrow'); if (row) row.style.display = Store.isSangleKind(kind) ? 'none' : '';
+    const qf = document.getElementById('m_qty_fg'); if (qf) qf.style.display = Store.isSangleKind(kind) ? 'none' : '';
     const u = document.getElementById('m_unit');   // unité proposée selon le type (sangle = mètre, le reste = pièce), modifiable ensuite
     if (u) { u.value = Store.isSangleKind(kind) ? 'm' : kind === 'filament' ? 'g' : 'piece'; }
     const cq = document.getElementById('m_costQty'); if (cq && kind === 'filament' && U.num(cq.value) === 1) cq.value = 1000;   // filament : prix de la bobine pour 1000 g (1 kg), modifiable
@@ -3294,7 +3294,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
       </div>
       <div class="fg"><label>Coût par unité</label><span id="m_costResult" style="display:block;padding:4px 0;font-weight:600;">${(() => { const sh = this.costShown(m.costUnit, this.matVat(m)); return U.eur(sh.v) + ' ' + sh.lab; })()} / ${m.unit === 'm' ? 'm' : m.unit === 'g' ? 'g' : 'pièce'}</span></div>
       <div class="frow">
-        <div class="fg"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
+        <div class="fg" id="m_qty_fg" style="${Store.isSangleKind(m.kind) ? 'display:none;' : ''}"><label>Quantité en stock</label><input id="m_qty" type="number" step="0.01" value="${m.qty}"></div>
         <div class="fg"><label>Seuil d'alerte</label><input id="m_low" type="number" step="0.01" value="${m.low}"></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Réf. fournisseur (optionnel)</label><input id="m_ref" value="${U.esc(m.ref || '')}" placeholder="ex : BT-16-NOIR"></div>
@@ -3322,7 +3322,9 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
         m.costTax = (document.getElementById('m_tax') || { dataset: {} }).dataset.tax === 'TTC' ? 'TTC' : 'HT';
         const vt = U.val('m_vat').trim(); if (vt === '') delete m.costVat; else m.costVat = U.num(vt);
         m.costUnit = this.matUnitCost(m);
-        m.qty = U.numVal('m_qty'); m.low = U.numVal('m_low');
+        if (!sang) m.qty = U.numVal('m_qty');   // sangle : le stock = somme des rouleaux (pas de saisie à la main)
+        else if (!(m.rolls && m.rolls.length)) m.qty = 0;
+        m.low = U.numVal('m_low');
         m.url = U.val('m_url').trim();
         m.ref = U.val('m_ref').trim();
         if (!id) Store.state.materials.push(m);

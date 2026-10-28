@@ -165,9 +165,15 @@ const Store = {
     this.migrateSuppliers(s);
     this.migrateMatTax(s);
     this.migrateSangleKinds(s);
+    this.migrateSangleStock(s);
     this.migrateFilamentKind(s);
     this.migrateUvCategories(s);
     return s;
+  },
+  /* (2026-10-28) Le stock d'une sangle = la somme de ses ROULEAUX (en mètres). Une sangle sans rouleau n'a donc pas de stock : les
+     valeurs « fantômes » de l'ancien inventaire (saisies à la main) sont remises à 0. Idempotent. */
+  migrateSangleStock(s) {
+    (s.materials || []).forEach(m => { if (this.isSangleKind(m.kind) && !(m.rolls && m.rolls.length) && U.num(m.qty) !== 0) m.qty = 0; });
   },
   /* (2026-10-14) Catégories de consommables « Encre UV » et « Nettoyant UV » : l'ancienne « Encre » est renommée (ses consommables suivent),
      « Nettoyant UV » est ajoutée. UNE fois (flag : si Antho en supprime une, elle ne revient pas). Le coût de l'encre au ml = moyenne des consommables « Encre UV » (`Pricing.uvInkCartridge`). */
