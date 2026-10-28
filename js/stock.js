@@ -2704,7 +2704,8 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
       body:`<div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="c_name" value="${U.esc(c.name)}" placeholder="ex: Carton emballage"></div>
         <div class="fg" id="c_dim_wrap" style="${isBl?'display:none':''}"><label>Dimensions</label><input id="c_dim" value="${U.esc(c.dimensions||'')}" placeholder="ex: 20×15×10"></div>
-        <div class="fg"><label>Catégorie</label><select id="c_cat" onchange="Stock._onConsoCatChange()">${S.consCategories.slice().sort(U.sortFr).map(x=>`<option ${c.category===x?'selected':''}>${U.esc(x)}</option>`).join('')}</select></div></div>
+        <div class="fg"><label>Catégorie</label><select id="c_cat" data-add data-add-title="Nouvelle catégorie" onchange="Stock._onConsoCatChange()">${S.consCategories.slice().sort(U.sortFr).map(x=>`<option ${c.category===x?'selected':''}>${U.esc(x)}</option>`).join('')}</select>
+          <div id="c_cat_new_row" style="display:none;gap:6px;align-items:center;margin-top:6px;"><input id="c_cat_new" placeholder="Nom de la nouvelle catégorie" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();Stock._addConsoCatInline();}"><button type="button" class="btn-ghost btn-sm" style="white-space:nowrap;" onclick="Stock._addConsoCatInline()">Ajouter</button></div></div></div>
       <div id="c_blister_fields" style="display:${isBl?'':'none'};margin-bottom:8px;">
         <div class="frow">
           <div class="fg"><label>Largeur du rouleau (mm)</label><input id="c_bwidth" type="number" step="1" value="${c.blisterWidthMm||''}" placeholder="ex: 60"></div>
@@ -2774,6 +2775,19 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
     const same = Store.state.consumables.filter(x => x.id !== selfId && (x.category || 'Autre') === (cat || 'Autre'))
       .sort((a, b) => U.sortFr(a.name + (this.consoDims(a) || ''), b.name + (this.consoDims(b) || '')));
     return `<option value="">—</option>` + same.map(x => `<option value="${x.id}" ${cur === x.id ? 'selected' : ''} data-a="${U.esc(x.name)}" data-b="${U.esc(this.consoDims(x) || '')}" data-c="${U.esc(U.eur(x.costUnit))}">${U.esc(x.name)}${this.consoDims(x) ? ' · ' + U.esc(this.consoDims(x)) : ''}</option>`).join('');
+  },
+  /* « ＋ » du menu Catégorie d'un consommable : même principe que le menu Type des matières (Paramètres → Catégories consommables). */
+  _showConsoCatNew() { const r = document.getElementById('c_cat_new_row'); if (!r) return; r.style.display = 'flex'; const i = document.getElementById('c_cat_new'); if (i) i.focus(); },
+  _addConsoCatInline() {
+    const i = document.getElementById('c_cat_new'), sel = document.getElementById('c_cat'); if (!i || !sel) return;
+    const val = i.value.trim(); if (!val) return;
+    const S = Store.state.settings;
+    if (S.consCategories.some(x => x.toLowerCase() === val.toLowerCase())) { U.toast('Déjà présent', true); return; }
+    S.consCategories.push(val); Store.save('settings');
+    const o = document.createElement('option'); o.textContent = val; sel.appendChild(o);
+    sel.value = val; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    i.value = ''; document.getElementById('c_cat_new_row').style.display = 'none';
+    U.toast('Catégorie « ' + val + ' » ajoutée.');
   },
   _onConsoCatChange() {
     const cat = U.val('c_cat');
@@ -3426,4 +3440,4 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
 };
 
 /* « ＋ » du menu Type de la fenêtre « Nouvelle matière » (utils.js, data-add) */
-document.addEventListener('nseladd', e => { if (e.target && e.target.id === 'm_kind') Stock._showKindNew(); });
+document.addEventListener('nseladd', e => { if (!e.target) return; if (e.target.id === 'm_kind') Stock._showKindNew(); else if (e.target.id === 'c_cat') Stock._showConsoCatNew(); });

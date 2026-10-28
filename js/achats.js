@@ -82,7 +82,9 @@ const Achats = {
   /* Longueur d'un rouleau de sangle = la case « pour (quantité achetée) » de la fiche matière (ex. 34,74 € / 30 m). 0 si ce n'est pas une sangle au rouleau. */
   _rollLen(it) { return it && Store.isSangleKind(it.kind) && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : 0; },
   /* Prix saisi « par lot de N » : on ajoute N × quantité. Sangle achetée « au rouleau » : 1 rouleau = longueur de la fiche (en mètres). */
-  _packOf(l, it) { return l.cat === 'conso' && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : l.cat === 'matiere' && l.unit === 'rouleau' ? (this._rollLen(it) || 1) : 1; },
+  /* Matière non-sangle dont la fiche est « prix / N » (ex. 11,80 € / 100 boutons de col) : achetée par LOT de N (unité « lot »), ou à la pièce (unité « pièce »). */
+  _lotLen(it) { return it && !Store.isSangleKind(it.kind) && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : 0; },
+  _packOf(l, it) { return l.cat === 'conso' && U.num(it.costQtyPer) > 1 ? U.num(it.costQtyPer) : l.cat === 'matiere' && l.unit === 'rouleau' ? (this._rollLen(it) || 1) : l.cat === 'matiere' && l.unit === 'lot' ? (this._lotLen(it) || 1) : 1; },
   _stockPreview(l) {
     const it = this._item(l); if (!it) return null;
     const add = U.num(l.qty) * this._packOf(l, it);
@@ -578,7 +580,7 @@ const Achats = {
     l.toStock = !!v && (c.link === 'C' || c.link === 'T' || (c.id === 'mastication' && this._compareWanted(v))) && this._recent(this._d.date);   // cochée par défaut (sauf facture ancienne) ; mastication : voir _compareWanted
     if (v) {
       const name = this.itemName(c.link, v); if (name && (!String(l.label || '').trim() || l.label === l._auto)) { l.label = name; l._auto = name; }   // la désignation suit le produit choisi tant que tu ne l'as pas retapée
-      if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m) { if (this._rollLen(m)) l.unit = 'rouleau'; else if (!l.unit || l.unit === 'rouleau') l.unit = this.unitFrom(m.unit); } }   // sangle au rouleau : on saisit un nombre de rouleaux
+      if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m) { if (this._rollLen(m)) l.unit = 'rouleau'; else if (this._lotLen(m)) l.unit = 'lot'; else if (!l.unit || l.unit === 'rouleau' || l.unit === 'lot') l.unit = this.unitFrom(m.unit); } }   // sangle au rouleau : on saisit un nombre de rouleaux
       if (c.link === 'C') { const k = Store.state.consumables.find(x => x.id === v); if (k) { if (U.num(k.costQtyPer) > 1) l.unit = 'lot'; else if (!l.unit || l.unit === 'lot') l.unit = this.unitFrom(k.unit); } }   // fiche « prix / 100 » : on achète des lots de 100
     }
     this._touch(); this.render();
@@ -643,7 +645,8 @@ const Achats = {
   _phText(l) {
     if (!this._totalMode(l) || !(U.num(l.price) > 0)) return '';
     const it = this._item(l), pack = it ? this._packOf(l, it) : 1;
-    return pack > 1 ? '= ' + U.eur(U.num(l.price) / pack) + ' / ' + (l.cat === 'matiere' ? 'm' : 'pièce') : '';
+    // 3 décimales (0,118 € la pièce, 0,957 € le mètre) : c'est la précision de la facture du fournisseur
+    return pack > 1 ? '= ' + (Math.round(U.num(l.price) / pack * 1000) / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' € / ' + (l.unit === 'rouleau' ? 'm' : 'pièce') : '';
   },
   setLineTot(i, v) { const l = this._d.lines[i]; l.tot = U.num(v); l.price = U.num(l.qty) > 0 ? l.tot / U.num(l.qty) : 0; this._touch(); this._refreshTotals(); },
   _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — cochée d'office (voir _compareWanted)
@@ -671,7 +674,7 @@ const Achats = {
       r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
       r2.push(fg('Quantité', `<input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)">`, '.8fr', false, 1));
       const itL = c.id === 'matiere' || c.id === 'conso' ? this._item(l) : null;
-      const units = c.id === 'conso' && l.unit === 'lot' && itL && U.num(itL.costQtyPer) > 1 ? ['lot'] : l.unit === 'rouleau' || (c.id === 'matiere' && itL && this._rollLen(itL)) ? ['rouleau', 'm'] : this.UNITS;   // sangle au rouleau : rouleaux ou mètres ; consommable en lot : lots
+      const units = c.id === 'conso' && l.unit === 'lot' && itL && U.num(itL.costQtyPer) > 1 ? ['lot'] : l.unit === 'rouleau' || (c.id === 'matiere' && itL && this._rollLen(itL)) ? ['rouleau', 'm'] : c.id === 'matiere' && itL && this._lotLen(itL) ? ['lot', 'pièce'] : this.UNITS;   // sangle au rouleau : rouleaux ou mètres ; consommable en lot : lots ; matière « prix / N » : lots de N ou pièces
       r2.push(fg('Unité', `<select onchange="Achats.setText(${i},'unit',this.value)">${(units.includes(l.unit) || !l.unit ? units : units.concat([l.unit])).map(u => `<option value="${U.esc(u)}" ${u === (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) ? 'selected' : ''}>${U.esc(u)}</option>`).join('')}</select>`, '.9fr', false, 2));
       if (this._totalMode(l)) {   // matière / consommable : on tape le prix de la ligne (comme sur la facture), l'appli divise par la quantité
         const tot = l.tot !== undefined ? l.tot : (this.lineTotal(l) || '');
