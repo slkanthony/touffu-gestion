@@ -527,13 +527,21 @@ const Achats = {
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
-    l.toStock = !!v && (c.link === 'C' || c.link === 'T') && this._recent(this._d.date);   // consommable / matière : cochée par défaut (sauf facture ancienne) ; mastication : décochée, c'est toi qui choisis de suivre le lot
+    l.toStock = !!v && (c.link === 'C' || c.link === 'T' || (c.id === 'mastication' && this._compareWanted(v))) && this._recent(this._d.date);   // cochée par défaut (sauf facture ancienne) ; mastication : voir _compareWanted
     if (v) {
       const name = this.itemName(c.link, v); if (name && (!String(l.label || '').trim() || l.label === l._auto)) { l.label = name; l._auto = name; }   // la désignation suit le produit choisi tant que tu ne l'as pas retapée
       if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m && !l.unit) l.unit = this.unitFrom(m.unit); }
       if (c.link === 'C') { const k = Store.state.consumables.find(x => x.id === v); if (k && !l.unit) l.unit = this.unitFrom(k.unit); }
     }
     this._touch(); this.render();
+  },
+  /* Mastication : « À ranger » cochée d'office (Antho 2026-10-28) — c'est ce qui permet de comparer pièces / kilo et coût réel à la fiche prix.
+     Seule exception : produit acheté au KILO et revendu uniquement au poids (gramme / kilo) : rien à comparer, pas de tri à faire. Produit sans fiche liée : coché. */
+  _compareWanted(spId) {
+    const sp = (Store.state.stockM || []).find(x => x.id === spId), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
+    if (!cat) return true;
+    const act = (cat.variants || []).filter(v => v.enabled !== false);
+    return !(Pricing.baseUnitCost(cat).unit === 'kilo' && act.length > 0 && act.every(v => v.mode === 'gram'));
   },
   setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
   setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); },
@@ -564,9 +572,9 @@ const Achats = {
     const pack = this._packOf(l, pv.it);
     return (l.applied ? 'déjà ajouté · ' : '') + U.qty(pv.cur) + ' → ' + U.qty(pv.after) + (pack > 1 ? ' (lots de ' + U.qty(pack) + ')' : '');
   },
-  _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — décochée par défaut
+  _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — cochée d'office (voir _compareWanted)
     const st = l.recv ? (l.recv.closed ? 'tri terminé' : (l.recv.dist || []).length + ' lot(s) rangé(s)') : '';
-    return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Coche pour suivre ce lot : il sera proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></label></div>`;
+    return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Cochée d'office (sauf produit acheté au kilo et vendu seulement au poids) pour pouvoir comparer avec ta fiche prix. Suit ce lot : il sera proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></label></div>`;
   },
   _stockBox(l, i) {   // consommable / matière : la quantité achetée est ajoutée au stock à l'enregistrement
     if (!this._stockPreview(l)) return '';
