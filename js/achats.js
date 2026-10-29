@@ -798,7 +798,7 @@ const Achats = {
       } else {
         // prix d'UNE unité (au kg, à la pièce…) ET total de la ligne : on tape l'un ou l'autre, l'autre se calcule (colis de 5 kg à 64,15 € = 12,83 € / kg)
         r2.push(fg('Prix / ' + (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) + ' (€ ' + ht + ')', `<input id="ach_upin_${i}" type="number" step="any" value="${l.price ? Math.round(l.price * 10000) / 10000 : ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
-        r2.push(fg('Total ligne (€ ' + ht + ')', `<input id="ach_lt_${i}" type="number" step="any" value="${this.lineTotal(l) || ''}" placeholder="0" oninput="Achats.setLineTot(${i},this.value)"><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
+        r2.push(fg('Total (€ ' + ht + ')', `<input id="ach_lt_${i}" type="number" step="any" value="${this.lineTotal(l) || ''}" placeholder="0" oninput="Achats.setLineTot(${i},this.value)"><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
       }
       const box = (c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : '';
       if (box) r2.push({ h: box.replace('<div class="fg">', '<div class="fg" style="grid-column:5;">'), fr: '1.2fr' });
