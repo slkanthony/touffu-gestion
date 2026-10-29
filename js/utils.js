@@ -360,7 +360,7 @@ const U = {
   donutCenter(color, fmt, label, parts) {   // parts = true : affiche le NOMBRE de parts visibles (ex. 4 fournisseurs) au lieu de leur somme
     return {
       id: 'donutCenter',
-      afterDraw(chart) {
+      afterDatasetsDraw(chart) {   // pas `afterDraw` : le total serait peint PAR-DESSUS l'infobulle (Antho 2026-10-30, « les indications se superposent »)
         const meta = chart.getDatasetMeta(0), arc = meta && meta.data && meta.data[0]; if (!arc) return;
         const ds = chart.data.datasets[0], data = ds.real || ds.data, tot = data.reduce((a, v, i) => a + (chart.getDataVisibility(i) ? (parts ? 1 : U.num(v)) : 0), 0);
         const txt = fmt ? fmt(tot) : String(Math.round(tot * 100) / 100).replace('.', ','), ctx = chart.ctx, inner = arc.innerRadius * 2 * 0.86;
