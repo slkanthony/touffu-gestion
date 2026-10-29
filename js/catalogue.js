@@ -785,8 +785,8 @@ const Catalogue = {
       <div class="card" style="border-left:4px solid var(--caramel);">
         <h2>🏷️ 1. Informations produit</h2>
         <div class="frow">
-          <div class="fg" style="flex:2;"><label>Nom du produit</label><input id="cp_name" value="${U.esc(p.name)}"></div>
-          <div class="fg"><label>Viande</label><select id="cp_meat">${S.meatTypes.slice().sort(U.sortFr).map(m => `<option ${((p.meatType || '').toLowerCase() === m.toLowerCase()) ? 'selected' : ''}>${U.esc(m)}</option>`).join('')}</select></div>
+          <div class="fg" style="flex:2;"><label>Nom du produit</label><input id="cp_name" value="${U.esc(p.name)}" oninput="Catalogue._d.name=this.value"></div>
+          <div class="fg"><label>Viande</label><select id="cp_meat" onchange="Catalogue._d.meatType=this.value">${S.meatTypes.slice().sort(U.sortFr).map(m => `<option ${((p.meatType || '').toLowerCase() === m.toLowerCase()) ? 'selected' : ''}>${U.esc(m)}</option>`).join('')}</select></div>
         </div>
       </div>
 
