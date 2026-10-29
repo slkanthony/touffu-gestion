@@ -685,7 +685,7 @@ const Achats = {
       return fg('Taille en stock', `<select onchange="Achats.setVar(${i},this.value)">${opts}</select><span class="muted help">Acheté à la pièce : la quantité entre tout de suite en stock dans cette taille, avec le n° de lot et la DLUO. « Je range moi-même » : le lot sera proposé dans Stock → « ＋ Ajouter un lot » (aucune quantité ajoutée).</span>`);
     }
     const st = l.recv ? (l.recv.closed ? 'tri terminé' : (l.recv.dist || []).length + ' lot(s) rangé(s)') : '';
-    return fg('Stock', `<div class="ach-chk" style="cursor:default;">📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Acheté au kilo, tu le reconditionnes : le lot est proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></div>`);
+    return fg('Stock', `<div class="ach-chk" style="cursor:default;">📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''}</div>`);
   },
   _stockBox(l, i) {   // consommable / matière : la quantité achetée est ajoutée au stock à l'enregistrement
     if (!this._stockPreview(l)) return '';
