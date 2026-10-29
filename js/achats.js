@@ -242,7 +242,7 @@ const Achats = {
   _fixDiscTTC() {   // facture « remise sur le total TTC » enregistrée avant le 2026-10-29 soir : TVA recalculée sur le total HT (le total payé ne change pas)
     if (this._fixedDisc) return; this._fixedDisc = true; let n = 0;
     this.list().forEach(p => { if (p.discTTC && !p.discFixed && (p.vat || []).length === 1 && p.vat[0].auto) { p.vat[0].amount = this.r2(this.base(p) * U.num(p.vat[0].rate) / 100); p.discFixed = true; p.total = this.grandTotal(p); n++; } });
-    this.list().forEach(p => { if (!p.cmpV2 && (p.lines || []).some(l => l.cat === 'mastication')) { const lh = this._listHT(p); (p.lines || []).forEach((l, i) => { if (l.cat === 'mastication' && l.ref) this._priceCmp(p, l, lh[i], []); }); p.cmpV2 = true; n++; } });   // comparaison avec la fiche : fournisseur de la facture, prix avant remise (factures déjà enregistrées)
+    this.list().forEach(p => { if (!p.cmpV3 && (p.lines || []).some(l => l.cat === 'mastication')) { const lh = this._listHT(p); (p.lines || []).forEach((l, i) => { if (l.cat === 'mastication' && l.ref) this._priceCmp(p, l, lh[i], []); }); p.cmpV3 = true; n++; } });   // comparaison avec la fiche : fournisseur de la facture, prix avant remise (factures déjà enregistrées)
     if (n) Store.save('purchases');
   },
   renderList() {
@@ -318,13 +318,24 @@ const Achats = {
     return { from, to, pct: (to - from) / from * 100, unit, fiche: !!l.priceCmp && !l.applied };
   },
   _chg(l) { const i = this._chgInfo(l); return i ? i.pct : 0; },
-  _priceCard() {   // variations de coût constatées à l'achat : de quoi savoir quelles fiches de prix revoir
+  _priceCard() {   // prix à vérifier à l'achat : variation de coût, fournisseur absent de la fiche, fournisseur moins cher dans la fiche
     const rows = [];
-    this.list().forEach(p => (p.lines || []).forEach(l => { const c = this._chgInfo(l); if (c) rows.push({ p, l, c }); else if (l.priceCmp && l.priceCmp.noSup) rows.push({ p, l, c: null }); }));
+    this.list().forEach(p => (p.lines || []).forEach(l => {
+      const c = this._chgInfo(l), pc = l.priceCmp || {};
+      if (c) rows.push({ p, l, k: 'chg', c });
+      if (pc.noSup) rows.push({ p, l, k: 'noSup' });
+      if (pc.cheaper) rows.push({ p, l, k: 'cheap' });
+    }));
     if (!rows.length) return '';
     rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
-    return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent (ou de ta fiche prix) : pense à vérifier les fiches concernées</span></summary>
-      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span>${c ? `<span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span>` : `<span class="warn">⚠ fournisseur absent de la fiche prix${l.priceCmp.main ? ' (fiche : ' + U.esc(l.priceCmp.main) + ')' : ''}</span><span></span>`}</div>`).join('')}</div></details>`;
+    const cell = ({ l, k, c }) => {
+      if (k === 'chg') return `<span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span>`;
+      if (k === 'noSup') return `<span class="warn">⚠ fournisseur absent de la fiche prix${l.priceCmp.main ? ' (fiche : ' + U.esc(l.priceCmp.main) + ')' : ''}</span><span></span>`;
+      const h = l.priceCmp.cheaper;
+      return `<span class="sensitive">💡 moins cher chez <b>${U.esc(h.name)}</b> (${h.isMain ? 'ton principal' : 'pas ton principal'}) : ${U.eur(h.alt)} HT / ${U.esc(h.unit)} au lieu de ${U.eur(h.paid)}</span><span class="pos" style="text-align:right;">↓ −${Math.round(h.pct * 10) / 10} %</span>`;
+    };
+    return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Prix à vérifier (${rows.length})</b> <span class="muted">— variation de coût, fournisseur absent de la fiche ou moins cher ailleurs : pense à vérifier les fiches concernées</span></summary>
+      <div class="fold-body">${rows.slice(0, 30).map(r => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,3fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(r.p.date)}</span><span><b>${U.esc(r.l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(r.p))}</span></span>${cell(r)}</div>`).join('')}</div></details>`;
   },
 
   /* ---------- Pièces / kilo MESURÉ (Antho 2026-10-28) ----------
@@ -400,6 +411,16 @@ const Achats = {
       const kg = u === 'kg' && b.unit === 'kilo', pc = (u === 'pièce' || u === 'piece' || u === 'pc') && b.unit !== 'kilo';
       if (!(kg || pc) || !(b.unitHT > 0)) return;
       l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
+      // un AUTRE fournisseur de la fiche (même unité) moins cher que ce que tu viens de payer (coût réel, TVA d'achat comprise tant que non assujetti), principal ou non
+      const paidCost = perUnitHT * b.k, mainId = (Pricing.mainEntry(cat) || {}).supplierId; let best = null;
+      (cat.suppliers || []).forEach(se => {
+        if (se.supplierId === rec.supplierId || !(U.num(se.price) > 0)) return;
+        const o = Pricing.baseUnitCost(cat, se.supplierId);
+        if (o.unit !== b.unit || !(o.unitCost > 0) || o.unitCost >= paidCost * 0.99) return;
+        if (!best || o.unitCost < best.cost) best = { cost: o.unitCost, supplierId: se.supplierId, alt: o.unitHT };
+      });
+      if (best) l.priceCmp.cheaper = { name: Store.supplierName(best.supplierId), isMain: best.supplierId === mainId, alt: Math.round(best.alt * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: l.priceCmp.unit, pct: (paidCost - best.cost) / paidCost * 100 };
+      if (best) notes.push(`💡 ${l.label} : moins cher chez ${l.priceCmp.cheaper.name} (${U.eur(l.priceCmp.cheaper.alt)} HT/${l.priceCmp.unit} au lieu de ${U.eur(l.priceCmp.cheaper.paid)}${l.priceCmp.cheaper.isMain ? '' : ', pas ton principal'})`);
       const ci = this._chgInfo(l);
       if (ci) notes.push(`💶 ${l.label} : fiche prix ${U.eur(ci.from)} → payé ${U.eur(ci.to)} HT/${l.priceCmp.unit} (${ci.pct > 0 ? '↑ +' : '↓ '}${Math.round(ci.pct * 10) / 10} %) — vérifie la fiche`);
   },
@@ -508,7 +529,7 @@ const Achats = {
     const lines = (p.lines || []).map(l => {
       const c = this.cat(l.cat);
       return `<div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);">
-        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from)} → ${U.eur(this._chgInfo(l).to)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${l.recv && l.recv.closed ? this._ppkBadge(this.ppkInfo(l, l.recv.pieces)) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
+        <span>${c.ico} <b>${U.esc(l.label)}</b>${l.lot ? ` <span class="badge info">lot ${U.esc(l.lot)}${l.dluo ? ' · DLUO ' + U.frDate(l.dluo) : ''}</span>` : ''}${l.applied ? ` <span class="badge info" title="Quantité ajoutée au stock à l'enregistrement">📥 +${U.qty(l.applied.qty)} en stock</span>` : ''}${l.priceCmp && l.priceCmp.cheaper ? ` <span class="badge warn" title="Un autre fournisseur de la fiche prix est moins cher">💡 moins cher chez ${U.esc(l.priceCmp.cheaper.name)}</span>` : ''}${this._chg(l) ? ` <span class="badge warn" title="${this._chgInfo(l).fiche ? 'Fiche prix' : 'Coût HT par unité'} : ${U.eur(this._chgInfo(l).from)} → ${U.eur(this._chgInfo(l).to)}">💶 prix ${this._chg(l) > 0 ? '↑ +' : '↓ '}${Math.round(this._chg(l) * 10) / 10} %</span>` : ''}${l.recv ? (l.recv.closed ? ` <span class="badge info" title="Coût réel figé sur les lots">✔ tri terminé · ${U.qty(l.recv.pieces)} pièces · ${U.eur(l.recv.costPerPiece)} HT/pièce${l.recv.avgG ? ' · ' + l.recv.avgG + ' g/pièce' : ''}</span>` : ` <span class="badge warn">📥 à ranger${(l.recv.dist || []).length ? ' · ' + (l.recv.dist || []).length + ' lot(s) rangé(s)' : ''}</span>`) : ''}${l.recv && l.recv.closed ? this._ppkBadge(this.ppkInfo(l, l.recv.pieces)) : ''}${U.num(l.years) ? ` <span class="badge info">amorti sur ${U.num(l.years)} an(s)</span>` : ''}</span>
         <span class="muted">${c.detail ? U.qty(l.qty) + ' ' + U.esc(l.unit || '') + ' × ' + U.eur(l.price) : c.label}</span>
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');
