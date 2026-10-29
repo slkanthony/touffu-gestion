@@ -1730,3 +1730,21 @@ tr.wgrp td[colspan] { text-align: left; }
 .pv-tag { font-size: .8rem; font-weight: 700; color: var(--caramel); white-space: nowrap; }
 .pv-pct { text-align: right; white-space: nowrap; }
 @media (max-width: 720px) { .pv-grp { grid-template-columns: minmax(0, 1fr); gap: 4px; } .pv-grp > .btn { justify-self: start; margin-top: 4px; } .pv-row { grid-template-columns: minmax(0, 1fr) auto; } .pv-tag { grid-column: 1 / -1; } }
+/* Achats → « 📋 Checklist » de réception d'une commande (grande liste à cocher, lisible sur téléphone) : titre et boutons fixes, seule la liste défile */
+.modal.ck-xl { display: flex; flex-direction: column; overflow: hidden; max-height: 94vh; padding: 14px 16px; }
+.modal.ck-xl h2 { flex: none; margin-bottom: 8px; font-size: 1.05rem; }
+.modal.ck-xl #modalBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.modal.ck-xl .actions { flex: none; margin-top: 10px; }
+.ck-count { display: inline-block; margin-left: 6px; padding: 2px 10px; border-radius: 999px; background: var(--th-bg); font-size: .85rem; white-space: nowrap; }
+.ck-count.done { background: var(--ok); color: #fff; }
+.ck-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 11px 6px; border-bottom: 1px solid var(--row-border); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ck-box { width: 28px; height: 28px; border: 2px solid var(--caramel); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+.ck-name { font-weight: 700; line-height: 1.25; }
+.ck-qty { font-weight: 800; white-space: nowrap; text-align: right; min-width: 84px; font-size: 1.05rem; }
+.ck-row.ok { opacity: .6; }
+.ck-row.ok .ck-box { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ck-row.ok .ck-name { text-decoration: line-through; }
+.ck-row.miss { border-left: 4px solid var(--warn); background: rgba(255, 170, 0, .12); }
+.ck-row.miss .ck-box { background: var(--warn); border-color: var(--warn); color: #fff; }
+.ck-miss { white-space: nowrap; }
+@media (max-width: 720px) { .ck-row { grid-template-columns: 30px minmax(0, 1fr) auto 40px; gap: 8px; } .ck-miss { padding: 6px 0; width: 40px; } .ck-tx { display: none; } .ck-qty { min-width: 0; } }

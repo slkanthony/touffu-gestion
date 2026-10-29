@@ -464,7 +464,35 @@ const Achats = {
       ${rows.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--row-border);display:grid;grid-template-columns:minmax(0,3fr) auto auto;gap:10px;align-items:center;">
         <div><b>${U.esc(this.supplierLabel(p))}</b> <span class="muted">${U.frDate(p.date)}${p.invoiceNo ? ' · n° ' + U.esc(p.invoiceNo) : ''} · ${(p.lines || []).length} ligne(s)</span></div>
         <span class="sensitive"><b>${U.eur(this.grandTotal(p))}</b></span>
-        <button class="btn-cta btn-sm" onclick="Achats.edit('${p.id}')">📦 Réceptionner</button></div>`).join('')}</div>`;
+        <span style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" onclick="Achats.checklist('${p.id}')">📋 Checklist${this._ckProg(p)}</button> <button class="btn-cta btn-sm" onclick="Achats.edit('${p.id}')">📦 Réceptionner</button></span></div>`).join('')}</div>`;
+  },
+  /* Checklist de réception (Antho 2026-10-29) : les produits d'une commande « à recevoir » avec leurs quantités, à cocher en ouvrant le colis (surtout sur téléphone).
+     Les coches sont enregistrées sur la facture (p.chk[idLigne] : 1 = reçu, 2 = manque) : on peut fermer, reprendre plus tard, ou cocher sur le téléphone et retrouver l'état sur l'ordinateur. */
+  _ckLines(p) { return (p.lines || []).filter(l => U.num(l.qty) > 0 && l.label); },
+  _ckQty(l) { const q = U.num(l.qty), u = String(l.unit || ''); return U.qty(q) + ' ' + U.esc(q > 1 && /^pièce$/i.test(u) ? 'pièces' : u); },
+  _ckRow(p, l) {
+    const st = (p.chk || {})[l.id] || 0;
+    return `<div class="ck-row${st === 1 ? ' ok' : st === 2 ? ' miss' : ''}" id="ck_${l.id}" onclick="Achats.ckSet('${p.id}','${l.id}',1)"><span class="ck-box">${st === 1 ? '✔' : st === 2 ? '!' : ''}</span><span class="ck-name">${U.esc(l.label)}</span><span class="ck-qty">${this._ckQty(l)}</span><button class="btn btn-ghost btn-sm ck-miss" onclick="event.stopPropagation();Achats.ckSet('${p.id}','${l.id}',2)">${st === 2 ? '↩<span class="ck-tx"> Annuler</span>' : '⚠<span class="ck-tx"> Manque</span>'}</button></div>`;
+  },
+  _ckProg(p) { const n = Object.keys(p.chk || {}).length; return n ? ` (${n}/${this._ckLines(p).length})` : ''; },
+  _ckCount(p) {
+    const ls = this._ckLines(p), c = p.chk || {}, ok = ls.filter(l => c[l.id] === 1).length, miss = ls.filter(l => c[l.id] === 2).length;
+    return `<span id="ckCount" class="ck-count${ok + miss === ls.length && !miss ? ' done' : ''}">${ok} / ${ls.length} reçus${miss ? ' · ⚠ ' + miss + ' manque' : ''}</span>`;
+  },
+  checklist(pid) {
+    const p = this.list().find(x => x.id === pid); if (!p) return;
+    const ls = this._ckLines(p);
+    if (!ls.length) { U.toast('Cette commande n\'a aucune ligne avec une quantité.', true); return; }
+    const bg = U.modal({ title: `📋 Checklist · ${U.esc(this.supplierLabel(p))} ${this._ckCount(p)}`, okLabel: '📦 Réceptionner', body: `<div class="ck-list">${ls.map(l => this._ckRow(p, l)).join('')}</div>`, onOk: () => { U.closeModal(); this.edit(pid); }, onCancel: () => App.rerender() });
+    bg.querySelector('.modal').classList.add('ck-xl');
+  },
+  ckSet(pid, lid, v) {
+    const p = this.list().find(x => x.id === pid), l = p && (p.lines || []).find(x => x.id === lid); if (!l) return;
+    p.chk = p.chk || {};
+    if (p.chk[lid] === v) delete p.chk[lid]; else p.chk[lid] = v;
+    Store.save('purchases');
+    const el = document.getElementById('ck_' + lid); if (el) el.outerHTML = this._ckRow(p, l);
+    const c = document.getElementById('ckCount'); if (c) c.outerHTML = this._ckCount(p);
   },
   _recvCard() {
     const rows = [];
@@ -876,7 +904,7 @@ const Achats = {
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     this._autoVat();
-    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), ...(d.pending ? { pending: true } : {}), ...(d.taxMode === 'ht' && d.discTTC && U.num(d.discount) ? { discTTC: true } : {}), lines };
+    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), ...(d.pending ? { pending: true, ...(d.chk ? { chk: d.chk } : {}) } : {}), ...(d.taxMode === 'ht' && d.discTTC && U.num(d.discount) ? { discTTC: true } : {}), lines };
     rec.total = this.grandTotal(rec);
     // doublons : même n° de facture chez le même fournisseur, ou même fournisseur + date + montant (alerte non bloquante)
     const msgs = [], others = this.list().filter(p => p.id !== rec.id && p.supplierId === rec.supplierId);
