@@ -8,7 +8,7 @@
    Montants = ce qui a été PAYÉ (TTC). Aucune écriture dans le stock ni dans les prix à cette étape : rien n'est modifié ailleurs.
    Réservé à l'admin (ni viewer, ni équipe). */
 const Achats = {
-  mode: 'list', _priceOpen: true, _ppkOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
+  mode: 'list', _priceOpen: false, _ppkOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
   f: { period: 'year', from: '', to: '', supplier: '', cat: '', pay: '', q: '', refund: false, sort: 'date', sortDir: 'desc' },
   CATS: [
     { id: 'mastication', ico: '🥩', label: 'Mastication', detail: true, link: 'M' },
