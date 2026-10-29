@@ -242,7 +242,7 @@ const Achats = {
   _fixDiscTTC() {   // facture « remise sur le total TTC » enregistrée avant le 2026-10-29 soir : TVA recalculée sur le total HT (le total payé ne change pas)
     if (this._fixedDisc) return; this._fixedDisc = true; let n = 0;
     this.list().forEach(p => { if (p.discTTC && !p.discFixed && (p.vat || []).length === 1 && p.vat[0].auto) { p.vat[0].amount = this.r2(this.base(p) * U.num(p.vat[0].rate) / 100); p.discFixed = true; p.total = this.grandTotal(p); n++; } });
-    this.list().forEach(p => { if (U.num(p.discount) > 0 && !p.cmpFixed) { const lh = this._listHT(p); (p.lines || []).forEach((l, i) => { if (l.priceCmp && U.num(l.qty) > 0) l.priceCmp.paid = Math.round(lh[i] / U.num(l.qty) * 10000) / 10000; }); p.cmpFixed = true; n++; } });   // alerte « fiche prix » : prix avant remise (factures déjà enregistrées)
+    this.list().forEach(p => { if (!p.cmpV2 && (p.lines || []).some(l => l.cat === 'mastication')) { const lh = this._listHT(p); (p.lines || []).forEach((l, i) => { if (l.cat === 'mastication' && l.ref) this._priceCmp(p, l, lh[i], []); }); p.cmpV2 = true; n++; } });   // comparaison avec la fiche : fournisseur de la facture, prix avant remise (factures déjà enregistrées)
     if (n) Store.save('purchases');
   },
   renderList() {
@@ -320,11 +320,11 @@ const Achats = {
   _chg(l) { const i = this._chgInfo(l); return i ? i.pct : 0; },
   _priceCard() {   // variations de coût constatées à l'achat : de quoi savoir quelles fiches de prix revoir
     const rows = [];
-    this.list().forEach(p => (p.lines || []).forEach(l => { const c = this._chgInfo(l); if (c) rows.push({ p, l, c }); }));
+    this.list().forEach(p => (p.lines || []).forEach(l => { const c = this._chgInfo(l); if (c) rows.push({ p, l, c }); else if (l.priceCmp && l.priceCmp.noSup) rows.push({ p, l, c: null }); }));
     if (!rows.length) return '';
     rows.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
     return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Variations de prix constatées (${rows.length})</b> <span class="muted">— coût d'achat différent du précédent (ou de ta fiche prix) : pense à vérifier les fiches concernées</span></summary>
-      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span><span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span></div>`).join('')}</div></details>`;
+      <div class="fold-body">${rows.slice(0, 30).map(({ p, l, c }) => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,2fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(p.date)}</span><span><b>${U.esc(l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(p))}</span></span>${c ? `<span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span>` : `<span class="warn">⚠ fournisseur absent de la fiche prix${l.priceCmp.main ? ' (fiche : ' + U.esc(l.priceCmp.main) + ')' : ''}</span><span></span>`}</div>`).join('')}</div></details>`;
   },
 
   /* ---------- Pièces / kilo MESURÉ (Antho 2026-10-28) ----------
@@ -332,10 +332,13 @@ const Achats = {
      (fournisseur principal). Seuil volontairement bas : alerte dès 1 pièce / kg d'écart (≥ 3 : rouge) ; fiche vide : la valeur mesurée est proposée.
      Les kilos de pertes restent comptés (comme dans le coût de revient). Jamais appliqué sans clic d'Antho. */
   PPK_TOL: 1,
+  _supOfLine(l) { const p = this.list().find(x => (x.lines || []).some(y => y.id === l.id)); return p ? p.supplierId : ''; },
   _ppkFiche(l) {
     const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
     if (!cat) return null;
-    const b = Pricing.baseUnitCost(cat);
+    const sup = this._supOfLine(l);   // « pièces / kilo » de la ligne du fournisseur de la facture ; fournisseur absent de la fiche : pas de comparaison (signalé à part)
+    if (sup && (cat.suppliers || []).length && !(cat.suppliers || []).some(s => s.supplierId === sup)) return null;
+    const b = Pricing.baseUnitCost(cat, sup || undefined);
     if (b.unit !== 'kilo') return null;   // fiche achetée à la pièce : « pièces / kilo » sans objet
     return { cat, fiche: U.num(b.ppk) };
   },
@@ -380,6 +383,26 @@ const Achats = {
      « Terminer le tri » fige le coût réel par pièce (total de la ligne + livraison ÷ pièces triées) sur les lots concernés. */
   /* Prix HT de chaque ligne SANS la remise (comparaison avec la fiche prix) */
   _listHT(rec) { const g = this.isHT(rec) ? 1 : 1 + this.vatRateOf(rec) / 100; return (rec.lines || []).map(l => this.lineTotal(l) / g); },
+  /* Comparaison d'une ligne mastication avec la fiche de calcul de prix : ligne du fournisseur de CETTE facture, prix HT AVANT remise (listHT1 = total HT de la ligne). */
+  _priceCmp(rec, l, listHT1, notes) {
+      // comparaison avec la fiche de calcul de prix (même unité seulement : kg ↔ « kilo », pièce ↔ pièce)
+      delete l.priceCmp;
+      const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
+      if (!cat || !(U.num(l.qty) > 0)) return;
+      // la comparaison se fait avec la ligne du fournisseur de CETTE facture (pas le fournisseur principal de la fiche) ; fournisseur absent de la fiche = alerte
+      if ((cat.suppliers || []).length && !(cat.suppliers || []).some(s => s.supplierId === rec.supplierId)) {
+        const mainSup = Pricing.mainEntry(cat);
+        l.priceCmp = { noSup: true, main: mainSup ? Store.supplierName(mainSup.supplierId) : '' };
+        notes.push(`⚠ ${l.label} : acheté chez ${this.supplierLabel(rec)}, qui n'est pas dans la fiche prix${l.priceCmp.main ? ' (fiche : ' + l.priceCmp.main + ')' : ''}`);
+        return;
+      }
+      const b = Pricing.baseUnitCost(cat, rec.supplierId), u = String(l.unit || '').toLowerCase(), perUnitHT = listHT1 / U.num(l.qty);   // prix AVANT remise : une remise exceptionnelle (offre d'inscription…) ne doit pas déclencher l'alerte « fiche prix à revoir »
+      const kg = u === 'kg' && b.unit === 'kilo', pc = (u === 'pièce' || u === 'piece' || u === 'pc') && b.unit !== 'kilo';
+      if (!(kg || pc) || !(b.unitHT > 0)) return;
+      l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
+      const ci = this._chgInfo(l);
+      if (ci) notes.push(`💶 ${l.label} : fiche prix ${U.eur(ci.from)} → payé ${U.eur(ci.to)} HT/${l.priceCmp.unit} (${ci.pct > 0 ? '↑ +' : '↓ '}${Math.round(ci.pct * 10) / 10} %) — vérifie la fiche`);
+  },
   _applyRecv(rec, old, notes) {
     const listHT = this._listHT(rec);
     rec.lines.forEach((l, i) => {
@@ -387,16 +410,7 @@ const Achats = {
       const oldL = old && (old.lines || []).find(x => x.id === l.id);
       if (l.toStock && l.ref && !l.applied && !rec.pending) { if (!l.recv) l.recv = (oldL && oldL.recv) || { dist: [], loss: 0, closed: false }; }   // rangé tout de suite (à la pièce) : rien à ranger ensuite
       else if (l.recv && !(l.recv.dist || []).length) delete l.recv;   // décochée et rien de rangé : on oublie
-      // comparaison avec la fiche de calcul de prix (même unité seulement : kg ↔ « kilo », pièce ↔ pièce)
-      delete l.priceCmp;
-      const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
-      if (!cat || !(U.num(l.qty) > 0)) return;
-      const b = Pricing.baseUnitCost(cat), u = String(l.unit || '').toLowerCase(), perUnitHT = listHT[i] / U.num(l.qty);   // prix AVANT remise : une remise exceptionnelle (offre d'inscription…) ne doit pas déclencher l'alerte « fiche prix à revoir »
-      const kg = u === 'kg' && b.unit === 'kilo', pc = (u === 'pièce' || u === 'piece' || u === 'pc') && b.unit !== 'kilo';
-      if (!(kg || pc) || !(b.unitHT > 0)) return;
-      l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
-      const ci = this._chgInfo(l);
-      if (ci) notes.push(`💶 ${l.label} : fiche prix ${U.eur(ci.from)} → payé ${U.eur(ci.to)} HT/${l.priceCmp.unit} (${ci.pct > 0 ? '↑ +' : '↓ '}${Math.round(ci.pct * 10) / 10} %) — vérifie la fiche`);
+      this._priceCmp(rec, l, listHT[i], notes);
     });
   },
   /* Réceptions en attente de rangement pour un produit du stock (proposées dans « ＋ Ajouter un lot ») */
@@ -465,7 +479,7 @@ const Achats = {
         const pi = this.ppkInfo(l, pieces), upd = document.getElementById('rc_ppk_upd');
         let ppkUpdated = false;
         if (pi && upd && upd.checked) {
-          const main = Pricing.mainEntry(pi.cat);
+          const main = Pricing.mainEntry(pi.cat, p.supplierId);   // la ligne du fournisseur de cette facture
           if (main) { snaps.push(Store.snapshot('catalogM', pi.cat)); main.piecesPerKilo = pi.measured; ppkUpdated = true; }
         }
         let n = 0;
