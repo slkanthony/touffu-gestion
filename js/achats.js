@@ -29,13 +29,16 @@ const Achats = {
   /* Facture saisie en TTC (défaut) ou en HT (fournisseur qui détaille la TVA en bas de page : p.vat = [{rate, amount}]).
      base = lignes + livraison − remise (dans le mode de saisie) ; payé (TTC) = base + TVA si HT. */
   isHT(p) { return p.taxMode === 'ht'; },
-  /* Remise d'une facture en HT : le fournisseur peut la donner sur le TOTAL TTC (code promo après taxes) → p.discTTC ; on la ramène en HT avec le taux de TVA (1er taux saisi, sinon taux global). */
-  discHT(p) { const d = U.num(p.discount); if (!(this.isHT(p) && p.discTTC && d)) return d; const r = (p.vat || []).length ? U.num(p.vat[0].rate) : U.num(Store.state.settings.vatRate ?? 20); return this.r2(d / (1 + r / 100)); },
-  base(p) { return this.r2(this.subTotal(p) + U.num(p.shipping) - this.discHT(p)); },
+  /* Remise donnée « sur le total TTC » (code promo retiré APRÈS la TVA, Antho 2026-10-29) : le total HT et la TVA restent ceux de la facture, la remise se retire du total payé (p.discTTC, facture en HT seulement). */
+  discPost(p) { return this.isHT(p) && p.discTTC ? U.num(p.discount) : 0; },
+  discPre(p) { return U.num(p.discount) - this.discPost(p); },
+  /* La même remise ramenée en HT (part du total payé) : sert seulement au coût réel de chaque ligne. */
+  discHT(p) { const d = this.discPost(p); if (!d) return this.discPre(p); const b = this.base(p), t = b + this.vatSum(p); return t > 0 ? this.r2(d * b / t) : d; },
+  base(p) { return this.r2(this.subTotal(p) + U.num(p.shipping) - this.discPre(p)); },
   vatSum(p) { return this.isHT(p) ? this.r2((p.vat || []).reduce((a, v) => a + U.num(v.amount), 0)) : 0; },
-  grandTotal(p) { return this.r2(this.base(p) + this.vatSum(p)); },   // TOUJOURS ce qui a été payé (TTC)
+  grandTotal(p) { return this.r2(this.base(p) + this.vatSum(p) - this.discPost(p)); },   // TOUJOURS ce qui a été payé (TTC)
   /* TVA répartie au prorata (le fournisseur ne dit pas sur quel produit) : coût TTC = HT × (1 + TVA totale / base HT) */
-  ttcFactor(p) { const b = this.base(p); return this.isHT(p) && b > 0 ? 1 + this.vatSum(p) / b : 1; },
+  ttcFactor(p) { const b = this.base(p); return this.isHT(p) && b > 0 ? 1 + (this.vatSum(p) - this.discPost(p)) / b : 1; },
   supplierLabel(p) { return p.supplierId ? Store.supplierName(p.supplierId) : '—'; },
   suppliers() { return (Store.state.settings.suppliers || []).slice().sort((a, b) => U.sortFr(a.name, b.name)); },   // une seule liste ; chaque fournisseur a des types (Store.SUPPLIER_TYPES)
   /* Types de fournisseur déduits des catégories de la facture (mastication → « mastication », outillage/équipement/frais → « autre »…) */
@@ -93,7 +96,7 @@ const Achats = {
     return { it, add, cur: U.num(it.qty), after: U.num(it.qty) + add };
   },
   _eff(rec) {   // total de chaque ligne + sa part de livraison − sa part de remise (dans le mode de saisie)
-    const sub = this.subTotal(rec), extra = U.num(rec.shipping) - this.discHT(rec);
+    const sub = this.subTotal(rec), extra = U.num(rec.shipping) - this.discPre(rec);
     return (rec.lines || []).map(l => this.lineTotal(l) + (sub ? extra * this.lineTotal(l) / sub : 0));
   },
   /* TVA d'une facture saisie en TTC : taux propre à la facture (rec.vatRate, retenu par fournisseur) ; vide = taux global des Paramètres. */
@@ -236,7 +239,13 @@ const Achats = {
     this._loadDraft();
     if (this.mode === 'edit' && this._d) this.renderEditor(); else this.renderList();
   },
+  _fixDiscTTC() {   // facture « remise sur le total TTC » enregistrée avant le 2026-10-29 soir : TVA recalculée sur le total HT (le total payé ne change pas)
+    if (this._fixedDisc) return; this._fixedDisc = true; let n = 0;
+    this.list().forEach(p => { if (p.discTTC && !p.discFixed && (p.vat || []).length === 1 && p.vat[0].auto) { p.vat[0].amount = this.r2(this.base(p) * U.num(p.vat[0].rate) / 100); p.discFixed = true; p.total = this.grandTotal(p); n++; } });
+    if (n) Store.save('purchases');
+  },
   renderList() {
+    this._fixDiscTTC();
     const f = this.f, rows = this._filtered();
     const sum = rows.reduce((a, p) => a + this.grandTotal(p), 0), ship = rows.reduce((a, p) => a + U.num(p.shipping), 0);
     const toRefund = this.list().filter(p => p.paidBy === 'perso' && !p.reimbursed).reduce((a, p) => a + this.grandTotal(p), 0);
@@ -535,14 +544,21 @@ const Achats = {
     if (k === 'payment' || k === 'pending') this.render();
   },
   /* TVA en HT : une seule ligne « auto » = base HT × taux (modifiable) ; dès qu'on tape un montant ou qu'on ajoute un taux, c'est à la main */
-  _autoVat() { const d = this._d; if (!d || !this.isHT(d)) return; const v = d.vat || []; if (v.length === 1 && (v[0].auto || !U.num(v[0].amount))) { v[0].auto = true; v[0].amount = this.r2(this.base(d) * U.num(v[0].rate) / 100); } },
-  setVat(i, f, val) {
-    const v = this._d.vat[i]; if (!v) return; v[f] = U.num(val);
-    if (f === 'amount') v.auto = false; else this._autoVat();
-    this._touch(); this._refreshTotals();
-    if (f === 'rate') { const e = document.getElementById('ach_vatamt_' + i); if (e) e.value = v.amount || ''; }
+  _autoVat() {
+    const d = this._d; if (!d || !this.isHT(d)) return; const v = d.vat || [];
+    if (v.length !== 1) return;
+    if (v[0].auto || !U.num(v[0].amount)) { v[0].auto = true; v[0].amount = this.r2(this.base(d) * U.num(v[0].rate) / 100); }
+    else { const b = this.base(d); if (b > 0) v[0].rate = Math.round(U.num(v[0].amount) / b * 10000) / 100; }   // montant tapé : le taux affiché suit
   },
-  addVat() { const d = this._d; d.vat = d.vat || []; d.vat.forEach(v => v.auto = false); d.vat.push({ rate: d.vat.length ? 10 : U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: false }); this._touch(); this.render(); },
+  /* Un seul taux : taper le taux calcule le montant, taper le montant calcule le taux (sur le total HT). Plusieurs taux : chacun à la main. */
+  setVat(i, f, val) {
+    const d = this._d, v = d.vat[i]; if (!v) return; v[f] = U.num(val);
+    if (d.vat.length === 1) { if (f === 'amount') { v.auto = false; this._autoVat(); } else { v.auto = true; this._autoVat(); } }
+    else if (f === 'amount') v.auto = false;
+    this._touch(); this._refreshTotals();
+    const o = document.getElementById(f === 'rate' ? 'ach_vatamt_' + i : 'ach_vatrate_' + i); if (o && d.vat.length === 1) o.value = (f === 'rate' ? v.amount : v.rate) || '';
+  },
+
   delVat(i) { this._d.vat.splice(i, 1); this._touch(); this.render(); },
   setVatRate(v) { this._d.vatRate = String(v).trim() === '' ? '' : U.num(v); this._touch(); },
   /* Catégories de ligne proposées pour un fournisseur (Antho 2026-10-28 : « chez ce fournisseur je ne peux pas acheter une autre catégorie ») :
@@ -657,7 +673,7 @@ const Achats = {
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_tt_' + i); if (e) e.textContent = this._ttcOf(this.lineTotal(l)); });
     { const e = document.getElementById('ach_shiptt'); if (e) e.textContent = this._ttcOf(d.shipping); }
     this._autoVat();
-    if ((d.vat || []).length === 1 && d.vat[0].auto) { const e = document.getElementById('ach_vatamt_0'); if (e && document.activeElement !== e) e.value = d.vat[0].amount || ''; }
+    if ((d.vat || []).length === 1) { const a = document.getElementById('ach_vatamt_0'), r = document.getElementById('ach_vatrate_0'); if (a && document.activeElement !== a) a.value = d.vat[0].amount || ''; if (r && document.activeElement !== r) r.value = d.vat[0].rate || ''; }
     const s = document.getElementById('ach_sub'), t = document.getElementById('ach_tot'), b = document.getElementById('ach_base'), v = document.getElementById('ach_vat');
     if (s) s.textContent = U.eur(this.subTotal(d)); if (t) t.textContent = U.eur(this.grandTotal(d));
     if (b) b.textContent = U.eur(this.base(d)); if (v) v.textContent = U.eur(this.vatSum(d));
@@ -780,12 +796,12 @@ const Achats = {
           <div><span class="muted">Sous-total ${this.isHT(d) ? 'HT' : ''}</span> <b class="sensitive" id="ach_sub">${U.eur(this.subTotal(d))}</b></div>
           <div class="fg"><label>Frais de livraison (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.shipping || ''}" placeholder="0" oninput="Achats.setHead('shipping',this.value)"><div class="muted sensitive" id="ach_shiptt" style="font-size:.78rem;">${this._ttcOf(d.shipping)}</div></div>
           <div class="fg"><label>Remise (€ ${this.isHT(d) && !d.discTTC ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.discount || ''}" placeholder="0" oninput="Achats.setHead('discount',this.value)"></div>
-          ${this.isHT(d) ? `<div class="fg" style="max-width:none;"><label>Remise donnée <span class="muted help">« Avant TVA » : la remise réduit le prix HT. « Sur le total TTC » : elle est retirée après la TVA (code promo) ; l'appli la ramène en HT pour calculer la TVA, donc le total payé est le même que sur ta facture mais la TVA affichée peut être plus basse que la sienne.</span></label><div style="display:flex;gap:6px;">${[[false, 'avant TVA (HT)'], [true, 'sur le total TTC']].map(x => `<button type="button" class="${!!d.discTTC === x[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" style="white-space:nowrap;" onclick="Achats.setHead('discTTC',${x[0]})">${x[1]}</button>`).join('')}</div></div>` : ''}
+          ${this.isHT(d) ? `<div class="fg" style="max-width:none;"><label>Remise donnée <span class="muted help">« Avant TVA » : la remise réduit le prix HT. « Sur le total TTC » : elle est retirée après la TVA (code promo) : le total HT et la TVA restent ceux de ta facture, seul le total payé baisse.</span></label><div style="display:flex;gap:6px;">${[[false, 'avant TVA (HT)'], [true, 'sur le total TTC']].map(x => `<button type="button" class="${!!d.discTTC === x[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" style="white-space:nowrap;" onclick="Achats.setHead('discTTC',${x[0]})">${x[1]}</button>`).join('')}</div></div>` : ''}
           ${this.isHT(d) ? `<div><span class="muted">Total HT</span> <b class="sensitive" id="ach_base">${U.eur(this.base(d))}</b></div>` : ''}
           <div class="ach-grand">Total payé <b class="sensitive" id="ach_tot">${U.eur(this.grandTotal(d))}</b></div>
         </div>
         ${this.isHT(d) ? `<div class="ach-vat"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:6px;">TVA indiquée en bas de la facture</div>
-          ${(d.vat || []).map((v, i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:nowrap;"><input type="number" step="any" min="0" value="${v.rate}" onchange="Achats.setVat(${i},'rate',this.value)" title="Taux (%)" style="width:80px;flex:0 0 80px;"><span style="white-space:nowrap;">% →</span><input id="ach_vatamt_${i}" type="number" step="any" min="0" value="${v.amount || ''}" placeholder="montant TVA" oninput="Achats.setVat(${i},'amount',this.value)" style="width:140px;flex:0 0 140px;"><span>€</span><button class="btn-icon" title="Retirer ce taux" onclick="Achats.delVat(${i})">🗑️</button></div>`).join('')}
+          ${(d.vat || []).map((v, i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:nowrap;"><input id="ach_vatrate_${i}" type="number" step="any" min="0" value="${v.rate}" oninput="Achats.setVat(${i},'rate',this.value)" title="Taux (%)" style="width:80px;flex:0 0 80px;"><span style="white-space:nowrap;">% →</span><input id="ach_vatamt_${i}" type="number" step="any" min="0" value="${v.amount || ''}" placeholder="montant TVA" oninput="Achats.setVat(${i},'amount',this.value)" style="width:140px;flex:0 0 140px;"><span>€</span><button class="btn-icon" title="Retirer ce taux" onclick="Achats.delVat(${i})">🗑️</button></div>`).join('')}
           <button class="btn-ghost btn-sm" onclick="Achats.addVat()">＋ Ajouter un taux de TVA</button> <span class="muted">TVA totale : <b class="sensitive" id="ach_vat">${U.eur(this.vatSum(d))}</b></span></div>` : ''}
         <div class="frow mt">
           <button class="btn-ok" style="flex:0 0 auto;" onclick="Achats.save()">✅ Enregistrer la facture</button>
