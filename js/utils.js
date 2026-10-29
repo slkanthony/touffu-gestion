@@ -678,7 +678,7 @@ U.nsel = {
       if (i < 0) i = rs.findIndex(x => x.classList.contains('active'));
       rs.forEach(x => x.classList.remove('hl'));
       i = Math.max(0, Math.min(rs.length - 1, i + dir));
-      rs[i].classList.add('hl'); rs[i].scrollIntoView({ block: 'nearest' });
+      rs[i].classList.add('hl'); this._reveal(p, rs[i]);
     };
     p.tabIndex = -1;
     p.addEventListener('keydown', e => {
@@ -698,10 +698,12 @@ U.nsel = {
           hd.style.display = any ? '' : 'none';
         });
       });
-      q.focus();
-    } else p.focus();
-    const act = p.querySelector('.pp-row.active'); if (act) act.scrollIntoView({ block: 'nearest' });
+      if (matchMedia('(pointer: coarse)').matches) p.focus({ preventScroll: true }); else q.focus({ preventScroll: true });   // téléphone : on ne force pas le clavier (la page sautait) ; on touche la recherche si on veut taper
+    } else p.focus({ preventScroll: true });
+    const act = p.querySelector('.pp-row.active'); if (act) p.scrollTop = Math.max(0, act.offsetTop - p.clientHeight / 2 + act.offsetHeight / 2);   // choix actuel au milieu de la liste, sans scrollIntoView (qui peut faire défiler toute la page)
   },
+  /* Fait apparaître une ligne DANS le panneau (jamais de défilement de la page) */
+  _reveal(p, el) { const t = el.offsetTop, b = t + el.offsetHeight; if (t < p.scrollTop) p.scrollTop = t; else if (b > p.scrollTop + p.clientHeight) p.scrollTop = b - p.clientHeight; },
   pick(sel, i) {
     this.close();
     if (sel.selectedIndex !== i) {
@@ -710,7 +712,7 @@ U.nsel = {
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     }
     this.sync(sel);
-    if (sel._nselTrig && sel._nselTrig.isConnected) sel._nselTrig.focus();
+    if (sel._nselTrig && sel._nselTrig.isConnected) sel._nselTrig.focus({ preventScroll: true });
   },
   close() {
     if (!this.cur) return;
