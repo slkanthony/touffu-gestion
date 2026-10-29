@@ -707,7 +707,11 @@ const Achats = {
   },
   _refreshTotals() {
     const d = this._d; if (!d) return;
-    d.lines.forEach((l, i) => { const e = document.getElementById('ach_lt_' + i); if (e) e.textContent = U.eur(this.lineTotal(l)); });
+    d.lines.forEach((l, i) => {
+      const e = document.getElementById('ach_lt_' + i), u = document.getElementById('ach_upin_' + i);
+      if (e) { if (e.tagName === 'INPUT') { if (document.activeElement !== e) e.value = this.lineTotal(l) || ''; } else e.textContent = U.eur(this.lineTotal(l)); }
+      if (u && document.activeElement !== u) u.value = l.price ? Math.round(l.price * 10000) / 10000 : '';   // total tapé : le prix à l'unité suit
+    });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_pv_' + i); if (e) e.textContent = this._pvText(l); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_ph_' + i); if (e) e.textContent = this._phText(l); });
     d.lines.forEach((l, i) => { const e = document.getElementById('ach_up_' + i); if (e) e.textContent = this._upText(l); });
@@ -753,7 +757,7 @@ const Achats = {
     // 3 décimales (0,118 € la pièce, 0,957 € le mètre) : c'est la précision de la facture du fournisseur
     return pack > 1 ? '= ' + (Math.round(U.num(l.price) / pack * 1000) / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' € / ' + (l.unit === 'rouleau' ? 'm' : 'pièce') : '';
   },
-  setLineTot(i, v) { const l = this._d.lines[i]; l.tot = U.num(v); l.price = U.num(l.qty) > 0 ? l.tot / U.num(l.qty) : 0; this._touch(); this._refreshTotals(); },
+  setLineTot(i, v) { const l = this._d.lines[i], t = U.num(v); if (this._totalMode(l)) l.tot = t; else delete l.tot; l.price = U.num(l.qty) > 0 ? t / U.num(l.qty) : 0; this._touch(); this._refreshTotals(); },
   _recvBox(l, i) {   // mastication : lot et DLUO suivis d'office ; à la pièce → stock tout de suite (taille choisie), au kilo → à ranger (voir _directOf)
     const fg = (lab, inner) => `<div class="fg"><label>${lab}</label>${inner}</div>`;
     if (!l.toStock) return fg('Stock', `<label class="ach-chk"><input type="checkbox" onchange="Achats.setToStock(${i},this.checked)"> 📥 Suivre ce lot <span class="muted help">Facture ancienne (plus de 7 jours) : rien n'est ajouté ni suivi d'office, pour ne pas compter deux fois une marchandise déjà en stock. Coche si elle n'y est pas encore.</span></label>`);
@@ -792,8 +796,9 @@ const Achats = {
         r2.push(fg('Prix ligne (€ ' + ht + ')', `<input type="number" step="any" value="${tot}" placeholder="0" oninput="Achats.setLineTot(${i},this.value)">`, '1fr', false, 3));
         r2.push(fg('Prix unitaire', `<div class="ach-tot sensitive" id="ach_up_${i}">${this._upText(l)}</div><div class="muted sensitive" id="ach_ph_${i}" style="font-size:.78rem;">${this._phText(l)}</div><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
       } else {
-        r2.push(fg('Prix unitaire (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
-        r2.push(fg('Total ligne', `<div class="ach-tot sensitive" id="ach_lt_${i}">${U.eur(this.lineTotal(l))}</div><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
+        // prix d'UNE unité (au kg, à la pièce…) ET total de la ligne : on tape l'un ou l'autre, l'autre se calcule (colis de 5 kg à 64,15 € = 12,83 € / kg)
+        r2.push(fg('Prix / ' + (l.unit || (c.id === 'mastication' ? 'kg' : 'pièce')) + ' (€ ' + ht + ')', `<input id="ach_upin_${i}" type="number" step="any" value="${l.price ? Math.round(l.price * 10000) / 10000 : ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)">`, '1fr', false, 3));
+        r2.push(fg('Total ligne (€ ' + ht + ')', `<input id="ach_lt_${i}" type="number" step="any" value="${this.lineTotal(l) || ''}" placeholder="0" oninput="Achats.setLineTot(${i},this.value)"><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '.9fr', false, 4));
       }
       const box = (c.link === 'C' || c.link === 'T') && l.ref ? this._stockBox(l, i) : c.link === 'M' && l.ref ? this._recvBox(l, i) : '';
       if (box) r2.push({ h: box.replace('<div class="fg">', '<div class="fg" style="grid-column:5;">'), fr: '1.2fr' });
