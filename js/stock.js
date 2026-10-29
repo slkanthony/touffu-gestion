@@ -969,7 +969,7 @@ const Stock = {
     return msgs;
   },
 
-  editProduct(id) {
+  editProduct(id, onCreated) {   // onCreated(p) : appelé après la création (ex. facture d'achat qui lie sa ligne au nouveau produit)
     const S = Store.state.settings;
     const p = id ? Store.state.stockM.find(x=>x.id===id)
       : {id:U.uid(),catalogId:'',name:'',meatType:S.meatTypes[0],variants:[]};
@@ -1113,6 +1113,7 @@ const Stock = {
           U.toast(id?'Modification enregistrée.':'Produit créé.', false, entry.id);
         }
         if (id && oldName && oldName !== p.name) setTimeout(() => Stock.proposeSkuRename(p.id, oldName), 350);
+        if (!id && onCreated) onCreated(p);
       }
     });
   },

@@ -635,7 +635,7 @@ const Achats = {
   newItem(i) {
     const l = this._d && this._d.lines[i]; if (!l) return;
     const done = it => { const ix = this._d.lines.findIndex(x => x.id === l.id); if (ix >= 0) this.pickLink(ix, it.id); };
-    if (l.cat === 'matiere') Stock.editMat(null, null, null, done); else if (l.cat === 'conso') Stock.editConso(null, done);
+    if (l.cat === 'matiere') Stock.editMat(null, null, null, done); else if (l.cat === 'conso') Stock.editConso(null, done); else if (l.cat === 'mastication') Stock.editProduct(null, done);
   },
   setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
   setText(i, k, v) { const l = this._d.lines[i]; l[k] = String(v || '').trim(); if (k === 'unit' && l.cat === 'mastication' && l.ref && !l.vId) l.vId = this._soleVariant(l.ref); this._touch(); if (k === 'unit') this.render(); },   // l'unité (rouleau ⇄ m) change l'aperçu du stock et le prix au mètre
@@ -718,7 +718,7 @@ const Achats = {
     if (!c.detail) {
       r1.push(fg('Désignation', label, '3fr', true), fg('Montant (€ ' + ht + ')', `<input type="number" step="any" value="${l.price || ''}" placeholder="0" oninput="Achats.setNum(${i},'price',this.value)"><div class="muted sensitive" id="ach_tt_${i}" style="font-size:.78rem;">${this._ttcOf(this.lineTotal(l))}</div>`, '1fr'));
     } else {
-      if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)"${c.link === 'M' ? '' : ` data-add data-add-line="${i}" data-add-title="${c.link === 'T' ? 'Nouvelle matière première' : 'Nouveau consommable'}"`}>${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
+      if (c.link) r1.push(fg(c.link === 'M' ? 'Produit du stock' : c.link === 'T' ? 'Matière du stock' : 'Consommable du stock', `<select onchange="Achats.pickLink(${i},this.value)" data-add data-add-line="${i}" data-add-title="${c.link === 'M' ? 'Nouveau produit de mastication' : c.link === 'T' ? 'Nouvelle matière première' : 'Nouveau consommable'}">${this._linkOpts(c.link, l.ref)}</select>`, '1.4fr'));
       r1.push(fg('Désignation', label, c.link ? '2fr' : '4fr', true));
       r2.push(fg('Quantité', `<input type="number" step="any" value="${l.qty || ''}" oninput="Achats.setNum(${i},'qty',this.value)">`, '.8fr', false, 1));
       const itL = c.id === 'matiere' || c.id === 'conso' ? this._item(l) : null;
