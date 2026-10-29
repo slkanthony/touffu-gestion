@@ -29,7 +29,9 @@ const Achats = {
   /* Facture saisie en TTC (défaut) ou en HT (fournisseur qui détaille la TVA en bas de page : p.vat = [{rate, amount}]).
      base = lignes + livraison − remise (dans le mode de saisie) ; payé (TTC) = base + TVA si HT. */
   isHT(p) { return p.taxMode === 'ht'; },
-  base(p) { return this.r2(this.subTotal(p) + U.num(p.shipping) - U.num(p.discount)); },
+  /* Remise d'une facture en HT : le fournisseur peut la donner sur le TOTAL TTC (code promo après taxes) → p.discTTC ; on la ramène en HT avec le taux de TVA (1er taux saisi, sinon taux global). */
+  discHT(p) { const d = U.num(p.discount); if (!(this.isHT(p) && p.discTTC && d)) return d; const r = (p.vat || []).length ? U.num(p.vat[0].rate) : U.num(Store.state.settings.vatRate ?? 20); return this.r2(d / (1 + r / 100)); },
+  base(p) { return this.r2(this.subTotal(p) + U.num(p.shipping) - this.discHT(p)); },
   vatSum(p) { return this.isHT(p) ? this.r2((p.vat || []).reduce((a, v) => a + U.num(v.amount), 0)) : 0; },
   grandTotal(p) { return this.r2(this.base(p) + this.vatSum(p)); },   // TOUJOURS ce qui a été payé (TTC)
   /* TVA répartie au prorata (le fournisseur ne dit pas sur quel produit) : coût TTC = HT × (1 + TVA totale / base HT) */
@@ -91,7 +93,7 @@ const Achats = {
     return { it, add, cur: U.num(it.qty), after: U.num(it.qty) + add };
   },
   _eff(rec) {   // total de chaque ligne + sa part de livraison − sa part de remise (dans le mode de saisie)
-    const sub = this.subTotal(rec), extra = U.num(rec.shipping) - U.num(rec.discount);
+    const sub = this.subTotal(rec), extra = U.num(rec.shipping) - this.discHT(rec);
     return (rec.lines || []).map(l => this.lineTotal(l) + (sub ? extra * this.lineTotal(l) / sub : 0));
   },
   /* TVA d'une facture saisie en TTC : taux propre à la facture (rec.vatRate, retenu par fournisseur) ; vide = taux global des Paramètres. */
@@ -99,7 +101,7 @@ const Achats = {
   /* Coût réel HT de chaque ligne : remise comprise, livraison EXCLUE. Décision d'Antho (2026-10-04) : le port d'une facture n'est PAS réparti
      dans le coût des lots / du stock ; c'est une charge (Compta) + un taux « port à l'achat » par catégorie ajouté au calcul de prix (Paramètres). */
   _effHT(rec) {
-    const g = 1 + this.vatRateOf(rec) / 100, sub = this.subTotal(rec), disc = U.num(rec.discount);
+    const g = 1 + this.vatRateOf(rec) / 100, sub = this.subTotal(rec), disc = this.discHT(rec);
     return (rec.lines || []).map(l => { const t = this.lineTotal(l) - (sub ? disc * this.lineTotal(l) / sub : 0); return this.isHT(rec) ? t : t / g; });
   },
   /* Livraison HT imputée à chaque ligne (au prorata du montant) : sert aux statistiques de port par catégorie et à la charge « port sur achats ». */
@@ -485,7 +487,7 @@ const Achats = {
         <span class="sensitive" style="text-align:right;white-space:nowrap;"><b>${U.eur(this.lineTotal(l))}</b></span></div>`;
     }).join('');
     const ht = this.isHT(p) ? ' HT' : '';
-    const extra = [this.isHT(p) ? 'Prix saisis HT' : '', U.num(p.shipping) ? `Livraison : ${U.eur(p.shipping)}${ht}` : '', U.num(p.discount) ? `Remise : − ${U.eur(p.discount)}${ht}` : '', this.isHT(p) ? 'TVA : ' + ((p.vat || []).map(v => U.qty(v.rate) + ' % = ' + U.eur(v.amount)).join(' + ') || '0 €') + ` → payé ${U.eur(this.grandTotal(p))} TTC` : ''].filter(Boolean).join(' · ');
+    const extra = [this.isHT(p) ? 'Prix saisis HT' : '', U.num(p.shipping) ? `Livraison : ${U.eur(p.shipping)}${ht}` : '', U.num(p.discount) ? `Remise : − ${U.eur(p.discount)}${p.discTTC ? ' TTC' : ht}` : '', this.isHT(p) ? 'TVA : ' + ((p.vat || []).map(v => U.qty(v.rate) + ' % = ' + U.eur(v.amount)).join(' + ') || '0 €') + ` → payé ${U.eur(this.grandTotal(p))} TTC` : ''].filter(Boolean).join(' · ');
     return `<tr class="sale-detail"><td colspan="9" style="text-align:left;">${lines}${extra ? `<div class="muted sensitive" style="padding-top:6px;">${extra}</div>` : ''}${p.note ? `<div class="muted" style="padding-top:4px;font-style:italic;">📝 ${U.esc(p.note)}</div>` : ''}</td></tr>`;
   },
 
@@ -529,10 +531,11 @@ const Achats = {
     if (k === 'shipping' || k === 'discount') this._refreshTotals();
     if (k === 'taxMode') { if (v === 'ht' && !(d.vat || []).length) d.vat = [{ rate: U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: true }]; this._autoVat(); this._touch(); this.render(); }
     if (k === 'paidBy') { if (v === 'pro') d.reimbursed = ''; this.render(); }
+    if (k === 'discTTC') { this._autoVat(); this._touch(); this.render(); }
     if (k === 'payment' || k === 'pending') this.render();
   },
   /* TVA en HT : une seule ligne « auto » = base HT × taux (modifiable) ; dès qu'on tape un montant ou qu'on ajoute un taux, c'est à la main */
-  _autoVat() { const d = this._d; if (!d || !this.isHT(d)) return; const v = d.vat || []; if (v.length === 1 && v[0].auto) v[0].amount = this.r2(this.base(d) * U.num(v[0].rate) / 100); },
+  _autoVat() { const d = this._d; if (!d || !this.isHT(d)) return; const v = d.vat || []; if (v.length === 1 && (v[0].auto || !U.num(v[0].amount))) { v[0].auto = true; v[0].amount = this.r2(this.base(d) * U.num(v[0].rate) / 100); } },
   setVat(i, f, val) {
     const v = this._d.vat[i]; if (!v) return; v[f] = U.num(val);
     if (f === 'amount') v.auto = false; else this._autoVat();
@@ -744,6 +747,7 @@ const Achats = {
     return `<div class="ach-line"><div class="ach-grid">${row('ach-r1', r1)}${row('ach-r2', r2)}</div><div style="text-align:right;margin-top:4px;"><button class="btn-icon" title="Retirer cette ligne" onclick="Achats.delLine(${i})">🗑️</button></div></div>`;
   },
   renderEditor() {
+    this._autoVat();   // TVA calculée dès l'affichage (retour sur un brouillon, passage en HT…)
     const d = this._d, sups = this.suppliers();
     const supOpts = `<option value="">— choisir —</option>${sups.map(s => `<option value="${s.id}" data-a="${U.esc(s.name)}" data-c="${U.esc(Store.supplierTypesLabel(s))}" ${s.id === d.supplierId ? 'selected' : ''}>${U.esc(s.name)}</option>`).join('')}<option value="__new">＋ Nouveau fournisseur…</option>`;
     const mode = [['ttc', 'TTC'], ['ht', 'HT (TVA détaillée en bas)']].map(p => `<button type="button" class="${(d.taxMode || 'ttc') === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('taxMode','${p[0]}')">${p[1]}</button>`).join('');
@@ -775,12 +779,13 @@ const Achats = {
         <div class="ach-sum">
           <div><span class="muted">Sous-total ${this.isHT(d) ? 'HT' : ''}</span> <b class="sensitive" id="ach_sub">${U.eur(this.subTotal(d))}</b></div>
           <div class="fg"><label>Frais de livraison (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.shipping || ''}" placeholder="0" oninput="Achats.setHead('shipping',this.value)"><div class="muted sensitive" id="ach_shiptt" style="font-size:.78rem;">${this._ttcOf(d.shipping)}</div></div>
-          <div class="fg"><label>Remise (€ ${this.isHT(d) ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.discount || ''}" placeholder="0" oninput="Achats.setHead('discount',this.value)"></div>
+          <div class="fg"><label>Remise (€ ${this.isHT(d) && !d.discTTC ? 'HT' : 'TTC'})</label><input type="number" step="any" value="${d.discount || ''}" placeholder="0" oninput="Achats.setHead('discount',this.value)"></div>
+          ${this.isHT(d) ? `<div class="fg" style="max-width:none;"><label>Remise donnée <span class="muted help">« Avant TVA » : la remise réduit le prix HT. « Sur le total TTC » : elle est retirée après la TVA (code promo) ; l'appli la ramène en HT pour calculer la TVA, donc le total payé est le même que sur ta facture mais la TVA affichée peut être plus basse que la sienne.</span></label><div style="display:flex;gap:6px;">${[[false, 'avant TVA (HT)'], [true, 'sur le total TTC']].map(x => `<button type="button" class="${!!d.discTTC === x[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" style="white-space:nowrap;" onclick="Achats.setHead('discTTC',${x[0]})">${x[1]}</button>`).join('')}</div></div>` : ''}
           ${this.isHT(d) ? `<div><span class="muted">Total HT</span> <b class="sensitive" id="ach_base">${U.eur(this.base(d))}</b></div>` : ''}
           <div class="ach-grand">Total payé <b class="sensitive" id="ach_tot">${U.eur(this.grandTotal(d))}</b></div>
         </div>
         ${this.isHT(d) ? `<div class="ach-vat"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:6px;">TVA indiquée en bas de la facture</div>
-          ${(d.vat || []).map((v, i) => `<div class="frow" style="align-items:center;gap:8px;margin-bottom:6px;max-width:460px;"><div class="fg" style="max-width:110px;"><input type="number" step="any" min="0" value="${v.rate}" onchange="Achats.setVat(${i},'rate',this.value)" title="Taux (%)"></div><span>% →</span><div class="fg" style="max-width:150px;"><input id="ach_vatamt_${i}" type="number" step="any" min="0" value="${v.amount || ''}" placeholder="montant TVA" oninput="Achats.setVat(${i},'amount',this.value)"></div><span>€</span><button class="btn-icon" title="Retirer ce taux" onclick="Achats.delVat(${i})">🗑️</button></div>`).join('')}
+          ${(d.vat || []).map((v, i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:nowrap;"><input type="number" step="any" min="0" value="${v.rate}" onchange="Achats.setVat(${i},'rate',this.value)" title="Taux (%)" style="width:80px;flex:0 0 80px;"><span style="white-space:nowrap;">% →</span><input id="ach_vatamt_${i}" type="number" step="any" min="0" value="${v.amount || ''}" placeholder="montant TVA" oninput="Achats.setVat(${i},'amount',this.value)" style="width:140px;flex:0 0 140px;"><span>€</span><button class="btn-icon" title="Retirer ce taux" onclick="Achats.delVat(${i})">🗑️</button></div>`).join('')}
           <button class="btn-ghost btn-sm" onclick="Achats.addVat()">＋ Ajouter un taux de TVA</button> <span class="muted">TVA totale : <b class="sensitive" id="ach_vat">${U.eur(this.vatSum(d))}</b></span></div>` : ''}
         <div class="frow mt">
           <button class="btn-ok" style="flex:0 0 auto;" onclick="Achats.save()">✅ Enregistrer la facture</button>
@@ -806,7 +811,7 @@ const Achats = {
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     this._autoVat();
-    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), ...(d.pending ? { pending: true } : {}), lines };
+    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), ...(d.pending ? { pending: true } : {}), ...(d.taxMode === 'ht' && d.discTTC && U.num(d.discount) ? { discTTC: true } : {}), lines };
     rec.total = this.grandTotal(rec);
     // doublons : même n° de facture chez le même fournisseur, ou même fournisseur + date + montant (alerte non bloquante)
     const msgs = [], others = this.list().filter(p => p.id !== rec.id && p.supplierId === rec.supplierId);
