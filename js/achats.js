@@ -141,6 +141,7 @@ const Achats = {
   },
   _applyStock(rec, snaps, notes) {
     const eff = this._effHT(rec);   // coût réel HT par ligne (TVA propre à la facture si saisie en HT)
+    if (rec.pending) { rec.lines.forEach(l => { delete l.applied; }); return; }   // commande pas encore reçue : rien n'entre en stock
     rec.lines.forEach((l, i) => {
       delete l.applied;
       const dr = this._directOf(l);
@@ -249,7 +250,7 @@ const Achats = {
         <td style="white-space:nowrap;"><b>${open ? '▾' : '▸'} ${U.frDate(p.date)}</b></td>
         <td style="text-align:left;">${U.esc(this.supplierLabel(p))}</td>
         <td style="text-align:left;">${U.esc(p.invoiceNo || '—')}</td>
-        <td style="text-align:left;">${cats} <span class="muted">${(p.lines || []).length} ligne(s)</span>${p.hist ? ' <span class="badge" title="Saisie statistique : n\'a pas touché au stock ni aux prix">📚</span>' : ''}</td>
+        <td style="text-align:left;">${cats} <span class="muted">${(p.lines || []).length} ligne(s)</span>${p.hist ? ' <span class="badge" title="Saisie statistique : n\'a pas touché au stock ni aux prix">📚</span>' : ''}${p.pending ? ' <span class="badge warn" style="white-space:nowrap;" title="Commande pas encore reçue : rien n\'est entré en stock">📦 à recevoir</span>' : ''}</td>
         <td>${this.payLabel(p.payment)}</td>
         <td>${refund}</td>
         <td class="num sensitive">${U.num(p.shipping) ? U.eur(p.shipping) : '—'}</td>
@@ -285,6 +286,7 @@ const Achats = {
           ${f.refund ? `<button class="btn-ghost btn-sm" style="flex:0 0 auto;" onclick="Achats.setF('refund',false)">✕ Afficher aussi les remboursées</button>` : ''}
         </div>
       </div>
+      ${this._pendingCard()}
       ${this._recvCard()}
       ${this._priceCard()}
       ${this._ppkCard()}
@@ -369,7 +371,7 @@ const Achats = {
     rec.lines.forEach((l, i) => {
       if (l.cat !== 'mastication') return;
       const oldL = old && (old.lines || []).find(x => x.id === l.id);
-      if (l.toStock && l.ref && !l.applied) { if (!l.recv) l.recv = (oldL && oldL.recv) || { dist: [], loss: 0, closed: false }; }   // rangé tout de suite (à la pièce) : rien à ranger ensuite
+      if (l.toStock && l.ref && !l.applied && !rec.pending) { if (!l.recv) l.recv = (oldL && oldL.recv) || { dist: [], loss: 0, closed: false }; }   // rangé tout de suite (à la pièce) : rien à ranger ensuite
       else if (l.recv && !(l.recv.dist || []).length) delete l.recv;   // décochée et rien de rangé : on oublie
       // comparaison avec la fiche de calcul de prix (même unité seulement : kg ↔ « kilo », pièce ↔ pièce)
       delete l.priceCmp;
@@ -399,6 +401,18 @@ const Achats = {
   addDist(pid, lid, entry) {
     const p = this.list().find(x => x.id === pid), l = p && p.lines.find(x => x.id === lid); if (!l || !l.recv) return;
     (l.recv.dist = l.recv.dist || []).push(entry); Store.save('purchases');
+  },
+  /* Commandes passées mais pas encore reçues (Antho 2026-10-29) : la facture sert de bon de contrôle ; « Réceptionner » rouvre la facture (lots, DLUO, case « Reçue »). */
+  _pendingCard() {
+    const rows = this.list().filter(p => p.pending);
+    if (!rows.length) return '';
+    rows.sort((a, b) => b.date.localeCompare(a.date));
+    return `<div class="card" style="border-left:4px solid var(--warn);"><h2>📦 Commandes à recevoir (${rows.length})</h2>
+      <p class="muted help" style="font-size:.85rem;">Rien n'est entré en stock pour ces commandes. À la livraison, clique « Réceptionner » : contrôle les quantités avec la facture, note les n° de lot et les DLUO, passe sur « Reçue » puis enregistre.</p>
+      ${rows.map(p => `<div style="padding:8px 0;border-bottom:1px solid var(--row-border);display:grid;grid-template-columns:minmax(0,3fr) auto auto;gap:10px;align-items:center;">
+        <div><b>${U.esc(this.supplierLabel(p))}</b> <span class="muted">${U.frDate(p.date)}${p.invoiceNo ? ' · n° ' + U.esc(p.invoiceNo) : ''} · ${(p.lines || []).length} ligne(s)</span></div>
+        <span class="sensitive"><b>${U.eur(this.grandTotal(p))}</b></span>
+        <button class="btn-cta btn-sm" onclick="Achats.edit('${p.id}')">📦 Réceptionner</button></div>`).join('')}</div>`;
   },
   _recvCard() {
     const rows = [];
@@ -515,7 +529,7 @@ const Achats = {
     if (k === 'shipping' || k === 'discount') this._refreshTotals();
     if (k === 'taxMode') { if (v === 'ht' && !(d.vat || []).length) d.vat = [{ rate: U.num(Store.state.settings.vatRate ?? 20), amount: 0, auto: true }]; this._autoVat(); this._touch(); this.render(); }
     if (k === 'paidBy') { if (v === 'pro') d.reimbursed = ''; this.render(); }
-    if (k === 'payment') this.render();
+    if (k === 'payment' || k === 'pending') this.render();
   },
   /* TVA en HT : une seule ligne « auto » = base HT × taux (modifiable) ; dès qu'on tape un montant ou qu'on ajoute un taux, c'est à la main */
   _autoVat() { const d = this._d; if (!d || !this.isHT(d)) return; const v = d.vat || []; if (v.length === 1 && v[0].auto) v[0].amount = this.r2(this.base(d) * U.num(v[0].rate) / 100); },
@@ -749,6 +763,7 @@ const Achats = {
           ${(d.taxMode || 'ttc') === 'ttc' ? `<div class="fg" style="max-width:150px;"><label>TVA de la facture (%)</label><input type="number" step="0.1" min="0" value="${d.vatRate ?? ''}" placeholder="${Store.state.settings.vatRate ?? 20} (global)" title="Taux utilisé pour ramener cette facture en HT. Il est retenu pour ce fournisseur." onchange="Achats.setVatRate(this.value)"></div>` : ''}
           <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Moyen de paiement</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${pay}</div></div>
           <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Payé avec</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${who}</div></div>
+          <div style="flex:0 0 auto;"><div class="muted" style="font-size:.78rem;text-transform:uppercase;margin-bottom:4px;">Réception <span class="muted help">Pas encore reçue : rien n'entre en stock et la facture te sert de bon de contrôle à la livraison. Une fois la commande reçue : passe sur « Reçue », complète les n° de lot et les DLUO, enregistre : le stock est alors ajouté.</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${[[false, '✔ Reçue'], [true, '📦 Pas encore reçue']].map(p => `<button type="button" class="${!!d.pending === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('pending',${p[0]})">${p[1]}</button>`).join('')}</div></div>
           ${d.paidBy === 'perso' ? `<div class="fg" style="max-width:200px;"><label>Remboursé le (option)</label><input type="date" value="${U.esc(d.reimbursed || '')}" onchange="Achats.setHead('reimbursed',this.value)"></div>` : ''}
         </div>
       </div>
@@ -791,7 +806,7 @@ const Achats = {
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     this._autoVat();
-    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), lines };
+    const rec = { id: this._editId || d.id, date: d.date, supplierId: d.supplierId, taxMode: d.taxMode === 'ht' ? 'ht' : 'ttc', vat: d.taxMode === 'ht' ? (d.vat || []).filter(v => U.num(v.amount) > 0 || U.num(v.rate) > 0).map(v => ({ rate: U.num(v.rate), amount: this.r2(v.amount), auto: !!v.auto })) : [], vatRate: d.taxMode === 'ht' || d.vatRate === undefined || d.vatRate === '' ? '' : U.num(d.vatRate), invoiceNo: String(d.invoiceNo || '').trim(), payment: d.payment || '', paidBy: d.paidBy || 'pro', reimbursed: d.paidBy === 'perso' ? (d.reimbursed || '') : '', shipping: U.num(d.shipping), discount: U.num(d.discount), note: String(d.note || '').trim(), ...(d.pending ? { pending: true } : {}), lines };
     rec.total = this.grandTotal(rec);
     // doublons : même n° de facture chez le même fournisseur, ou même fournisseur + date + montant (alerte non bloquante)
     const msgs = [], others = this.list().filter(p => p.id !== rec.id && p.supplierId === rec.supplierId);
@@ -811,7 +826,7 @@ const Achats = {
     Store.save('purchases', 'consumables', 'materials', 'stockM'); this.reconcileEquip();
     this._lastCat = lines[lines.length - 1].cat;
     this._d = null; this._editId = ''; this._dirty = false; this.mode = 'list'; this._clearDraft();
-    this.render(); U.toast(`Facture enregistrée : ${U.eur(rec.total)}.` + (notes.length ? ' Stock : ' + notes.join(' · ') : ''), false, entry.id);
+    this.render(); U.toast(rec.pending ? `Commande enregistrée : ${U.eur(rec.total)}. Rien n'est entré en stock : clique « Réceptionner » à la livraison.` : `Facture enregistrée : ${U.eur(rec.total)}.` + (notes.length ? ' Stock : ' + notes.join(' · ') : ''), false, entry.id);
   },
 
   /* Le taux de TVA saisi sur une facture TTC devient celui proposé pour ce fournisseur la fois suivante. */
