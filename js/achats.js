@@ -723,7 +723,10 @@ const Achats = {
     let items;
     if (kind === 'M') items = (Store.state.stockM || []).map(p => {
       const n = (p.variants || []).filter(v => !Stock.isVirtual(p, v)).reduce((t, v) => t + (v.lots || []).reduce((q, l) => q + U.num(l.qtyGeneral) + U.num(l.qtyEvent), 0), 0);
-      return { id: p.id, a: p.name, b: p.meatType || '', c: 'stock ' + U.qty(n), s: [p.sku].concat((p.variants || []).map(v => [v.sku, v.ref, v.label].join(' '))).join(' ') };
+      // références des fournisseurs de la fiche prix liée (celles de la facture : « RFellstrKU5000 ») : cherchables ici comme dans Prix mastication
+      const cats = [...new Set([p.catalogId].concat((p.variants || []).map(v => v.catalogId)).filter(Boolean))].map(id => (Store.state.catalogM || []).find(x => x.id === id)).filter(Boolean);
+      const refs = Store.hideSupplierInfo() ? '' : cats.map(c => (c.suppliers || []).map(s => s.ref || '').join(' ')).join(' ');
+      return { id: p.id, a: p.name, b: p.meatType || '', c: 'stock ' + U.qty(n), s: [p.sku, refs].concat((p.variants || []).map(v => [v.sku, v.ref, v.label].join(' '))).join(' ') };
     });
     // `s` = mots de recherche non affichés : référence fournisseur et SKU (le fournisseur peut nommer / colorier un produit autrement que toi)
     else if (kind === 'T') items = (Store.state.materials || []).map(m => ({ id: m.id, a: m.product || m.name || '', b: m.product ? (m.variant || m.name || '') : (m.variant || ''), c: 'stock ' + U.qty(m.qty) + ' ' + this.unitFrom(m.unit) + (U.num(m.costUnit) ? ' · ' + U.eur(m.costUnit) + '/u' : ''), s: [m.name, m.product, m.variant, m.sku, m.ref].join(' ') }));
