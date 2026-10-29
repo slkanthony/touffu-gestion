@@ -124,6 +124,15 @@ const Achats = {
   _revertStock(rec, snaps) {
     (rec.lines || []).forEach(l => {
       const ap = l.applied; if (!ap) return;
+      if (l.cat === 'mastication') {   // achat à la pièce rangé tout de suite : on retire la quantité du lot créé (le lot disparaît s'il est vide)
+        const sp = (Store.state.stockM || []).find(x => x.id === ap.pId), v = sp && sp.variants.find(x => x.id === ap.vId), lot = v && (v.lots || []).find(x => x.id === ap.lotId);
+        if (!lot) return;
+        this._snapOnce('stockM', sp, snaps);
+        let rest = U.num(ap.qty), g = Math.min(rest, U.num(lot.qtyGeneral)); lot.qtyGeneral = U.num(lot.qtyGeneral) - g; rest -= g;
+        lot.qtyEvent = Math.max(0, U.num(lot.qtyEvent) - rest);
+        if (!(U.num(lot.qtyGeneral) > 0) && !(U.num(lot.qtyEvent) > 0)) v.lots = v.lots.filter(x => x.id !== lot.id);
+        return;
+      }
       const it = this._item(l); if (!it) return;
       this._snapOnce(l.cat === 'conso' ? 'consumables' : 'materials', it, snaps);
       if ((ap.rollId || ap.rollIds) && Array.isArray(it.rolls)) { const gone = [ap.rollId].concat(ap.rollIds || []); it.rolls = it.rolls.filter(r => !gone.includes(r.id)); it.qty = it.rolls.reduce((a, r) => a + U.num(r.qty), 0); }
@@ -134,6 +143,14 @@ const Achats = {
     const eff = this._effHT(rec);   // coût réel HT par ligne (TVA propre à la facture si saisie en HT)
     rec.lines.forEach((l, i) => {
       delete l.applied;
+      const dr = this._directOf(l);
+      if (dr) {   // mastication à la pièce : un lot (n° de lot, DLUO, coût réel TVA d'achat comprise) dans la taille choisie
+        this._snapOnce('stockM', dr.sp, snaps);
+        const q = Math.round(U.num(l.qty)), lot = { id: U.uid(), lotNumber: l.lot || '', dluo: l.dluo || '', qtyGeneral: q, qtyEvent: 0, costUnit: Math.round(eff[i] / U.num(l.qty) * Stock.buyK(dr.sp, dr.v) * 10000) / 10000, costFinal: true, src: { pid: rec.id, lid: l.id } };
+        dr.v.lots.push(lot); l.applied = { qty: q, pId: dr.sp.id, vId: dr.v.id, lotId: lot.id };
+        notes.push(`${dr.sp.name} › ${Pricing.labelVariant(dr.v)} +${q}${l.lot ? ' (lot ' + l.lot + ')' : ''}`);
+        return;
+      }
       if (!l.toStock || !l.ref || (l.cat !== 'conso' && l.cat !== 'matiere') || !(U.num(l.qty) > 0)) return;
       const it = this._item(l); if (!it) return;
       this._snapOnce(l.cat === 'conso' ? 'consumables' : 'materials', it, snaps);
@@ -352,7 +369,7 @@ const Achats = {
     rec.lines.forEach((l, i) => {
       if (l.cat !== 'mastication') return;
       const oldL = old && (old.lines || []).find(x => x.id === l.id);
-      if (l.toStock && l.ref) { if (!l.recv) l.recv = (oldL && oldL.recv) || { dist: [], loss: 0, closed: false }; }
+      if (l.toStock && l.ref && !l.applied) { if (!l.recv) l.recv = (oldL && oldL.recv) || { dist: [], loss: 0, closed: false }; }   // rangé tout de suite (à la pièce) : rien à ranger ensuite
       else if (l.recv && !(l.recv.dist || []).length) delete l.recv;   // décochée et rien de rangé : on oublie
       // comparaison avec la fiche de calcul de prix (même unité seulement : kg ↔ « kilo », pièce ↔ pièce)
       delete l.priceCmp;
@@ -480,7 +497,7 @@ const Achats = {
     this._revertStock(p, snaps);
     Store.state.purchases = this.list().filter(x => x.id !== id);
     const entry = Store.log('achat', `Facture supprimée — ${this.supplierLabel(p)} ${U.frDate(p.date)}`, { type: 'restoreBatch', data: snaps });
-    Store.save('purchases', 'consumables', 'materials'); this.reconcileEquip(); this.render();
+    Store.save('purchases', 'consumables', 'materials', 'stockM'); this.reconcileEquip(); this.render();
     U.toast('Facture supprimée' + (touched ? ' · stock remis comme avant l\'achat.' : '.'), false, entry.id);
   },
   setReimbursed(id, on) {
@@ -576,7 +593,8 @@ const Achats = {
   },
   pickLink(i, v) {
     const l = this._d.lines[i], c = this.cat(l.cat); l.ref = v;
-    l.toStock = !!v && (c.link === 'C' || c.link === 'T' || (c.id === 'mastication' && this._compareWanted(v))) && this._recent(this._d.date);   // cochée par défaut (sauf facture ancienne) ; mastication : voir _compareWanted
+    l.toStock = !!v && (c.link === 'C' || c.link === 'T' || c.id === 'mastication') && this._recent(this._d.date);   // d'office (sauf facture ancienne)
+    l.vId = c.id === 'mastication' ? this._soleVariant(v) : '';   // achat à la pièce : la taille est proposée d'office quand le produit n'en a qu'une
     if (v) {
       const name = this.itemName(c.link, v); if (name && (!String(l.label || '').trim() || l.label === l._auto)) { l.label = name; l._auto = name; }   // la désignation suit le produit choisi tant que tu ne l'as pas retapée
       if (c.link === 'T') { const m = Store.state.materials.find(x => x.id === v); if (m) { if (this._rollLen(m)) l.unit = 'rouleau'; else if (this._lotLen(m)) l.unit = 'lot'; else if (!l.unit || l.unit === 'rouleau' || l.unit === 'lot') l.unit = this.unitFrom(m.unit); } }   // sangle au rouleau : on saisit un nombre de rouleaux
@@ -584,14 +602,20 @@ const Achats = {
     }
     this._touch(); this.render();
   },
-  /* Mastication : « À ranger » cochée d'office (Antho 2026-10-28) — c'est ce qui permet de comparer pièces / kilo et coût réel à la fiche prix.
-     Seule exception : produit acheté au KILO et revendu uniquement au poids (gramme / kilo) : rien à comparer, pas de tri à faire. Produit sans fiche liée : coché. */
-  _compareWanted(spId) {
-    const sp = (Store.state.stockM || []).find(x => x.id === spId), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
-    if (!cat) return true;
-    const act = (cat.variants || []).filter(v => v.enabled !== false);
-    return !(Pricing.baseUnitCost(cat).unit === 'kilo' && act.length > 0 && act.every(v => v.mode === 'gram'));
+  /* Mastication : le lot et la DLUO sont TOUJOURS suivis (Antho 2026-10-29, plus de case « À ranger »).
+     Acheté à la PIÈCE (ou à la taille) → la quantité entre tout de suite en stock, dans la taille choisie, avec n° de lot et DLUO (`_directOf`).
+     Acheté au KILO → il est reconditionné chez lui : proposé dans Stock → « ＋ Ajouter un lot » (lot et DLUO pré-remplis), aucune quantité tant qu'il n'a pas rangé. */
+  _stockVariants(pId) {
+    const sp = (Store.state.stockM || []).find(x => x.id === pId);
+    return sp ? sp.variants.filter(v => !Stock.isVirtual(sp, v)).sort((a, b) => U.sortFr(Pricing.labelVariant(a), Pricing.labelVariant(b))) : [];
   },
+  _soleVariant(pId) { const vs = this._stockVariants(pId); return vs.length === 1 ? vs[0].id : ''; },
+  _directOf(l) {
+    if (l.cat !== 'mastication' || !l.toStock || !l.ref || !l.vId || this.unitFrom(l.unit) !== 'pièce' || !(Math.round(U.num(l.qty)) > 0)) return null;
+    const sp = (Store.state.stockM || []).find(x => x.id === l.ref), v = sp && sp.variants.find(x => x.id === l.vId);
+    return v && !Stock.isVirtual(sp, v) ? { sp, v } : null;
+  },
+  setVar(i, v) { this._d.lines[i].vId = v; this._touch(); this.render(); },
   /* « ＋ » du menu « Matière / Consommable du stock » : fenêtre de création vide (comme dans Stock), puis la ligne se lie à la nouvelle fiche.
      La quantité de la facture s'ajoute au stock à l'enregistrement : laisser « Quantité en stock » à 0 dans cette fenêtre. */
   newItem(i) {
@@ -600,7 +624,7 @@ const Achats = {
     if (l.cat === 'matiere') Stock.editMat(null, null, null, done); else if (l.cat === 'conso') Stock.editConso(null, done);
   },
   setToStock(i, on) { this._d.lines[i].toStock = !!on; this._touch(); this.render(); },
-  setText(i, k, v) { this._d.lines[i][k] = String(v || '').trim(); this._touch(); if (k === 'unit') this.render(); },   // l'unité (rouleau ⇄ m) change l'aperçu du stock et le prix au mètre
+  setText(i, k, v) { const l = this._d.lines[i]; l[k] = String(v || '').trim(); if (k === 'unit' && l.cat === 'mastication' && l.ref && !l.vId) l.vId = this._soleVariant(l.ref); this._touch(); if (k === 'unit') this.render(); },   // l'unité (rouleau ⇄ m) change l'aperçu du stock et le prix au mètre
   setNum(i, k, v) {
     const l = this._d.lines[i];
     if (k === 'qty' && this._totalMode(l)) { if (l.tot === undefined) l.tot = this.lineTotal(l); l.qty = U.num(v); l.price = l.qty > 0 ? l.tot / l.qty : 0; }   // changer la quantité garde le prix de la ligne
@@ -653,9 +677,15 @@ const Achats = {
     return pack > 1 ? '= ' + (Math.round(U.num(l.price) / pack * 1000) / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' € / ' + (l.unit === 'rouleau' ? 'm' : 'pièce') : '';
   },
   setLineTot(i, v) { const l = this._d.lines[i]; l.tot = U.num(v); l.price = U.num(l.qty) > 0 ? l.tot / U.num(l.qty) : 0; this._touch(); this._refreshTotals(); },
-  _recvBox(l, i) {   // mastication : suivre le lot (aucun stock n'est ajouté tout seul) — cochée d'office (voir _compareWanted)
+  _recvBox(l, i) {   // mastication : lot et DLUO suivis d'office ; à la pièce → stock tout de suite (taille choisie), au kilo → à ranger (voir _directOf)
+    const fg = (lab, inner) => `<div class="fg"><label>${lab}</label>${inner}</div>`;
+    if (!l.toStock) return fg('Stock', `<label class="ach-chk"><input type="checkbox" onchange="Achats.setToStock(${i},this.checked)"> 📥 Suivre ce lot <span class="muted help">Facture ancienne (plus de 7 jours) : rien n'est ajouté ni suivi d'office, pour ne pas compter deux fois une marchandise déjà en stock. Coche si elle n'y est pas encore.</span></label>`);
+    if (this.unitFrom(l.unit) === 'pièce') {
+      const opts = '<option value="">— je range moi-même —</option>' + this._stockVariants(l.ref).map(v => `<option value="${v.id}" ${v.id === l.vId ? 'selected' : ''}>${U.esc(Pricing.labelVariant(v))}</option>`).join('');
+      return fg('Taille en stock', `<select onchange="Achats.setVar(${i},this.value)">${opts}</select><span class="muted help">Acheté à la pièce : la quantité entre tout de suite en stock dans cette taille, avec le n° de lot et la DLUO. « Je range moi-même » : le lot sera proposé dans Stock → « ＋ Ajouter un lot » (aucune quantité ajoutée).</span>`);
+    }
     const st = l.recv ? (l.recv.closed ? 'tri terminé' : (l.recv.dist || []).length + ' lot(s) rangé(s)') : '';
-    return `<div class="fg"><label>Stock</label><label class="ach-chk"><input type="checkbox" ${l.toStock ? 'checked' : ''} onchange="Achats.setToStock(${i},this.checked)"> 📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Cochée d'office (sauf produit acheté au kilo et vendu seulement au poids) pour pouvoir comparer avec ta fiche prix. Suit ce lot : il sera proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></label></div>`;
+    return fg('Stock', `<div class="ach-chk" style="cursor:default;">📥 À ranger${st ? ' <span class="muted">· ' + st + '</span>' : ''} <span class="muted help">Acheté au kilo, tu le reconditionnes : le lot est proposé dans Stock → « ＋ Ajouter un lot » (n° de lot et DLUO pré-remplis), puis « Terminer le tri » calcule le coût réel par pièce. Aucune quantité n'est ajoutée au stock toute seule : c'est toi qui ranges les pièces, taille par taille.</span></div>`);
   },
   _stockBox(l, i) {   // consommable / matière : la quantité achetée est ajoutée au stock à l'enregistrement
     if (!this._stockPreview(l)) return '';
@@ -724,7 +754,7 @@ const Achats = {
       </div>
       <div class="card">
         <h2>🧾 Lignes de la facture</h2>
-        <p class="muted help" style="font-size:.85rem;">Mastication, matière première, consommable et investissement se détaillent ligne par ligne (quantité × prix). Outillage et frais généraux : un seul montant. Pour la mastication, tu peux déjà noter le n° de lot et la DLUO : ils te seront proposés quand tu rentreras ces produits dans le stock. Lier la ligne à un produit du stock est facultatif.</p>
+        <p class="muted help" style="font-size:.85rem;">Mastication, matière première, consommable et investissement se détaillent ligne par ligne (quantité × prix). Outillage et frais généraux : un seul montant. Pour la mastication, note le n° de lot et la DLUO : acheté à la pièce, la quantité entre tout de suite en stock avec eux ; acheté au kilo, ils te seront proposés quand tu rangeras les pièces dans le stock. Lier la ligne à un produit du stock est facultatif.</p>
         ${d.lines.map((l, i) => this._lineHTML(l, i)).join('')}
         <button class="btn-ghost btn-sm" onclick="Achats.addLine()">＋ Ajouter une ligne</button>
         <div class="ach-sum">
@@ -757,7 +787,7 @@ const Achats = {
       const lab = String(l.label || '').trim() || this.itemName(c.link, l.ref);
       if (!lab && !U.num(l.price) && !l.ref) continue;   // ligne vide : ignorée
       if (!lab) { U.toast(`Ligne ${i + 1} : indique une désignation.`, true); return; }
-      lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0, toStock: !!l.toStock && !!l.ref && (c.id === 'conso' || c.id === 'matiere' || c.id === 'mastication'), ...(l.recv ? { recv: l.recv } : {}) });
+      lines.push({ id: l.id || U.uid(), cat: c.id, ref: l.ref || '', label: lab, qty: c.detail ? U.num(l.qty) || 0 : 1, unit: c.detail ? String(l.unit || '').trim() : '', price: U.num(l.price), lot: c.id === 'mastication' ? String(l.lot || '').trim() : '', dluo: c.id === 'mastication' ? (l.dluo || '') : '', years: c.id === 'equipement' ? U.num(l.years) : 0, toStock: !!l.toStock && !!l.ref && (c.id === 'conso' || c.id === 'matiere' || c.id === 'mastication'), ...(c.id === 'mastication' && l.vId ? { vId: l.vId } : {}), ...(l.recv ? { recv: l.recv } : {}) });
     }
     if (!lines.length) { U.toast('Ajoute au moins une ligne avec un montant.', true); return; }
     this._autoVat();
@@ -778,7 +808,7 @@ const Achats = {
     else { rec.created = Date.now(); this.list().push(rec); }
     const entry = Store.log('achat', (old ? 'Facture modifiée — ' : 'Facture ajoutée — ') + `${this.supplierLabel(rec)} ${U.frDate(rec.date)} (${U.eur(rec.total)})`, { type: 'restoreBatch', data: snaps });
     this._rememberVat(rec);
-    Store.save('purchases', 'consumables', 'materials'); this.reconcileEquip();
+    Store.save('purchases', 'consumables', 'materials', 'stockM'); this.reconcileEquip();
     this._lastCat = lines[lines.length - 1].cat;
     this._d = null; this._editId = ''; this._dirty = false; this.mode = 'list'; this._clearDraft();
     this.render(); U.toast(`Facture enregistrée : ${U.eur(rec.total)}.` + (notes.length ? ' Stock : ' + notes.join(' · ') : ''), false, entry.id);
