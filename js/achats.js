@@ -318,6 +318,11 @@ const Achats = {
     return { from, to, pct: (to - from) / from * 100, unit, fiche: !!l.priceCmp && !l.applied };
   },
   _chg(l) { const i = this._chgInfo(l); return i ? i.pct : 0; },
+  /* Bouton « Ouvrir la fiche » : mène à la fiche de calcul de prix (Prix mastication) du produit de la ligne, pour comparer / corriger sans le rechercher */
+  _ficheLink(l) {
+    const sp = l.cat === 'mastication' && l.ref ? (Store.state.stockM || []).find(x => x.id === l.ref) : null;
+    return sp && sp.catalogId ? `<a class="btn btn-ghost btn-sm" style="text-decoration:none;white-space:nowrap;" href="#/catalogue/edit/${sp.catalogId}" title="Ouvrir la fiche de calcul de prix de ce produit">📋 Ouvrir la fiche</a>` : '<span></span>';
+  },
   _priceCard() {   // prix à vérifier à l'achat : variation de coût, fournisseur absent de la fiche, fournisseur moins cher dans la fiche
     const rows = [];
     this.list().forEach(p => (p.lines || []).forEach(l => {
@@ -335,7 +340,7 @@ const Achats = {
       return `<span class="sensitive">💡 moins cher chez <b>${U.esc(h.name)}</b> (${h.isMain ? 'ton principal' : 'pas ton principal'}) : ${U.eur(h.alt)} HT / ${U.esc(h.unit)} au lieu de ${U.eur(h.paid)}</span><span class="pos" style="text-align:right;">↓ −${Math.round(h.pct * 10) / 10} %</span>`;
     };
     return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Prix à vérifier (${rows.length})</b> <span class="muted">— variation de coût, fournisseur absent de la fiche ou moins cher ailleurs : pense à vérifier les fiches concernées</span></summary>
-      <div class="fold-body">${rows.slice(0, 30).map(r => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,3fr) 90px;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);"><span class="muted">${U.frDate(r.p.date)}</span><span><b>${U.esc(r.l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(r.p))}</span></span>${cell(r)}</div>`).join('')}</div></details>`;
+      <div class="fold-body">${rows.slice(0, 30).map(r => `<div style="display:grid;grid-template-columns:90px minmax(0,2fr) minmax(0,3fr) 90px auto;gap:10px;padding:5px 0;border-bottom:1px solid var(--row-border);align-items:center;"><span class="muted">${U.frDate(r.p.date)}</span><span><b>${U.esc(r.l.label)}</b> <span class="muted">${U.esc(this.supplierLabel(r.p))}</span></span>${cell(r)}${this._ficheLink(r.l)}</div>`).join('')}</div></details>`;
   },
 
   /* ---------- Pièces / kilo MESURÉ (Antho 2026-10-28) ----------
