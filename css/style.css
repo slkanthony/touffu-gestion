@@ -1723,7 +1723,10 @@ tr[hidden] { display: none; }
 tr.wgrp td[colspan] { text-align: left; }
 @media (min-width: 861px) { td.col-name[data-fmt] { padding-left: 30px; text-align: left; } }
 
-/* Achats → « Prix à vérifier » : un bloc par date + produit (alertes empilées dans le bloc) */
-.pv-grp { display: grid; grid-template-columns: 90px minmax(0, 2fr) minmax(0, 4fr) auto; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--row-border); align-items: center; }
-.pv-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 10px; padding: 2px 0; }
-@media (max-width: 720px) { .pv-grp { grid-template-columns: minmax(0, 1fr); gap: 4px; } .pv-grp > .btn { justify-self: start; margin-top: 4px; } .pv-row { grid-template-columns: minmax(0, 1fr) auto; } }
+/* Achats → « Prix à vérifier » : un bloc par date + produit ; une rangée par alerte (étiquette · texte · écart), séparées par un trait pointillé */
+.pv-grp { display: grid; grid-template-columns: 90px minmax(0, 2fr) minmax(0, 5fr) auto; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--row-border); align-items: center; }
+.pv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 80px; gap: 10px; padding: 7px 0; align-items: center; }
+.pv-row + .pv-row { border-top: 1px dashed var(--row-border); }
+.pv-tag { font-size: .8rem; font-weight: 700; color: var(--caramel); white-space: nowrap; }
+.pv-pct { text-align: right; white-space: nowrap; }
+@media (max-width: 720px) { .pv-grp { grid-template-columns: minmax(0, 1fr); gap: 4px; } .pv-grp > .btn { justify-self: start; margin-top: 4px; } .pv-row { grid-template-columns: minmax(0, 1fr) auto; } .pv-tag { grid-column: 1 / -1; } }

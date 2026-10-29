@@ -323,22 +323,22 @@ const Achats = {
     const sp = l.cat === 'mastication' && l.ref ? (Store.state.stockM || []).find(x => x.id === l.ref) : null;
     return sp && sp.catalogId ? `<a class="btn btn-ghost btn-sm" style="text-decoration:none;white-space:nowrap;" href="#/catalogue/edit/${sp.catalogId}" title="Ouvrir la fiche de calcul de prix de ce produit">📋 Ouvrir la fiche</a>` : '<span></span>';
   },
-  _priceCard() {   // prix à vérifier à l'achat : UN BLOC par date + produit (variation de coût, fournisseur absent de la fiche, fournisseur moins cher), comme Péremptions / Faible stock
+  _priceCard() {   // prix à vérifier à l'achat : UN BLOC par date + produit ; dans le bloc, une rangée par alerte (étiquette · texte · écart), séparées
     const groups = [];
     this.list().forEach(p => (p.lines || []).forEach(l => {
       const c = this._chgInfo(l), pc = l.priceCmp || {}, items = [];
-      if (c) items.push(`<span class="sensitive">${c.fiche ? 'fiche prix ' : ''}${U.eur(c.from)} → ${U.eur(c.to)} HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span><span class="${c.pct > 0 ? 'neg' : 'pos'}" style="text-align:right;white-space:nowrap;">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span>`);
-      if (pc.noSup) items.push(`<span class="warn">⚠ fournisseur absent de la fiche prix${pc.main ? ' (fiche : ' + U.esc(pc.main) + ')' : ''}</span><span></span>`);
-      if (pc.cheaper) { const h = pc.cheaper; items.push(`<span class="sensitive">💡 moins cher chez <b>${U.esc(h.name)}</b> (${h.isMain ? 'ton principal' : 'pas ton principal'}) : ${U.eur(h.alt)} HT / ${U.esc(h.unit)} au lieu de ${U.eur(h.paid)}</span><span class="pos" style="text-align:right;white-space:nowrap;">↓ −${Math.round(h.pct * 10) / 10} %</span>`); }
+      if (c) items.push({ tag: '💶 Prix', text: `<span class="sensitive">${c.fiche ? 'Ta fiche prix ' : 'Avant '}${U.eur(c.from)} → payé <b>${U.eur(c.to)}</b> HT${c.unit ? ' / ' + U.esc(c.unit) : ''}</span>`, pct: `<span class="badge ${c.pct > 0 ? 'bad' : 'ok'}">${c.pct > 0 ? '↑ +' : '↓ '}${Math.round(c.pct * 10) / 10} %</span>` });
+      if (pc.noSup) items.push({ tag: '⚠ Fournisseur', text: `Ce fournisseur n'est pas dans la fiche prix${pc.main ? ' (fiche : ' + U.esc(pc.main) + ')' : ''}`, pct: '' });
+      if (pc.cheaper) { const h = pc.cheaper; items.push({ tag: '💡 Moins cher', text: `<span class="sensitive">Chez <b>${U.esc(h.name)}</b> (${h.isMain ? 'ton principal' : 'pas ton principal'}) : ${U.eur(h.alt)} HT / ${U.esc(h.unit)} au lieu de <b>${U.eur(h.paid)}</b></span>`, pct: `<span class="badge ok">↓ −${Math.round(h.pct * 10) / 10} %</span>` }); }
       if (!items.length) return;
       const key = p.id + '|' + (l.ref || l.id), g = groups.find(x => x.key === key);
-      if (g) g.items.push(...items.map(h => ({ h }))); else groups.push({ key, p, l, items: items.map(h => ({ h })) });
+      if (g) g.items.push(...items); else groups.push({ key, p, l, items });
     }));
     if (!groups.length) return '';
     groups.sort((a, b) => (b.p.date || '').localeCompare(a.p.date || ''));
-    const row = h => `<div class="pv-row">${h}</div>`;
+    const row = x => `<div class="pv-row"><span class="pv-tag">${x.tag}</span><span>${x.text}</span><span class="pv-pct">${x.pct}</span></div>`;
     return `<details class="fold card" ${this._priceOpen ? 'open' : ''} ontoggle="Achats._priceOpen=this.open"><summary><b>💶 Prix à vérifier (${groups.length})</b> <span class="muted">— variation de coût, fournisseur absent de la fiche ou moins cher ailleurs : pense à vérifier les fiches concernées</span></summary>
-      <div class="fold-body">${groups.slice(0, 30).map(g => `<div class="pv-grp"><span class="muted">${U.frDate(g.p.date)}</span><span><b>${U.esc(g.l.label)}</b><div class="muted" style="font-size:.82rem;">${U.esc(this.supplierLabel(g.p))}</div></span><div>${g.items.map(x => row(x.h)).join('')}</div>${this._ficheLink(g.l)}</div>`).join('')}</div></details>`;
+      <div class="fold-body">${groups.slice(0, 30).map(g => `<div class="pv-grp"><span class="muted">${U.frDate(g.p.date)}</span><span><b>${U.esc(g.l.label)}</b><div class="muted" style="font-size:.82rem;">${U.esc(this.supplierLabel(g.p))}</div></span><div>${g.items.map(row).join('')}</div>${this._ficheLink(g.l)}</div>`).join('')}</div></details>`;
   },
 
   /* ---------- Pièces / kilo MESURÉ (Antho 2026-10-28) ----------
