@@ -242,6 +242,7 @@ const Achats = {
   _fixDiscTTC() {   // facture « remise sur le total TTC » enregistrée avant le 2026-10-29 soir : TVA recalculée sur le total HT (le total payé ne change pas)
     if (this._fixedDisc) return; this._fixedDisc = true; let n = 0;
     this.list().forEach(p => { if (p.discTTC && !p.discFixed && (p.vat || []).length === 1 && p.vat[0].auto) { p.vat[0].amount = this.r2(this.base(p) * U.num(p.vat[0].rate) / 100); p.discFixed = true; p.total = this.grandTotal(p); n++; } });
+    this.list().forEach(p => { if (U.num(p.discount) > 0 && !p.cmpFixed) { const lh = this._listHT(p); (p.lines || []).forEach((l, i) => { if (l.priceCmp && U.num(l.qty) > 0) l.priceCmp.paid = Math.round(lh[i] / U.num(l.qty) * 10000) / 10000; }); p.cmpFixed = true; n++; } });   // alerte « fiche prix » : prix avant remise (factures déjà enregistrées)
     if (n) Store.save('purchases');
   },
   renderList() {
@@ -377,8 +378,10 @@ const Achats = {
      Ligne mastication liée à un produit du stock + « Réception à ranger » : l.recv = { dist: [{lotId, vId, qty}], loss, pieces, closed, ... }.
      Dans Stock → « ＋ Ajouter un lot », la réception est proposée (n° de lot + DLUO pré-remplis) ; chaque lot ajouté s'inscrit dans dist.
      « Terminer le tri » fige le coût réel par pièce (total de la ligne + livraison ÷ pièces triées) sur les lots concernés. */
+  /* Prix HT de chaque ligne SANS la remise (comparaison avec la fiche prix) */
+  _listHT(rec) { const g = this.isHT(rec) ? 1 : 1 + this.vatRateOf(rec) / 100; return (rec.lines || []).map(l => this.lineTotal(l) / g); },
   _applyRecv(rec, old, notes) {
-    const eff = this._effHT(rec);
+    const listHT = this._listHT(rec);
     rec.lines.forEach((l, i) => {
       if (l.cat !== 'mastication') return;
       const oldL = old && (old.lines || []).find(x => x.id === l.id);
@@ -388,7 +391,7 @@ const Achats = {
       delete l.priceCmp;
       const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
       if (!cat || !(U.num(l.qty) > 0)) return;
-      const b = Pricing.baseUnitCost(cat), u = String(l.unit || '').toLowerCase(), perUnitHT = eff[i] / U.num(l.qty);
+      const b = Pricing.baseUnitCost(cat), u = String(l.unit || '').toLowerCase(), perUnitHT = listHT[i] / U.num(l.qty);   // prix AVANT remise : une remise exceptionnelle (offre d'inscription…) ne doit pas déclencher l'alerte « fiche prix à revoir »
       const kg = u === 'kg' && b.unit === 'kilo', pc = (u === 'pièce' || u === 'piece' || u === 'pc') && b.unit !== 'kilo';
       if (!(kg || pc) || !(b.unitHT > 0)) return;
       l.priceCmp = { fiche: Math.round(b.unitHT * 10000) / 10000, paid: Math.round(perUnitHT * 10000) / 10000, unit: kg ? 'kg' : 'pièce' };
