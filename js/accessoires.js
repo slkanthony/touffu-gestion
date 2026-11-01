@@ -33,7 +33,9 @@ const Accessoires = {
   _persoRank(a) { return ((a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) ? 1 : 0) + (a.laser ? 2 : 0) + (a.theme ? 4 : 0); },   // bits : 1 = impression UV, 2 = laser, 4 = création de thème
   _lenOf(a) { const l = U.num(a.productLength); if (l > 0) return l; const m = String(a.name || '').match(/(\d+(?:[.,]\d+)?)\s*m\s*$/i); return m ? parseFloat(m[1].replace(',', '.')) : 0; },
   _widthNum(a) { return parseFloat(String(a.mainWidth || (a.strapWidths || [])[0] || '').replace(',', '.')) || 0; },
-  _cmpAcc(a, b) { return U.sortFr(this._baseName(a), this._baseName(b)) || (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || (this._widthNum(a) - this._widthNum(b)) || U.sortFr(a.name, b.name); },
+  /* Rang d'une taille (XS < S < M < L < XL…) : les tailles d'un même modèle se rangent dans cet ordre, avant la longueur */
+  _sizeRank(a) { const i = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'].indexOf(a.sizeLabel); return i < 0 ? 99 : i; },
+  _cmpAcc(a, b) { return U.sortFr(this._baseName(a), this._baseName(b)) || (this._sizeRank(a) - this._sizeRank(b)) || (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || (this._widthNum(a) - this._widthNum(b)) || U.sortFr(a.name, b.name); },
 
   /* ───── FAMILLES D'ACCESSOIRES (Antho 2026-10-14) ─────
      Un PRODUIT (famille) = même nom + même catégorie + même largeur de sangle principale ; ses déclinaisons = les longueurs (et la personnalisation UV / laser).
@@ -147,16 +149,18 @@ const Accessoires = {
   },
   groupCard(shown) {
     const first = shown[0], gid = first.groupId, total = Store.state.catalogA.filter(x => x.groupId === gid).length;
-    const mem = shown.slice().sort((a, b) => (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name));
+    const mem = shown.slice().sort((a, b) => (this._sizeRank(a) - this._sizeRank(b)) || (this._lenOf(a) - this._lenOf(b)) || (this._persoRank(a) - this._persoRank(b)) || U.sortFr(a.name, b.name));
     const calcs = mem.map(a => Pricing.accCalc(a));
     const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' – ' + f(hi); };
     const widths = [...new Set(mem.map(a => this._widthOf(a)).filter(Boolean))];
+    const sizes = [...mem].sort((x, y) => this._sizeRank(x) - this._sizeRank(y)).map(a => a.sizeLabel).filter((t, i, arr) => t && arr.indexOf(t) === i);
     const nCrit = calcs.filter(c => c.critical).length, nOwn = total > 1 ? this._grpMembers(gid).filter(a => !this._follows(a)).length : 0;
     const gc = U.num(first.groupCoeff), open = !!this._grpOpen[gid], name = first.groupName || this._familyName(first);
     const notes = first.groupNotes ? `<div class="muted" style="font-size:.85rem;margin:0 0 10px;white-space:pre-line;">📝 ${U.esc(first.groupNotes)}</div>` : '';
     return `<details class="fold prod-fold acc-fold acc-group" id="grp-${gid}" ${open ? 'open' : ''} ontoggle="Accessoires.setGrpOpen('${gid}',this.open)">
       <summary>
         <span><b>${U.esc(name)}</b></span>
+        <span class="type-col acc-size">${sizes.map(t => `<span class="badge info">${U.esc(t)}</span>`).join('') || '<span class="muted">—</span>'}</span>
         <span class="type-col">${widths.map(w => `<span class="badge">${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(first.category || '')}</span></span>
         <span class="type-col"><span class="badge info">${mem.length === total ? total : mem.length + ' / ' + total} longueur${total > 1 ? 's' : ''}</span></span>
@@ -503,6 +507,7 @@ const Accessoires = {
       <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button></div>
       ${list.length ? `<div class="prod-list-header acc-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
+        <span>Taille</span>
         <span>${sortHead('width', 'Largeur')}</span>
         <span>${sortHead('cat', 'Catégorie')}</span>
         <span>${sortHead('len', 'Longueur')}</span>
@@ -774,7 +779,8 @@ const Accessoires = {
     const criticalClass = c.critical ? ' acc-critical' : '';
     return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
-        <span><b>${U.esc(a.name)}</b>${a.sizeLabel ? ` <span class="badge info">${U.esc(a.sizeLabel)}</span>` : ''}${a.sizeRange ? ` <span class="muted" style="font-weight:400;font-size:.82rem;white-space:nowrap;">· tour de cou ${U.esc(a.sizeRange)}</span>` : ''}</span>
+        <span><b>${U.esc(a.name)}</b></span>
+        <span class="type-col acc-size">${a.sizeLabel ? `<span class="badge info">${U.esc(a.sizeLabel)}</span>` : ''}${a.sizeRange ? `<small class="muted" title="Tour de cou (indicatif)">${U.esc(a.sizeRange)}</small>` : ''}${!a.sizeLabel && !a.sizeRange ? '<span class="muted">—</span>' : ''}</span>
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="type-col">${this._lenOf(a) > 0 ? U.qty(this._lenOf(a)) + ' m' : '<span class="muted">—</span>'}</span>

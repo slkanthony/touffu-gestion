@@ -306,9 +306,14 @@ details.fold.prod-fold.cat-fold > summary,
 }
 .prod-list-header.acc-header,
 details.fold.prod-fold.acc-fold > summary {
-  /* Nom | Largeur | Catégorie | Longueur | Alerte | Coût (espace libre) | Prix TTC — tout est rangé en colonnes (Antho 2026-10-14) */
-  grid-template-columns: minmax(200px, 340px) 80px 100px 95px 150px minmax(140px, 1fr) 150px;
+  /* Nom | Taille | Largeur | Catégorie | Longueur | Alerte | Coût (espace libre) | Prix TTC — tout est rangé en colonnes (Antho 2026-10-14 ; colonne Taille 2026-11-01) */
+  grid-template-columns: minmax(190px, 320px) 120px 80px 100px 95px 140px minmax(110px, 1fr) 130px;
 }
+.prod-list-header.acc-header > span:nth-child(2) { text-align: center; }
+/* Colonne « Taille » : pastilles S M L XL (famille) ou pastille + fourchette de tour de cou en petit dessous (fiche) */
+details.fold.acc-fold > summary .acc-size { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+details.fold.acc-group > summary .acc-size { flex-direction: row; flex-wrap: wrap; gap: 3px; }
+details.fold.acc-fold > summary .acc-size small { font-size: .7rem; line-height: 1.1; white-space: nowrap; }
 details.fold.acc-fold.acc-critical { border-left: 4px solid var(--alerte) !important; background: rgba(192, 86, 74, 0.12) !important; box-shadow: inset 0 0 0 1px rgba(192, 86, 74, 0.35); }
 :root[data-theme="light"] details.fold.acc-fold.acc-critical { background: rgba(192, 86, 74, 0.08) !important; }
 details.fold.cat-fold.cat-selected { border-left: 4px solid var(--caramel) !important; background: #3d2a1a !important; box-shadow: inset 0 0 0 1px rgba(166,113,83,0.5); }
