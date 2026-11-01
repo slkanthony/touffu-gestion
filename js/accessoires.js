@@ -136,6 +136,17 @@ const Accessoires = {
     const next = ['S', 'M', 'L', 'XL'].find(t => !mem.some(a => a.sizeLabel === t));
     if (!next) { U.toast('Les tailles S, M, L et XL existent déjà dans cette famille.', true); return; }
     const plain = mem.filter(a => !this._persoRank(a)), src = plain.filter(a => a.sizeLabel).sort((x, y) => this._sizeRank(y) - this._sizeRank(x))[0] || plain[0] || mem[0];
+    if (src.baseOnly && !src.sizeLabel && mem.length === 1) {   // produit de base resté après la suppression de sa dernière taille : il devient la première taille (pas de fiche en double)
+      const snap = Store.snapshot('catalogA', src);
+      delete src.baseOnly; src.sizeLabel = next; delete src.sizeRange; src.name = this._baseName(src) + ' — Taille ' + next;
+      { const base = Pricing.autoSkuAcc(src), taken = this._takenSkus(src.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } src.sku = base ? sku : ''; }
+      this._grpOpen[gid] = true;
+      const entry = Store.commitSnapshot(snap, 'accessoires', 'Taille ajoutée — ' + src.name);
+      Store.save('catalogA'); App.rerender();
+      U.toast(`Taille ${next} ajoutée : règle ses longueurs (tour de cou, X…).`, false, entry.id);
+      setTimeout(() => this.editAcc(src.id), 60);
+      return;
+    }
     const copy = JSON.parse(JSON.stringify(src));
     copy.id = U.uid(); copy.stockGeneral = 0; copy.stockEvent = 0;   // une nouvelle taille démarre sans stock
     if (copy.groupId && U.num(copy.groupCoeff) > 0) { copy.coefficient = copy.groupCoeff; copy.priceTTCManual = ''; }   // elle suit le coefficient commun de la famille
@@ -1871,6 +1882,18 @@ const Accessoires = {
 
   async delAcc(id) {
     const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
+    /* Dernière taille d'un collier (Antho 2026-11-01) : on supprime la TAILLE, pas le produit. La fiche redevient le produit de base (même formule, sans taille ni stock)
+       pour pouvoir y « Ajouter une taille » à nouveau. */
+    if (a.sizeLabel && a.groupId && !this._grpMembers(a.groupId).some(x => x.id !== a.id && x.sizeLabel)) {
+      const stock = U.num(a.stockGeneral) + U.num(a.stockEvent);
+      if (!await U.confirm(`Supprimer la taille ${a.sizeLabel} ?\nLe produit « ${this._baseName(a)} » est conservé avec sa formule (longueurs, sections, X) : tu pourras y ajouter une nouvelle taille.${stock ? `\nLes ${U.qty(stock)} pièce(s) en stock fini de cette taille sont retirées.` : ''}`, { title: '🗑️ Supprimer la taille', okLabel: 'Supprimer', danger: true })) return;
+      const snap = Store.snapshot('catalogA', a), name = a.name;
+      delete a.sizeLabel; delete a.sizeRange; a.stockGeneral = 0; a.stockEvent = 0; a.sku = ''; a.baseOnly = true; a.name = this._baseName(a);
+      const entry = Store.commitSnapshot(snap, 'accessoires', 'Taille supprimée — ' + name);
+      Store.save('catalogA'); App.rerender();
+      U.toast('Taille supprimée : le produit est conservé, tu peux ajouter une taille.', false, entry.id);
+      return;
+    }
     if (!await U.confirm(`Supprimer "${a.name}" ?`)) return;
     const snap = Store.snapshot('catalogA', a);
     Store.state.catalogA = Store.state.catalogA.filter(x => x.id !== id);
