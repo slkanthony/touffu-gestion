@@ -1725,11 +1725,16 @@ const Accessoires = {
     if (!(ref > 0)) { el.innerHTML = '<span class="muted">Tape aussi le tour de cou de référence (celui pour lequel X est réglé).</span>'; return; }
     const c = this._calcClone(a, neck, ref), rg = this._rangeOf(a);
     el.innerHTML = `<div class="card" style="padding:8px 12px;background:var(--th-bg);margin:0;">
-      <div style="margin-bottom:4px;">📏 Taille <b>${U.esc(a.sizeLabel)}</b>${rg ? ` <span class="muted">(${U.esc(a.sizeRange)})</span>` : ''}${r.several ? ' <span class="muted">— plusieurs tailles possibles, change-la dans le menu</span>' : ''} <span class="muted">· X = ${U.lenTxt(c.internalLength)}</span></div>
+      <div style="margin-bottom:4px;">📏 Taille <b>${U.esc(a.sizeLabel)}</b>${rg ? ` <span class="muted">(${U.esc(a.sizeRange)})</span>` : ''}${r.several ? ' <span class="muted">— plusieurs tailles possibles, change-la dans le menu</span>' : ''} <span class="muted">· réf. ${U.lenTxt(ref)} · X = ${U.lenTxt(c.internalLength)}</span></div>
       ${this._calcRowsHTML(this._calcRows(c)) || '<span class="muted">Aucune sangle à couper : renseigne les longueurs de la fiche.</span>'}</div>`;
   },
   /* Tour de cou de référence (cm) : celui de la fiche, sinon celui tapé dans la fenêtre */
-  _ccRef(a) { return U.num(a.productLength) > 0 ? U.num(a.productLength) * 100 : (document.getElementById('cc_ref_cm') ? U.lenCm('cc_ref') : 0); },
+  _ccRef(a) {
+    if (U.num(a.productLength) > 0) return U.num(a.productLength) * 100;
+    const fam = this._famRef(this._ccGid); if (fam > 0) return fam;   // la référence est commune au collier : celle d'une autre taille vaut pour toutes
+    return document.getElementById('cc_ref_cm') ? U.lenCm('cc_ref') : 0;
+  },
+  _famRef(gid) { const s = this._calcSizes(gid).find(x => U.num(x.productLength) > 0); return s ? U.num(s.productLength) * 100 : 0; },
   /* Tailles sans référence : on retient celle tapée (c'est le tour de cou pour lequel X a été mesuré) */
   _ccKeepRef(ref) {
     if (!(ref > 0)) return;
@@ -1748,7 +1753,7 @@ const Accessoires = {
     const sizes = this._calcSizes(gid);
     if (!sizes.length) { U.toast('Cette famille n\'a pas de taille avec une sangle : règle une taille et sa sangle dans « Modifier ».', true); return; }
     this._ccGid = gid; this._ccAcc = null;
-    const needRef = sizes.some(x => !(U.num(x.productLength) > 0)), name = this._grpMembers(gid)[0].groupName || '';
+    const needRef = !(this._famRef(gid) > 0), name = this._grpMembers(gid)[0].groupName || '';
     U.modal({
       title: '📏 Calculer — ' + U.esc(name), okLabel: '🛠 Fabriquer',
       body: `<p class="muted help">Tape le tour de cou du chien : l'appli trouve la taille d'après les fourchettes, applique la formule du collier (X bouge du même écart que le tour de cou de référence, les sections non liées à X ne changent pas) et te donne les longueurs de sangle à couper. Rien n'est enregistré sur les fiches.</p>
