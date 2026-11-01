@@ -420,6 +420,8 @@ const Accessoires = {
     else if (l.materialId) { const m = Store.material(l.materialId); label = m ? m.name : '⚠ matière supprimée'; }
     else label = '—';
     if (l.strapColor) label += ` (couleur ${l.strapColor}${a ? ' — ' + this._colorTitle(a, l.strapColor) : ''})`;
+    const sec = l.secId && a ? (a.fabSections || []).find(s => s.id === l.secId) : null;
+    if (sec) label += ` (section « ${sec.label || 'sans nom'} »)`;
     return label;
   },
 
@@ -648,9 +650,36 @@ const Accessoires = {
     }
     col.forEach((i, k) => { a.bom[i].strapColor = k + 1; delete a.bom[i].qtyManual; });
   },
-  _strapIdxs(a) { const idx = []; (a.bom || []).forEach((l, i) => { if (this.bomLineUnit(l) === 'm') idx.push(i); }); return idx; },
+  /* Lignes de sangle de la section PRINCIPALE (segments + X) : les lignes des autres sections (`l.secId`) ont leur propre calcul. */
+  _strapIdxs(a) { const idx = []; (a.bom || []).forEach((l, i) => { if (!l.secId && this.bomLineUnit(l) === 'm') idx.push(i); }); return idx; },
+  _mainStrapIdx(a) { const i = this._strapIdxs(a); return i.length ? i[0] : -1; },
+
+  /* ═══ Sections de fabrication (Antho 2026-11-01, colliers : surpiqûre sur une sangle plus étroite) ═══
+     Section PRINCIPALE = `fabSegments` + `internalLength` (X), calculée comme avant. Les AUTRES sections (`a.fabSections` = [{id, label, width, segs:[{label, value en cm}]}])
+     ne dépendent PAS de X : chacune a sa largeur de sangle et sa propre ligne de sangle dans la nomenclature (`l.secId`), quantité = somme de ses segments. */
+  _secTotalCm(s) { return (s.segs || []).reduce((t, g) => t + U.num(g.value), 0); },
+  /* Famille de sangle de la largeur w, dans la même catégorie que la sangle principale ('' si elle n'existe pas dans le stock) */
+  _secKey(a, w) {
+    const mi = this._mainStrapIdx(a), main = mi >= 0 ? a.bom[mi] : null, fams = this.families();
+    const kind = main && main.familyKey ? String(main.familyKey).split(':')[0] : 'sangle';
+    return [kind + ':' + w, 'sangle:' + w].find(k => fams.some(f => f.key === k)) || '';
+  },
+  /* Une ligne de sangle par section (créée / retirée / remise à la bonne largeur), quantité = somme des segments sauf saisie à la main. */
+  _secSync(a) {
+    const secs = a.fabSections || [];
+    if (!(a.bom || []).some(l => l.secId) && !secs.length) return;
+    if (!a.bom) a.bom = [];
+    a.bom = a.bom.filter(l => !l.secId || secs.some(s => s.id === l.secId));
+    secs.forEach(s => {
+      let l = a.bom.find(x => x.secId === s.id);
+      if (!l) { l = { familyKey: s.width ? this._secKey(a, s.width) : '', qty: 0, secId: s.id, secW: s.width }; a.bom.push(l); }
+      else if (l.secW !== s.width) { l.secW = s.width; delete l.materialId; l.familyKey = s.width ? this._secKey(a, s.width) : ''; }
+      if (!l.qtyManual) l.qty = Math.round(this._secTotalCm(s) / 100 * 100) / 100;
+    });
+  },
   /* Met la quantité de sangle d'après les longueurs, sauf pour une ligne saisie à la main (l.qtyManual). */
   _autoStrap(a) {
+    this._secSync(a);
     const idxs = this._strapIdxs(a); if (!idxs.length) return;
     this._strapTargets(a, idxs.length).forEach((q, k) => {
       const l = a.bom[idxs[k]];
@@ -734,7 +763,7 @@ const Accessoires = {
         <td class="num sensitive">${U.eur(unitCost * U.num(l.qty))}</td></tr>`;
     }).join('');
     const strapRows = (a.bom || []).filter(l => this.bomLineUnit(l) === 'm');
-    const strapTotalRow = strapRows.length >= 2 ? `<tr><td class="col-name"><b>📏 Total sangle</b> <span class="muted">(${strapRows.length} couleurs)</span></td><td class="num"><b>${U.qty(strapRows.reduce((s, l) => s + U.num(l.qty), 0))} m</b></td><td class="num sensitive">${U.eur(strapRows.reduce((s, l) => s + this.bomLineCost(l) * U.num(l.qty), 0))}</td></tr>` : '';
+    const strapTotalRow = strapRows.length >= 2 ? `<tr><td class="col-name"><b>📏 Total sangle</b> <span class="muted">(${strapRows.length} ${strapRows.some(l => l.secId) ? 'sangles' : 'couleurs'})</span></td><td class="num"><b>${U.qty(strapRows.reduce((s, l) => s + U.num(l.qty), 0))} m</b></td><td class="num sensitive">${U.eur(strapRows.reduce((s, l) => s + this.bomLineCost(l) * U.num(l.qty), 0))}</td></tr>` : '';
     const fabHTML = this._fabCardHTML(a);
     const notesHTML = this._notesHTML(a);
     const accOpen = this._accOpen[a.id] || false;
@@ -813,10 +842,11 @@ const Accessoires = {
     if (this._colorCount(a) >= 2) {
       this._colorParts(a).forEach(p => { if (p.qty > 0) parts.push(`Couleur ${p.k} : ${U.qty(p.qty)} m`); });
     } else {
-      const sangleIdx = (a.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
+      const sangleIdx = this._mainStrapIdx(a);
       const totalStrap = sangleIdx >= 0 ? U.num(a.bom[sangleIdx].qty) : 0;
       if (totalStrap > 0) parts.push(`Sangle : ${U.qty(totalStrap)} m`);
     }
+    (a.fabSections || []).forEach(s => { const t = this._secTotalCm(s); if (t > 0) parts.push(`${U.esc(s.label || 'Section')}${s.width ? ' ' + U.esc(s.width) : ''} : ${U.qty(t / 100)} m`); });
     return ` <span class="muted" style="font-weight:normal;font-size:.85rem;">— ${parts.join(' · ')}</span>`;
   },
 
@@ -830,7 +860,7 @@ const Accessoires = {
         <b>📐 Longueurs de fabrication</b>
         <div style="margin-top:6px;"><button class="btn-ghost btn-sm" onclick="Accessoires.initFabSegs('${a.id}')">Configurer les segments</button></div></div>`;
     }
-    const sangleIdx = (a.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
+    const sangleIdx = this._mainStrapIdx(a);
     const totalStrap = sangleIdx >= 0 ? U.num(a.bom[sangleIdx].qty) : 0;
     const prodLen = U.num(a.productLength);
     const fabOpen = this._fabOpen[a.id] || false;
@@ -865,8 +895,12 @@ const Accessoires = {
           <b style="font-size:1.15rem;">${U.qty(p.qty)} m</b></div>`).join('')}</div>`;
     } else if (totalStrap > 0) {
       bottom = `<div style="margin-top:12px;padding:10px 16px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-weight:500;">Sangle à couper</span><b style="font-size:1.15rem;">${U.qty(totalStrap)} m</b></div>`;
+        <span style="font-weight:500;">${(a.fabSections || []).length ? 'Sangle principale à couper' : 'Sangle à couper'}</span><b style="font-size:1.15rem;">${U.qty(totalStrap)} m</b></div>`;
     }
+    (a.fabSections || []).forEach(s => {
+      bottom += `<div style="margin-top:8px;padding:10px 16px;border-radius:6px;background:var(--th-bg);border:1px solid var(--input-border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-weight:500;">📏 ${U.esc(s.label || 'Section')}${s.width ? ' <span class="muted">— sangle ' + U.esc(s.width) + '</span>' : ''} <span class="muted">(${(s.segs || []).filter(g => U.num(g.value) > 0).map(g => U.esc(g.label || 'segment') + ' ' + U.lenTxt(g.value)).join(' + ') || 'à renseigner dans Modifier'})</span></span><b style="font-size:1.15rem;">${U.qty(this._secTotalCm(s) / 100)} m</b></div>`;
+    });
 
     const body = `<div style="display:flex;gap:20px;margin-top:10px;flex-wrap:wrap;">
       <div style="flex:1;min-width:200px;">${left}</div>
@@ -999,6 +1033,7 @@ const Accessoires = {
     return `<div class="fg"><label>Longueur produit fini</label><div>${U.lenSplit('a_prodLen', U.num(a.productLength) * 100, { change: 'Accessoires.onProdLenChange()' })}</div></div>
       <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--input-border);background:var(--th-bg);">
         <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Détail des longueurs</div>
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:6px;">Section principale <span class="muted" style="font-weight:400;font-size:.8rem;">— calculée avec X (sangle ${U.esc(a.mainWidth || (a.strapWidths || [])[0] || 'principale')})</span></div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 10px;border:1px solid var(--caramel);border-radius:8px;margin-bottom:6px;text-transform:none;letter-spacing:0;color:var(--texte);">
           <input id="a_bicolor" type="checkbox" style="width:15px;height:15px;flex:0 0 auto;" ${a.bicolor ? 'checked' : ''} onchange="Accessoires.onBicolor()">
           <span><b style="font-size:.85rem;">🎨 Bicolor — sangles de couleurs différentes</b><br><span class="muted" id="a_bicolor_sub" style="font-size:.72rem;">${this._colorSubText(a)}</span></span>
@@ -1007,7 +1042,68 @@ const Accessoires = {
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
           <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne, { change: 'Accessoires.syncStrap()' })}</div></div>
         </div>
+        <div id="a_secs_wrap">${this._secsHTML()}</div>
+        <button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addSection()" title="Une section en plus, non liée à X (ex. surpiqûre) : elle a sa propre largeur de sangle et ses propres longueurs">＋ Ajouter une section</button>
       </div>`;
+  },
+
+  /* ── Sections en plus de la principale (fenêtre Modifier) ── */
+  _secWidths() { const ws = (this._a && this._a.strapWidths) || []; return ws.length ? ws : this._availableWidths(); },
+  _secTotTxt(s) { return `Sangle ${U.esc(s.width || '?')} à couper : <b>${U.qty(this._secTotalCm(s) / 100)} m</b>`; },
+  _secsHTML() {
+    const a = this._a, ws = this._secWidths();
+    return (a.fabSections || []).map((s, si) => {
+      const opts = ws.includes(s.width) || !s.width ? ws : [s.width, ...ws];
+      return `<div style="margin-top:12px;padding:10px;border-radius:8px;border:1px solid var(--caramel);">
+      <div class="frow" style="gap:8px;align-items:flex-end;">
+        <div class="fg" style="flex:2;"><label>Section</label><input id="a_sec_label_${si}" value="${U.esc(s.label)}" placeholder="ex: Surpiqûre" style="width:100%;" onchange="Accessoires.syncStrap()"></div>
+        <div class="fg" style="flex:0 0 120px;min-width:0;"><label>Sangle</label><select id="a_sec_w_${si}" onchange="Accessoires.syncStrap()">${opts.map(w => `<option value="${U.esc(w)}" ${w === s.width ? 'selected' : ''}>${U.esc(w)}</option>`).join('')}</select></div>
+        <div class="fg" style="flex:0;"><button class="btn-icon" type="button" title="Supprimer la section" onclick="Accessoires.delSection(${si})">🗑️</button></div>
+      </div>
+      ${(s.segs || []).map((g, i) => `<div class="frow" style="gap:8px;align-items:flex-end;margin-top:6px;">
+        <div class="fg" style="flex:2;"><input id="a_sec_seg_label_${si}_${i}" value="${U.esc(g.label)}" placeholder="ex: Bande de couleur" style="width:100%;" onchange="Accessoires.syncStrap()"></div>
+        <div class="fg" style="flex:0 0 auto;">${U.lenSplit(`a_sec_seg_val_${si}_${i}`, g.value, { change: 'Accessoires.syncStrap()' })}</div>
+        <div class="fg" style="flex:0;"><button class="btn-icon" type="button" onclick="Accessoires.delSecSeg(${si},${i})">×</button></div>
+      </div>`).join('')}
+      <button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addSecSeg(${si})">＋ Ajouter un segment</button>
+      <div id="a_sec_tot_${si}" class="muted" style="margin-top:8px;font-size:.85rem;">${this._secTotTxt(s)}</div>
+    </div>`;
+    }).join('');
+  },
+  _readSecs() {
+    ((this._a && this._a.fabSections) || []).forEach((s, si) => {
+      const lb = document.getElementById('a_sec_label_' + si); if (!lb) return;
+      s.label = lb.value.trim();
+      const w = document.getElementById('a_sec_w_' + si); if (w) s.width = w.value;
+      (s.segs || []).forEach((g, i) => {
+        const gl = document.getElementById(`a_sec_seg_label_${si}_${i}`); if (gl) g.label = gl.value.trim();
+        if (document.getElementById(`a_sec_seg_val_${si}_${i}_m`)) g.value = U.lenCm(`a_sec_seg_val_${si}_${i}`);
+      });
+    });
+  },
+  _redrawSecs() { const el = document.getElementById('a_secs_wrap'); if (el) el.innerHTML = this._secsHTML(); },
+  addSection() {
+    this._readFabSegs(); this._readSecs();
+    const a = this._a, ws = this._secWidths(), main = a.mainWidth || (a.strapWidths || [])[0] || '';
+    (a.fabSections = a.fabSections || []).push({ id: U.uid(), label: '', width: ws.find(w => w !== main) || ws[0] || '', segs: [{ label: '', value: 0 }] });
+    this._redrawSecs(); this.syncStrap();
+  },
+  delSection(si) {
+    this._readSecs();
+    if (this._a.fabSections) this._a.fabSections.splice(si, 1);
+    this._redrawSecs(); this.syncStrap();
+  },
+  addSecSeg(si) {
+    this._readSecs();
+    const s = (this._a.fabSections || [])[si]; if (!s) return;
+    (s.segs = s.segs || []).push({ label: '', value: 0 });
+    this._redrawSecs(); this.syncStrap();
+  },
+  delSecSeg(si, i) {
+    this._readSecs();
+    const s = (this._a.fabSections || [])[si]; if (!s) return;
+    s.segs.splice(i, 1);
+    this._redrawSecs(); this.syncStrap();
   },
 
   _fabSegsInnerHTML(segs) {
@@ -1175,8 +1271,10 @@ const Accessoires = {
         a.coefficient = U.numVal('a_coeff'); a.priceTTCManual = U.val('a_pttc');
         a.sku = U.val('a_sku'); a.theme = U.chk('a_theme'); if (!a.theme) delete a.theme; a.uv = U.chk('a_uv') || !!a.theme; a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.laser = U.chk('a_laser'); a.laserMin = a.laser ? U.numVal('a_lasermin') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
         a.notes = U.val('a_notes'); a.print3dMin = U.numVal('a_p3d');
-        this._readFabSegs();
+        this._readFabSegs(); this._readSecs();
         a.fabSegments = this._a.fabSegments || [];
+        a.fabSections = (this._a.fabSections || []).filter(s => s.label || this._secTotalCm(s) > 0);   // une section vide (ni nom ni longueur) est ignorée
+        if (!a.fabSections.length) delete a.fabSections;
         a.productLength = U.lenCm('a_prodLen') / 100;
         a.internalLength = U.lenCm('a_internLen');
         a.bicolor = !!document.getElementById('a_bicolor')?.checked;
@@ -1184,6 +1282,7 @@ const Accessoires = {
         const nBefore = (a.bom || []).length;
         a.bom = (a.bom || []).filter(l => l.familyKey || l.materialId).map(l => { const c = { ...l }; delete c._cat; delete c.tpl; return c; });
         this._autoStrap(a);
+        a.bom = a.bom.filter(l => l.familyKey || l.materialId);   // la sangle d'une section sans référence (largeur absente du stock) est ignorée aussi
         if (a.bom.length < nBefore) U.toast(`${nBefore - a.bom.length} ligne(s) de matière sans référence ignorée(s).`);
         a.materialsDesc = U.val('a_matdesc').trim();
         const idx = Store.state.catalogA.findIndex(x => x.id === a.id);
@@ -1317,7 +1416,7 @@ const Accessoires = {
     if (v && l.familyKey) {
       const fam = this.families().find(f => f.key === l.familyKey);
       if (fam && fam.kind !== v) {
-        this._a.bom[i] = { familyKey: '', qty: l.qty || 1, _cat: v };
+        this._a.bom[i] = { familyKey: '', qty: l.qty || 1, _cat: v, ...(l.secId ? { secId: l.secId, secW: l.secW } : {}) };
         this.drawBom();
         return;
       }
@@ -1357,10 +1456,11 @@ const Accessoires = {
   /* Relit les longueurs du formulaire, recalcule la sangle, redessine les matières (appelé à chaque modification des longueurs, du bicolor, de la largeur…). */
   syncStrap() {
     const a = this._a; if (!a) return;
-    this._readFabSegs();
+    this._readFabSegs(); this._readSecs();
     if (document.getElementById('a_internLen_m')) a.internalLength = U.lenCm('a_internLen');
     this._applyColors(a);
     this._autoStrap(a);
+    (a.fabSections || []).forEach((s, si) => { const t = document.getElementById('a_sec_tot_' + si); if (t) t.innerHTML = this._secTotTxt(s); });
     const sub = document.getElementById('a_bicolor_sub'); if (sub) sub.textContent = this._colorSubText(a);
     this.drawBom();
   },
@@ -1422,8 +1522,15 @@ const Accessoires = {
             : `🔗 Calculée d'après les longueurs de fabrication ci-dessous (${U.qty(t)} m)`)
           : '🔗 Renseigne les longueurs de fabrication ci-dessous : la quantité de sangle se calcule toute seule.';
       } else if (!picked && l.tpl) hint = '🧩 Ligne prévue par ton modèle : choisis la référence (sans référence, elle est ignorée à l\'enregistrement).';
+      const sec = l.secId ? (this._a.fabSections || []).find(s => s.id === l.secId) : null;
+      if (sec) {
+        const t = Math.round(this._secTotalCm(sec)) / 100;
+        hint = !picked ? `⚠ Aucune sangle ${U.esc(sec.width || '')} en stock : choisis la référence (sans référence, cette section est ignorée à l'enregistrement).`
+          : l.qtyManual ? `✏️ Quantité saisie à la main · la section donne <b>${U.qty(t)} m</b> <button type="button" class="btn-ghost btn-sm" onclick="Accessoires.bomAuto(${i})">🔗 Revenir au calcul auto</button>`
+          : `🔗 Calculée d'après la section « ${U.esc(sec.label || 'sans nom')} » ci-dessus (${U.qty(t)} m)`;
+      }
 
-      const chip = l.strapColor ? `🎨 Couleur ${l.strapColor} — ${U.esc(this._colorTitle(this._a, l.strapColor))}` : '';
+      const chip = l.strapColor ? `🎨 Couleur ${l.strapColor} — ${U.esc(this._colorTitle(this._a, l.strapColor))}` : sec ? `📏 Section « ${U.esc(sec.label || 'sans nom')} »${sec.width ? ' — ' + U.esc(sec.width) : ''}` : '';
       return `<div style="margin-bottom:8px;${chip ? 'padding:6px 8px;border-left:4px solid var(--caramel);background:var(--th-bg);border-radius:6px;' : ''}">${chip ? `<div style="font-weight:700;font-size:.9rem;color:var(--caramel);margin-bottom:4px;">${chip}</div>` : ''}<div class="frow" style="align-items:flex-end;">
         <div class="fg"><label>Catégorie</label>
           <select onchange="Accessoires.setBomCat(${i},this.value)">
@@ -1441,7 +1548,7 @@ const Accessoires = {
           <div id="a_bom_list_${i}" class="ac-list" style="max-height:200px;overflow:auto;display:none;"></div>
         </div>
         <div class="fg"><label>Quantité${unit ? ' (' + unit + ')' : ''}</label><input type="number" step="0.01" value="${Math.round(U.num(l.qty) * 100) / 100}" onchange="Accessoires.setBomQty(${i},this.value)"></div>
-        <div class="fg" style="flex:0;"><button class="btn-icon" onclick="Accessoires.delBom(${i})">🗑️</button></div>
+        <div class="fg" style="flex:0;">${l.secId ? '' : `<button class="btn-icon" onclick="Accessoires.delBom(${i})">🗑️</button>`}</div>
       </div>${hint ? `<div class="muted" style="font-size:.8rem;margin-top:3px;">${hint}</div>` : ''}</div>`;
     }).join('') || '<p class="muted">ex: 2,4 m de sangle 20mm + 1 mousqueton + 4 rivets…</p>';
     if (sIdx.length >= 2) {
@@ -1479,7 +1586,7 @@ const Accessoires = {
   customLength(id, asVariant) {
     const src = Store.state.catalogA.find(x => x.id === id);
     if (!src) return;
-    const sangleIdx = (src.bom || []).findIndex(l => this.bomLineUnit(l) === 'm');
+    const sangleIdx = this._mainStrapIdx(src);
     if (sangleIdx < 0) { U.toast('Cette fiche n’a pas de ligne de sangle (en mètres) : ajoute-la dans Artisanat pour pouvoir créer une longueur.', true); return; }
     const currentStrap = U.num(src.bom[sangleIdx].qty);
     const segs = src.fabSegments || [];
@@ -1548,7 +1655,8 @@ const Accessoires = {
   /* Construit la liste des matières de la fenêtre « Fabriquer » à partir d'une fiche (ou d'une copie modifiée pour cette seule fabrication). */
   _fabBuild(src) {
     this._fabBom = (src.bom || []).map(l => {
-      const tag = l.strapColor ? '🎨 Couleur ' + l.strapColor + ' — ' + this._colorTitle(src, l.strapColor) : '';
+      const secL = l.secId ? (src.fabSections || []).find(s => s.id === l.secId) : null;
+      const tag = l.strapColor ? '🎨 Couleur ' + l.strapColor + ' — ' + this._colorTitle(src, l.strapColor) : secL ? '📏 Section « ' + (secL.label || 'sans nom') + ' »' + (secL.width ? ' — ' + secL.width : '') : '';
       if (l.familyKey) {
         const fam = this.families().find(f => f.key === l.familyKey);
         if (!fam) return { type: 'missing', label: l.familyKey, qty: l.qty };
