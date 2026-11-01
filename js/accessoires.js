@@ -123,7 +123,30 @@ const Accessoires = {
     const mem = this._grpMembers(gid); if (!mem.length) return;
     const ref = mem.find(a => !this._persoRank(a)) || mem[0];
     this._grpOpen[gid] = true;
+    if (this.isSizedFam(gid)) { this.addSize(gid); return; }
     this.customLength(ref.id, true);
+  },
+  /* Famille de colliers (catégorie « Collier » ou taille déjà choisie sur une fiche) : on ajoute des TAILLES (S, M, L, XL), pas des longueurs. */
+  isSizedFam(gid) { const mem = this._grpMembers(gid); return !!mem.length && (mem.some(a => a.sizeLabel) || /collier/i.test(mem[0].category || '')); },
+  /* « ＋ Ajouter une taille » (Antho 2026-11-01) : crée la taille suivante qui n'existe pas encore (S, puis M, puis L, puis XL) en copiant la plus grande taille de la famille ;
+     nom « … — Taille M » et SKU automatiques, stock à 0, coefficient commun. La fiche s'ouvre ensuite pour régler SES longueurs (tour de cou de référence, X, fourchette). */
+  addSize(gid) {
+    const mem = this._grpMembers(gid); if (!mem.length) return;
+    const next = ['S', 'M', 'L', 'XL'].find(t => !mem.some(a => a.sizeLabel === t));
+    if (!next) { U.toast('Les tailles S, M, L et XL existent déjà dans cette famille.', true); return; }
+    const plain = mem.filter(a => !this._persoRank(a)), src = plain.filter(a => a.sizeLabel).sort((x, y) => this._sizeRank(y) - this._sizeRank(x))[0] || plain[0] || mem[0];
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = U.uid(); copy.stockGeneral = 0; copy.stockEvent = 0;   // une nouvelle taille démarre sans stock
+    if (copy.groupId && U.num(copy.groupCoeff) > 0) { copy.coefficient = copy.groupCoeff; copy.priceTTCManual = ''; }   // elle suit le coefficient commun de la famille
+    copy.sizeLabel = next; delete copy.sizeRange;   // la fourchette de tour de cou de la taille copiée ne vaut pas pour la nouvelle
+    copy.name = this._baseName(src) + ' — Taille ' + next;
+    { const base = Pricing.autoSkuAcc(copy), taken = this._takenSkus(copy.id); let sku = base, n = 1; while (base && taken.has(sku)) { n++; sku = base + '-' + n; } copy.sku = base ? sku : ''; }
+    this._grpOpen[gid] = true;
+    Store.state.catalogA.push(copy);
+    const entry = Store.log('accessoires', 'Taille ajoutée — ' + copy.name, { type: 'restoreBatch', data: [{ domain: 'catalogA', id: copy.id, before: null }] });
+    Store.save('catalogA'); App.rerender();
+    U.toast(`Taille ${next} ajoutée : règle ses longueurs (tour de cou, X…).`, false, entry.id);
+    setTimeout(() => this.editAcc(copy.id), 60);
   },
   /* SKU de la famille : TYPE-LARGEUR-NOM-LONGUEUR[-UV][-LASER] pour chaque longueur (Pricing.autoSkuAcc), à valider ligne par ligne. */
   groupSkus(gid) {
@@ -178,7 +201,7 @@ const Accessoires = {
         </div>
         ${mem.map(a => this.accCard(a)).join('')}
         <div class="mt">${U.seg([
-          { l: '＋ Ajouter une longueur', tone: 'ok', js: `Accessoires.addLength('${gid}')` },
+          { l: this.isSizedFam(gid) ? '＋ Ajouter une taille' : '＋ Ajouter une longueur', tone: 'ok', js: `Accessoires.addLength('${gid}')` },
           { l: 'Modifier', js: `Accessoires.editGroup('${gid}')` },
           { l: '✨ SKU', js: `Accessoires.groupSkus('${gid}')` },
           { l: '📋 Dupliquer', js: `Accessoires.duplicateGroup('${gid}')` },

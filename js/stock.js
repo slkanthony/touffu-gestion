@@ -2595,7 +2595,7 @@ Sans réglage : utilise le bouton « ▶ Ouvrir le suivant » (un clic = un lien
         <div class="fold-body" style="padding:0;">
           <div class="stk-acc-sub"><span>Longueur</span><span>SKU</span><span>Général</span><span></span><span>Événement</span><span>Total</span><span>Min</span><span class="right">Coût</span><span class="right">Prix TTC</span><span></span></div>
           ${i.rows.map(r => row(r, false)).join('')}
-          <div class="stk-acc-foot">${ro ? '' : `<button class="btn-cta btn-sm fit" onclick="Accessoires.addLength('${i.gid}')" title="Crée une nouvelle longueur dans cette famille (prix et coût calculés dans Artisanat)">＋ Ajouter une longueur</button>`}</div>
+          <div class="stk-acc-foot">${ro ? '' : `<button class="btn-cta btn-sm fit" onclick="Accessoires.addLength('${i.gid}')" title="Crée une nouvelle ${Accessoires.isSizedFam(i.gid) ? 'taille' : 'longueur'} dans cette famille (prix et coût calculés dans Artisanat)">＋ Ajouter ${Accessoires.isSizedFam(i.gid) ? 'une taille' : 'une longueur'}</button>`}</div>
         </div>
       </details>`; };
     document.getElementById('stockBody').innerHTML = `
