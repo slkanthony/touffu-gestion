@@ -1682,18 +1682,19 @@ const Accessoires = {
         ${hasRef ? '' : `<div class="fg"><label>Tour de cou de la fiche ${U.info('Le tour de cou pour lequel la longueur interne X de cette fiche a été réglée (ex. 38 cm pour la taille M). Demandé une seule fois : il est ensuite mémorisé sur la fiche (« Longueur produit fini »).')}</label><div>${U.lenSplit('cc_ref', 0, { input: 'Accessoires._calcPreview()' })}</div></div>`}
         <div class="fg"><label>Tour de cou du chien</label><div>${U.lenSplit('cc_neck', 0, { input: 'Accessoires._calcPreview()' })}</div></div>
         <div id="cc_preview" class="mt"></div>
-        <div class="fg mt"><label>Pour (client, note) <span class="muted">— option</span></label><input id="cc_note" placeholder="ex : Marie, collier rouge"></div>
+        <div class="fg mt"><label>Client <span class="muted">— option</span></label><input id="cc_client" type="text" data-clcombo autocomplete="off" placeholder="Choisis ou tape un client"></div>
+        <div class="fg mt"><label>Note <span class="muted">— option</span></label><input id="cc_note" placeholder="ex : collier rouge, boucle à gauche"></div>
         <div class="mt"><button class="btn-ghost btn-sm" type="button" onclick="Accessoires.calcQueue()" title="Garde ce calcul dans « 🧵 À fabriquer » (page Artisanat) pour le fabriquer plus tard">⏳ Mettre en attente</button></div>`,
       onOk: () => {
         const neck = U.lenCm('cc_neck');
         if (!(neck > 0)) { U.toast('Tape le tour de cou.', true); return false; }
         const ref = this._ccRef(a);
         if (!(ref > 0)) { U.toast('Tape le tour de cou de la fiche (celui pour lequel X est réglé).', true); return false; }
-        const note = U.val('cc_note').trim();
+        const note = U.val('cc_note').trim(), client = U.val('cc_client').trim();
         const src = this._calcClone(a, neck, ref);
         this._ccKeepRef(a, ref);
-        U.closeModal();
-        this.fabricate(id, { src, neck, note });
+        Clients.cbClose(); U.closeModal();
+        this.fabricate(id, { src, neck, note, client });
       }
     });
   },
@@ -1705,8 +1706,8 @@ const Accessoires = {
     if (!(ref > 0)) { U.toast('Tape le tour de cou de la fiche (celui pour lequel X est réglé).', true); return; }
     this._ccKeepRef(a, ref);
     const S = Store.state.settings;
-    (S.fabQueue = S.fabQueue || []).push({ id: U.uid(), accId: a.id, neck, note: U.val('cc_note').trim(), ts: Date.now() });
-    Store.save('settings'); U.closeModal(); App.rerender();
+    (S.fabQueue = S.fabQueue || []).push({ id: U.uid(), accId: a.id, neck, client: U.val('cc_client').trim(), note: U.val('cc_note').trim(), ts: Date.now() });
+    Store.save('settings'); Clients.cbClose(); U.closeModal(); App.rerender();
     U.toast(`${a.name} (tour de cou ${U.lenTxt(neck)}) mis en attente dans « À fabriquer ».`);
   },
   _queueOpen: true,
@@ -1718,7 +1719,7 @@ const Accessoires = {
       ${q.map(x => {
         const a = Store.state.catalogA.find(y => y.id === x.accId), rows = this._calcRows(this._calcClone(a, x.neck));
         return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--card-border);">
-          <div style="flex:1;min-width:220px;"><b>${U.esc(a.name)}</b> <span class="muted">· tour de cou ${U.lenTxt(x.neck)}${x.note ? ' · ' + U.esc(x.note) : ''}</span>
+          <div style="flex:1;min-width:220px;"><b>${U.esc(a.name)}</b> ${x.client ? `<span class="tag">👤 ${U.esc(Clients.show(x.client))}</span> ` : ''}<span class="muted">· tour de cou ${U.lenTxt(x.neck)}${x.note ? ' · ' + U.esc(x.note) : ''}</span>
             <div class="muted" style="font-size:.85rem;">${rows.map(r => `${U.esc(r.part)} ${U.qty(r.qty)} m`).join(' · ')}</div></div>
           <button class="btn-cta btn-sm" onclick="Accessoires.fabQueued('${x.id}')">🛠 Fabriquer</button>
           <button class="btn-icon" title="Retirer de la liste" onclick="Accessoires.delQueued('${x.id}')">🗑️</button></div>`;
@@ -1726,7 +1727,7 @@ const Accessoires = {
   },
   fabQueued(qid) {
     const x = (Store.state.settings.fabQueue || []).find(y => y.id === qid), a = x && Store.state.catalogA.find(y => y.id === x.accId); if (!a) return;
-    this.fabricate(a.id, { src: this._calcClone(a, x.neck), neck: x.neck, note: x.note, qid });
+    this.fabricate(a.id, { src: this._calcClone(a, x.neck), neck: x.neck, note: x.note, client: x.client, qid });
   },
   async delQueued(qid) {
     const x = (Store.state.settings.fabQueue || []).find(y => y.id === qid); if (!x) return;
@@ -2039,7 +2040,7 @@ const Accessoires = {
     this._fabSrcAcc = src;
     this._fabBuild(src);
     const bomHTML = this._fabBomHTML();
-    const customTxt = custom ? `tour de cou ${U.lenTxt(custom.neck)}${custom.note ? ' · ' + custom.note : ''}` : '';
+    const customTxt = custom ? `tour de cou ${U.lenTxt(custom.neck)}${custom.client ? ' · pour ' + custom.client : ''}${custom.note ? ' · ' + custom.note : ''}` : '';
     const endsBox = src.bicolor && (src.fabSegments || []).length >= 2 ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0 0;font-size:.84rem;text-transform:none;letter-spacing:0;"><input id="fab_ends" type="checkbox" ${src.bicolorEnds ? 'checked' : ''} onchange="Accessoires._fabToggleEnds()"> <span>Ces 2 sangles ne sont pas de la même couleur <span class="muted">(→ 3 couleurs, pour cette fabrication)</span></span></label>` : '';
 
     // pièces « prêtes à finir » (ajoutées à la main) en stock : on peut en partir (elles perdent n pièces, le stock fini de l'accessoire en gagne n)
