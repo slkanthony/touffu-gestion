@@ -203,6 +203,7 @@ const Accessoires = {
         ${mem.map(a => this.accCard(a)).join('')}
         <div class="mt">${U.seg([
           { l: this.isSizedFam(gid) ? '＋ Ajouter une taille' : '＋ Ajouter une longueur', tone: 'ok', js: `Accessoires.addLength('${gid}')` },
+          ...(this.isSizedFam(gid) ? [{ l: '📏 Calculer', js: `Accessoires.calcFamily('${gid}')` }] : []),
           { l: 'Modifier', js: `Accessoires.editGroup('${gid}')` },
           { l: '✨ SKU', js: `Accessoires.groupSkus('${gid}')` },
           { l: '📋 Dupliquer', js: `Accessoires.duplicateGroup('${gid}')` },
@@ -637,10 +638,20 @@ const Accessoires = {
   /* Nombre de COULEURS de sangle (Antho 2026-10-13) : 1 ; bicolor = 2 (couleur 1 = segments fixes rabat + poignée, couleur 2 = longueur interne) ;
      bicolor + « extrémités de couleurs différentes » (`a.bicolorEnds`, ≥ 2 segments) = 3 (couleur 1 = 1er segment, couleur 2 = les autres segments, couleur 3 = longueur interne). */
   _colorCount(a) { return a.bicolor ? ((a.bicolorEnds && (a.fabSegments || []).length >= 2) ? 3 : 2) : 1; },
+  /* Colliers (Antho 2026-11-01) : la formule (segments, sections, X pour le tour de cou de RÉFÉRENCE `productLength`) est commune à toutes les tailles ; chaque taille a sa FOURCHETTE de tour de cou
+     (`a.sizeRange`, ex. « 38–45 cm »). Le COÛT d'une taille est celui du haut de sa fourchette : X est ramené à ce tour de cou (X + haut − référence). Sans taille, fourchette ou référence : X tel quel. */
+  _rangeOf(a) {
+    const n = (String(a.sizeRange || '').match(/\d+(?:[.,]\d+)?/g) || []).map(x => parseFloat(x.replace(',', '.'))).filter(x => x > 0);
+    return n.length ? { min: Math.min(...n), max: Math.max(...n) } : null;
+  },
+  _xEff(a) {
+    const r = a.sizeLabel ? this._rangeOf(a) : null, ref = U.num(a.productLength) * 100;
+    return r && ref > 0 ? Math.max(0, Math.round((U.num(a.internalLength) + r.max - ref) * 10) / 10) : U.num(a.internalLength);
+  },
   /* Quantités de sangle déduites des « Longueurs de fabrication » : [total] ou, par couleur, [segments…, interne] (en m, arrondi au mm) */
   _strapTargets(a, nStrap) {
     const segs = (a.fabSegments || []).map(s => U.num(s.value)), segTotal = segs.reduce((x, y) => x + y, 0);
-    const interne = U.num(a.internalLength), r = x => x > 0 ? Math.round(x / 100 * 1000) / 1000 : 0, n = this._colorCount(a);
+    const interne = this._xEff(a), r = x => x > 0 ? Math.round(x / 100 * 1000) / 1000 : 0, n = this._colorCount(a);
     if (n >= 2 && nStrap >= n) return n === 3 ? [r(segs[0] || 0), r(segTotal - (segs[0] || 0)), r(interne)] : [r(segTotal), r(interne)];
     return [r(segTotal + interne)];
   },
@@ -845,7 +856,6 @@ const Accessoires = {
         ${notesHTML}
         <div class="mt">${U.seg([
           { l: '🛠 Fabriquer', tone: 'ok', js: `Accessoires.fabricate('${a.id}')` },
-          ...(this._mainStrapIdx(a) >= 0 && (U.num(a.productLength) > 0 || a.sizeLabel || /collier/i.test(a.category || '')) ? [{ l: '📏 Calculer', js: `Accessoires.calcLength('${a.id}')` }] : []),
           { l: 'Modifier', js: `Accessoires.editAcc('${a.id}')` },
           // Une longueur de plus = « ＋ Ajouter une longueur » du produit (famille) ; SKU et Dupliquer sont ceux de la famille
           { l: 'Supprimer', tone: 'danger', js: `Accessoires.delAcc('${a.id}')` }
@@ -867,12 +877,12 @@ const Accessoires = {
   _fabSummary(a) {
     const segs = a.fabSegments || [];
     const prodLen = U.num(a.productLength);
-    const interne = U.num(a.internalLength);
+    const interne = U.num(a.internalLength), xEff = this._xEff(a);
     if (!segs.some(s => s.value > 0) && !prodLen && !interne) return '';
     const parts = [];
-    if (prodLen > 0) parts.push(`Produit : ${U.qty(prodLen)} m`);
+    if (prodLen > 0) parts.push(`${a.sizeLabel ? 'Tour de cou réf.' : 'Produit'} : ${U.qty(prodLen)} m`);
     segs.filter(s => s.value > 0).forEach(s => parts.push(`${U.esc(s.label)} : ${U.lenTxt(s.value)}`));
-    if (interne > 0) parts.push(`Interne : ${U.lenTxt(interne)}`);
+    if (interne > 0) parts.push(Math.abs(xEff - interne) > 0.05 ? `Interne (haut de fourchette) : ${U.lenTxt(xEff)}` : `Interne : ${U.lenTxt(interne)}`);
     if (this._colorCount(a) >= 2) {
       this._colorParts(a).forEach(p => { if (p.qty > 0) parts.push(`Couleur ${p.k} : ${U.qty(p.qty)} m`); });
     } else {
@@ -1063,8 +1073,9 @@ const Accessoires = {
 
   _fabFieldsHTML(a) {
     const segs = a.fabSegments || [];
-    const interne = U.num(a.internalLength);
-    return `<div class="fg"><label>Longueur produit fini</label><div>${U.lenSplit('a_prodLen', U.num(a.productLength) * 100, { change: 'Accessoires.onProdLenChange()' })}</div></div>
+    const interne = U.num(a.internalLength), sized = !!a.sizeLabel || /collier/i.test(a.category || '');
+    const refLabel = sized ? `Tour de cou de référence ${U.info("Colliers : le tour de cou pour lequel la longueur interne X ci-dessous est réglée (ex. 40 cm). Cette formule (segments, sections, X, référence) est la MÊME pour toutes les tailles du collier : à l'enregistrement, je te propose de l'appliquer aux autres tailles. Seuls le nom, la taille, la fourchette et le stock sont propres à chaque taille.")}` : 'Longueur produit fini';
+    return `<div class="fg"><label>${refLabel}</label><div>${U.lenSplit('a_prodLen', U.num(a.productLength) * 100, { change: 'Accessoires.onProdLenChange()' })}</div></div>
       <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--input-border);background:var(--th-bg);">
         <div style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">Détail des longueurs</div>
         <div style="font-weight:700;font-size:.9rem;margin-bottom:6px;">Section principale <span class="muted" style="font-weight:400;font-size:.8rem;">— calculée avec X (sangle ${U.esc(a.mainWidth || (a.strapWidths || [])[0] || 'principale')})</span></div>
@@ -1077,9 +1088,44 @@ const Accessoires = {
         <button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addSection()" title="Une section en plus, non liée à X (ex. surpiqûre) : elle a sa propre largeur de sangle et ses propres longueurs">＋ Ajouter une section</button>
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
           <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne, { change: 'Accessoires.syncStrap()' })}</div></div>
+          <div id="a_xnote" class="muted" style="font-size:.8rem;margin-top:4px;">${this._xNoteTxt(a)}</div>
         </div>
       </div>`;
   },
+
+  /* ── Formule commune aux tailles d'un collier (Antho 2026-11-01) : segments, sections, bicolor, X, tour de cou de référence et lignes de sangle ── */
+  _formulaSig(a) {
+    const sg = (a.fabSegments || []).map(s => [String(s.label || ''), U.num(s.value)]);
+    const sc = (a.fabSections || []).filter(s => s.label || this._secTotalCm(s) > 0).map(s => [s.id, String(s.label || ''), s.width || '', (s.segs || []).map(g => [String(g.label || ''), U.num(g.value)])]);
+    return JSON.stringify([sg, sc, !!a.bicolor, !!a.bicolorEnds, U.num(a.internalLength), U.num(a.productLength),
+      (a.bom || []).filter(l => this.bomLineUnit(l) === 'm').map(l => [l.familyKey || '', l.materialId || '', l.strapColor || 0, l.secId || ''])]);
+  },
+  _copyFormula(src, d) {
+    const cp = o => JSON.parse(JSON.stringify(o));
+    d.fabSegments = cp(src.fabSegments || []);
+    if ((src.fabSections || []).length) d.fabSections = cp(src.fabSections); else delete d.fabSections;
+    d.bicolor = !!src.bicolor; if (src.bicolorEnds) d.bicolorEnds = true; else delete d.bicolorEnds;
+    d.internalLength = src.internalLength; d.productLength = src.productLength;
+    d.bom = [...(src.bom || []).filter(l => this.bomLineUnit(l) === 'm').map(cp), ...(d.bom || []).filter(l => this.bomLineUnit(l) !== 'm')];   // sangles de la formule ; pièces (mousquetons…) propres à la taille
+    this._applyColors(d); this._autoStrap(d);   // quantités recalculées pour le haut de la fourchette de CETTE taille
+  },
+  /* Après l'enregistrement d'une taille dont la formule a changé : propose de l'appliquer aux autres tailles du collier (annulable) */
+  async _offerFormula(a) {
+    const sibs = this._grpMembers(a.groupId).filter(x => x.id !== a.id && x.sizeLabel && this._formulaSig(x) !== this._formulaSig(a));
+    if (!sibs.length) return;
+    const names = sibs.map(x => x.sizeLabel).join(', ');
+    if (!await U.confirm(`Appliquer ces longueurs (segments, sections, X, tour de cou de référence, sangles) aux autres tailles : ${names} ? Leurs propres longueurs sont remplacées ; nom, fourchette, stock, prix et pièces ne changent pas. Le coût de chaque taille est recalculé sur le haut de sa fourchette.`, { title: '📐 Formule commune aux tailles', okLabel: 'Appliquer' })) return;
+    const entry = this._grpTouch(sibs, s => this._copyFormula(a, s), `Longueurs communes appliquées à ${sibs.length} taille(s) — ${a.groupName || ''}`);
+    U.toast(`Longueurs appliquées aux tailles ${names}.`, false, entry.id);
+  },
+  /* Sous X : à quel tour de cou le coût de cette taille est calculé (haut de la fourchette) */
+  _xNoteTxt(a) {
+    const r = a.sizeLabel ? this._rangeOf(a) : null, ref = U.num(a.productLength) * 100;
+    if (!r || !(ref > 0)) return '';
+    return `Coût de cette taille calculé pour le haut de la fourchette (${U.lenTxt(r.max)}) : X = ${U.lenTxt(this._xEff(a))}.`;
+  },
+  /* Fourchette de tour de cou modifiée : le coût de la taille (haut de la fourchette) suit */
+  onRangeChange() { if (this._a) { this._a.sizeRange = U.val('a_range').trim(); this.syncStrap(); } },
 
   /* ── Sections en plus de la principale (fenêtre Modifier) ── */
   _secWidths() { const ws = (this._a && this._a.strapWidths) || []; return ws.length ? ws : this._availableWidths(); },
@@ -1227,7 +1273,7 @@ const Accessoires = {
     }
   },
   /* Taille S / M / L / XL changée : le nom (« … — Taille L ») et, s'il est au format automatique, le SKU suivent. */
-  onSizeChange() { this._syncIdentity(); },
+  onSizeChange() { this._syncIdentity(); this.syncStrap(); },
   /* Longueur du produit fini modifiée : la longueur interne bouge du même écart (même règle que « Sur mesure » et la saisie dans la fiche), donc sangle et coût suivent. */
   onProdLenChange() {
     const el = document.getElementById('a_internLen_m'); if (!el) return;
@@ -1250,6 +1296,7 @@ const Accessoires = {
       : (() => { const cat = S.accCategories[0]; const defs = (fabDefs[cat]?.segments || []).map(s => ({ ...s })); let internLen = 0; const ii = defs.findIndex(s => s.label && s.label.toLowerCase().includes('interne')); if (ii >= 0) { internLen = U.num(defs[ii].value); defs.splice(ii, 1); } return { id: U.uid(), name: '', category: cat, bom: this._tplLines(cat), laborMinutes: 20, extraCost: 0, coefficient: 2.5, priceTTCManual: '', sku: '', notes: '', handleLength: '', flapLength: '', materialsDesc: '', strapWidths: [], fabSegments: defs, productLength: 0, internalLength: internLen }; })();
     this._normalizeWidths(a);
     this._a = a; this._isNewA = !id; this._widthsOpen = false; this._bomQ = {};
+    this._sigOpen = this._isNewA ? '' : this._formulaSig(a);   // pour savoir à l'enregistrement si la formule a changé
     if (!this._isNewA) this._flagManualStrap(a);
     if (!this._isNewA && (!a.fabSegments || !a.fabSegments.length)) {
       const defs = this._fabDefaults(a.category).map(s => ({ ...s }));
@@ -1270,7 +1317,7 @@ const Accessoires = {
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="a_name" value="${U.esc(a.name || a.category)}" placeholder="ex: Longe 5m — 20mm"></div>
         <div class="fg" style="flex:0 0 90px;min-width:0;"><label>Taille</label><select id="a_sizeLabel" onchange="Accessoires.onSizeChange()">${['', 'S', 'M', 'L', 'XL'].concat(a.sizeLabel && !['S', 'M', 'L', 'XL'].includes(a.sizeLabel) ? [a.sizeLabel] : []).map(t => `<option value="${U.esc(t)}" ${t === (a.sizeLabel || '') ? 'selected' : ''}>${t ? U.esc(t) : '—'}</option>`).join('')}</select></div>
-        <div class="fg" style="flex:0 0 190px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette INDICATIVE de la taille (ex. 38–45 cm), pour t'aider à choisir la taille d'un devis. Jamais utilisée dans les calculs : pour une fabrication, tu tapes le tour de cou exact dans « 📏 Calculer ».")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm"></div>
+        <div class="fg" style="flex:0 0 190px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette de tour de cou de la taille (ex. 38–45 cm) : sert à choisir la taille d'un devis et à retrouver la taille quand tu tapes un tour de cou dans « 📏 Calculer ». Le HAUT de la fourchette sert aussi à calculer le coût de la taille (la sangle d'un collier au plus grand tour de cou).")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm" onchange="Accessoires.onRangeChange()"></div>
       </div>
       <h2 style="font-size:.95rem;">Matières utilisées ${(a.strapWidths||[]).length ? '' : '<span class="muted" style="font-weight:normal;font-size:.8rem;">(coût moyen par famille)</span>'}</h2>
       <p class="muted help">La sangle se calcule toute seule d'après « Longueurs de fabrication » (en bas) : tu n'as pas à la saisir. Mousquetons, rivets, anneaux… : choisis la catégorie puis la référence, avec la quantité. Les lignes sans référence sont ignorées à l'enregistrement.</p>
@@ -1338,6 +1385,7 @@ const Accessoires = {
           this._isNewA ? { type: 'deleteCreated', data: { domain: 'catalogA', id: a.id } } : { type: 'restoreItem', data: { domain: 'catalogA', id: a.id, before } });
         Store.save('catalogA'); U.closeModal(); App.rerender();
         U.toast(this._isNewA ? 'Accessoire créé.' : 'Modification enregistrée.', false, entry.id);
+        if (a.groupId && a.sizeLabel && this.isSizedFam(a.groupId) && this._formulaSig(a) !== this._sigOpen) this._offerFormula(a);
       }
     });
     this.drawBom();
@@ -1502,8 +1550,12 @@ const Accessoires = {
     const a = this._a; if (!a) return;
     this._readFabSegs(); this._readSecs();
     if (document.getElementById('a_internLen_m')) a.internalLength = U.lenCm('a_internLen');
+    if (document.getElementById('a_prodLen_m')) a.productLength = Math.round(U.lenCm('a_prodLen')) / 100;
+    if (document.getElementById('a_range')) a.sizeRange = U.val('a_range').trim();
+    if (document.getElementById('a_sizeLabel')) a.sizeLabel = U.val('a_sizeLabel');
     this._applyColors(a);
     this._autoStrap(a);
+    const xn = document.getElementById('a_xnote'); if (xn) xn.textContent = this._xNoteTxt(a);
     (a.fabSections || []).forEach((s, si) => { const t = document.getElementById('a_sec_tot_' + si); if (t) t.innerHTML = this._secTotTxt(s); });
     const sub = document.getElementById('a_bicolor_sub'); if (sub) sub.textContent = this._colorSubText(a);
     this.drawBom();
@@ -1627,13 +1679,14 @@ const Accessoires = {
     }
   },
 
-  /* ═══ 📏 Calculer (colliers, Antho 2026-11-01) ═══
-     « Longueur produit fini » de la fiche = tour de cou de RÉFÉRENCE. On tape le tour de cou voulu : X bouge du même écart, les sections non liées à X ne bougent pas.
+  /* ═══ 📏 Calculer (colliers, Antho 2026-11-01) — bouton sur la ligne du PRODUIT (`calcFamily(gid)`), pas sur une taille ═══
+     « Longueur produit fini » de la fiche = tour de cou de RÉFÉRENCE. On tape le tour de cou voulu : la taille est trouvée d'après les fourchettes (`a.sizeRange`), X bouge du même écart, les sections non liées à X ne bougent pas.
      Rien n'est créé ni enregistré sur la fiche : « 🛠 Fabriquer » ouvre la fenêtre habituelle avec ces longueurs exactes (copie de la fiche pour cette seule fabrication,
-     donc les matières retirées du stock sont les bonnes) ; « ⏳ Mettre en attente » garde le calcul dans « 🧵 À fabriquer » (`settings.fabQueue`). La fourchette `a.sizeRange` est INDICATIVE seulement. */
+     donc les matières retirées du stock sont les bonnes) ; « ⏳ Mettre en attente » garde le calcul dans « 🧵 À fabriquer » (`settings.fabQueue`). Le coût d'une taille se calcule sur le HAUT de sa fourchette (`_xEff`) ; la fenêtre ne montre que les longueurs (coûts / économies = Stats et Ventes). */
   _calcClone(a, neckCm, refCm) {
     const c = JSON.parse(JSON.stringify(a));
     const ref = refCm > 0 ? refCm : U.num(a.productLength) * 100;
+    delete c.sizeRange;   // X de la copie = le tour de cou tapé (pas le haut de la fourchette de la taille)
     c.productLength = neckCm / 100;
     c.internalLength = Math.max(0, Math.round((U.num(a.internalLength) + neckCm - ref) * 10) / 10);
     (c.bom || []).forEach(l => { if (this.bomLineUnit(l) === 'm') delete l.qtyManual; });   // le calcul repart des longueurs, pas d'une quantité saisie à la main
@@ -1653,58 +1706,75 @@ const Accessoires = {
   _calcRowsHTML(rows) {
     return rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:4px 0;"><span>${U.esc(r.part)}${r.strap ? ` <span class="muted">— ${U.esc(r.strap)}</span>` : ''}</span><b style="white-space:nowrap;">${U.qty(r.qty)} m</b></div>`).join('');
   },
+  /* Tailles du collier (fiches de la famille avec une taille et une sangle), de la plus petite à la plus grande */
+  _calcSizes(gid) { return this._grpMembers(gid).filter(a => a.sizeLabel && this._mainStrapIdx(a) >= 0).sort((x, y) => this._sizeRank(x) - this._sizeRank(y)); },
+  /* Taille à fabriquer : celle choisie dans le menu, sinon (« Automatique ») celle dont la fourchette contient le tour de cou tapé */
+  _calcResolve() {
+    const sizes = this._calcSizes(this._ccGid), pick = U.val('cc_size') || 'auto', neck = U.lenCm('cc_neck');
+    if (pick !== 'auto') return { a: sizes.find(x => x.id === pick) || null, auto: false };
+    if (!(neck > 0)) return { a: null, auto: true };
+    const hit = sizes.filter(x => { const r = this._rangeOf(x); return r && neck >= r.min - 0.0001 && neck <= r.max + 0.0001; });
+    return { a: hit[0] || null, auto: true, none: !hit.length, several: hit.length > 1 };
+  },
   _calcPreview() {
-    const el = document.getElementById('cc_preview'), a = this._ccAcc; if (!el || !a) return;
-    const neck = U.lenCm('cc_neck');
+    const el = document.getElementById('cc_preview'); if (!el) return;
+    const neck = U.lenCm('cc_neck'), r = this._calcResolve(); this._ccAcc = r.a;
     if (!(neck > 0)) { el.innerHTML = ''; return; }
-    const ref = this._ccRef(a);
-    if (!(ref > 0)) { el.innerHTML = '<span class="muted">Tape aussi le tour de cou de référence de la fiche.</span>'; return; }
-    const c = this._calcClone(a, neck, ref);
+    if (!r.a) { el.innerHTML = `<span class="muted">${r.auto ? `Aucune taille n'a une fourchette qui contient ${U.lenTxt(neck)} : choisis la taille dans le menu.` : 'Choisis une taille.'}</span>`; return; }
+    const a = r.a, ref = this._ccRef(a);
+    if (!(ref > 0)) { el.innerHTML = '<span class="muted">Tape aussi le tour de cou de référence (celui pour lequel X est réglé).</span>'; return; }
+    const c = this._calcClone(a, neck, ref), rg = this._rangeOf(a);
     el.innerHTML = `<div class="card" style="padding:8px 12px;background:var(--th-bg);margin:0;">
-      <div class="muted" style="font-size:.85rem;margin-bottom:4px;">Tour de cou ${U.lenTxt(neck)} (fiche : X = ${U.lenTxt(U.num(a.internalLength))} pour ${U.lenTxt(ref)}) → <b>X = ${U.lenTxt(c.internalLength)}</b></div>
+      <div style="margin-bottom:4px;">📏 Taille <b>${U.esc(a.sizeLabel)}</b>${rg ? ` <span class="muted">(${U.esc(a.sizeRange)})</span>` : ''}${r.several ? ' <span class="muted">— plusieurs tailles possibles, change-la dans le menu</span>' : ''} <span class="muted">· X = ${U.lenTxt(c.internalLength)}</span></div>
       ${this._calcRowsHTML(this._calcRows(c)) || '<span class="muted">Aucune sangle à couper : renseigne les longueurs de la fiche.</span>'}</div>`;
   },
   /* Tour de cou de référence (cm) : celui de la fiche, sinon celui tapé dans la fenêtre */
   _ccRef(a) { return U.num(a.productLength) > 0 ? U.num(a.productLength) * 100 : (document.getElementById('cc_ref_cm') ? U.lenCm('cc_ref') : 0); },
-  /* Fiche sans référence : on retient celle tapée (c'est le tour de cou pour lequel X de la fiche a été mesuré) */
-  _ccKeepRef(a, ref) {
-    if (U.num(a.productLength) > 0 || !(ref > 0)) return;
-    a.productLength = ref / 100; Store.save('catalogA');
+  /* Tailles sans référence : on retient celle tapée (c'est le tour de cou pour lequel X a été mesuré) */
+  _ccKeepRef(ref) {
+    if (!(ref > 0)) return;
+    const miss = this._calcSizes(this._ccGid).filter(x => !(U.num(x.productLength) > 0)); if (!miss.length) return;
+    miss.forEach(x => { x.productLength = ref / 100; }); Store.save('catalogA');
   },
-  calcLength(id) {
-    const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
-    if (this._mainStrapIdx(a) < 0) { U.toast('Cette fiche n\'a pas de ligne de sangle : ajoute-la dans Modifier pour pouvoir calculer.', true); return; }
-    this._ccAcc = a;
-    const hasRef = U.num(a.productLength) > 0;
+  /* Vérifie la saisie : { a, neck, ref } ou null (avec message) */
+  _calcCheck() {
+    const neck = U.lenCm('cc_neck'); if (!(neck > 0)) { U.toast('Tape le tour de cou du chien.', true); return null; }
+    const r = this._calcResolve(); if (!r.a) { U.toast('Aucune taille ne correspond à ce tour de cou : choisis-en une dans le menu Taille.', true); return null; }
+    const ref = this._ccRef(r.a); if (!(ref > 0)) { U.toast('Tape le tour de cou de référence (celui pour lequel X est réglé).', true); return null; }
+    return { a: r.a, neck, ref };
+  },
+  /* « 📏 Calculer » est sur la ligne du PRODUIT (famille de colliers) : on tape le tour de cou, l'appli trouve la taille d'après les fourchettes */
+  calcFamily(gid) {
+    const sizes = this._calcSizes(gid);
+    if (!sizes.length) { U.toast('Cette famille n\'a pas de taille avec une sangle : règle une taille et sa sangle dans « Modifier ».', true); return; }
+    this._ccGid = gid; this._ccAcc = null;
+    const needRef = sizes.some(x => !(U.num(x.productLength) > 0)), name = this._grpMembers(gid)[0].groupName || '';
     U.modal({
-      title: '📏 Calculer — ' + U.esc(a.name), okLabel: '🛠 Fabriquer',
-      body: `<p class="muted help">Tape le tour de cou du chien : la longueur interne (X) s'ajuste du même écart que sur la fiche${hasRef ? ` (référence : ${U.lenTxt(U.num(a.productLength) * 100)})` : ''}, les sections non liées à X ne changent pas. Rien d'autre n'est enregistré sur la fiche.${a.sizeRange ? ` Fourchette de la taille : ${U.esc(a.sizeRange)}.` : ''}</p>
-        ${hasRef ? '' : `<div class="fg"><label>Tour de cou de la fiche ${U.info('Le tour de cou pour lequel la longueur interne X de cette fiche a été réglée (ex. 38 cm pour la taille M). Demandé une seule fois : il est ensuite mémorisé sur la fiche (« Longueur produit fini »).')}</label><div>${U.lenSplit('cc_ref', 0, { input: 'Accessoires._calcPreview()' })}</div></div>`}
-        <div class="fg"><label>Tour de cou du chien</label><div>${U.lenSplit('cc_neck', 0, { input: 'Accessoires._calcPreview()' })}</div></div>
+      title: '📏 Calculer — ' + U.esc(name), okLabel: '🛠 Fabriquer',
+      body: `<p class="muted help">Tape le tour de cou du chien : l'appli trouve la taille d'après les fourchettes, applique la formule du collier (X bouge du même écart que le tour de cou de référence, les sections non liées à X ne changent pas) et te donne les longueurs de sangle à couper. Rien n'est enregistré sur les fiches.</p>
+        ${needRef ? `<div class="fg"><label>Tour de cou de référence ${U.info('Le tour de cou pour lequel la longueur interne X des fiches est réglée (ex. 40 cm). Demandé une seule fois : il est mémorisé sur les tailles (« Tour de cou de référence » dans Modifier).')}</label><div>${U.lenSplit('cc_ref', 0, { input: 'Accessoires._calcPreview()' })}</div></div>` : ''}
+        <div class="frow" style="align-items:flex-end;">
+          <div class="fg"><label>Tour de cou du chien</label><div>${U.lenSplit('cc_neck', 0, { input: 'Accessoires._calcPreview()' })}</div></div>
+          <div class="fg"><label>Taille</label><select id="cc_size" onchange="Accessoires._calcPreview()"><option value="auto">Automatique (fourchette)</option>${sizes.map(x => `<option value="${x.id}">${U.esc(x.sizeLabel)}${x.sizeRange ? ' — ' + U.esc(x.sizeRange) : ''}</option>`).join('')}</select></div>
+        </div>
         <div id="cc_preview" class="mt"></div>
         <div class="fg mt"><label>Client <span class="muted">— option</span></label><input id="cc_client" type="text" data-clcombo autocomplete="off" placeholder="Choisis ou tape un client"></div>
         <div class="fg mt"><label>Note <span class="muted">— option</span></label><input id="cc_note" placeholder="ex : collier rouge, boucle à gauche"></div>
         <div class="mt"><button class="btn-ghost btn-sm" type="button" onclick="Accessoires.calcQueue()" title="Garde ce calcul dans « 🧵 À fabriquer » (page Artisanat) pour le fabriquer plus tard">⏳ Mettre en attente</button></div>`,
       onOk: () => {
-        const neck = U.lenCm('cc_neck');
-        if (!(neck > 0)) { U.toast('Tape le tour de cou.', true); return false; }
-        const ref = this._ccRef(a);
-        if (!(ref > 0)) { U.toast('Tape le tour de cou de la fiche (celui pour lequel X est réglé).', true); return false; }
+        const k = this._calcCheck(); if (!k) return false;
         const note = U.val('cc_note').trim(), client = U.val('cc_client').trim();
-        const src = this._calcClone(a, neck, ref);
-        this._ccKeepRef(a, ref);
+        const src = this._calcClone(k.a, k.neck, k.ref);
+        this._ccKeepRef(k.ref);
         Clients.cbClose(); U.closeModal();
-        this.fabricate(id, { src, neck, note, client });
+        this.fabricate(k.a.id, { src, neck: k.neck, note, client });
       }
     });
   },
   calcQueue() {
-    const a = this._ccAcc; if (!a) return;
-    const neck = U.lenCm('cc_neck');
-    if (!(neck > 0)) { U.toast('Tape le tour de cou.', true); return; }
-    const ref = this._ccRef(a);
-    if (!(ref > 0)) { U.toast('Tape le tour de cou de la fiche (celui pour lequel X est réglé).', true); return; }
-    this._ccKeepRef(a, ref);
+    const k = this._calcCheck(); if (!k) return;
+    const a = k.a, neck = k.neck;
+    this._ccKeepRef(k.ref);
     const S = Store.state.settings;
     (S.fabQueue = S.fabQueue || []).push({ id: U.uid(), accId: a.id, neck, client: U.val('cc_client').trim(), note: U.val('cc_note').trim(), ts: Date.now() });
     Store.save('settings'); Clients.cbClose(); U.closeModal(); App.rerender();
