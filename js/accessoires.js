@@ -772,7 +772,7 @@ const Accessoires = {
     const criticalClass = c.critical ? ' acc-critical' : '';
     return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
-        <span><b>${U.esc(a.name)}</b>${a.sizeRange ? ` <span class="muted" style="font-weight:400;font-size:.82rem;white-space:nowrap;">· tour de cou ${U.esc(a.sizeRange)}</span>` : ''}</span>
+        <span><b>${U.esc(a.name)}</b>${a.sizeLabel ? ` <span class="badge info">${U.esc(a.sizeLabel)}</span>` : ''}${a.sizeRange ? ` <span class="muted" style="font-weight:400;font-size:.82rem;white-space:nowrap;">· tour de cou ${U.esc(a.sizeRange)}</span>` : ''}</span>
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="type-col">${this._lenOf(a) > 0 ? U.qty(this._lenOf(a)) + ' m' : '<span class="muted">—</span>'}</span>
@@ -1231,7 +1231,8 @@ const Accessoires = {
       </div>
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="a_name" value="${U.esc(a.name || a.category)}" placeholder="ex: Longe 5m — 20mm"></div>
-        <div class="fg" style="flex:0 0 220px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette INDICATIVE de la taille (ex. 38–45 cm), pour t'aider à choisir la taille d'un devis. Jamais utilisée dans les calculs : pour une fabrication, tu tapes le tour de cou exact dans « 📏 Calculer ».")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm"></div>
+        <div class="fg" style="flex:0 0 90px;min-width:0;"><label>Taille</label><select id="a_sizeLabel">${['', 'S', 'M', 'L', 'XL'].concat(a.sizeLabel && !['S', 'M', 'L', 'XL'].includes(a.sizeLabel) ? [a.sizeLabel] : []).map(t => `<option value="${U.esc(t)}" ${t === (a.sizeLabel || '') ? 'selected' : ''}>${t ? U.esc(t) : '—'}</option>`).join('')}</select></div>
+        <div class="fg" style="flex:0 0 190px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette INDICATIVE de la taille (ex. 38–45 cm), pour t'aider à choisir la taille d'un devis. Jamais utilisée dans les calculs : pour une fabrication, tu tapes le tour de cou exact dans « 📏 Calculer ».")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm"></div>
       </div>
       <h2 style="font-size:.95rem;">Matières utilisées ${(a.strapWidths||[]).length ? '' : '<span class="muted" style="font-weight:normal;font-size:.8rem;">(coût moyen par famille)</span>'}</h2>
       <p class="muted help">La sangle se calcule toute seule d'après « Longueurs de fabrication » (en bas) : tu n'as pas à la saisir. Mousquetons, rivets, anneaux… : choisis la catégorie puis la référence, avec la quantité. Les lignes sans référence sont ignorées à l'enregistrement.</p>
@@ -1275,6 +1276,7 @@ const Accessoires = {
         a.sku = U.val('a_sku'); a.theme = U.chk('a_theme'); if (!a.theme) delete a.theme; a.uv = U.chk('a_uv') || !!a.theme; a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.laser = U.chk('a_laser'); a.laserMin = a.laser ? U.numVal('a_lasermin') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
         a.notes = U.val('a_notes'); a.print3dMin = U.numVal('a_p3d');
         a.sizeRange = U.val('a_range').trim(); if (!a.sizeRange) delete a.sizeRange;
+        a.sizeLabel = U.val('a_sizeLabel'); if (!a.sizeLabel) delete a.sizeLabel;
         this._readFabSegs(); this._readSecs();
         a.fabSegments = this._a.fabSegments || [];
         a.fabSections = (this._a.fabSections || []).filter(s => s.label || this._secTotalCm(s) > 0);   // une section vide (ni nom ni longueur) est ignorée
