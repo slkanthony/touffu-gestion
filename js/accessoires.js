@@ -497,6 +497,7 @@ const Accessoires = {
           <option value="no" ${this.accBicolorFilter === 'no' ? 'selected' : ''}>Non bicolor</option>
         </select></div>
       </div>
+      ${this._queueCard()}
       <div class="toolbar"><button class="btn-cta" onclick="Accessoires.editAcc()">＋ Nouvel accessoire</button></div>
       ${list.length ? `<div class="prod-list-header acc-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
@@ -771,7 +772,7 @@ const Accessoires = {
     const criticalClass = c.critical ? ' acc-critical' : '';
     return `<details class="fold prod-fold acc-fold${criticalClass}" id="acc-${a.id}" ${accOpen ? 'open' : ''} ontoggle="Accessoires.setAccOpen('${a.id}',this.open)">
       <summary>
-        <span><b>${U.esc(a.name)}</b></span>
+        <span><b>${U.esc(a.name)}</b>${a.sizeRange ? ` <span class="muted" style="font-weight:400;font-size:.82rem;white-space:nowrap;">· tour de cou ${U.esc(a.sizeRange)}</span>` : ''}</span>
         <span class="type-col">${widths.map(w => `<span class="badge${w === a.mainWidth && widths.length > 1 ? ' info' : ''}">${w === a.mainWidth && widths.length > 1 ? '★ ' : ''}${U.esc(w)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
         <span class="type-col"><span class="badge info">${U.esc(a.category)}</span></span>
         <span class="type-col">${this._lenOf(a) > 0 ? U.qty(this._lenOf(a)) + ' m' : '<span class="muted">—</span>'}</span>
@@ -812,6 +813,7 @@ const Accessoires = {
         ${notesHTML}
         <div class="mt">${U.seg([
           { l: '🛠 Fabriquer', tone: 'ok', js: `Accessoires.fabricate('${a.id}')` },
+          ...(U.num(a.productLength) > 0 && this._mainStrapIdx(a) >= 0 ? [{ l: '📏 Calculer', js: `Accessoires.calcLength('${a.id}')` }] : []),
           { l: 'Modifier', js: `Accessoires.editAcc('${a.id}')` },
           // Une longueur de plus = « ＋ Ajouter une longueur » du produit (famille) ; SKU et Dupliquer sont ceux de la famille
           { l: 'Supprimer', tone: 'danger', js: `Accessoires.delAcc('${a.id}')` }
@@ -1039,11 +1041,11 @@ const Accessoires = {
           <span><b style="font-size:.85rem;">🎨 Bicolor — sangles de couleurs différentes</b><br><span class="muted" id="a_bicolor_sub" style="font-size:.72rem;">${this._colorSubText(a)}</span></span>
         </label>
         <div id="a_segs_wrap">${this._fabSegsInnerHTML(segs)}</div>
+        <div id="a_secs_wrap">${this._secsHTML()}</div>
+        <button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addSection()" title="Une section en plus, non liée à X (ex. surpiqûre) : elle a sa propre largeur de sangle et ses propres longueurs">＋ Ajouter une section</button>
         <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--input-border);">
           <div class="fg"><label>Longueur interne — X</label><div>${U.lenSplit('a_internLen', interne, { change: 'Accessoires.syncStrap()' })}</div></div>
         </div>
-        <div id="a_secs_wrap">${this._secsHTML()}</div>
-        <button class="btn-ghost btn-sm mt" type="button" onclick="Accessoires.addSection()" title="Une section en plus, non liée à X (ex. surpiqûre) : elle a sa propre largeur de sangle et ses propres longueurs">＋ Ajouter une section</button>
       </div>`;
   },
 
@@ -1229,6 +1231,7 @@ const Accessoires = {
       </div>
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="a_name" value="${U.esc(a.name || a.category)}" placeholder="ex: Longe 5m — 20mm"></div>
+        <div class="fg" style="flex:0 0 220px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette INDICATIVE de la taille (ex. 38–45 cm), pour t'aider à choisir la taille d'un devis. Jamais utilisée dans les calculs : pour une fabrication, tu tapes le tour de cou exact dans « 📏 Calculer ».")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm"></div>
       </div>
       <h2 style="font-size:.95rem;">Matières utilisées ${(a.strapWidths||[]).length ? '' : '<span class="muted" style="font-weight:normal;font-size:.8rem;">(coût moyen par famille)</span>'}</h2>
       <p class="muted help">La sangle se calcule toute seule d'après « Longueurs de fabrication » (en bas) : tu n'as pas à la saisir. Mousquetons, rivets, anneaux… : choisis la catégorie puis la référence, avec la quantité. Les lignes sans référence sont ignorées à l'enregistrement.</p>
@@ -1271,6 +1274,7 @@ const Accessoires = {
         a.coefficient = U.numVal('a_coeff'); a.priceTTCManual = U.val('a_pttc');
         a.sku = U.val('a_sku'); a.theme = U.chk('a_theme'); if (!a.theme) delete a.theme; a.uv = U.chk('a_uv') || !!a.theme; a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.laser = U.chk('a_laser'); a.laserMin = a.laser ? U.numVal('a_lasermin') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
         a.notes = U.val('a_notes'); a.print3dMin = U.numVal('a_p3d');
+        a.sizeRange = U.val('a_range').trim(); if (!a.sizeRange) delete a.sizeRange;
         this._readFabSegs(); this._readSecs();
         a.fabSegments = this._a.fabSegments || [];
         a.fabSections = (this._a.fabSections || []).filter(s => s.label || this._secTotalCm(s) > 0);   // une section vide (ni nom ni longueur) est ignorée
@@ -1583,6 +1587,95 @@ const Accessoires = {
     }
   },
 
+  /* ═══ 📏 Calculer (colliers, Antho 2026-11-01) ═══
+     « Longueur produit fini » de la fiche = tour de cou de RÉFÉRENCE. On tape le tour de cou voulu : X bouge du même écart, les sections non liées à X ne bougent pas.
+     Rien n'est créé ni enregistré sur la fiche : « 🛠 Fabriquer » ouvre la fenêtre habituelle avec ces longueurs exactes (copie de la fiche pour cette seule fabrication,
+     donc les matières retirées du stock sont les bonnes) ; « ⏳ Mettre en attente » garde le calcul dans « 🧵 À fabriquer » (`settings.fabQueue`). La fourchette `a.sizeRange` est INDICATIVE seulement. */
+  _calcClone(a, neckCm) {
+    const c = JSON.parse(JSON.stringify(a));
+    c.productLength = neckCm / 100;
+    c.internalLength = Math.max(0, Math.round((U.num(a.internalLength) + neckCm - U.num(a.productLength) * 100) * 10) / 10);
+    (c.bom || []).forEach(l => { if (this.bomLineUnit(l) === 'm') delete l.qtyManual; });   // le calcul repart des longueurs, pas d'une quantité saisie à la main
+    this._applyColors(c); this._autoStrap(c);
+    return c;
+  },
+  /* Lignes de sangle à couper : [{ part, strap, qty (m) }] (section principale ; une ligne par couleur en bicolor ; une ligne par section) */
+  _calcRows(c) {
+    const fams = this.families();
+    return (c.bom || []).filter(l => this.bomLineUnit(l) === 'm' && U.num(l.qty) > 0).map(l => {
+      const sec = l.secId ? (c.fabSections || []).find(s => s.id === l.secId) : null;
+      const fam = l.familyKey ? fams.find(f => f.key === l.familyKey) : null, mat = l.materialId ? Store.material(l.materialId) : null;
+      const part = sec ? (sec.label || 'Section') : l.strapColor ? `Couleur ${l.strapColor} — ${this._colorTitle(c, l.strapColor)}` : 'Sangle principale';
+      return { part, strap: fam ? fam.label : mat ? mat.name : '', qty: U.num(l.qty) };
+    });
+  },
+  _calcRowsHTML(rows) {
+    return rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:4px 0;"><span>${U.esc(r.part)}${r.strap ? ` <span class="muted">— ${U.esc(r.strap)}</span>` : ''}</span><b style="white-space:nowrap;">${U.qty(r.qty)} m</b></div>`).join('');
+  },
+  _calcPreview() {
+    const el = document.getElementById('cc_preview'), a = this._ccAcc; if (!el || !a) return;
+    const neck = U.lenCm('cc_neck');
+    if (!(neck > 0)) { el.innerHTML = ''; return; }
+    const c = this._calcClone(a, neck), ref = U.num(a.productLength) * 100;
+    el.innerHTML = `<div class="card" style="padding:8px 12px;background:var(--th-bg);margin:0;">
+      <div class="muted" style="font-size:.85rem;margin-bottom:4px;">Tour de cou ${U.lenTxt(neck)} (fiche : X = ${U.lenTxt(U.num(a.internalLength))} pour ${U.lenTxt(ref)}) → <b>X = ${U.lenTxt(c.internalLength)}</b></div>
+      ${this._calcRowsHTML(this._calcRows(c)) || '<span class="muted">Aucune sangle à couper : renseigne les longueurs de la fiche.</span>'}</div>`;
+  },
+  calcLength(id) {
+    const a = Store.state.catalogA.find(x => x.id === id); if (!a) return;
+    if (!(U.num(a.productLength) > 0) || this._mainStrapIdx(a) < 0) { U.toast('Renseigne d\'abord, dans Modifier, la « Longueur produit fini » (= tour de cou de référence) et la sangle.', true); return; }
+    this._ccAcc = a;
+    U.modal({
+      title: '📏 Calculer — ' + U.esc(a.name), okLabel: '🛠 Fabriquer',
+      body: `<p class="muted help">Tape le tour de cou du chien : la longueur interne (X) s'ajuste du même écart que sur la fiche (référence : ${U.lenTxt(U.num(a.productLength) * 100)}), les sections non liées à X ne changent pas. Rien n'est enregistré sur la fiche.${a.sizeRange ? ` Fourchette de la taille : ${U.esc(a.sizeRange)}.` : ''}</p>
+        <div class="fg"><label>Tour de cou</label><div>${U.lenSplit('cc_neck', 0, { input: 'Accessoires._calcPreview()' })}</div></div>
+        <div id="cc_preview" class="mt"></div>
+        <div class="fg mt"><label>Pour (client, note) <span class="muted">— option</span></label><input id="cc_note" placeholder="ex : Marie, collier rouge"></div>
+        <div class="mt"><button class="btn-ghost btn-sm" type="button" onclick="Accessoires.calcQueue()" title="Garde ce calcul dans « 🧵 À fabriquer » (page Artisanat) pour le fabriquer plus tard">⏳ Mettre en attente</button></div>`,
+      onOk: () => {
+        const neck = U.lenCm('cc_neck');
+        if (!(neck > 0)) { U.toast('Tape le tour de cou.', true); return false; }
+        const note = U.val('cc_note').trim();
+        U.closeModal();
+        this.fabricate(id, { src: this._calcClone(a, neck), neck, note });
+      }
+    });
+  },
+  calcQueue() {
+    const a = this._ccAcc; if (!a) return;
+    const neck = U.lenCm('cc_neck');
+    if (!(neck > 0)) { U.toast('Tape le tour de cou.', true); return; }
+    const S = Store.state.settings;
+    (S.fabQueue = S.fabQueue || []).push({ id: U.uid(), accId: a.id, neck, note: U.val('cc_note').trim(), ts: Date.now() });
+    Store.save('settings'); U.closeModal(); App.rerender();
+    U.toast(`${a.name} (tour de cou ${U.lenTxt(neck)}) mis en attente dans « À fabriquer ».`);
+  },
+  _queueOpen: true,
+  _queueCard() {
+    const q = (Store.state.settings.fabQueue || []).filter(x => Store.state.catalogA.some(a => a.id === x.accId));
+    if (!q.length) return '';
+    return `<details class="card" style="margin-bottom:10px;" ${this._queueOpen ? 'open' : ''} ontoggle="Accessoires._queueOpen=this.open">
+      <summary style="cursor:pointer;"><b>🧵 À fabriquer (${q.length})</b> <span class="muted help">Colliers calculés avec « 📏 Calculer » et mis en attente : les longueurs exactes sont gardées, la déduction du stock se fait à « 🛠 Fabriquer ».</span></summary>
+      ${q.map(x => {
+        const a = Store.state.catalogA.find(y => y.id === x.accId), rows = this._calcRows(this._calcClone(a, x.neck));
+        return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--card-border);">
+          <div style="flex:1;min-width:220px;"><b>${U.esc(a.name)}</b> <span class="muted">· tour de cou ${U.lenTxt(x.neck)}${x.note ? ' · ' + U.esc(x.note) : ''}</span>
+            <div class="muted" style="font-size:.85rem;">${rows.map(r => `${U.esc(r.part)} ${U.qty(r.qty)} m`).join(' · ')}</div></div>
+          <button class="btn-cta btn-sm" onclick="Accessoires.fabQueued('${x.id}')">🛠 Fabriquer</button>
+          <button class="btn-icon" title="Retirer de la liste" onclick="Accessoires.delQueued('${x.id}')">🗑️</button></div>`;
+      }).join('')}</details>`;
+  },
+  fabQueued(qid) {
+    const x = (Store.state.settings.fabQueue || []).find(y => y.id === qid), a = x && Store.state.catalogA.find(y => y.id === x.accId); if (!a) return;
+    this.fabricate(a.id, { src: this._calcClone(a, x.neck), neck: x.neck, note: x.note, qid });
+  },
+  async delQueued(qid) {
+    const x = (Store.state.settings.fabQueue || []).find(y => y.id === qid); if (!x) return;
+    if (!await U.confirm('Retirer ce collier de la liste « À fabriquer » ? (Rien n\'est fabriqué ni déduit du stock.)')) return;
+    Store.state.settings.fabQueue = Store.state.settings.fabQueue.filter(y => y.id !== qid);
+    Store.save('settings'); App.rerender();
+  },
+
   customLength(id, asVariant) {
     const src = Store.state.catalogA.find(x => x.id === id);
     if (!src) return;
@@ -1879,13 +1972,16 @@ const Accessoires = {
       }
     });
   },
-  fabricate(id) {
+  /* `custom` (option) = { src: copie de la fiche aux longueurs calculées, neck (cm), note, qid } : fabrication « 📏 Calculer » — les matières viennent de la copie, le stock fini est celui de la vraie fiche. */
+  fabricate(id, custom) {
     const a = Store.state.catalogA.find(x => x.id === id);
     if (!a) return;
-    this._fabSrcAcc = a;
-    this._fabBuild(a);
+    const src = custom ? custom.src : a;
+    this._fabSrcAcc = src;
+    this._fabBuild(src);
     const bomHTML = this._fabBomHTML();
-    const endsBox = a.bicolor && (a.fabSegments || []).length >= 2 ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0 0;font-size:.84rem;text-transform:none;letter-spacing:0;"><input id="fab_ends" type="checkbox" ${a.bicolorEnds ? 'checked' : ''} onchange="Accessoires._fabToggleEnds()"> <span>Ces 2 sangles ne sont pas de la même couleur <span class="muted">(→ 3 couleurs, pour cette fabrication)</span></span></label>` : '';
+    const customTxt = custom ? `tour de cou ${U.lenTxt(custom.neck)}${custom.note ? ' · ' + custom.note : ''}` : '';
+    const endsBox = src.bicolor && (src.fabSegments || []).length >= 2 ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0 0;font-size:.84rem;text-transform:none;letter-spacing:0;"><input id="fab_ends" type="checkbox" ${src.bicolorEnds ? 'checked' : ''} onchange="Accessoires._fabToggleEnds()"> <span>Ces 2 sangles ne sont pas de la même couleur <span class="muted">(→ 3 couleurs, pour cette fabrication)</span></span></label>` : '';
 
     // pièces « prêtes à finir » (ajoutées à la main) en stock : on peut en partir (elles perdent n pièces, le stock fini de l'accessoire en gagne n)
     const srcOpts = Store.state.catalogA.filter(x => x.manual && x.id !== a.id).flatMap(x => [['stockGeneral', 'Général'], ['stockEvent', 'Événement']]
@@ -1893,7 +1989,7 @@ const Accessoires = {
     const srcRow = srcOpts ? `<div class="frow"><div class="fg"><label>Partir d'une pièce prête à finir ${U.info("Option. Choisis la pièce faite à l'avance (ex. porte-clés pas fini) : elle perd autant de pièces que tu en fabriques, et l'accessoire fini en gagne autant. Les matières de la recette ci-dessous sont quand même retirées : le filament et la sangle n'ont pas été retirés quand tu as ajouté la pièce à la main.")}</label><select id="fab_src"><option value="">— Non, fabriquer de zéro —</option>${srcOpts}</select></div></div>` : '';
     U.modal({
       title: '🛠 Fabriquer — ' + U.esc(a.name), okLabel: 'Fabriquer',
-      body: `<div class="frow"><div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1" oninput="Accessoires._fabRollsRefreshAll()"></div>
+      body: `${custom ? `<p class="card" style="padding:8px 12px;background:var(--th-bg);margin:0 0 10px;">📏 Longueurs calculées pour un <b>${U.esc(customTxt)}</b> (X = ${U.lenTxt(src.internalLength)}) : les quantités de sangle ci-dessous sont les vraies.</p>` : ''}<div class="frow"><div class="fg"><label>Quantité à fabriquer</label><input id="fab_qty" type="number" step="1" value="1" oninput="Accessoires._fabRollsRefreshAll()"></div>
         <div class="fg"><label>Pièces ajoutées au stock ${U.info("Les pièces fabriquées entrent dans le stock fini de cet accessoire (visible dans Stock → Accessoires et au Tableau de bord). Général = site / atelier ; Événement = emporté en marché (SumUp).")}</label><select id="fab_dest"><option value="stockGeneral">Général</option><option value="stockEvent">Événement</option></select></div></div>
         ${srcRow}
         <h2 style="font-size:.95rem;margin-top:12px;">Matières à utiliser</h2>
@@ -1940,10 +2036,11 @@ const Accessoires = {
           if (rollId) Stock.consumeRoll(m, rollId, need); else m.qty = U.num(m.qty) - need;
           undo.mats.push(before ? { id: m.id, qty: need, rolls: before } : { id: m.id, qty: need });
         }
-        const entry = Store.log('fabrication', `Fabrication de ${n} × ${a.name}`, { type: 'fabricate', data: undo });
+        const entry = Store.log('fabrication', `Fabrication de ${n} × ${a.name}${custom ? ' (' + customTxt + ')' : ''}`, { type: 'fabricate', data: undo });
         // Historique PERMANENT des fabrications (le journal ne garde que 600 actions) : sert aux stats « sangles / couleurs les plus utilisées » (Statistiques → Prix & marges → Accessoires)
         const S = Store.state.settings; (S.fabHistory = S.fabHistory || []).push({ id: undo.fid, ts: Date.now(), accId: a.id, n, mats: undo.mats.map(x => ({ id: x.id, qty: x.qty })) });
         if (S.fabHistory.length > 5000) S.fabHistory.splice(0, S.fabHistory.length - 5000);
+        if (custom && custom.qid) S.fabQueue = (S.fabQueue || []).filter(x => x.id !== custom.qid);   // le collier mis en attente vient d'être fabriqué
         Store.save('materials', 'settings', 'catalogA');
         U.closeModal(); App.rerender();
         U.toast(`${n} × ${a.name} — matières déduites${srcAcc ? `, −${n} « ${srcAcc.name} »` : ''}, +${n} en stock ${pool === 'stockEvent' ? 'événement' : 'général'}. 🛠`, false, entry.id);
