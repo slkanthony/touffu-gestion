@@ -431,13 +431,15 @@ const Pricing = {
     const noise = new Set(['DE', 'D', 'DU', 'DES', 'LE', 'LA', 'LES', 'AU', 'AUX', 'AVEC', 'ET', 'EN']);
     const type = this.slugify(a.category), w = this.slugify(a.mainWidth || (a.strapWidths || [])[0] || '');
     // le séparateur décimal du nom (1,2m / 1.2m) est gardé en « . » dans le SKU : LAISSE-20MM-1.2M (et non 1-2M, qui se lit « 12 M »)
-    let parts = this.slugify(String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|cr[ée]ation\s+th[èe]me\s+uv|gravure\s+laser))+\s*$/i, '').replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
+    const nm0 = String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|cr[ée]ation\s+th[èe]me\s+uv|gravure\s+laser))+\s*$/i, '');
+    let parts = this.slugify((a.sizeLabel ? nm0.replace(/\s*[—–-]\s*taille\s+[A-Za-z0-9]{1,4}\s*$/i, '') : nm0).replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
     const tp = type.split('-').filter(Boolean);
     while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
     parts = parts.filter(x => x !== w);
     // longueur du produit fini (champ « Longueur produit fini ») : ajoutée seulement si le nom n'en cite pas déjà une
     const plen = U.num(a.productLength);
-    if (plen > 0 && !/(^|[^A-Za-z0-9.])\d+([.,]\d+)?\s*m(?![A-Za-z])/i.test(String(a.name || '').replace(/\([^)]*\)/g, ' '))) parts.push(String(Math.round(plen * 100) / 100).replace(',', '.') + 'M');
+    if (!a.sizeLabel && plen > 0 && !/(^|[^A-Za-z0-9.])\d+([.,]\d+)?\s*m(?![A-Za-z])/i.test(String(a.name || '').replace(/\([^)]*\)/g, ' '))) parts.push(String(Math.round(plen * 100) / 100).replace(',', '.') + 'M');
+    if (a.sizeLabel) parts.push(this.slugify(a.sizeLabel));   // taille S / M / L / XL (Antho 2026-11-01) : c'est elle qui distingue la fiche, à la place de la longueur de référence
     return [type, w, parts.join('-'), (a.uv || a.theme || U.num(a.uvMl) > 0) ? 'UV' : '', a.theme ? 'THEME' : '', a.laser ? 'LASER' : ''].filter(Boolean).join('-');   // impression UV (personnalisation) = SKU à part, suffixe -UV
   },
 

@@ -27,7 +27,9 @@ const Accessoires = {
   setAccWidthFilter(v) { this.accWidthFilter = v; this.renderProducts(); },
   setAccBicolorFilter(v) { this.accBicolorFilter = v; this.renderProducts(); },
   /* Tri d'accessoires (Antho 2026-10-14) : nom SANS la longueur finale (« Laisse Classique — 1.2m » et « — 5m » = même nom), puis longueur du produit fini (1,2 m avant 5 m), puis largeur de sangle (16 mm avant 20 mm). */
-  _baseName(a) { return String(a.name || '').replace(this._PERSO_RX, '').replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
+  /* Taille S / M / L / XL (`a.sizeLabel`, Antho 2026-11-01) : écrite à la FIN du nom (avant le suffixe de personnalisation) « … — Taille L » et dans le SKU ; les tailles d'un même modèle restent dans la même famille (le nom de base la retire). */
+  _SIZE_RX: /\s*[—–-]\s*taille\s+[A-Za-z0-9]{1,4}\s*$/i,
+  _baseName(a) { return String(a.name || '').replace(this._PERSO_RX, '').replace(this._SIZE_RX, '').replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
   _persoRank(a) { return ((a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) ? 1 : 0) + (a.laser ? 2 : 0) + (a.theme ? 4 : 0); },   // bits : 1 = impression UV, 2 = laser, 4 = création de thème
   _lenOf(a) { const l = U.num(a.productLength); if (l > 0) return l; const m = String(a.name || '').match(/(\d+(?:[.,]\d+)?)\s*m\s*$/i); return m ? parseFloat(m[1].replace(',', '.')) : 0; },
   _widthNum(a) { return parseFloat(String(a.mainWidth || (a.strapWidths || [])[0] || '').replace(',', '.')) || 0; },
@@ -959,7 +961,7 @@ const Accessoires = {
   /* SKU proposé d'après le formulaire (type, largeur principale, nom, longueur du produit fini, UV / laser), unique parmi les autres fiches. */
   _formSku() {
     const a = this._a, ws = a.strapWidths || [];
-    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', productLength: U.lenCm('a_prodLen') / 100, uv: U.chk('a_uv'), laser: U.chk('a_laser') });
+    const base = Pricing.autoSkuAcc({ category: U.val('a_cat'), name: U.val('a_name'), mainWidth: a.mainWidth || ws[0] || '', productLength: U.lenCm('a_prodLen') / 100, uv: U.chk('a_uv'), laser: U.chk('a_laser'), sizeLabel: U.val('a_sizeLabel') });
     const taken = this._takenSkus(a.id); let sku = base, n = 1;
     while (base && taken.has(sku)) { n++; sku = base + '-' + n; }
     return { base, sku, n };
@@ -1175,13 +1177,17 @@ const Accessoires = {
     const skuEl = document.getElementById('a_sku'), prev = skuEl ? skuEl.value.trim().toUpperCase() : '';
     const autoPrefix = [Pricing.slugify(snap.category), Pricing.slugify(snap.mainWidth)].filter(Boolean).join('-');
     let name = nameEl.value.trim().replace(this._PERSO_RX, '');
+    const sz = U.val('a_sizeLabel'); if (sz || a.sizeLabel) name = name.replace(this._SIZE_RX, '').trim();   // la taille est (re)posée à la fin, avant la personnalisation
     if (!name) name = cat;
     else if (snap.category && snap.category !== cat && name.toLowerCase().startsWith(snap.category.toLowerCase()) && !/^[A-Za-zÀ-ÿ0-9]/.test(name.slice(snap.category.length))) name = cat + name.slice(snap.category.length);
     if (len > 0) {
       const tok = /(^|[\s—–-])\d+(?:[.,]\d+)?\s*m(?![A-Za-z0-9])/i, txt = Math.round(len * 100) / 100 + 'm';
-      if (tok.test(name)) name = name.replace(tok, (m0, p) => p + txt);
-      else { const mm = name.match(/^(.*?)\s*(\([^)]*\))?\s*$/); name = mm[1] + ' — ' + txt + (mm[2] ? ' ' + mm[2] : ''); }
+      if (sz) name = name.replace(tok, '').replace(/\s*[—–-]\s*$/, '').replace(/\s{2,}/g, ' ').trim();   // avec une taille, la longueur de référence quitte le nom
+      else if (tok.test(name)) name = name.replace(tok, (m0, p) => p + txt);
+      else { const mm = name.match(/^(.*?)\s*(\([^)]*\))?\s*$/); name = mm[1] + ' — ' + txt + (mm[2] ? ' ' + mm[2] : ''); }   // avec une taille, c'est elle qui distingue la fiche : pas de longueur ajoutée au nom
     }
+    if (sz) name += ' — Taille ' + sz;
+    a.sizeLabel = sz;
     nameEl.value = this._persoName(name, U.chk('a_uv'), U.chk('a_laser'), U.chk('a_theme'));
     this._idSnap = { category: cat, mainWidth: a.mainWidth || ws[0] || '' };
     a.productLength = len;
@@ -1190,6 +1196,8 @@ const Accessoires = {
       if (sku && sku.toUpperCase() !== prev) { skuEl.value = sku; U.toast(`SKU mis à jour : ${sku}`); }
     }
   },
+  /* Taille S / M / L / XL changée : le nom (« … — Taille L ») et, s'il est au format automatique, le SKU suivent. */
+  onSizeChange() { this._syncIdentity(); },
   /* Longueur du produit fini modifiée : la longueur interne bouge du même écart (même règle que « Sur mesure » et la saisie dans la fiche), donc sangle et coût suivent. */
   onProdLenChange() {
     const el = document.getElementById('a_internLen_m'); if (!el) return;
@@ -1231,7 +1239,7 @@ const Accessoires = {
       </div>
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Nom</label><input id="a_name" value="${U.esc(a.name || a.category)}" placeholder="ex: Longe 5m — 20mm"></div>
-        <div class="fg" style="flex:0 0 90px;min-width:0;"><label>Taille</label><select id="a_sizeLabel">${['', 'S', 'M', 'L', 'XL'].concat(a.sizeLabel && !['S', 'M', 'L', 'XL'].includes(a.sizeLabel) ? [a.sizeLabel] : []).map(t => `<option value="${U.esc(t)}" ${t === (a.sizeLabel || '') ? 'selected' : ''}>${t ? U.esc(t) : '—'}</option>`).join('')}</select></div>
+        <div class="fg" style="flex:0 0 90px;min-width:0;"><label>Taille</label><select id="a_sizeLabel" onchange="Accessoires.onSizeChange()">${['', 'S', 'M', 'L', 'XL'].concat(a.sizeLabel && !['S', 'M', 'L', 'XL'].includes(a.sizeLabel) ? [a.sizeLabel] : []).map(t => `<option value="${U.esc(t)}" ${t === (a.sizeLabel || '') ? 'selected' : ''}>${t ? U.esc(t) : '—'}</option>`).join('')}</select></div>
         <div class="fg" style="flex:0 0 190px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette INDICATIVE de la taille (ex. 38–45 cm), pour t'aider à choisir la taille d'un devis. Jamais utilisée dans les calculs : pour une fabrication, tu tapes le tour de cou exact dans « 📏 Calculer ».")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm"></div>
       </div>
       <h2 style="font-size:.95rem;">Matières utilisées ${(a.strapWidths||[]).length ? '' : '<span class="muted" style="font-weight:normal;font-size:.8rem;">(coût moyen par famille)</span>'}</h2>
