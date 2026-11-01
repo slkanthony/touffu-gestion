@@ -257,7 +257,8 @@ const Accessoires = {
         <div class="fg"><label>🎨 Personnalisation ${U.info("Coche l'impression UV et / ou la gravure laser : elle est ajoutée au nom et au SKU de TOUTES les longueurs de la famille, avec son coût (ml d'encre / minutes). Décoche pour la retirer partout.")}</label>
           ${this._persoBlockHTML('gm', f, 'Accessoires._gmName()')}</div>
         <div class="fg"><label>Notes sur ce produit (optionnel)</label><textarea id="gm_notes" rows="3" placeholder="ex : modèle éducation, mousqueton laiton, à proposer avec la poignée…" style="width:100%;resize:vertical;">${U.esc(f.groupNotes || '')}</textarea></div>
-        <p class="muted">${mem.length} longueur${mem.length > 1 ? 's' : ''} dans cette famille.</p>`,
+        ${this.isSizedFam(gid) ? `<div class="fg"><label>📐 Formule commune ${U.info("Les matières et le détail des longueurs (segments, sections, X, tour de cou de référence) sont communs à toutes les tailles : tu les règles une fois, ici, et elles sont appliquées à chaque taille.")}</label><div><button class="btn-ghost btn-sm" type="button" onclick="Accessoires.editFormula('${gid}')">✏️ Modifier la formule et les matières</button></div></div>` : ''}
+        <p class="muted">${mem.length} ${this.isSizedFam(gid) ? 'taille' : 'longueur'}${mem.length > 1 ? 's' : ''} dans cette famille.</p>`,
       onOk: () => {
         const name = U.val('gm_name').trim(); if (!name) { U.toast('Nom obligatoire', true); return false; }
         const cat = U.val('gm_cat'), w1 = U.val('gm_w') || w0, v = Math.round(U.numVal('gm_coef') * 100) / 100, notes = U.val('gm_notes').trim();
@@ -1109,7 +1110,7 @@ const Accessoires = {
     const sg = (a.fabSegments || []).map(s => [String(s.label || ''), U.num(s.value)]);
     const sc = (a.fabSections || []).filter(s => s.label || this._secTotalCm(s) > 0).map(s => [s.id, String(s.label || ''), s.width || '', (s.segs || []).map(g => [String(g.label || ''), U.num(g.value)])]);
     return JSON.stringify([sg, sc, !!a.bicolor, !!a.bicolorEnds, U.num(a.internalLength), U.num(a.productLength),
-      (a.bom || []).filter(l => this.bomLineUnit(l) === 'm').map(l => [l.familyKey || '', l.materialId || '', l.strapColor || 0, l.secId || ''])]);
+      (a.bom || []).map(l => this.bomLineUnit(l) === 'm' ? [l.familyKey || '', l.materialId || '', l.strapColor || 0, l.secId || ''] : [l.familyKey || '', l.materialId || '', U.num(l.qty)])]);
   },
   _copyFormula(src, d) {
     const cp = o => JSON.parse(JSON.stringify(o));
@@ -1117,17 +1118,36 @@ const Accessoires = {
     if ((src.fabSections || []).length) d.fabSections = cp(src.fabSections); else delete d.fabSections;
     d.bicolor = !!src.bicolor; if (src.bicolorEnds) d.bicolorEnds = true; else delete d.bicolorEnds;
     d.internalLength = src.internalLength; d.productLength = src.productLength;
-    d.bom = [...(src.bom || []).filter(l => this.bomLineUnit(l) === 'm').map(cp), ...(d.bom || []).filter(l => this.bomLineUnit(l) !== 'm')];   // sangles de la formule ; pièces (mousquetons…) propres à la taille
-    this._applyColors(d); this._autoStrap(d);   // quantités recalculées pour le haut de la fourchette de CETTE taille
+    d.bom = (src.bom || []).map(cp);   // matières communes : sangles ET pièces (mousquetons, rivets…)
+    d.bom.forEach(l => { if (this.bomLineUnit(l) === 'm') delete l.qtyManual; });   // la sangle de chaque taille vient de la formule, pas d'une quantité saisie sur une autre taille
+    this._applyColors(d); this._autoStrap(d);   // quantités de sangle recalculées pour le haut de la fourchette de CETTE taille
   },
-  /* Après l'enregistrement d'une taille dont la formule a changé : propose de l'appliquer aux autres tailles du collier (annulable) */
-  async _offerFormula(a) {
-    const sibs = this._grpMembers(a.groupId).filter(x => x.id !== a.id && x.sizeLabel && this._formulaSig(x) !== this._formulaSig(a));
+  /* Les matières et le détail des longueurs sont ceux du PRODUIT : « 📐 Modifier la formule du produit » (editAcc en mode produit) les copie à toutes les tailles à l'enregistrement.
+     Une taille peut garder sa propre formule (`formulaOwn`). Si des tailles avaient déjà leurs propres longueurs, on demande avant de les remplacer ; sinon c'est silencieux (annulable). */
+  async _syncFormula(a) {
+    if (!a.groupId) return;
+    const sibs = this._grpMembers(a.groupId).filter(x => x.id !== a.id && x.sizeLabel && !x.formulaOwn && this._formulaSig(x) !== this._formulaSig(a));
     if (!sibs.length) return;
-    const names = sibs.map(x => x.sizeLabel).join(', ');
-    if (!await U.confirm(`Appliquer ces longueurs (segments, sections, X, tour de cou de référence, sangles) aux autres tailles : ${names} ? Leurs propres longueurs sont remplacées ; nom, fourchette, stock, prix et pièces ne changent pas. Le coût de chaque taille est recalculé sur le haut de sa fourchette.`, { title: '📐 Formule commune aux tailles', okLabel: 'Appliquer' })) return;
-    const entry = this._grpTouch(sibs, s => this._copyFormula(a, s), `Longueurs communes appliquées à ${sibs.length} taille(s) — ${a.groupName || ''}`);
-    U.toast(`Longueurs appliquées aux tailles ${names}.`, false, entry.id);
+    const names = sibs.map(x => x.sizeLabel).join(', '), own = sibs.filter(x => (x.fabSegments || []).some(s => U.num(s.value) > 0)).map(x => x.sizeLabel).join(', ');
+    if (own && !await U.confirm(`Les tailles ${own} ont déjà leurs propres longueurs : elles seront remplacées par la formule du produit (détail des longueurs, X, tour de cou de référence, matières). Nom, fourchette, stock et prix ne changent pas. Tu pourras annuler.`, { title: '📐 Formule du produit', okLabel: 'Appliquer à toutes les tailles' })) return;
+    const entry = this._grpTouch(sibs, s => this._copyFormula(a, s), `Formule du produit appliquée à ${sibs.length} taille(s) — ${a.groupName || ''}`);
+    U.toast(`Formule appliquée aux tailles ${names}.`, false, entry.id);
+  },
+  /* Fiche qui sert de modèle à la formule du produit : la plus grande taille qui a déjà des longueurs (et un tour de cou de référence) */
+  _formulaSource(gid) {
+    const mem = this._grpMembers(gid).filter(a => !this._persoRank(a) && !a.formulaOwn); if (!mem.length) return null;
+    const rich = mem.filter(a => (a.fabSegments || []).some(s => U.num(s.value) > 0)), pool = rich.length ? rich : mem, withRef = pool.filter(a => U.num(a.productLength) > 0);
+    return (withRef.length ? withRef : pool).slice().sort((x, y) => this._sizeRank(y) - this._sizeRank(x))[0];
+  },
+  /* « 📐 Modifier la formule du produit » : détail des longueurs, X, tour de cou de référence et matières, communs à toutes les tailles (collier) */
+  editFormula(gid) {
+    const src = this._formulaSource(gid); if (!src) { U.toast('Aucune fiche pour ce produit.', true); return; }
+    this._grpOpen[gid] = true; U.closeModal();
+    setTimeout(() => this.editAcc(src.id, { product: true }), 30);
+  },
+  onOwnToggle() {
+    const on = !!document.getElementById('a_own')?.checked;
+    document.querySelectorAll('[data-fab-lock="formula"]').forEach(el => { if (on) { el.removeAttribute('inert'); el.style.opacity = ''; } else { el.setAttribute('inert', ''); el.style.opacity = '.6'; } });
   },
   /* Sous X : à quel tour de cou le coût de cette taille est calculé (haut de la fourchette) */
   _xNoteTxt(a) {
@@ -1300,14 +1320,21 @@ const Accessoires = {
     }
   },
 
-  editAcc(id) {
+  editAcc(id, opts = {}) {
     const S = Store.state.settings;
     const fabDefs = S.accFabDefaults || {};
     const a = id ? JSON.parse(JSON.stringify(Store.state.catalogA.find(x => x.id === id)))
       : (() => { const cat = S.accCategories[0]; const defs = (fabDefs[cat]?.segments || []).map(s => ({ ...s })); let internLen = 0; const ii = defs.findIndex(s => s.label && s.label.toLowerCase().includes('interne')); if (ii >= 0) { internLen = U.num(defs[ii].value); defs.splice(ii, 1); } return { id: U.uid(), name: '', category: cat, bom: this._tplLines(cat), laborMinutes: 20, extraCost: 0, coefficient: 2.5, priceTTCManual: '', sku: '', notes: '', handleLength: '', flapLength: '', materialsDesc: '', strapWidths: [], fabSegments: defs, productLength: 0, internalLength: internLen }; })();
     this._normalizeWidths(a);
     this._a = a; this._isNewA = !id; this._widthsOpen = false; this._bomQ = {};
-    this._sigOpen = this._isNewA ? '' : this._formulaSig(a);   // pour savoir à l'enregistrement si la formule a changé
+    /* Colliers : la formule (matières + détail des longueurs + X + tour de cou de référence) est celle du PRODUIT. Sur une taille elle est affichée mais verrouillée (on vérifie les chiffres) ;
+       elle se modifie via « 📐 Modifier la formule du produit » (mode produit : seule la formule est modifiable, elle est copiée à toutes les tailles à l'enregistrement). */
+    const sizedFam = !this._isNewA && !!a.groupId && (!!a.sizeLabel || !!a.baseOnly) && this.isSizedFam(a.groupId), productMode = !!opts.product && sizedFam;
+    const lockF = sizedFam && !productMode && !a.formulaOwn && !!a.sizeLabel, lk = (k, on) => `<div data-fab-lock="${k}"${on ? ' inert style="opacity:.6;"' : ''}>`;
+    const banner = productMode ? `<div class="card" style="padding:8px 12px;margin:0 0 10px;background:var(--th-bg);">📐 <b>Formule du produit</b> — ce que tu enregistres ici (matières, détail des longueurs, X, tour de cou de référence) est appliqué à <b>toutes les tailles</b>. Le reste (nom, taille, fourchette, stock, prix) se règle dans chaque taille.</div>`
+      : (sizedFam && a.sizeLabel ? `<div class="card" style="padding:8px 12px;margin:0 0 10px;background:var(--th-bg);"><div style="font-size:.88rem;">📐 <b>Formule commune à toutes les tailles</b> ${U.info("Les matières et le détail des longueurs (segments, sections, X, tour de cou de référence) sont ceux du produit : ils sont affichés ici en lecture seule pour que tu puisses vérifier les calculs de cette taille. Ici tu règles la taille, sa fourchette de tour de cou, le stock et les prix.")}</div>
+        <div style="display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap;margin-top:6px;"><button class="btn-ghost btn-sm" type="button" onclick="Accessoires.editFormula('${a.groupId}')">✏️ Modifier la formule du produit</button>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--texte);font-size:.85rem;margin:0;"><input id="a_own" type="checkbox" style="width:15px;height:15px;" ${a.formulaOwn ? 'checked' : ''} onchange="Accessoires.onOwnToggle()"> Formule propre à cette taille ${U.info("À cocher seulement si cette taille est vraiment différente (autre matière, autre découpe) : elle n'est plus remplacée par la formule du produit et tu peux modifier sa formule ici.")}</label></div></div>` : '');
     if (!this._isNewA) this._flagManualStrap(a);
     if (!this._isNewA && (!a.fabSegments || !a.fabSegments.length)) {
       const defs = this._fabDefaults(a.category).map(s => ({ ...s }));
@@ -1319,8 +1346,8 @@ const Accessoires = {
     }
     this._idSnap = { category: a.category || '', mainWidth: a.mainWidth || (a.strapWidths || [])[0] || '' };
     U.modal({
-      title: id ? U.esc(a.name) : 'Nouvel accessoire', okLabel: 'Enregistrer',
-      body: `
+      title: productMode ? '📐 Formule du produit — ' + U.esc(a.groupName || this._baseName(a)) : id ? U.esc(a.name) : 'Nouvel accessoire', okLabel: productMode ? 'Enregistrer pour toutes les tailles' : 'Enregistrer',
+      body: `${banner}${lk('other', productMode)}
       <div class="frow">
         <div class="fg"><label>Type</label><select id="a_cat" onchange="Accessoires.onCatChange()">${S.accCategories.slice().sort(U.sortFr).map(c => `<option ${a.category === c ? 'selected' : ''}>${U.esc(c)}</option>`).join('')}</select></div>
         <div class="fg"><label>Largeur</label><div id="a_widths_wrap">${this._widthsSelectHTML()}</div></div>
@@ -1330,11 +1357,15 @@ const Accessoires = {
         <div class="fg" style="flex:0 0 90px;min-width:0;"><label>Taille</label><select id="a_sizeLabel" onchange="Accessoires.onSizeChange()">${['', 'S', 'M', 'L', 'XL'].concat(a.sizeLabel && !['S', 'M', 'L', 'XL'].includes(a.sizeLabel) ? [a.sizeLabel] : []).map(t => `<option value="${U.esc(t)}" ${t === (a.sizeLabel || '') ? 'selected' : ''}>${t ? U.esc(t) : '—'}</option>`).join('')}</select></div>
         <div class="fg" style="flex:0 0 190px;max-width:100%;"><label>Tour de cou ${U.info("Fourchette de tour de cou de la taille (ex. 38–45 cm) : sert à choisir la taille d'un devis et à retrouver la taille quand tu tapes un tour de cou dans « 📏 Calculer ». Le HAUT de la fourchette sert aussi à calculer le coût de la taille (la sangle d'un collier au plus grand tour de cou).")}</label><input id="a_range" value="${U.esc(a.sizeRange || '')}" placeholder="ex : 38–45 cm" onchange="Accessoires.onRangeChange()"></div>
       </div>
+      </div>
+      ${lk('formula', lockF)}
       <h2 style="font-size:.95rem;">Matières utilisées ${(a.strapWidths||[]).length ? '' : '<span class="muted" style="font-weight:normal;font-size:.8rem;">(coût moyen par famille)</span>'}</h2>
       <p class="muted help">La sangle se calcule toute seule d'après « Longueurs de fabrication » (en bas) : tu n'as pas à la saisir. Mousquetons, rivets, anneaux… : choisis la catégorie puis la référence, avec la quantité. Les lignes sans référence sont ignorées à l'enregistrement.</p>
       <div id="a_bom" data-onclose="Accessoires.closeBomPick"></div>
       <button class="btn-ghost btn-sm" onclick="Accessoires.addBom()">＋ Ajouter une matière</button>
+      </div>
       <hr class="sep">
+      ${lk('other', productMode)}
       <div class="frow">
         <div class="fg"><label>Main d'œuvre (minutes)</label><input id="a_min" type="number" step="1" value="${a.laborMinutes}"></div>
         <div class="fg"><label>Autres coûts (€)</label><input id="a_extra" type="number" step="0.01" value="${a.extraCost}"></div>
@@ -1355,15 +1386,20 @@ const Accessoires = {
       <div class="frow">
         <div class="fg" style="flex:0 0 260px;max-width:100%;"><label>🧊 Impression 3D (minutes) ${U.info("Durée d'impression 3D de la pièce : le coût d'électricité et d'usure de l'imprimante (Paramètres → Accessoires → Imprimante 3D) s'ajoute au coût de revient. Le filament se met dans « Matières utilisées » (en grammes, matière de type Filament 3D). Laisse vide si la pièce n'est pas imprimée en 3D.")}</label><input id="a_p3d" type="number" step="1" min="0" value="${a.print3dMin || ''}" placeholder="0 = pas d'impression 3D"></div>
       </div>
+      </div>
+      ${lk('formula', lockF)}
       <h2 style="font-size:.95rem;">📐 Longueurs de fabrication</h2>
       <div id="a_fab_row">
         ${this._fabFieldsHTML(a)}
       </div>
+      </div>
+      ${lk('other', productMode)}
       <h2 style="font-size:.95rem;">📝 Notes</h2>
       <div class="frow">
         <div class="fg" style="flex:2;"><label>Matières utilisées</label><input id="a_matdesc" value="${U.esc(a.materialsDesc || '')}" placeholder="ex: sangle noire 20mm, mousqueton laiton"></div>
       </div>
-      <div class="fg" style="margin-top:4px;"><label>Notes libres</label><textarea id="a_notes" rows="3" placeholder="Informations, rappels…" style="width:100%;resize:vertical;">${U.esc(a.notes || '')}</textarea></div>`,
+      <div class="fg" style="margin-top:4px;"><label>Notes libres</label><textarea id="a_notes" rows="3" placeholder="Informations, rappels…" style="width:100%;resize:vertical;">${U.esc(a.notes || '')}</textarea></div>
+      </div>`,
       onOk: () => {
         a.name = U.val('a_name').trim();
         if (!a.name) { U.toast('Nom obligatoire', true); return false; }
@@ -1372,7 +1408,8 @@ const Accessoires = {
         a.sku = U.val('a_sku'); a.theme = U.chk('a_theme'); if (!a.theme) delete a.theme; a.uv = U.chk('a_uv') || !!a.theme; a.uvMl = a.uv ? U.numVal('a_uvml') : 0; a.laser = U.chk('a_laser'); a.laserMin = a.laser ? U.numVal('a_lasermin') : 0; a.strapWidths = this._a.strapWidths || []; a.mainWidth = this._a.mainWidth || ''; delete a.strapWidth;
         a.notes = U.val('a_notes'); a.print3dMin = U.numVal('a_p3d');
         a.sizeRange = U.val('a_range').trim(); if (!a.sizeRange) delete a.sizeRange;
-        a.sizeLabel = U.val('a_sizeLabel'); if (!a.sizeLabel) delete a.sizeLabel;
+        a.sizeLabel = U.val('a_sizeLabel'); if (!a.sizeLabel) delete a.sizeLabel; else delete a.baseOnly;
+        if (document.getElementById('a_own')) { if (U.chk('a_own')) a.formulaOwn = true; else delete a.formulaOwn; }
         this._readFabSegs(); this._readSecs();
         a.fabSegments = this._a.fabSegments || [];
         a.fabSections = (this._a.fabSections || []).filter(s => s.label || this._secTotalCm(s) > 0);   // une section vide (ni nom ni longueur) est ignorée
@@ -1383,6 +1420,7 @@ const Accessoires = {
         // lignes sans référence ignorées ; champs de travail du formulaire retirés ; sangle recalculée d'après les longueurs
         const nBefore = (a.bom || []).length;
         a.bom = (a.bom || []).filter(l => l.familyKey || l.materialId).map(l => { const c = { ...l }; delete c._cat; delete c.tpl; return c; });
+        if (productMode) a.bom.forEach(l => { if (this.bomLineUnit(l) === 'm') delete l.qtyManual; });   // formule du produit : la sangle vient toujours des longueurs
         this._autoStrap(a);
         a.bom = a.bom.filter(l => l.familyKey || l.materialId);   // la sangle d'une section sans référence (largeur absente du stock) est ignorée aussi
         if (a.bom.length < nBefore) U.toast(`${nBefore - a.bom.length} ligne(s) de matière sans référence ignorée(s).`);
@@ -1396,7 +1434,7 @@ const Accessoires = {
           this._isNewA ? { type: 'deleteCreated', data: { domain: 'catalogA', id: a.id } } : { type: 'restoreItem', data: { domain: 'catalogA', id: a.id, before } });
         Store.save('catalogA'); U.closeModal(); App.rerender();
         U.toast(this._isNewA ? 'Accessoire créé.' : 'Modification enregistrée.', false, entry.id);
-        if (a.groupId && a.sizeLabel && this.isSizedFam(a.groupId) && this._formulaSig(a) !== this._sigOpen) this._offerFormula(a);
+        if (productMode) this._syncFormula(a);
       }
     });
     this.drawBom();
