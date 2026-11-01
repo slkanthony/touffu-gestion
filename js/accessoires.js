@@ -28,8 +28,9 @@ const Accessoires = {
   setAccBicolorFilter(v) { this.accBicolorFilter = v; this.renderProducts(); },
   /* Tri d'accessoires (Antho 2026-10-14) : nom SANS la longueur finale (« Laisse Classique — 1.2m » et « — 5m » = même nom), puis longueur du produit fini (1,2 m avant 5 m), puis largeur de sangle (16 mm avant 20 mm). */
   /* Taille S / M / L / XL (`a.sizeLabel`, Antho 2026-11-01) : écrite à la FIN du nom (avant le suffixe de personnalisation) « … — Taille L » et dans le SKU ; les tailles d'un même modèle restent dans la même famille (le nom de base la retire). */
-  _SIZE_RX: /\s*[—–-]\s*taille\s+[A-Za-z0-9]{1,4}\s*$/i,
-  _baseName(a) { return String(a.name || '').replace(this._PERSO_RX, '').replace(this._SIZE_RX, '').replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
+  _SIZE_RX: /\s*(?:[—–-]\s*)?taille\s+[A-Za-z0-9]{1,4}\s*$/i,   // « … — Taille L » ou « … Taille L » (sans tiret)
+  _stripSize(name) { let n = String(name || ''); while (this._SIZE_RX.test(n)) n = n.replace(this._SIZE_RX, ''); return n.trim(); },
+  _baseName(a) { return this._stripSize(String(a.name || '').replace(this._PERSO_RX, '')).replace(/\s*[—–-]?\s*\d+(?:[.,]\d+)?\s*m\s*$/i, '').trim(); },
   _persoRank(a) { return ((a.uv !== undefined ? !!a.uv : U.num(a.uvMl) > 0) ? 1 : 0) + (a.laser ? 2 : 0) + (a.theme ? 4 : 0); },   // bits : 1 = impression UV, 2 = laser, 4 = création de thème
   _lenOf(a) { const l = U.num(a.productLength); if (l > 0) return l; const m = String(a.name || '').match(/(\d+(?:[.,]\d+)?)\s*m\s*$/i); return m ? parseFloat(m[1].replace(',', '.')) : 0; },
   _widthNum(a) { return parseFloat(String(a.mainWidth || (a.strapWidths || [])[0] || '').replace(',', '.')) || 0; },
@@ -1206,7 +1207,7 @@ const Accessoires = {
     const skuEl = document.getElementById('a_sku'), prev = skuEl ? skuEl.value.trim().toUpperCase() : '';
     const autoPrefix = [Pricing.slugify(snap.category), Pricing.slugify(snap.mainWidth)].filter(Boolean).join('-');
     let name = nameEl.value.trim().replace(this._PERSO_RX, '');
-    const sz = U.val('a_sizeLabel'); if (sz || a.sizeLabel) name = name.replace(this._SIZE_RX, '').trim();   // la taille est (re)posée à la fin, avant la personnalisation
+    const sz = U.val('a_sizeLabel'); if (sz || a.sizeLabel) name = this._stripSize(name);   // la taille est (re)posée à la fin, avant la personnalisation
     if (!name) name = cat;
     else if (snap.category && snap.category !== cat && name.toLowerCase().startsWith(snap.category.toLowerCase()) && !/^[A-Za-zÀ-ÿ0-9]/.test(name.slice(snap.category.length))) name = cat + name.slice(snap.category.length);
     if (len > 0) {

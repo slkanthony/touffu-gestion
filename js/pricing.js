@@ -432,7 +432,7 @@ const Pricing = {
     const type = this.slugify(a.category), w = this.slugify(a.mainWidth || (a.strapWidths || [])[0] || '');
     // le séparateur décimal du nom (1,2m / 1.2m) est gardé en « . » dans le SKU : LAISSE-20MM-1.2M (et non 1-2M, qui se lit « 12 M »)
     const nm0 = String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|cr[ée]ation\s+th[èe]me\s+uv|gravure\s+laser))+\s*$/i, '');
-    let parts = this.slugify((a.sizeLabel ? nm0.replace(/\s*[—–-]\s*taille\s+[A-Za-z0-9]{1,4}\s*$/i, '') : nm0).replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
+    let parts = this.slugify((a.sizeLabel ? nm0.replace(/\s*(?:[—–-]\s*)?\btaille\s+[A-Za-z0-9]{1,4}\b/gi, '') : nm0).replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
     const tp = type.split('-').filter(Boolean);
     while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
     parts = parts.filter(x => x !== w);
