@@ -570,17 +570,25 @@ const Achats = {
   },
   _ckGet(pid) { return App.isTeam ? (Store.state.receptions || []).find(x => x.id === pid) : this.list().find(x => x.id === pid); },
   _ckSave(p) { if (App.isTeam) { p.upd = Date.now(); Store.save('receptions'); } else { p.ckUpd = Date.now(); Store.save('purchases'); } },
+  /* Un n° de lot / une DLUO saisis = la ligne est bien arrivée : elle se coche toute seule (Antho 2026-11-04). Mise à jour légère de l'affichage (la ligne n'est pas redessinée : le focus reste dans les champs). */
+  _ckAuto(p, l) {
+    p.chk = p.chk || {}; if (p.chk[l.id] === 1) return;
+    p.chk[l.id] = 1;
+    const row = document.getElementById('ck_' + l.id); if (row) { row.classList.add('ok'); const b = row.querySelector('.ck-box'); if (b) b.textContent = '✔'; }
+    const c = document.getElementById('ckCount'); if (c) c.outerHTML = this._ckCount(p);
+    const gs = this._ckGroups(p), gi = gs.findIndex(g => g.lines.includes(l)), h = document.getElementById('ckg_' + gi); if (h) h.outerHTML = this._ckGrpHead(p, gs[gi], gi);
+  },
   _ckLine(pid, lid) { const p = this._ckGet(pid), l = p && (p.lines || []).find(x => x.id === lid); return l ? { p, l } : null; },
   ckLot(pid, lid, v) {
     const r = this._ckLine(pid, lid); if (!r) return;
     const { p, l } = r, lot = String(v || '').trim(), had = this._ckKnown(p).find(k => k.lot === lot);
     l.lot = lot;
     if (lot && !l.dluo && had && had.dluo) { l.dluo = had.dluo; const d = document.getElementById('ck_dl_' + lid); if (d) d.value = l.dluo; }   // même lot = même DLUO : reprise automatique
-    this._ckSave(p); this._ckRefreshChips(p);
+    if (lot) this._ckAuto(p, l); this._ckSave(p); this._ckRefreshChips(p);
   },
   ckDluo(pid, lid, v) {
     const r = this._ckLine(pid, lid); if (!r) return;
-    r.l.dluo = String(v || ''); this._ckSave(r.p); this._ckRefreshChips(r.p);
+    r.l.dluo = String(v || ''); if (r.l.dluo) this._ckAuto(r.p, r.l); this._ckSave(r.p); this._ckRefreshChips(r.p);
   },
   ckPick(pid, lid, lot) {
     const r = this._ckLine(pid, lid); if (!r) return;
@@ -588,7 +596,7 @@ const Achats = {
     l.lot = k.lot; if (k.dluo) l.dluo = k.dluo;
     const a = document.getElementById('ck_lot_' + lid), d = document.getElementById('ck_dl_' + lid);
     if (a) a.value = l.lot; if (d) d.value = l.dluo || '';
-    this._ckSave(p); this._ckRefreshChips(p);
+    this._ckAuto(p, l); this._ckSave(p); this._ckRefreshChips(p);
   },
   _recvCard() {
     const rows = [];
