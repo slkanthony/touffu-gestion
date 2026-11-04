@@ -932,12 +932,24 @@ const Paniers = {
     U.toast('Panier rechargé — modifie-le puis « Partager » → « Mettre à jour ».');
   },
   /* 📤 « Partager » directement depuis « Paniers en attente » (Antho 2026-11-04) : recharge ce devis dans le panier composé puis ouvre la fenêtre Partager (image / texte) */
-  async sharePending(id) {
+  /* Le panier composé n'est PAS touché (Antho : plus de « remplacer le panier ? ») : on prête la place du panier au devis le temps de la fenêtre, puis on remet tout comme avant à sa fermeture. */
+  _SWAPK: ['basket', 'proposals', 'client', 'budget', 'livraison', 'reduction', 'reductionCode', '_redAuto', 'nbChiens', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode', '_shOpt', '_shMsg'],
+  sharePending(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
-    if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' pour le partager ?', { okLabel: 'Remplacer' })) return;
-    if (this._pendId !== id) this._loadRec(rec);
-    this.render();
+    if (this._swap) return;
+    const snap = {}; this._SWAPK.forEach(k => { snap[k] = this[k]; });
+    this._swap = true;
+    this._loadRec(rec);
     this.share();
+    const restore = () => {
+      obs.disconnect(); this._swap = false;
+      if (this._pendId === rec.id && this._dv && this._pending().includes(rec)) { rec.dv = { ...this._dv }; Store.save('baskets'); }   // la lettre du devis a pu avancer à la copie
+      this._SWAPK.forEach(k => { this[k] = snap[k]; });
+      this._draft();
+      if (typeof App !== 'undefined' && App.current === 'paniers') this.render();
+    };
+    const obs = new MutationObserver(() => { if (!document.getElementById('modalBg')) restore(); });
+    obs.observe(document.body, { childList: true });
   },
   _loadRec(rec) {
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
