@@ -5,7 +5,7 @@
                  journal + instantanés quotidiens, temps réel)
    ============================================================ */
 const Store = {
-  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'purchases', 'bank', 'journal', 'meta'],
+  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'purchases', 'receptions', 'bank', 'journal', 'meta'],
   state: null,
   sb: null,            // client supabase
   session: null,
@@ -75,6 +75,7 @@ const Store = {
       sales: [],       // ventes — voir ventes.js
       baskets: [],     // paniers / devis en attente (admin + équipe, pas le profil visite) : {id,ts,name,label,note,validUntil,items,budget,livraison}
       purchases: [],   // achats (admin seulement) : factures saisies — voir achats.js
+      receptions: [],  // copie SANS PRIX des commandes « à recevoir » (id = facture) : lignes + coches + n° de lot + DLUO ; l'équipe y écrit (page Réception), l'admin la tient à jour — voir Achats.syncReceptions
       bank: { points: [], moves: [] },   // pointage bancaire (admin seulement) : soldes relevés + mouvements hors appli — voir compta.js
       journal: [],     // {id,ts,action,label,undo}
       meta: { lastSnapshotDay: '' }
@@ -143,8 +144,9 @@ const Store = {
     (data || []).forEach(r => obj[r.key] = r.data);
     const role = this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role;
     if (role === 'team') delete obj.bank;   // soldes bancaires : admin seulement (la base ne bloque la lecture qu'après le SQL de supabase_schema.sql)
-    if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
+    if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.receptions; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
+    if (!isViewer && role !== 'team') setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // admin : reprend ce que l'équipe a coché / saisi et met la copie sans prix à jour
     // première utilisation : pousser les valeurs par défaut
     if (!data || !data.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
   },
@@ -430,7 +432,7 @@ const Store = {
 
   /* ---------- sauvegarde ---------- */
   /* Domaines qu'un compte « équipe » a le droit d'enregistrer (stock + journal). */
-  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta', 'clients', 'baskets'],   // baskets = paniers / devis en attente (2026-10-14 : l'équipe en crée) → il faut aussi la règle RLS (supabase_schema.sql)
+  TEAM_DOMAINS: ['stockM', 'materials', 'consumables', 'journal', 'meta', 'clients', 'baskets', 'receptions'],   // baskets = paniers / devis en attente (2026-10-14 : l'équipe en crée) → il faut aussi la règle RLS (supabase_schema.sql)
 
   save(...domains) {
     if (typeof Accessoires !== 'undefined') Accessoires._famC = null;   // cache des familles de matières : périmé dès qu'on enregistre
@@ -448,6 +450,7 @@ const Store = {
       if (blocked.length && typeof U !== 'undefined' && U.toast) U.toast(blocked.includes('catalogM') ? 'Profil équipe : sur les fiches prix, seuls le lien, la réf. et les notes fournisseur s’enregistrent (ouvre la fiche avec « Modifier »).' : 'Profil équipe : seul le stock peut être modifié — le reste n’est pas enregistré.', true);
       if (!domains.length) return;
     }
+    if (domains.includes('purchases') && window.App && !window.App.isTeam && !window.App.isViewer) setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // toute modification d'achat : la copie « Réception » de l'équipe suit
     domains.forEach(d => this._dirty.add(d));
     this._saveSeq++;
     clearTimeout(this._saveT);
@@ -481,7 +484,7 @@ const Store = {
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
-        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', purchases: 'achats', journal: 'journal', meta: 'infos techniques' };
+        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', purchases: 'achats', receptions: 'réception des commandes', journal: 'journal', meta: 'infos techniques' };
         U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => names[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
       }
     } else {

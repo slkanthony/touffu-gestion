@@ -478,6 +478,7 @@ const Achats = {
   },
   /* Rangement par type de viande (Antho 2026-11-04) : viande du produit du stock lié (sinon de sa fiche prix) ; sans liaison = « Autres » (jamais deviné), en dernier. */
   _ckMeat(l) {
+    if ('meat' in l) return l.meat;   // copie « Réception » de l'équipe : viande déjà figée
     if (l.cat !== 'mastication' || !l.ref) return '';
     const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
     return String((sp && sp.meatType) || (cat && cat.meatType) || '').trim();
@@ -516,32 +517,70 @@ const Achats = {
     return `<span id="ckCount" class="ck-count${ok === ls.length ? ' done' : ''}">${ok} / ${ls.length} reçus</span>`;
   },
   checklist(pid) {
-    const p = this.list().find(x => x.id === pid); if (!p) return;
-    const ls = this._ckLines(p);
+    const p = this._ckGet(pid); if (!p) return;
+    const ls = this._ckLines(p), team = App.isTeam;
     if (!ls.length) { U.toast('Cette commande n\'a aucune ligne avec une quantité.', true); return; }
-    const bg = U.modal({ title: `📋 Checklist · ${U.esc(this.supplierLabel(p))} ${this._ckCount(p)}`, okLabel: '📦 Réceptionner', body: `<div class="ck-list">${this._ckBody(p)}</div>`, onOk: () => { U.closeModal(); this.edit(pid); }, onCancel: () => App.rerender() });
+    // Équipe : ni fournisseur ni facture (titre = date de la commande) ; « Terminé » ferme seulement, la réception en stock reste à l'admin.
+    const title = team ? `📋 Commande du ${U.frDate(p.date)}` : `📋 Checklist · ${U.esc(this.supplierLabel(p))}`;
+    const bg = U.modal({ title: `${title} ${this._ckCount(p)}`, okLabel: team ? '✔ Terminé' : '📦 Réceptionner', body: `<div class="ck-list">${this._ckBody(p)}</div>`, onOk: () => { U.closeModal(); if (team) App.rerender(); else this.edit(pid); }, onCancel: () => App.rerender() });
     bg.querySelector('.modal').classList.add('ck-xl');
   },
+  /* ===== Réception par l'équipe (Antho 2026-11-04) =====
+     L'équipe n'a pas le droit de lire les achats (prix, fournisseurs, factures). Domaine `receptions` = copie SANS PRIX des commandes « à recevoir » :
+     { id (= facture), date, upd, chk, lines:[{id, label, qty, unit, cat, meat, lot, dluo}] }. L'équipe y coche / saisit lots et DLUO (page « Réception », `renderReception`) ;
+     l'admin garde les achats et reprend ces saisies (la plus récente gagne : `p.ckUpd` côté facture, `r.upd` côté copie). Appelée au chargement des données et à chaque
+     enregistrement d'achat (hook de `Store.save`) ; ne fait rien pour un profil équipe / visite. */
+  syncReceptions() {
+    const role = Store.session && Store.session.user && Store.session.user.app_metadata && Store.session.user.app_metadata.role;
+    if (role === 'team' || role === 'viewer' || this._rsync) return;
+    this._rsync = true;
+    try {
+      const recs = Store.state.receptions || [], out = [];
+      let pulled = false;
+      this.list().filter(p => p.pending).forEach(p => {
+        const ls = this._ckLines(p), r = recs.find(x => x.id === p.id);
+        if (r && (r.upd || 0) > (p.ckUpd || 0)) {   // l'équipe a saisi plus récemment : on reprend coches, lots et DLUO dans la facture
+          ls.forEach(l => { const rl = (r.lines || []).find(x => x.id === l.id); if (rl) { l.lot = rl.lot || ''; l.dluo = rl.dluo || ''; } });
+          p.chk = Object.assign({}, r.chk || {}); p.ckUpd = r.upd; pulled = true;
+        }
+        out.push({ id: p.id, date: p.date, upd: p.ckUpd || 0, chk: Object.assign({}, p.chk || {}), lines: ls.map(l => ({ id: l.id, label: l.label, qty: l.qty, unit: l.unit || '', cat: l.cat, meat: this._ckMeat(l), lot: l.lot || '', dluo: l.dluo || '' })) });
+      });
+      if (JSON.stringify(out) !== JSON.stringify(recs)) { Store.state.receptions = out; Store.save('receptions'); }
+      if (pulled) { Store.save('purchases'); if (App.current === 'achats' && this.mode !== 'edit' && !Store._modalOpen()) try { App.rerender(); } catch (e) { console.error(e); } }
+    } finally { this._rsync = false; }
+  },
+  /* Page « Réception » (profil équipe, à la place d'Achats) : commandes à recevoir, sans montant ni fournisseur. */
+  renderReception() {
+    const rows = (Store.state.receptions || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    App.mount(`<div class="view-title"><h1>📦 Réception</h1><span class="sub">commandes à contrôler</span></div>
+      <div class="card" style="border-left:4px solid var(--warn);"><h2>Commandes à recevoir (${rows.length})</h2>
+      <p class="muted help" style="font-size:.85rem;">À la livraison : ouvre la checklist, coche chaque produit bien présent dans le colis, et note le n° de lot et la date de péremption. Ce qui n'est pas coché est considéré comme manquant. Tout est enregistré automatiquement.</p>
+      ${rows.length ? rows.map(r => { const n = this._ckLines(r).length, ok = this._ckLines(r).filter(l => (r.chk || {})[l.id] === 1).length; return `<div style="padding:10px 0;border-bottom:1px solid var(--row-border);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;">
+        <div><b>Commande du ${U.frDate(r.date)}</b> <span class="muted">· ${n} produit(s)</span></div>
+        <button class="btn-cta btn-sm" onclick="Achats.checklist('${r.id}')">📋 Checklist${ok ? ` (${ok}/${n})` : ''}</button></div>`; }).join('') : '<p class="muted">Aucune commande à recevoir pour le moment.</p>'}</div>`);
+  },
   ckSet(pid, lid) {
-    const p = this.list().find(x => x.id === pid), l = p && (p.lines || []).find(x => x.id === lid); if (!l) return;
+    const p = this._ckGet(pid), l = p && (p.lines || []).find(x => x.id === lid); if (!l) return;
     p.chk = p.chk || {};
     if (p.chk[lid] === 1) delete p.chk[lid]; else p.chk[lid] = 1;
-    Store.save('purchases');
+    this._ckSave(p);
     const el = document.getElementById('ck_' + lid); if (el) el.outerHTML = this._ckRow(p, l);
     const c = document.getElementById('ckCount'); if (c) c.outerHTML = this._ckCount(p);
     const gs = this._ckGroups(p), gi = gs.findIndex(g => g.lines.includes(l)), h = document.getElementById('ckg_' + gi); if (h) h.outerHTML = this._ckGrpHead(p, gs[gi], gi);
   },
-  _ckLine(pid, lid) { const p = this.list().find(x => x.id === pid), l = p && (p.lines || []).find(x => x.id === lid); return l ? { p, l } : null; },
+  _ckGet(pid) { return App.isTeam ? (Store.state.receptions || []).find(x => x.id === pid) : this.list().find(x => x.id === pid); },
+  _ckSave(p) { if (App.isTeam) { p.upd = Date.now(); Store.save('receptions'); } else { p.ckUpd = Date.now(); Store.save('purchases'); } },
+  _ckLine(pid, lid) { const p = this._ckGet(pid), l = p && (p.lines || []).find(x => x.id === lid); return l ? { p, l } : null; },
   ckLot(pid, lid, v) {
     const r = this._ckLine(pid, lid); if (!r) return;
     const { p, l } = r, lot = String(v || '').trim(), had = this._ckKnown(p).find(k => k.lot === lot);
     l.lot = lot;
     if (lot && !l.dluo && had && had.dluo) { l.dluo = had.dluo; const d = document.getElementById('ck_dl_' + lid); if (d) d.value = l.dluo; }   // même lot = même DLUO : reprise automatique
-    Store.save('purchases'); this._ckRefreshChips(p);
+    this._ckSave(p); this._ckRefreshChips(p);
   },
   ckDluo(pid, lid, v) {
     const r = this._ckLine(pid, lid); if (!r) return;
-    r.l.dluo = String(v || ''); Store.save('purchases'); this._ckRefreshChips(r.p);
+    r.l.dluo = String(v || ''); this._ckSave(r.p); this._ckRefreshChips(r.p);
   },
   ckPick(pid, lid, lot) {
     const r = this._ckLine(pid, lid); if (!r) return;
@@ -549,7 +588,7 @@ const Achats = {
     l.lot = k.lot; if (k.dluo) l.dluo = k.dluo;
     const a = document.getElementById('ck_lot_' + lid), d = document.getElementById('ck_dl_' + lid);
     if (a) a.value = l.lot; if (d) d.value = l.dluo || '';
-    Store.save('purchases'); this._ckRefreshChips(p);
+    this._ckSave(p); this._ckRefreshChips(p);
   },
   _recvCard() {
     const rows = [];

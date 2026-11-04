@@ -7,6 +7,7 @@ const App = {
 
     { id: 'paniers', ico: '🧺', label: 'Paniers', group: 'Stock & ventes' },
     { id: 'achats', ico: '🧾', label: 'Achats', group: 'Stock & ventes', admin: true },
+    { id: 'reception', ico: '📥', label: 'Réception', group: 'Stock & ventes', teamOnly: true },   // profil équipe seulement : remplace Achats (checklist des commandes à recevoir, sans prix)
 
     { id: 'catalogue', ico: '🥩', label: 'Prix mastication', group: 'Catalogue & prix' },
     { id: 'accessoires', ico: '✂️', label: 'Artisanat', group: 'Catalogue & prix' },
@@ -19,7 +20,7 @@ const App = {
   ],
   renderers: {
     dashboard: () => App.renderDashboard(), ventes: () => Ventes.render(), stock: () => Stock.render(),
-    paniers: () => Paniers.render(), achats: () => Achats.render(), compta: () => Compta.render(),
+    paniers: () => Paniers.render(), achats: () => Achats.render(), reception: () => Achats.renderReception(), compta: () => Compta.render(),
     catalogue: () => Catalogue.render(), accessoires: () => Accessoires.render(),
     calc: () => Calc.render(),
     b2b: () => B2B.render(), stats: () => Stats.render(), woo: () => Woo.render(), params: () => Params.render()
@@ -235,6 +236,7 @@ const App = {
     navWrap.className = 'nav-items';
     this.views.forEach(v => {
       if (v.admin && (this.isViewer || this.isTeam)) return;   // achats / compta : réservé à l'admin
+      if (v.teamOnly && !this.isTeam) return;   // page propre au profil équipe
       const b = document.createElement('a');
       b.className = 'nav-item'; b.dataset.view = v.id; b.title = v.label;
       b.href = '#/' + v.id;
