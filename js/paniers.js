@@ -912,6 +912,7 @@ const Paniers = {
         <td style="white-space:nowrap;text-align:right;">
           <button class="btn-ghost btn-sm" onclick="Paniers.resume('${r.id}')" title="Recharger ce panier pour le modifier">✏️ Reprendre</button>
           <button class="btn-ghost btn-sm" onclick="Paniers.makeVariant('${r.id}')" title="Garde ce devis tel quel et crée une variante (n° du devis + -V1, -V2…) pour changer un ou deux produits">🔀 Variante</button>
+          <button class="btn-ghost btn-sm" onclick="Paniers.sharePending('${r.id}')" title="Ouvre la fenêtre « Partager » de ce devis : copier l'image ou le texte, enregistrer l'image">📤 Partager</button>
           ${App.isTeam
             ? `<button class="${r.ready ? 'btn-ghost' : 'btn-cta'} btn-sm" onclick="Paniers.toggleReady('${r.id}')" title="${r.ready ? 'Retirer la validation (le panier n\'est plus « prêt à traiter »)' : 'La cliente est d\'accord : Antho verra ce panier « prêt à traiter » et fera la sortie de stock'}">${r.ready ? '↩ Retirer la validation' : '✅ Valider pour la vente'}</button>`
             : `<button class="btn-cta btn-sm" onclick="Paniers.sendToSale('${r.id}')" title="La cliente est d'accord : charge les produits dans le ticket de la page Ventes">🛒 Envoyer en vente</button>`}
@@ -929,6 +930,14 @@ const Paniers = {
     this._loadRec(rec);
     this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
     U.toast('Panier rechargé — modifie-le puis « Partager » → « Mettre à jour ».');
+  },
+  /* 📤 « Partager » directement depuis « Paniers en attente » (Antho 2026-11-04) : recharge ce devis dans le panier composé puis ouvre la fenêtre Partager (image / texte) */
+  async sharePending(id) {
+    const rec = this._pending().find(x => x.id === id); if (!rec) return;
+    if (this.basket.length && this._pendId !== id && !await U.confirm('Remplacer le panier en cours par celui de ' + Clients.show(rec.name) + ' pour le partager ?', { okLabel: 'Remplacer' })) return;
+    if (this._pendId !== id) this._loadRec(rec);
+    this.render();
+    this.share();
   },
   _loadRec(rec) {
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
