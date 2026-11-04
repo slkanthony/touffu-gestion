@@ -467,17 +467,32 @@ const Achats = {
         <span style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" onclick="Achats.checklist('${p.id}')">📋 Checklist${this._ckProg(p)}</button> <button class="btn-cta btn-sm" onclick="Achats.edit('${p.id}')">📦 Réceptionner</button></span></div>`).join('')}</div>`;
   },
   /* Checklist de réception (Antho 2026-10-29) : les produits d'une commande « à recevoir » avec leurs quantités, à cocher en ouvrant le colis (surtout sur téléphone).
-     Les coches sont enregistrées sur la facture (p.chk[idLigne] : 1 = reçu, 2 = manque) : on peut fermer, reprendre plus tard, ou cocher sur le téléphone et retrouver l'état sur l'ordinateur. */
+     Les coches sont enregistrées sur la facture (p.chk[idLigne] : 1 = reçu ; sans coche = manque) : on peut fermer, reprendre plus tard, ou cocher sur le téléphone et retrouver l'état sur l'ordinateur. */
   _ckLines(p) { return (p.lines || []).filter(l => U.num(l.qty) > 0 && l.label); },
   _ckQty(l) { const q = U.num(l.qty), u = String(l.unit || ''); return U.qty(q) + ' ' + U.esc(q > 1 && /^pièce$/i.test(u) ? 'pièces' : u); },
+  /* Par défaut une ligne est « manquante » : on coche celles qui sont bien dans le colis (Antho 2026-11-04). Les lignes de mastication portent aussi n° de lot + DLUO,
+     saisis pendant le contrôle (le plus souvent le même lot pour tout le colis : les lots déjà notés sont proposés en pastilles). Ils sont écrits sur la facture (l.lot / l.dluo). */
   _ckRow(p, l) {
-    const st = (p.chk || {})[l.id] || 0;
-    return `<div class="ck-row${st === 1 ? ' ok' : st === 2 ? ' miss' : ''}" id="ck_${l.id}" onclick="Achats.ckSet('${p.id}','${l.id}',1)"><span class="ck-box">${st === 1 ? '✔' : st === 2 ? '!' : ''}</span><span class="ck-name">${U.esc(l.label)}</span><span class="ck-qty">${this._ckQty(l)}</span><button class="btn btn-ghost btn-sm ck-miss" onclick="event.stopPropagation();Achats.ckSet('${p.id}','${l.id}',2)">${st === 2 ? '↩<span class="ck-tx"> Annuler</span>' : '⚠<span class="ck-tx"> Manque</span>'}</button></div>`;
+    const ok = (p.chk || {})[l.id] === 1;
+    return `<div class="ck-row${ok ? ' ok' : ''}" id="ck_${l.id}"><div class="ck-main" onclick="Achats.ckSet('${p.id}','${l.id}')"><span class="ck-box">${ok ? '✔' : ''}</span><span class="ck-name">${U.esc(l.label)}</span><span class="ck-qty">${this._ckQty(l)}</span></div>${l.cat === 'mastication' ? this._ckLot(p, l) : ''}</div>`;
   },
-  _ckProg(p) { const n = Object.keys(p.chk || {}).length; return n ? ` (${n}/${this._ckLines(p).length})` : ''; },
+  _ckKnown(p) {
+    const m = new Map();
+    (p.lines || []).forEach(x => { const k = String(x.lot || '').trim(); if (k) m.set(k, x.dluo || m.get(k) || ''); });
+    return [...m].map(([lot, dluo]) => ({ lot, dluo }));
+  },
+  _ckLot(p, l) {
+    return `<div class="ck-lot"><input id="ck_lot_${l.id}" class="ck-lot-in" placeholder="N° de lot" autocomplete="off" value="${U.esc(l.lot || '')}" onchange="Achats.ckLot('${p.id}','${l.id}',this.value)"><input id="ck_dl_${l.id}" type="date" value="${U.esc(l.dluo || '')}" onchange="Achats.ckDluo('${p.id}','${l.id}',this.value)"><div class="ck-chips" id="ckc_${l.id}">${this._ckChips(p, l)}</div></div>`;
+  },
+  _ckChips(p, l) {
+    const ks = this._ckKnown(p); if (!ks.length || (ks.length === 1 && ks[0].lot === (l.lot || '').trim())) return '';
+    return ks.map(k => `<button type="button" class="ck-chip${k.lot === (l.lot || '').trim() ? ' on' : ''}" onclick="Achats.ckPick('${p.id}','${l.id}',this.dataset.lot)" data-lot="${U.esc(k.lot)}">${U.esc(k.lot)}${k.dluo ? ' · ' + U.frDate(k.dluo) : ''}</button>`).join('');
+  },
+  _ckRefreshChips(p) { this._ckLines(p).forEach(l => { const c = document.getElementById('ckc_' + l.id); if (c) c.innerHTML = this._ckChips(p, l); }); },
+  _ckProg(p) { const n = this._ckLines(p).filter(l => (p.chk || {})[l.id] === 1).length; return n ? ` (${n}/${this._ckLines(p).length})` : ''; },
   _ckCount(p) {
-    const ls = this._ckLines(p), c = p.chk || {}, ok = ls.filter(l => c[l.id] === 1).length, miss = ls.filter(l => c[l.id] === 2).length;
-    return `<span id="ckCount" class="ck-count${ok + miss === ls.length && !miss ? ' done' : ''}">${ok} / ${ls.length} reçus${miss ? ' · ⚠ ' + miss + ' manque' : ''}</span>`;
+    const ls = this._ckLines(p), c = p.chk || {}, ok = ls.filter(l => c[l.id] === 1).length;
+    return `<span id="ckCount" class="ck-count${ok === ls.length ? ' done' : ''}">${ok} / ${ls.length} reçus</span>`;
   },
   checklist(pid) {
     const p = this.list().find(x => x.id === pid); if (!p) return;
@@ -486,13 +501,33 @@ const Achats = {
     const bg = U.modal({ title: `📋 Checklist · ${U.esc(this.supplierLabel(p))} ${this._ckCount(p)}`, okLabel: '📦 Réceptionner', body: `<div class="ck-list">${ls.map(l => this._ckRow(p, l)).join('')}</div>`, onOk: () => { U.closeModal(); this.edit(pid); }, onCancel: () => App.rerender() });
     bg.querySelector('.modal').classList.add('ck-xl');
   },
-  ckSet(pid, lid, v) {
+  ckSet(pid, lid) {
     const p = this.list().find(x => x.id === pid), l = p && (p.lines || []).find(x => x.id === lid); if (!l) return;
     p.chk = p.chk || {};
-    if (p.chk[lid] === v) delete p.chk[lid]; else p.chk[lid] = v;
+    if (p.chk[lid] === 1) delete p.chk[lid]; else p.chk[lid] = 1;
     Store.save('purchases');
     const el = document.getElementById('ck_' + lid); if (el) el.outerHTML = this._ckRow(p, l);
     const c = document.getElementById('ckCount'); if (c) c.outerHTML = this._ckCount(p);
+  },
+  _ckLine(pid, lid) { const p = this.list().find(x => x.id === pid), l = p && (p.lines || []).find(x => x.id === lid); return l ? { p, l } : null; },
+  ckLot(pid, lid, v) {
+    const r = this._ckLine(pid, lid); if (!r) return;
+    const { p, l } = r, lot = String(v || '').trim(), had = this._ckKnown(p).find(k => k.lot === lot);
+    l.lot = lot;
+    if (lot && !l.dluo && had && had.dluo) { l.dluo = had.dluo; const d = document.getElementById('ck_dl_' + lid); if (d) d.value = l.dluo; }   // même lot = même DLUO : reprise automatique
+    Store.save('purchases'); this._ckRefreshChips(p);
+  },
+  ckDluo(pid, lid, v) {
+    const r = this._ckLine(pid, lid); if (!r) return;
+    r.l.dluo = String(v || ''); Store.save('purchases'); this._ckRefreshChips(r.p);
+  },
+  ckPick(pid, lid, lot) {
+    const r = this._ckLine(pid, lid); if (!r) return;
+    const { p, l } = r, k = this._ckKnown(p).find(x => x.lot === lot); if (!k) return;
+    l.lot = k.lot; if (k.dluo) l.dluo = k.dluo;
+    const a = document.getElementById('ck_lot_' + lid), d = document.getElementById('ck_dl_' + lid);
+    if (a) a.value = l.lot; if (d) d.value = l.dluo || '';
+    Store.save('purchases'); this._ckRefreshChips(p);
   },
   _recvCard() {
     const rows = [];

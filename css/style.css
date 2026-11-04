@@ -1742,14 +1742,19 @@ tr.wgrp td[colspan] { text-align: left; }
 .modal.ck-xl .actions { flex: none; margin-top: 10px; }
 .ck-count { display: inline-block; margin-left: 6px; padding: 2px 10px; border-radius: 999px; background: var(--th-bg); font-size: .85rem; white-space: nowrap; }
 .ck-count.done { background: var(--ok); color: #fff; }
-.ck-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 11px 6px; border-bottom: 1px solid var(--row-border); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ck-row { border-bottom: 1px solid var(--row-border); padding-bottom: 4px; }
+.ck-main { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 6px 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ck-lot { position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 6px 8px 46px; }
+.ck-lot > input.ck-lot-in { flex: 1 1 150px; min-width: 0; width: auto; height: 38px; box-sizing: border-box; }
+.ck-lot > input.dsel-trig { flex: 0 0 140px; width: 140px; min-width: 0; height: 38px; box-sizing: border-box; }
+.ck-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.ck-chips:empty { display: none; }
+.ck-chip { border: 1px solid var(--caramel); background: transparent; color: var(--texte); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.ck-chip.on { background: var(--caramel); color: #fff; }
 .ck-box { width: 28px; height: 28px; border: 2px solid var(--caramel); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; }
 .ck-name { font-weight: 700; line-height: 1.25; }
 .ck-qty { font-weight: 800; white-space: nowrap; text-align: right; min-width: 84px; font-size: 1.05rem; }
-.ck-row.ok { opacity: .6; }
+.ck-row.ok .ck-main { opacity: .6; }
 .ck-row.ok .ck-box { background: var(--ok); border-color: var(--ok); color: #fff; }
 .ck-row.ok .ck-name { text-decoration: line-through; }
-.ck-row.miss { border-left: 4px solid var(--warn); background: rgba(255, 170, 0, .12); }
-.ck-row.miss .ck-box { background: var(--warn); border-color: var(--warn); color: #fff; }
-.ck-miss { white-space: nowrap; }
-@media (max-width: 720px) { .ck-row { grid-template-columns: 30px minmax(0, 1fr) auto 40px; gap: 8px; } .ck-miss { padding: 6px 0; width: 40px; } .ck-tx { display: none; } .ck-qty { min-width: 0; } }
+@media (max-width: 720px) { .ck-main { gap: 8px; } .ck-qty { min-width: 0; } .ck-lot { padding-left: 6px; } }
