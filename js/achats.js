@@ -476,6 +476,27 @@ const Achats = {
     const ok = (p.chk || {})[l.id] === 1;
     return `<div class="ck-row${ok ? ' ok' : ''}" id="ck_${l.id}"><div class="ck-main" onclick="Achats.ckSet('${p.id}','${l.id}')"><span class="ck-box">${ok ? '✔' : ''}</span><span class="ck-name">${U.esc(l.label)}</span><span class="ck-qty">${this._ckQty(l)}</span></div>${l.cat === 'mastication' ? this._ckLot(p, l) : ''}</div>`;
   },
+  /* Rangement par type de viande (Antho 2026-11-04) : viande du produit du stock lié (sinon de sa fiche prix) ; sans liaison = « Autres » (jamais deviné), en dernier. */
+  _ckMeat(l) {
+    if (l.cat !== 'mastication' || !l.ref) return '';
+    const sp = (Store.state.stockM || []).find(x => x.id === l.ref), cat = sp && sp.catalogId ? (Store.state.catalogM || []).find(x => x.id === sp.catalogId) : null;
+    return String((sp && sp.meatType) || (cat && cat.meatType) || '').trim();
+  },
+  _ckGroups(p) {
+    const by = new Map();
+    this._ckLines(p).forEach(l => { const m = this._ckMeat(l); if (!by.has(m)) by.set(m, []); by.get(m).push(l); });
+    const keys = [...by.keys()].sort((a, b) => !a ? 1 : !b ? -1 : U.sortFr(a, b));
+    return keys.map(m => ({ meat: m, lines: by.get(m).sort((a, b) => U.sortFr(a.label, b.label)) }));
+  },
+  _ckGrpHead(p, g, i) {
+    const c = p.chk || {}, ok = g.lines.filter(l => c[l.id] === 1).length;
+    return `<div class="ck-grp${ok === g.lines.length ? ' done' : ''}" id="ckg_${i}"><span class="ck-grp-tag">${U.esc(g.meat || 'Autres')}</span><span class="ck-grp-n">${ok} / ${g.lines.length}</span></div>`;
+  },
+  _ckBody(p) {
+    const gs = this._ckGroups(p);
+    if (gs.length === 1 && !gs[0].meat) return gs[0].lines.map(l => this._ckRow(p, l)).join('');   // aucune viande connue : liste simple
+    return gs.map((g, i) => `<div class="ck-grpwrap">${this._ckGrpHead(p, g, i)}${g.lines.map(l => this._ckRow(p, l)).join('')}</div>`).join('');
+  },
   _ckKnown(p) {
     const m = new Map();
     (p.lines || []).forEach(x => { const k = String(x.lot || '').trim(); if (k) m.set(k, x.dluo || m.get(k) || ''); });
@@ -498,7 +519,7 @@ const Achats = {
     const p = this.list().find(x => x.id === pid); if (!p) return;
     const ls = this._ckLines(p);
     if (!ls.length) { U.toast('Cette commande n\'a aucune ligne avec une quantité.', true); return; }
-    const bg = U.modal({ title: `📋 Checklist · ${U.esc(this.supplierLabel(p))} ${this._ckCount(p)}`, okLabel: '📦 Réceptionner', body: `<div class="ck-list">${ls.map(l => this._ckRow(p, l)).join('')}</div>`, onOk: () => { U.closeModal(); this.edit(pid); }, onCancel: () => App.rerender() });
+    const bg = U.modal({ title: `📋 Checklist · ${U.esc(this.supplierLabel(p))} ${this._ckCount(p)}`, okLabel: '📦 Réceptionner', body: `<div class="ck-list">${this._ckBody(p)}</div>`, onOk: () => { U.closeModal(); this.edit(pid); }, onCancel: () => App.rerender() });
     bg.querySelector('.modal').classList.add('ck-xl');
   },
   ckSet(pid, lid) {
@@ -508,6 +529,7 @@ const Achats = {
     Store.save('purchases');
     const el = document.getElementById('ck_' + lid); if (el) el.outerHTML = this._ckRow(p, l);
     const c = document.getElementById('ckCount'); if (c) c.outerHTML = this._ckCount(p);
+    const gs = this._ckGroups(p), gi = gs.findIndex(g => g.lines.includes(l)), h = document.getElementById('ckg_' + gi); if (h) h.outerHTML = this._ckGrpHead(p, gs[gi], gi);
   },
   _ckLine(pid, lid) { const p = this.list().find(x => x.id === pid), l = p && (p.lines || []).find(x => x.id === lid); return l ? { p, l } : null; },
   ckLot(pid, lid, v) {
