@@ -269,6 +269,7 @@ const Achats = {
         <td class="num sensitive"><b>${U.eur(tot)}</b></td>
         <td style="white-space:nowrap;text-align:right;" onclick="event.stopPropagation()">
           ${p.paidBy === 'perso' && !p.reimbursed ? `<button class="btn-ghost btn-sm" onclick="Achats.setReimbursed('${p.id}',true)" title="Marquer comme remboursé">✔ Remboursé</button>` : ''}
+          ${(p.lines || []).some(l => l.cat === 'mastication' && (String(l.lot || '').trim() || String(l.dluo || '').trim())) ? `<button class="btn-ghost btn-sm" onclick="Achats.copyLabels('${p.id}')" title="Copie « produit — lot — DLUO (mois/année) » de cette facture, à donner à Claude pour les étiquettes">🏷️ Lots et DLUO</button>` : ''}
           <button class="btn-ghost btn-sm" onclick="Achats.edit('${p.id}')">Modifier</button>
           <button class="btn-icon" title="Dupliquer (nouvelle facture pré-remplie)" onclick="Achats.dup('${p.id}')">📋</button>
           <button class="btn-icon" title="Supprimer" onclick="Achats.remove('${p.id}')">🗑️</button>
@@ -992,8 +993,8 @@ const Achats = {
       </div>`);
   },
   /* 🏷️ Liste pour les étiquettes (Antho 2026-11-05) : « Produit — Lot X — DLUO MM/AAAA », une ligne par produit de mastication de la facture, à coller à Claude (mise à jour de ses étiquettes Canva). */
-  copyLabels() {
-    const d = this._d; if (!d) return;
+  copyLabels(id) {   // avec un id : facture enregistrée (liste Achats) ; sans id : facture en cours de saisie
+    const d = id ? (Store.state.purchases || []).find(x => x.id === id) : this._d; if (!d) return;
     const seen = new Set(), out = [];
     let skipped = 0;
     (d.lines || []).filter(l => l.cat === 'mastication' && l.label).forEach(l => {
