@@ -538,6 +538,8 @@ const Store = {
     return rest;
   },
   async dailySnapshot() {
+    // Sauvegardes complètes (achats + banque compris) : réservées à l'admin (audit sécurité 2026-11-05). Équipe / visiteur : rien, et surtout PAS de « lastSnapshotDay » posé à sa place.
+    if (this.remote && this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role) return;
     const day = U.today();
     if (this.state.meta.lastSnapshotDay === day) return;
     await this.takeSnapshot(day, true);

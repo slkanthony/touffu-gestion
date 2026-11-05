@@ -50,9 +50,8 @@ create policy "app_state lecture" on public.app_state
     coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin'
     or (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'team' and key not in ('purchases', 'bank')));
 drop policy if exists "snapshots connectés" on public.snapshots;
+-- (2026-11-05, audit sécurité) snapshots = sauvegardes COMPLÈTES (achats + banque) : admin seulement, lecture et écriture (voir plus bas).
 drop policy if exists "snapshots lecture" on public.snapshots;
-create policy "snapshots lecture" on public.snapshots
-  for select to authenticated using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer');
 
 create or replace function public.app_state_safe()
 returns table(key text, data jsonb)
@@ -91,10 +90,14 @@ create policy "app_state maj" on public.app_state for update to authenticated
 create policy "app_state suppr" on public.app_state for delete to authenticated
   using ((auth.jwt()->'app_metadata'->>'role') is null);
 drop policy if exists "snapshots écriture" on public.snapshots;
-create policy "snapshots écriture" on public.snapshots
+drop policy if exists "snapshots ecriture" on public.snapshots;
+drop policy if exists "snapshots maj" on public.snapshots;
+drop policy if exists "snapshots suppr" on public.snapshots;
+drop policy if exists "snapshots admin" on public.snapshots;
+create policy "snapshots admin" on public.snapshots
   for all to authenticated
-  using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer')
-  with check (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') <> 'viewer');
+  using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin')
+  with check (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin');
 
 -- Connexions : chacun enregistre sa propre ligne ; seul l'admin (aucun rôle) les lit
 drop policy if exists "connexions ajout" on public.connexions;
