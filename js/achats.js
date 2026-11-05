@@ -987,8 +987,28 @@ const Achats = {
         <div class="frow mt">
           <button class="btn-ok" style="flex:0 0 auto;" onclick="Achats.save()">✅ Enregistrer la facture</button>
           <button class="btn-ghost" style="flex:0 0 auto;" onclick="Achats.cancel()">Annuler</button>
+          <button class="btn-ghost" style="flex:0 0 auto;" onclick="Achats.copyLabels()" title="Copie la liste « produit — lot — DLUO (mois/année) » de cette facture, à donner à Claude pour mettre tes étiquettes à jour">🏷️ Copier lots et DLUO</button>
         </div>
       </div>`);
+  },
+  /* 🏷️ Liste pour les étiquettes (Antho 2026-11-05) : « Produit — Lot X — DLUO MM/AAAA », une ligne par produit de mastication de la facture, à coller à Claude (mise à jour de ses étiquettes Canva). */
+  copyLabels() {
+    const d = this._d; if (!d) return;
+    const seen = new Set(), out = [];
+    let skipped = 0;
+    (d.lines || []).filter(l => l.cat === 'mastication' && l.label).forEach(l => {
+      const lot = String(l.lot || '').trim(), dl = String(l.dluo || '').trim();
+      if (!lot && !dl) { skipped++; return; }
+      const sp = l.ref ? (Store.state.stockM || []).find(x => x.id === l.ref) : null;
+      const name = String((sp && sp.name) || l.label).trim();
+      const m = dl.match(/^(\d{4})-(\d{2})/);
+      const txt = `${name} — ${lot ? 'Lot ' + lot : 'lot manquant'} — ${dl ? 'DLUO ' + (m ? m[2] + '/' + m[1] : dl) : 'DLUO manquante'}`;
+      if (!seen.has(txt)) { seen.add(txt); out.push(txt); }
+    });
+    if (!out.length) { U.toast('Aucun produit avec un n° de lot ou une DLUO sur cette facture.', true); return; }
+    const text = out.join('\n'), done = () => U.toast(`Liste copiée (${out.length} produit${out.length > 1 ? 's' : ''})${skipped ? ` — ${skipped} ligne(s) sans lot ni DLUO ignorée(s)` : ''}.`, skipped > 0);
+    const fb = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); if (ok) done(); else U.toast('Copie impossible', true); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(fb); else fb();
   },
   async cancel() {
     if (this._dirty && !await U.confirm('Abandonner cette facture ? Ce que tu as saisi sera perdu.', { okLabel: 'Abandonner', title: '⚠️ Abandonner ?' })) return;
