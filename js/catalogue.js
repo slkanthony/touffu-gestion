@@ -1328,13 +1328,28 @@ const Catalogue = {
       }
     }
     if (mode === 'piece') {
+      // Lots = NOMBRES (1, 2, 3, 4, 5…), jamais des lignes vides (Antho 2026-11-07) : un texte comme « LOT 2 », « LOT DE 3 PC », « PCS », « 1 PIÈCE »
+      // est lu comme son nombre ; les doublons fusionnent ; les trous jusqu'à 10 sont comblés ; sans réglage lisible → 1 à 5. Seul un texte sans nombre reste une étiquette.
+      const parsePc = t => {
+        const s = String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+        if (!s) return 0;
+        if (/^(PCS?|UNITE|PIECES?)$/.test(s)) return 1;
+        const m = /(LOT|PC|PIECE|UNITE)/.test(s) ? s.match(/(\d+)/) : null;
+        return m ? Number(m[1]) : 0;
+      };
+      let repaired = false;
+      this._d.variants.forEach(v => { if (v.mode === 'piece' && !isNum(v.value)) { const n = parsePc(v.label); if (n > 0) { v.value = n; v.label = ''; repaired = true; } } });   // lignes déjà créées sans nombre
       const all = vp.piece || [];
-      const numPreset = all.filter(isNum).sort((a, b) => Number(a) - Number(b));
-      const txtPreset = all.filter(v => !isNum(v));
+      const nums = new Set(), txtPreset = [];
+      all.forEach(x => { const n = isNum(x) ? Number(x) : parsePc(x); if (n > 0) nums.add(n); else txtPreset.push(x); });
+      if (!nums.size) [1, 2, 3, 4, 5].forEach(n => nums.add(n));
+      for (let n = 1; n <= Math.min(Math.max(...nums), 10); n++) nums.add(n);
+      const numPreset = [...nums].sort((a, b) => a - b);
       const existNums = new Set(this._d.variants.filter(v => v.mode === 'piece' && isNum(v.value)).map(v => Number(v.value)));
       const existLabels = new Set(this._d.variants.filter(v => v.mode === 'piece').map(v => (v.label || '').toUpperCase()));
       const missingNums = numPreset.filter(val => !existNums.has(Number(val)));
       const missingTxts = txtPreset.filter(lb => !existLabels.has(String(lb).toUpperCase()));
+      if (repaired && !missingNums.length && !missingTxts.length) { this.autoFillSkus('piece'); this.drawVars(); return; }
       if (missingNums.length || missingTxts.length) {
         missingNums.forEach(val => this._d.variants.push({ id: U.uid(), mode: 'piece', value: Number(val), label: '', sachetId: '0', coeff: '', priceTTCManual: '', sku: '', enabled: true }));
         missingTxts.forEach(lb => this._d.variants.push({ id: U.uid(), mode: 'piece', value: '', label: String(lb).toUpperCase(), sachetId: '0', coeff: '', priceTTCManual: '', sku: '', enabled: true }));
@@ -1352,7 +1367,8 @@ const Catalogue = {
         }
       }
     }
-    this._d.variants.push({ id: U.uid(), mode, value: mode === 'gram' ? 100 : mode === 'piece' ? 1 : '', label: '', sachetId: '0', coeff: '', priceTTCManual: '', sku: '', enabled: true });
+    const nextPc = Math.max(0, ...this._d.variants.filter(v => v.mode === 'piece' && isNum(v.value)).map(v => Number(v.value))) + 1;   // lot suivant libre
+    this._d.variants.push({ id: U.uid(), mode, value: mode === 'gram' ? 100 : mode === 'piece' ? nextPc : '', label: '', sachetId: '0', coeff: '', priceTTCManual: '', sku: '', enabled: true });
     this.autoFillSkus(mode);
     this.drawVars();
   },
