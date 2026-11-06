@@ -365,7 +365,7 @@ const Stock = {
               <td class="num muted l-tot">${U.qty(tot)}</td>
               <td class="right l-act"><div class="act-grid"><span class="act-row">
                 ${isVrac?`<button class="btn-ghost btn-sm" onclick="Stock.conditionner('${p.id}','${v.id}','${l.id}')">🎁 Conditionner</button>`:''}
-                ${l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
+                ${l.pack && l.packPartial ? `<span class="tag" style="border-color:var(--warn);color:var(--warn);" title="Conditionnement en cours : ${l.pack.qty} déjà faits (dernier : ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')}, ${U.esc(U.frDate(l.pack.date))})">📦 En cours · ${U.qty(l.pack.qty)} faits</span> <button class="btn-ghost btn-sm" title="Ajouter les sachets conditionnés depuis (ajoute au stock du lot et déduit les sachets)" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}',true)">＋ Compléter</button> <button class="btn-icon" title="Conditionnement terminé" onclick="Stock.packDone('${p.id}','${v.id}','${l.id}')">✔</button>` : l.pack ? `<span class="tag" title="Conditionné le ${U.esc(U.frDate(l.pack.date))} : ${l.pack.qty} × ${U.esc(l.pack.name)} ${U.esc(l.pack.dims||'')} (${U.eur(l.pack.unitCost)}/u)">📦 ${U.esc(l.pack.dims||l.pack.name)}</span>` : `<button class="btn-icon" title="Indiquer le sachet utilisé pour ce lot" onclick="Stock.packLot('${p.id}','${v.id}','${l.id}')">📦</button>`}
                 </span><span class="act-row">
                 <button class="btn-ghost btn-sm" title="Modifier le lot" onclick="Stock.editLot('${p.id}','${v.id}','${l.id}')">Modifier</button>
                 <button class="btn-icon" title="Supprimer le lot" onclick="Stock.delLot('${p.id}','${v.id}','${l.id}')">🗑️</button>
@@ -1589,25 +1589,30 @@ const Stock = {
     const rc = 1 + Pricing.portRate('conso');   // le sachet porte aussi le port estimé « consommables »
     return { before: mk(c.cost), after: mk(c.cost + (newSacCost - c.sacCost) * rc), thr, disc, priceTTC: c.priceTTC };
   },
-  packLot(pId, vId, lId) {
+  /* more = true : « ＋ Compléter » un conditionnement en cours (2026-11-06) → les sachets faits depuis s'AJOUTENT au stock du lot
+     et au nombre déjà conditionné ; la case « pas terminé » reste cochée tant qu'Antho n'a pas fini. */
+  packLot(pId, vId, lId, more) {
     const f = this.findLot(pId, vId, lId); if (!f) return;
     const { p, v, lot } = f;
     const po = this.packOptions();
     const info = this._packCatInfo(p, v);
     const def = v.lastPackKey || (v.lastSachetConsoId ? 'c:' + v.lastSachetConsoId : '') || (info && info.key) || '';
-    const units = U.num(lot.qtyGeneral) + U.num(lot.qtyEvent);
-    this._packCtx = { pId, vId, lId, units };
+    const units = more ? 0 : U.num(lot.qtyGeneral) + U.num(lot.qtyEvent);
+    this._packCtx = { pId, vId, lId, units, more: !!more };
     const opt = o => `<option value="${o.key}" ${o.key === def ? 'selected' : ''} data-a="${U.esc((o.flag ? '🚩 ' : '') + o.label)}" data-b="stock ${U.esc(o.stock)}" data-c="${U.esc(U.eur(o.cost))}">${o.flag ? '🚩 ' : ''}${U.esc(o.label)} — ${U.eur(o.cost)} (stock ${U.esc(o.stock)})</option>`;
     const opts = (po.sachets.length ? `<optgroup label="Sachets">${po.sachets.map(opt).join('')}</optgroup>` : '')
       + (po.blisters.length ? `<optgroup label="Blisters (découpe)">${po.blisters.map(opt).join('')}</optgroup>` : '');
     U.modal({
-      title: '📦 Conditionnement — ' + U.esc(p.name) + ' › ' + U.esc(Pricing.labelVariant(v)),
+      title: (more ? '📦 Compléter le conditionnement — ' : '📦 Conditionnement — ') + U.esc(p.name) + ' › ' + U.esc(Pricing.labelVariant(v)),
       okLabel: 'Valider', wide: !!info,
-      body: `<p class="muted mb0">Facultatif : indique l'emballage utilisé pour ce lot. <b>Fermer</b> = passer (déjà conditionné / pas nécessaire).</p>
+      body: `<p class="muted mb0">${more
+        ? `Déjà conditionnés : <b>${U.qty(U.num(lot.pack && lot.pack.qty))}</b>. Indique les sachets faits <b>depuis</b> : ils s'ajoutent au stock du lot et sont déduits du stock de sachets. <b>Fermer</b> = annuler.`
+        : `Facultatif : indique l'emballage utilisé pour ce lot. <b>Fermer</b> = passer (déjà conditionné / pas nécessaire).`}</p>
         <div class="frow mt">
           <div class="fg" style="flex:3;"><label>Sachet / blister utilisé</label><select id="pk_conso" onchange="Stock._packRefresh()"><option value="">— choisir —</option>${opts}</select></div>
-          <div class="fg"><label>Nombre (sachets / découpes)</label><input id="pk_qty" type="number" step="1" min="0" value="${units}" oninput="Stock._packRefresh()"></div>
+          <div class="fg"><label>${more ? 'Nombre fait depuis' : 'Nombre (sachets / découpes)'}</label><input id="pk_qty" type="number" step="1" min="0" value="${more ? '' : units}" placeholder="0" oninput="Stock._packRefresh()"></div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:.92rem;white-space:nowrap;"><input type="checkbox" id="pk_partial" style="width:auto;flex:none;" ${more ? 'checked' : ''}> Conditionnement pas terminé <span class="muted" style="cursor:help;" title="Coché : la ligne du lot affiche « En cours » avec un bouton « ＋ Compléter » pour ajouter plus tard les sachets faits ensuite (le stock du lot et les sachets sont mis à jour).">ⓘ</span></label>
         <div id="pk_impact"></div>`,
       onOk: () => this._packApply()
     });
@@ -1635,7 +1640,7 @@ const Stock = {
     const dEur = (a, b, lowerIsGood) => { const x = b - a; if (Math.abs(x) < 0.0005) return '<span class="muted">=</span>'; const good = lowerIsGood ? x < 0 : x > 0; return `<b class="${good ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${U.eur(x)}</b>`; };
     const dCo = (a, b) => { const x = b - a; if (Math.abs(x) < 0.005) return '<span class="muted">=</span>'; return `<b class="${x > 0 ? 'pos' : 'neg'}">${x > 0 ? '+' : ''}${x.toFixed(2)}</b>`; };
     const cls = (coeff, profit) => (profit < 0 || coeff < im.thr) ? 'neg' : 'pos';
-    const n = this._packCtx.units;
+    const n = this._packCtx.more ? qty : this._packCtx.units;
     const flags = [];
     if (im.after.profit < 0) flags.push('🔴 <b>Vente à perte</b> (prix public)');
     else if (im.after.coeff < im.thr) flags.push(`🟠 <b>Coeff critique</b> (prix public sous ${im.thr})`);
@@ -1662,10 +1667,19 @@ const Stock = {
     const o = this._packSel();
     if (!o) { U.toast('Choisis un sachet / blister, ou « Fermer » pour passer.', true); return false; }
     const qty = Math.max(0, Math.round(U.numVal('pk_qty')));
+    const more = !!ctx.more, partialEl = document.getElementById('pk_partial'), partial = !!(partialEl && partialEl.checked);
+    if (more && !(qty > 0)) { U.toast('Indique le nombre de sachets faits depuis (ou « Fermer »).', true); return false; }
     const { p, v, lot } = f;
     const info = this._packCatInfo(p, v);
     const snaps = [Store.snapshot('stockM', p)];
+    // « Compléter » : les nouveaux sachets s'ajoutent au stock du lot ; s'il vient d'un achat « à ranger » non terminé, au tri de cet achat aussi
+    const addSrc = more && lot.src && (() => { const ps = Achats.list().find(x => x.id === lot.src.pid), pl = ps && ps.lines.find(x => x.id === lot.src.lid); return pl && pl.recv && !pl.recv.closed; })();
+    if (addSrc) { const ps = Achats.snapPurchase(lot.src.pid); if (ps) snaps.push(ps); }
     if (o.conso) snaps.push(Store.snapshot('consumables', o.conso));
+    if (more) {
+      lot.qtyGeneral = Math.round((U.num(lot.qtyGeneral) + qty) * 1000) / 1000;
+      if (addSrc) Achats.addDist(lot.src.pid, lot.src.lid, { lotId: lot.id, vId: v.id, qty });
+    }
     const changeFiche = !!info && o.key !== info.key;
     if (changeFiche) snaps.push(Store.snapshot('catalogM', info.cat));
     // 1) déduction (jamais négatif) : sachet à la pièce, blister = longueur sur le rouleau
@@ -1689,17 +1703,27 @@ const Stock = {
       Store.save('settings', 'catalogM');
     }
     // 3) historique (lot + variante, durable) + coût réel du lot
-    lot.pack = o.type === 'blister'
+    const packNow = o.type === 'blister'
       ? { type: 'blister', key: o.key, refId: o.ref.id, consoId: o.conso ? o.conso.id : '', name: o.label, dims: o.dims.widthStr + '×' + o.dims.lengthStr, widthMm: o.dims.widthMm, lengthMm: o.dims.lengthMm, qty, unitCost: o.cost, date: U.today() }
       : { type: 'sachet', key: o.key, consoId: o.conso.id, name: o.conso.name, dims: o.conso.dimensions || '', qty, unitCost: o.cost, date: U.today() };
+    lot.pack = more && lot.pack ? { ...packNow, qty: U.num(lot.pack.qty) + qty } : packNow;   // le lot cumule les sachets ; l'historique garde chaque passage
+    if (partial) lot.packPartial = true; else delete lot.packPartial;
     if (info) { const fresh = this._packCatInfo(p, v); if (fresh) { lot.costUnit = fresh.calc.costBase; lot.costFinal = true; } }
     v.lastPackKey = o.key;
     if (o.type === 'sachet') v.lastSachetConsoId = o.conso.id;
     // Historique durable sur la VARIANTE (les lots vides sont supprimés après vente).
-    (v.packHistory = v.packHistory || []).push({ ...lot.pack, lotNumber: lot.lotNumber || '' });
-    const entry = Store.log('stock', `Lot conditionné — ${p.name}/${Pricing.labelVariant(v)} : ${qty} × ${o.label}` + (changeFiche ? ' (fiche prix mise à jour)' : ''), { type: 'restoreBatch', data: snaps });
-    Store.save('stockM', 'consumables'); U.closeModal(); App.rerender();
-    U.toast('Conditionnement enregistré' + (changeFiche ? ' — fiche prix passée sur cet emballage (prix TTC inchangé).' : '.'), false, entry.id);
+    (v.packHistory = v.packHistory || []).push({ ...packNow, lotNumber: lot.lotNumber || '' });
+    const entry = Store.log('stock', `${more ? 'Conditionnement complété' : 'Lot conditionné'} — ${p.name}/${Pricing.labelVariant(v)} : ${more ? '+' : ''}${qty} × ${o.label}` + (partial ? ' (en cours)' : '') + (changeFiche ? ' (fiche prix mise à jour)' : ''), { type: 'restoreBatch', data: snaps });
+    Store.save(...(addSrc ? ['stockM', 'consumables', 'purchases'] : ['stockM', 'consumables'])); U.closeModal(); App.rerender();
+    U.toast((more ? `+${qty} ajoutés au lot, ` : '') + 'conditionnement enregistré' + (partial ? ' (en cours)' : '') + (changeFiche ? ' — fiche prix passée sur cet emballage (prix TTC inchangé).' : '.'), false, entry.id);
+  },
+  packDone(pId, vId, lId) {   // « ✔ » sur un lot « 📦 En cours » : conditionnement terminé
+    const f = this.findLot(pId, vId, lId); if (!f) return;
+    const snap = Store.snapshot('stockM', f.p);
+    delete f.lot.packPartial;
+    const entry = Store.commitSnapshot(snap, 'stock', `Conditionnement terminé — ${f.p.name}/${Pricing.labelVariant(f.v)} (${f.lot.lotNumber || 'sans n°'}) : ${U.qty(U.num(f.lot.pack && f.lot.pack.qty))} conditionnés`);
+    Store.save('stockM'); App.rerender();
+    U.toast('Conditionnement terminé.', false, entry.id);
   },
 
   /* ─── Rappel / pense-bête sur un lot (2026-09-26) ───
