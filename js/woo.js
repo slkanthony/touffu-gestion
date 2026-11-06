@@ -443,7 +443,13 @@ const Woo = {
   // La quantité SumUp = le stock ÉVÉNEMENT d'Antho (confirmé 2026-09-28) → comparée uniquement à celui-là.
   sumupFilter: 'issues', sumupQ: '', sumupSort: 'name', sumupSortDir: 'asc', sumupMeat: 'all', sumupFmt: 'all',
   /* Filtres de la carte d'export SumUp (simple aperçu, même patron que le tableau d'export site). */
-  sumupExpFilters: { q: '', meat: 'all' },
+  sumupExpFilters: { q: '', meat: 'all', sort: 'name', sortDir: 'asc' },
+  setSumupExpSort(key) {   // en-têtes cliquables de l'export SumUp (même patron que Stock : clic = trie, re-clic = inverse)
+    const f = this.sumupExpFilters;
+    if (f.sort === key) f.sortDir = f.sortDir === 'asc' ? 'desc' : 'asc';
+    else { f.sort = key; f.sortDir = 'asc'; }
+    this.render();
+  },
   _setSumupExpQ(v) { this.sumupExpFilters.q = v; this.render(); U.refocus('sumup_exp_q'); },
   _setSumupExpMeat(v) { this.sumupExpFilters.meat = v || 'all'; this.render(); },
   sumupExpSelectAll(on) { (this._sumupExpVisible || []).forEach(k => { this._sumupSel[k] = !!on; }); this.render(); },
@@ -927,8 +933,21 @@ const Woo = {
     const fmtList = [...new Set(exportable.map(m => m.fmt))];
     this._sumupFmtList = fmtList;
     const fmtSel = this._sumupFmtSel();
+    const byName = (a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant);
+    const sdir = f.sortDir === 'desc' ? -1 : 1;
+    const stRank = m => !r ? 0 : inSumup.has(m.sku.toUpperCase()) ? (inSumup.get(m.sku.toUpperCase()).link ? 1 : 2) : 3;   // sans référence · à corriger · présent · absent
     const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.has(m.name + ' ' + m.variant + ' ' + m.sku, q)))
-      .sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant));
+      .sort((a, b) => {
+        let c;
+        if (f.sort === 'sku') c = U.sortFr(a.sku, b.sku);
+        else if (f.sort === 'type') c = U.sortFr(a.appType || '', b.appType || '');
+        else if (f.sort === 'price') c = U.num(a.appPrice) - U.num(b.appPrice);
+        else if (f.sort === 'stock') c = U.num(a.appQty) - U.num(b.appQty);
+        else if (f.sort === 'insumup') c = stRank(a) - stRank(b);
+        else c = byName(a, b);
+        return (c * sdir) || byName(a, b);
+      });
+    const sh = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Woo.setSumupExpSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
     this._sumupExpVisible = visible.map(m => m.sku.toUpperCase());
     this._sumupExpRows = visible; this._sumupExclRows = units.filter(isExcl);
     this._sumupExpMap = Object.fromEntries(visible.map(m => [m.sku.toUpperCase(), m]));
@@ -968,7 +987,7 @@ const Woo = {
       <p class="muted help mt">Dans SumUp : Articles → Importer → choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> (le fichier ne contient QUE les articles cochés, avec leurs variantes) et vérifie que SumUp met bien à jour l'existant (pas de doublon créé) avant de faire un export complet. Un produit « absent » de SumUp n'est pas mis à jour : crée-le d'abord dans SumUp puis rafraîchis la référence. 🚫 = exclu définitivement (mémorisé).</p>
       <div class="table-wrap mt"><table><thead><tr>
         <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout sélectionner"></th>
-        <th>SKU</th><th class="col-name">Produit</th><th>Type / viande</th><th class="num">Prix TTC</th><th class="num">Stock évén.</th><th>Dans SumUp</th><th>Envoi SumUp</th></tr></thead>
+        <th>${sh('sku', 'SKU')}</th><th class="col-name">${sh('name', 'Produit')}</th><th>${sh('type', 'Type / viande')}</th><th class="num">${sh('price', 'Prix TTC')}</th><th class="num">${sh('stock', 'Stock évén.')}</th><th>${sh('insumup', 'Dans SumUp')}</th><th>Envoi SumUp</th></tr></thead>
         <tbody>${(() => {
           const map = new Map(), groups = [];
           visible.slice(0, 200).forEach(m => { const k = this._sumupGrpKey(m); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(m); });
