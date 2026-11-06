@@ -1627,6 +1627,8 @@ const Stock = {
     let html = '';
     if (o && o.flag) html += `<p style="color:var(--warn,#e0a040);">🚩 Emballage marqué « à ne plus racheter »${o.conso && o.conso.replaceNote ? ' — ' + U.esc(o.conso.replaceNote) : ''}.</p>`;
     if (o && o.type === 'sachet' && qty > U.num(o.conso.qty)) html += `<p style="color:var(--alerte);">⚠️ Stock de ce sachet insuffisant (${U.num(o.conso.qty)} dispo) — il sera mis à 0.</p>`;
+    { const tot = U.num(f.lot.qtyGeneral) + U.num(f.lot.qtyEvent);
+      if (!this._packCtx.more && f.v.mode !== 'vrac' && qty > tot) html += `<p class="muted">ℹ️ Le lot n'a que ${U.qty(tot)} en stock : les ${U.qty(qty - tot)} sachets en plus seront ajoutés à son stock.</p>`; }
     if (o && o.type === 'blister') {
       if (!o.conso) html += `<p style="color:var(--alerte);">⚠️ Aucun rouleau lié à la largeur ${U.esc(o.dims.widthStr)} (Paramètres → Blisters) : rien ne sera déduit.</p>`;
       else { const need = this._blisterRollQty(o.dims, o.conso, qty); html += `<p class="muted">Rouleau « ${U.esc(o.conso.name)} » : ${U.qty(need)} ${U.esc(o.conso.unit || 'm')} à déduire (stock ${U.qty(o.conso.qty)}).${need > U.num(o.conso.qty) ? ' <span style="color:var(--alerte);">⚠️ insuffisant — mis à 0.</span>' : ''}</p>`; }
@@ -1661,6 +1663,18 @@ const Stock = {
       ${flags.length ? `<p class="mt" style="color:var(--alerte);">${flags.join('<br>')}</p>` : `<p class="mt pos">✅ Au-dessus de ton seuil critique (${im.thr}).</p>`}
       <p class="muted" style="font-size:.82rem;">${same ? 'Même emballage que la fiche prix : rien ne change dans les prix.' : 'En validant, la fiche prix passe sur cet emballage : prix TTC figé, coût/marges recalculés (Prix mastication + Revente pro).'}</p>`;
   },
+  /* Mouvement de consommable pour n sachets / découpes : dir = -1 (déduire) ou +1 (rendre) ; jamais négatif. */
+  _packMove(o, n, dir) {
+    if (!o || !o.conso || !(n > 0)) return;
+    const amt = o.type === 'blister' ? this._blisterRollQty(o.dims, o.conso, n) : n;
+    o.conso.qty = Math.max(0, Math.round((U.num(o.conso.qty) + dir * amt) * 1000) / 1000);
+  },
+  _mkPack(o, qty) {   // fiche de conditionnement d'un lot (lot.pack / packHistory)
+    return o.type === 'blister'
+      ? { type: 'blister', key: o.key, refId: o.ref.id, consoId: o.conso ? o.conso.id : '', name: o.label, dims: o.dims.widthStr + '×' + o.dims.lengthStr, widthMm: o.dims.widthMm, lengthMm: o.dims.lengthMm, qty, unitCost: o.cost, date: U.today() }
+      : { type: 'sachet', key: o.key, consoId: o.conso.id, name: o.conso.name, dims: o.conso.dimensions || '', qty, unitCost: o.cost, date: U.today() };
+  },
+  _packKeyOf(pk) { return pk ? (pk.key || ('c:' + pk.consoId)) : ''; },
   _packApply() {
     const ctx = this._packCtx; if (!ctx) return;
     const f = this.findLot(ctx.pId, ctx.vId, ctx.lId); if (!f) return;
@@ -1672,21 +1686,20 @@ const Stock = {
     const { p, v, lot } = f;
     const info = this._packCatInfo(p, v);
     const snaps = [Store.snapshot('stockM', p)];
-    // « Compléter » : les nouveaux sachets s'ajoutent au stock du lot ; s'il vient d'un achat « à ranger » non terminé, au tri de cet achat aussi
-    const addSrc = more && lot.src && (() => { const ps = Achats.list().find(x => x.id === lot.src.pid), pl = ps && ps.lines.find(x => x.id === lot.src.lid); return pl && pl.recv && !pl.recv.closed; })();
+    // Les sachets faits sont des pièces EN STOCK : « Compléter » les ajoute au lot ; au 1er passage, si le lot en a moins (ex. créé à 0), on ajoute la différence.
+    // S'il vient d'un achat « à ranger » non terminé, le tri de cet achat les compte aussi.
+    const grow = more ? qty : (v.mode === 'vrac' ? 0 : Math.max(0, qty - (U.num(lot.qtyGeneral) + U.num(lot.qtyEvent))));
+    const addSrc = grow > 0 && lot.src && (() => { const ps = Achats.list().find(x => x.id === lot.src.pid), pl = ps && ps.lines.find(x => x.id === lot.src.lid); return pl && pl.recv && !pl.recv.closed; })();
     if (addSrc) { const ps = Achats.snapPurchase(lot.src.pid); if (ps) snaps.push(ps); }
     if (o.conso) snaps.push(Store.snapshot('consumables', o.conso));
-    if (more) {
-      lot.qtyGeneral = Math.round((U.num(lot.qtyGeneral) + qty) * 1000) / 1000;
-      if (addSrc) Achats.addDist(lot.src.pid, lot.src.lid, { lotId: lot.id, vId: v.id, qty });
+    if (grow > 0) {
+      lot.qtyGeneral = Math.round((U.num(lot.qtyGeneral) + grow) * 1000) / 1000;
+      if (addSrc) Achats.addDist(lot.src.pid, lot.src.lid, { lotId: lot.id, vId: v.id, qty: grow });
     }
     const changeFiche = !!info && o.key !== info.key;
     if (changeFiche) snaps.push(Store.snapshot('catalogM', info.cat));
     // 1) déduction (jamais négatif) : sachet à la pièce, blister = longueur sur le rouleau
-    if (o.conso) {
-      const take = o.type === 'blister' ? this._blisterRollQty(o.dims, o.conso, qty) : qty;
-      o.conso.qty = Math.max(0, Math.round((U.num(o.conso.qty) - take) * 1000) / 1000);
-    }
+    this._packMove(o, qty, -1);
     // 2) fiche prix : passe sur cet emballage, prix TTC figé
     if (changeFiche) {
       const S = Store.state.settings;
@@ -1703,19 +1716,17 @@ const Stock = {
       Store.save('settings', 'catalogM');
     }
     // 3) historique (lot + variante, durable) + coût réel du lot
-    const packNow = o.type === 'blister'
-      ? { type: 'blister', key: o.key, refId: o.ref.id, consoId: o.conso ? o.conso.id : '', name: o.label, dims: o.dims.widthStr + '×' + o.dims.lengthStr, widthMm: o.dims.widthMm, lengthMm: o.dims.lengthMm, qty, unitCost: o.cost, date: U.today() }
-      : { type: 'sachet', key: o.key, consoId: o.conso.id, name: o.conso.name, dims: o.conso.dimensions || '', qty, unitCost: o.cost, date: U.today() };
-    lot.pack = more && lot.pack ? { ...packNow, qty: U.num(lot.pack.qty) + qty } : packNow;   // le lot cumule les sachets ; l'historique garde chaque passage
+    const packNow = this._mkPack(o, qty);
+    lot.pack =more && lot.pack ? { ...packNow, qty: U.num(lot.pack.qty) + qty } : packNow;   // le lot cumule les sachets ; l'historique garde chaque passage
     if (partial) lot.packPartial = true; else delete lot.packPartial;
     if (info) { const fresh = this._packCatInfo(p, v); if (fresh) { lot.costUnit = fresh.calc.costBase; lot.costFinal = true; } }
     v.lastPackKey = o.key;
     if (o.type === 'sachet') v.lastSachetConsoId = o.conso.id;
     // Historique durable sur la VARIANTE (les lots vides sont supprimés après vente).
-    (v.packHistory = v.packHistory || []).push({ ...packNow, lotNumber: lot.lotNumber || '' });
+    (v.packHistory = v.packHistory || []).push({ ...packNow, lotNumber: lot.lotNumber || '', lotId: lot.id });
     const entry = Store.log('stock', `${more ? 'Conditionnement complété' : 'Lot conditionné'} — ${p.name}/${Pricing.labelVariant(v)} : ${more ? '+' : ''}${qty} × ${o.label}` + (partial ? ' (en cours)' : '') + (changeFiche ? ' (fiche prix mise à jour)' : ''), { type: 'restoreBatch', data: snaps });
     Store.save(...(addSrc ? ['stockM', 'consumables', 'purchases'] : ['stockM', 'consumables'])); U.closeModal(); App.rerender();
-    U.toast((more ? `+${qty} ajoutés au lot, ` : '') + 'conditionnement enregistré' + (partial ? ' (en cours)' : '') + (changeFiche ? ' — fiche prix passée sur cet emballage (prix TTC inchangé).' : '.'), false, entry.id);
+    U.toast((grow > 0 ? `+${grow} ajoutés au stock du lot, ` : '') + 'conditionnement enregistré' + (partial ? ' (en cours)' : '') + (changeFiche ? ' — fiche prix passée sur cet emballage (prix TTC inchangé).' : '.'), false, entry.id);
   },
   packDone(pId, vId, lId) {   // « ✔ » sur un lot « 📦 En cours » : conditionnement terminé
     const f = this.findLot(pId, vId, lId); if (!f) return;
@@ -1768,34 +1779,80 @@ const Stock = {
     U.toast('Rappel supprimé.', false, entry.id);
   },
 
-  async delLot(pId,vId,lId){
+  /* Suppression d'un lot. S'il était conditionné, case « Remettre les N sachets en stock » (cochée si le lot a encore du stock :
+     cas d'une erreur à refaire ; décochée s'il est vide = les sachets ont vraiment servi). L'historique d'emballage du lot est alors retiré. */
+  delLot(pId,vId,lId){
     const f=this.findLot(pId,vId,lId); if(!f) return;
-    if(!await U.confirm('Supprimer ce lot ?')) return;
-    const snap=Store.snapshot('stockM',f.p);
-    f.v.lots=f.v.lots.filter(l=>l.id!==lId);
-    const entry=Store.commitSnapshot(snap,'stock',`Lot supprimé — ${f.p.name}/${Pricing.labelVariant(f.v)}`);
-    Store.save('stockM'); App.rerender();
-    U.toast('Lot supprimé.', false, entry.id);
+    const pk=f.lot.pack, tot=U.num(f.lot.qtyGeneral)+U.num(f.lot.qtyEvent);
+    const o=pk?this.packOptions().all.find(x=>x.key===this._packKeyOf(pk)):null;
+    const canGive=!!(o&&o.conso&&U.num(pk.qty)>0);
+    U.modal({
+      title:'🗑️ Supprimer ce lot ?', okLabel:'Supprimer',
+      body:`<p>Lot <b>${U.esc(f.lot.lotNumber||'sans n°')}</b> — ${U.esc(f.p.name)} › ${U.esc(Pricing.labelVariant(f.v))} (${U.qty(tot)} en stock).</p>
+        ${canGive?`<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="dl_give" style="width:auto;flex:none;" ${tot>0?'checked':''}> Remettre les ${U.qty(pk.qty)} sachets en stock (${U.esc(o.label)})</label>`:''}`,
+      onOk:()=>{
+        const give=canGive&&document.getElementById('dl_give')&&document.getElementById('dl_give').checked;
+        const snaps=[Store.snapshot('stockM',f.p)];
+        if(give){ snaps.push(Store.snapshot('consumables',o.conso)); this._packMove(o,U.num(pk.qty),+1); f.v.packHistory=(f.v.packHistory||[]).filter(e=>e.lotId!==lId); }
+        f.v.lots=f.v.lots.filter(l=>l.id!==lId);
+        const entry=Store.log('stock',`Lot supprimé — ${f.p.name}/${Pricing.labelVariant(f.v)}`+(give?` (${U.qty(pk.qty)} sachets remis en stock)`:''),{type:'restoreBatch',data:snaps});
+        Store.save('stockM','consumables'); U.closeModal(); App.rerender();
+        U.toast('Lot supprimé'+(give?` — ${U.qty(pk.qty)} sachets remis en stock`:'')+'.', false, entry.id);
+      }
+    });
   },
 
+  /* Modifier un lot : n° de lot, DLUO, stock, ET conditionnement (sachet + nombre faits + « pas terminé »).
+     Changer le sachet ou le nombre remet l'ancien emballage en stock puis déduit le nouveau. Ne touche ni à la fiche prix ni au coût du lot. */
   editLot(pId,vId,lId){
     const f=this.findLot(pId,vId,lId); if(!f) return;
-    const snap=Store.snapshot('stockM',f.p);
+    const snap=Store.snapshot('stockM',f.p), lot=f.lot, pk=lot.pack, po=this.packOptions(), pkKey=this._packKeyOf(pk);
+    const vr=f.v.mode==='vrac';
+    const opts=(po.sachets.length?`<optgroup label="Sachets">${po.sachets.map(x=>`<option value="${x.key}" ${x.key===pkKey?'selected':''}>${U.esc(x.label)} — ${U.eur(x.cost)}</option>`).join('')}</optgroup>`:'')
+      +(po.blisters.length?`<optgroup label="Blisters (découpe)">${po.blisters.map(x=>`<option value="${x.key}" ${x.key===pkKey?'selected':''}>${U.esc(x.label)} — ${U.eur(x.cost)}</option>`).join('')}</optgroup>`:'');
+    const oldMissing=pk&&!po.all.find(x=>x.key===pkKey);   // ancien emballage supprimé des consommables : on garde sa fiche tant qu'on n'y touche pas
     U.modal({
       title:'✏️ Modifier le lot — '+U.esc(f.p.name)+' › '+U.esc(Pricing.labelVariant(f.v)),
       okLabel:'Enregistrer',
-      body:`<div class="fg"><label>N° de lot</label><input id="el_num" value="${U.esc(f.lot.lotNumber||'')}"></div>
-      ${U.datePickerHTML('el_dluo','DLUO')}`,
+      body:`<div class="fg"><label>N° de lot</label><input id="el_num" value="${U.esc(lot.lotNumber||'')}"></div>
+      ${U.datePickerHTML('el_dluo','DLUO')}
+      <div class="frow">
+        <div class="fg"><label>Stock général</label><input id="el_qg" type="number" step="${vr?'0.001':'1'}" min="0" value="${U.num(lot.qtyGeneral)}"></div>
+        <div class="fg"><label>Stock événement</label><input id="el_qe" type="number" step="${vr?'0.001':'1'}" min="0" value="${U.num(lot.qtyEvent)}"></div>
+      </div>
+      <div class="frow">
+        <div class="fg" style="flex:3;"><label>Sachet / blister utilisé</label><select id="el_pk"><option value="">— aucun —</option>${opts}</select></div>
+        <div class="fg"><label>Nombre faits</label><input id="el_pkq" type="number" step="1" min="0" value="${pk?U.num(pk.qty):''}" placeholder="0"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:.92rem;white-space:nowrap;"><input type="checkbox" id="el_partial" style="width:auto;flex:none;" ${lot.packPartial?'checked':''}> Conditionnement pas terminé <span class="muted" style="cursor:help;" title="Changer le sachet ou le nombre remet l'ancien emballage en stock puis déduit le nouveau. La fiche prix et le coût du lot ne changent pas.">ⓘ</span></label>`,
       onOk:()=>{
-        f.lot.lotNumber=U.val('el_num');
-        f.lot.dluo=U.val('el_dluo');
-        const entry=Store.commitSnapshot(snap,'stock',`Lot modifié — ${f.p.name}/${Pricing.labelVariant(f.v)} (${f.lot.lotNumber||'sans n°'})`);
-        Store.save('stockM'); U.closeModal(); App.rerender();
-        U.toast('Lot modifié.', false, entry.id);
+        const key=U.val('el_pk'), qty=Math.max(0,Math.round(U.numVal('el_pkq'))), o=key?po.all.find(x=>x.key===key):null;
+        if(key&&!o){ U.toast('Cet emballage n\'existe plus : choisis-en un autre.',true); return false; }
+        if(o&&!(qty>0)){ U.toast('Indique le nombre de sachets conditionnés (ou choisis « — aucun — »).',true); return false; }
+        const oldNum=lot.lotNumber, oldPk=pk, oldO=oldPk?po.all.find(x=>x.key===pkKey):null;
+        const keep=oldMissing&&!key;   // emballage d'origine disparu des consommables et non touché : on garde la fiche telle quelle
+        const packChanged=!keep&&!!(oldPk||o)&&(!oldPk||!o||pkKey!==o.key||U.num(oldPk.qty)!==qty);
+        const snaps=[snap];
+        lot.lotNumber=U.val('el_num'); lot.dluo=U.val('el_dluo');
+        lot.qtyGeneral=U.numVal('el_qg'); lot.qtyEvent=U.numVal('el_qe');
+        if(packChanged){
+          if(oldO&&oldO.conso){ snaps.push(Store.snapshot('consumables',oldO.conso)); this._packMove(oldO,U.num(oldPk.qty),+1); }   // l'ancien emballage est remis en stock
+          if(o&&o.conso&&!(oldO&&oldO.conso===o.conso)) snaps.push(Store.snapshot('consumables',o.conso));
+          if(o) this._packMove(o,qty,-1);
+          // historique d'emballage de la variante : les passages de ce lot sont remplacés par UNE ligne à jour
+          let h=(f.v.packHistory||[]), had=h.some(e=>e.lotId===lId);
+          f.v.packHistory=h.filter(e=>had?e.lotId!==lId:!(oldPk&&!e.lotId&&e.lotNumber===oldNum&&e.date===oldPk.date&&this._packKeyOf(e)===pkKey));
+          if(o){ lot.pack=this._mkPack(o,qty); if(oldPk&&oldPk.date) lot.pack.date=oldPk.date; f.v.packHistory.push({...lot.pack,lotNumber:lot.lotNumber||'',lotId:lId}); f.v.lastPackKey=o.key; if(o.type==='sachet') f.v.lastSachetConsoId=o.conso.id; }
+          else delete lot.pack;
+        }
+        if((o||keep)&&document.getElementById('el_partial').checked) lot.packPartial=true; else delete lot.packPartial;
+        const entry=Store.log('stock',`Lot modifié — ${f.p.name}/${Pricing.labelVariant(f.v)} (${lot.lotNumber||'sans n°'})`+(packChanged?` · conditionnement : ${o?qty+' × '+o.label:'retiré'}`:''),{type:'restoreBatch',data:snaps});
+        Store.save('stockM','consumables'); U.closeModal(); App.rerender();
+        U.toast('Lot modifié'+(packChanged?' — stock de sachets ajusté':'')+'.', false, entry.id);
       }
     });
     const dlInput=document.getElementById('el_dluo');
-    if(dlInput&&f.lot.dluo){dlInput.value=f.lot.dluo;U.datePickerSync('el_dluo');}
+    if(dlInput&&lot.dluo){dlInput.value=lot.dluo;U.datePickerSync('el_dluo');}
   },
 
   transferLot(pId,vId,lId,dir){
