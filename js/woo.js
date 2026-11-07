@@ -115,7 +115,11 @@ const Woo = {
   toggleSel(sku, checked) { this._sel[sku] = !!checked; this._syncBoxes(); this._refreshSelInfo(); },
   /* Aperçu de l'export regroupé par PRODUIT (Antho 2026-10-17) : une case par produit coche/décoche tous ses formats, chaque format garde sa case.
      Clé de groupe = nom avant « — ». La case produit est « partielle » quand seuls certains formats sont cochés (mise à jour par _syncBoxes, sans re-rendu). */
-  _grpKey(l) { return U.normSearch(String(l.name || '').split(' — ')[0]).trim(); },
+  /* Accessoire = famille « type + largeur » comme dans Stock → Accessoires (« Longe 20mm », « poignée 10mm — Personnalisation UV ») ; ses lignes = longueurs / tailles (Antho 2026-11-07) */
+  _grpKey(l) { return l.kind === 'Accessoires' && l.gid ? 'g' + l.gid : U.normSearch(String(l.name || '').split(' — ')[0]).trim(); },
+  _grpTitle(l) { return l.kind === 'Accessoires' && l.gname ? l.gname : String(l.name || '').split(' — ')[0]; },
+  _grpLabel(l) { if (l.kind === 'Accessoires' && l.gid && l.vlabel) return l.vlabel; const p = String(l.name || '').split(' — '); return p.length > 1 ? p.slice(1).join(' — ') : l.name; },
+  _grpOrder(a, b) { return U.sortFr(this._grpTitle(a), this._grpTitle(b)) || (a.kind === 'Accessoires' && b.kind === 'Accessoires' ? ((a.srank - b.srank) || (a.len - b.len) || (a.perso - b.perso)) : 0) || U.sortFr(a.name, b.name); },
   _grpClosed: new Set(),
   toggleGroup(k, on) {
     this._visible(this.lines().filter(l => l.sku)).filter(l => this._grpKey(l) === k && !this._isExcluded(l.sku)).forEach(l => { this._sel[l.sku] = !!on; });
@@ -149,7 +153,8 @@ const Woo = {
     visible.slice(0, 200).forEach(l => { const k = this._grpKey(l); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(l); });
     const row = (l, k, multi) => {
       const excl = this._isExcluded(l.sku), skuJs = String(l.sku).replace(/'/g, "\\'"), parts = String(l.name || '').split(' — ');
-      const label = multi && parts.length > 1 ? U.esc(parts.slice(1).join(' — ')) : U.esc(l.name);
+      const fam = l.kind === 'Accessoires' && l.gid && l.gname;
+      const label = fam ? (multi ? U.esc(l.vlabel || '—') : U.esc(l.gname + (l.vlabel ? ' — ' + l.vlabel : ''))) : multi && parts.length > 1 ? U.esc(this._grpLabel(l)) : U.esc(l.name);
       return `<tr${excl ? ' style="opacity:.45;"' : ''} data-grp="${U.esc(k)}"${multi && this._grpClosed.has(k) ? ' hidden' : ''}>
             <td><input type="checkbox" class="rsel" data-sku="${U.esc(l.sku)}" data-grp="${U.esc(k)}" ${excl ? 'disabled' : (this._sel[l.sku] ? 'checked' : '')} onchange="Woo.toggleSel('${skuJs}',this.checked)"></td>
             <td><span class="tag">${U.esc(l.sku)}</span></td>
@@ -163,7 +168,7 @@ const Woo = {
       if (g.rows.length < 2) return row(g.rows[0], g.k, false);
       const closed = this._grpClosed.has(g.k);
       return `<tr class="wgrp"><td><input type="checkbox" data-gbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleGroup(this.dataset.gbox,this.checked)"></td>
-            <td colspan="5" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(String(g.rows[0].name || '').split(' — ')[0])}</b> <span class="muted">· ${g.rows.length} formats</span></td>
+            <td colspan="5" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(this._grpTitle(g.rows[0]))}</b> <span class="muted">· ${g.rows.length} ${g.rows[0].kind === 'Accessoires' && g.rows[0].gid ? (g.rows[0].sized ? 'tailles' : 'longueurs') : 'formats'}</span></td>
             <td>${g.rows.every(l => this._isExcluded(l.sku)) ? `<button class="btn-ghost btn-sm" data-gk="${U.esc(g.k)}" onclick="Woo.toggleExcludeGroup(this.dataset.gk)">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure tous les formats de ce produit du site (ne jamais les envoyer)" data-gk="${U.esc(g.k)}" onclick="Woo.toggleExcludeGroup(this.dataset.gk)">🚫</button>`}</td></tr>` + g.rows.map(l => row(l, g.k, true)).join('');
     }).join('');
   },
@@ -232,7 +237,7 @@ const Woo = {
       dupInfo.set(g[0].sku, g);
     });
     const matched = [], appOnly = [], siteOnly = [];
-    const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor });
+    const meta = l => ({ kind: l.kind, meat: l.meat, accCat: l.accCat, width: l.width, bicolor: l.bicolor, gid: l.gid, gname: l.gname, vlabel: l.vlabel, sized: l.sized, srank: l.srank, len: l.len, perso: l.perso });
     // Liaisons manuelles (Antho 2026-10-17) : produit de l'appli ↔ fiche du site (par ID) dont l'UGS est différent ou vide ; l'appli est prioritaire → l'UGS du site sera corrigé par le CSV « Corriger les UGS du site »
     const links = (Store.state.settings.wooLinks) || {}, byId = new Map(), claimed = new Map(), key = x => (ref.v === 2 ? String(x.id) : x.sku);
     if (ref.v === 2) { ref.items.forEach(s => byId.set(String(s.id), s)); (ref.noSku || []).forEach(s => byId.set(String(s.id), s)); }
@@ -1220,8 +1225,13 @@ const Woo = {
       });
     // Un bloc par produit (nom écrit une fois, formats dessous) : il prend la place de sa 1re ligne dans l'ordre du tri.
     const shown = sorted.slice(0, 400), gmap = new Map();
-    shown.forEach(m => { const sp = split(m.name); m._sp = sp; const k = U.normSearch(sp.p); let g = gmap.get(k); if (!g) gmap.set(k, g = { p: sp.p, rows: [] }); g.rows.push(m); });
+    shown.forEach(m => {
+      const fam = m.kind === 'Accessoires' && m.gid && m.gname;   // accessoire : produit = famille « Longe 20mm », format = longueur / taille
+      const sp = fam ? { p: m.gname, v: m.vlabel || '' } : split(m.name); m._sp = sp;
+      const k = fam ? 'g' + m.gid : U.normSearch(sp.p); let g = gmap.get(k); if (!g) gmap.set(k, g = { p: sp.p, rows: [] }); g.rows.push(m);
+    });
     const groups = [...gmap.values()];
+    groups.forEach(g => { if (g.rows[0].kind === 'Accessoires' && g.rows[0].gid && sortK === 'name') g.rows.sort((a, b) => ((a.srank || 0) - (b.srank || 0)) || ((a.len || 0) - (b.len || 0)) || ((a.perso || 0) - (b.perso || 0))); });
     const yes = '<span class="pos">✅</span>';
     const sgn = v => (v > 0 ? '+' : '');
     const th = (k, l) => `<th class="sortable${sortK === k ? ' active' : ''}" style="cursor:pointer;" onclick="Woo._setCmpSort('${k}')">${l} ${sortK === k ? (this.cmpSortDir === 'asc' ? '▲' : '▼') : '⇕'}</th>`;
@@ -1305,9 +1315,11 @@ const Woo = {
     // Matières premières et consommables ne sont pas des produits vendus → jamais inclus.
     Accessoires.crafted().forEach(a => {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
-      add(a.sku, a.name, Pricing.accCalc(a).priceTTC, U.num(a.stockGeneral) + U.num(a.stockEvent), 'Accessoires', '', { accCat: a.category || '', width: String(width || ''), bicolor: !!a.bicolor });
+      add(a.sku, a.name, Pricing.accCalc(a).priceTTC, U.num(a.stockGeneral) + U.num(a.stockEvent), 'Accessoires', '', { accCat: a.category || '', width: String(width || ''), bicolor: !!a.bicolor,
+        gid: a.groupId || '', gname: a.groupName || '', vlabel: a.sizeLabel ? String(a.sizeLabel) : (Accessoires._lenOf(a) > 0 ? U.qty(Accessoires._lenOf(a)) + 'm' : ''), sized: !!a.sizeLabel,
+        srank: Accessoires._sizeRank(a), len: Accessoires._lenOf(a), perso: Accessoires._persoRank(a) });
     });
-    return [...map.values()].sort((a, b) => U.sortFr(a.name, b.name));
+    return [...map.values()].sort((a, b) => this._grpOrder(a, b));
   },
 
   render() {
