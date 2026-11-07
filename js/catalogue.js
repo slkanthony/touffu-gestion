@@ -496,8 +496,8 @@ const Catalogue = {
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
-        <td class="num sensitive ${S.vatActive ? 'num-cotis' : 'num-marge'}">${S.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
         <td class="num sensitive num-benef-cell ${c.profitAssujetti >= 0 ? 'pos' : 'neg'}" data-normal="${U.eur(c.profitAssujetti)}" data-peek="${U.eur(S.vatActive ? c.profitAssujetti : c.profitActuel)}"><b>${U.eur(c.profitAssujetti)}</b></td>
+        <td class="num sensitive muted">${U.eur(c.priceTTC - c.priceHT)}</td>
         <td class="num"><b><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" style="width:85px;text-align:right;font-weight:700;" onchange="Catalogue.setCardPriceTTC('${p.id}','${v.id}',this.value,${on ? curIdx : -1})"></b></td>
       </tr>`;
     };
@@ -553,10 +553,10 @@ const Catalogue = {
         </div>` : ''}
         ${preview ? '<div class="badge warn" style="margin-bottom:8px;">Comparaison avec ' + U.esc(Store.supplierName(preview)) + ' — les prix ci-dessous sont temporaires, cliquer à nouveau pour revenir au principal</div>' : ''}
         <div class="table-wrap"><table class="cat-vtbl">
-          <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="ctr">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num th-benef" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">Prix TTC</th></tr></thead>
+          <thead><tr><th class="col-name">Variante</th><th class="num">Coût de revient</th><th class="ctr">Coeff</th><th class="num">Prix HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num th-benef" style="cursor:pointer;user-select:none;" title="Maintenir l'appui : voir bénéfice + TVA" onmousedown="Catalogue.peekBenefTVA(true)" onmouseup="Catalogue.peekBenefTVA(false)" onmouseleave="Catalogue.peekBenefTVA(false)" ontouchstart="event.preventDefault();Catalogue.peekBenefTVA(true)" ontouchend="Catalogue.peekBenefTVA(false)" ontouchcancel="Catalogue.peekBenefTVA(false)">Bénéfice</th><th class="num">dont TVA ${S.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Prix TTC</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="9" class="muted">Aucune variante.</td></tr>'}</tbody></table></div>
         ${inactiveVars.length ? `<button class="btn-ghost btn-sm mt" onclick="Catalogue.toggleInactive('${p.id}')" style="font-size:.78rem;">${showInactive ? 'Masquer' : 'Afficher'} les ${inactiveVars.length} variante${inactiveVars.length > 1 ? 's' : ''} désactivée${inactiveVars.length > 1 ? 's' : ''}</button>` : ''}
-        <p class="muted help mt" data-help-anchor="~ th.th-benef">* bénéfice = marge − cotisations URSSAF − TVA (toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
+        <p class="muted help mt" data-help-anchor="~ th.th-benef">* bénéfice = marge − cotisations URSSAF (la marge est calculée sur le prix HT : la TVA est déjà exclue, elle est seulement rappelée à droite, « dont TVA », dans le prix TTC ; toujours hors TVA, quel que soit ton statut) · maintiens l'appui sur « Bénéfice » pour voir bénéfice + TVA conservée · coût = produit + sachet + étiquette.</p>
         <h3 style="font-size:.85rem;margin:14px 0 6px;">Fournisseurs</h3>
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Fournisseur</th><th class="num">Prix d'achat</th><th>Prix mis à jour</th><th></th></tr></thead>
@@ -1171,7 +1171,7 @@ const Catalogue = {
       return `<h3 class="cp-var-title">${g.title}
           <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('${g.mode}')">🗑️</button></h3>
         <div class="table-wrap"><table class="cp-var-table">
-          <thead><tr><th></th><th>${g.col}</th><th>Sachet / Blister</th><th class="num">Coût revient</th><th class="num">Prix vente HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">TVA ${Store.state.settings.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Bénéfice</th><th class="num">Prix vente TTC</th><th></th></tr></thead>
+          <thead><tr><th></th><th>${g.col}</th><th>Sachet / Blister</th><th class="num">Coût revient</th><th class="num">Prix vente HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">Bénéfice</th><th class="num">dont TVA ${Store.state.settings.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Prix vente TTC</th><th></th></tr></thead>
           <tbody>${groupRows.map((r, j) => this.variantRow(r, base, j, groupRows.length)).join('')}</tbody>
         </table></div>`;
     }).join('') || '<p class="muted">Aucune variante — ajoute au moins un conditionnement de vente.</p>';
@@ -1200,8 +1200,8 @@ const Catalogue = {
         <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
         <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
         <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
-        <td class="num sensitive ${S.vatActive ? 'num-cotis' : 'num-marge'}">${S.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
         <td class="num num-benef sensitive ${benef >= 0 ? 'pos' : 'neg'}"><b>${U.eur(benef)}</b></td>
+        <td class="num sensitive muted">${U.eur(c.priceTTC - c.priceHT)}</td>
         <td class="num"><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="v-price strong" onchange="Catalogue.setVariantPrice(${i},'ttc',this.value)"></td>
         <td><button class="btn-icon" onclick="Catalogue._d.variants.splice(${i},1);Catalogue.drawVars()">🗑️</button></td>
       </tr>`;
@@ -1209,7 +1209,7 @@ const Catalogue = {
     return `<h3 class="cp-var-title">${g.title}
         <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button></h3>
       <div class="table-wrap"><table class="cp-var-table cp-size-table">
-        <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff', 'ctr')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Bénéfice')}${th('Prix vente TTC')}<th></th></tr></thead>
+        <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff', 'ctr')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('Bénéfice')}${th('dont TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Prix vente TTC')}<th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
   },
@@ -1246,8 +1246,8 @@ const Catalogue = {
       <td class="num sensitive"><input type="number" step="0.10" value="${c.priceHT.toFixed(2)}" class="v-price" onchange="Catalogue.setVariantPrice(${i},'ht',this.value)"></td>
       <td class="num num-marge sensitive">${U.eur(c.margin)}</td>
       <td class="num num-cotis sensitive">${U.eur(c.social)}</td>
-      <td class="num sensitive ${Store.state.settings.vatActive ? 'num-cotis' : 'num-marge'}">${Store.state.settings.vatActive ? '− ' : ''}${U.eur(c.priceTTC - c.priceHT)}</td>
       <td class="num num-benef sensitive ${c.profitAssujetti >= 0 ? 'pos' : 'neg'}"><b>${U.eur(c.profitAssujetti)}</b></td>
+      <td class="num sensitive muted">${U.eur(c.priceTTC - c.priceHT)}</td>
       <td class="num"><input type="number" step="0.10" value="${c.priceTTC.toFixed(2)}" class="v-price strong" onchange="Catalogue.setVariantPrice(${i},'ttc',this.value)">
 </td>
       <td><button class="btn-icon" onclick="Catalogue._d.variants.splice(${i},1);Catalogue.drawVars()">🗑️</button></td>
