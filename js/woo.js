@@ -165,10 +165,10 @@ const Woo = {
             <td>${excl ? `<button class="btn-ghost btn-sm" onclick="Woo.toggleExclude('${skuJs}')">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure ce produit du site (ne jamais l'envoyer)" onclick="Woo.toggleExclude('${skuJs}')">🚫</button>`}</td></tr>`;
     };
     return groups.map(g => {
-      if (g.rows.length < 2) return row(g.rows[0], g.k, false);
+      if (g.rows.length < 2 && !(g.rows[0].kind === 'Accessoires' && g.rows[0].gid)) return row(g.rows[0], g.k, false);
       const closed = this._grpClosed.has(g.k);
       return `<tr class="wgrp"><td><input type="checkbox" data-gbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleGroup(this.dataset.gbox,this.checked)"></td>
-            <td colspan="5" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(this._grpTitle(g.rows[0]))}</b> <span class="muted">· ${g.rows.length} ${g.rows[0].kind === 'Accessoires' && g.rows[0].gid ? (g.rows[0].sized ? 'tailles' : 'longueurs') : 'formats'}</span></td>
+            <td colspan="5" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(this._grpTitle(g.rows[0]))}</b> <span class="muted">· ${g.rows.length} ${g.rows[0].kind === 'Accessoires' && g.rows[0].gid ? (g.rows[0].sized ? 'taille' : 'longueur') + (g.rows.length > 1 ? 's' : '') : 'formats'}</span></td>
             <td>${g.rows.every(l => this._isExcluded(l.sku)) ? `<button class="btn-ghost btn-sm" data-gk="${U.esc(g.k)}" onclick="Woo.toggleExcludeGroup(this.dataset.gk)">↩ Inclure</button>` : `<button class="btn-icon" title="Exclure tous les formats de ce produit du site (ne jamais les envoyer)" data-gk="${U.esc(g.k)}" onclick="Woo.toggleExcludeGroup(this.dataset.gk)">🚫</button>`}</td></tr>` + g.rows.map(l => row(l, g.k, true)).join('');
     }).join('');
   },
@@ -1057,10 +1057,10 @@ const Woo = {
           <td>${!r ? '<span class="muted">—</span>' : inSumup.has(sku) ? (inSumup.get(sku).link ? '<span class="badge info" title="Ligne SumUp reliée à la main : le fichier d\'import y met le SKU de l\'appli">🔗 SKU à corriger</span>' : '<span class="pos">✅</span>') : '<span class="badge warn">absent</span>'}</td>
           <td><button class="btn-icon" title="Exclure définitivement cet article des exports SumUp" onclick="Woo.toggleSumupExclude('${skuJs}')">🚫</button></td></tr>`; };
           return groups.map(g => {
-            if (g.rows.length < 2) return row(g.rows[0], g.k, false);
+            if (g.rows.length < 2 && !(g.rows[0].kind === 'A' && g.rows[0].gid)) return row(g.rows[0], g.k, false);   // une famille d'accessoires garde son titre même avec 1 seule ligne
             const closed = this._sumupGrpClosed.has(g.k);
             return `<tr class="wgrp"><td><input type="checkbox" data-sgbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleSumupGroup(this.dataset.sgbox,this.checked)"></td>
-              <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(this._sumupGrpTitle(g.rows[0]))}</b> <span class="muted">· ${g.rows.length} ${g.rows[0].kind === 'A' ? (g.rows[0].sized ? 'tailles' : 'longueurs') : 'formats'}</span></td>
+              <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(this._sumupGrpTitle(g.rows[0]))}</b> <span class="muted">· ${g.rows.length} ${g.rows[0].kind === 'A' ? (g.rows[0].sized ? 'taille' : 'longueur') + (g.rows.length > 1 ? 's' : '') : 'formats'}</span></td>
               <td><button class="btn-icon" title="Exclure tous les formats de ce produit de SumUp (ne jamais les envoyer)" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupExcludeGroup(this.dataset.gk,true)">🚫</button></td></tr>` + g.rows.map(m => row(m, g.k, true)).join('');
           }).join('');
         })() || '<tr><td colspan="8" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>

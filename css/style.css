@@ -1724,6 +1724,9 @@ details.fold.stk-acc-fold.low { border-left-color: var(--warn) !important; }
 }
 /* Synchro → aperçu de l'export : ligne « produit » qui regroupe ses formats (Antho 2026-10-17) */
 tr.wgrp td { background: var(--th-bg); }
+/* la barre « produit » garde sa teinte foncée même sur une ligne paire (sinon le zébrage des lignes la rendait claire une fois sur deux) — Antho 2026-11-07 */
+tbody tr.wgrp td, :root[data-theme="dark"] tbody tr.wgrp td, tbody tr.wgrp:nth-child(even) td, :root[data-theme="dark"] tbody tr.wgrp:nth-child(even) td { background: var(--th-bg); }
+tbody tr.wgrp:hover td, :root[data-theme="dark"] tbody tr.wgrp:hover td { background: var(--th-bg); }
 tr[hidden] { display: none; }
 tr.wgrp td[colspan] { text-align: left; }
 @media (min-width: 861px) { td.col-name[data-fmt] { padding-left: 30px; text-align: left; } }
