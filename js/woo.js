@@ -1038,7 +1038,7 @@ const Woo = {
       ${refBlock}
       <div class="mt" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
         <button id="sumup_exp_btn2" class="btn-cta" onclick="Woo.exportSumupImport()">${exportLabel}</button>
-        <button class="btn-ghost" onclick="Woo.exportSumupNew()" title="Crée dans SumUp les articles qu'il ne connaît pas encore (Articles → Autres options → Importer des articles). Les articles déjà dans SumUp ne sont pas touchés.">🆕 Ajout groupé : ${this._sumupAbsent().length} absent(s) de SumUp</button>
+        <button class="btn-ghost" onclick="Woo.exportSumupNew()" title="Crée dans SumUp les articles qu'il ne connaît pas encore (Articles → Autres options → Importer des articles). Les articles déjà dans SumUp ne sont pas touchés.">${(() => { const ab = this._sumupAbsent(), sc = this._sumupSelCount(), n = sc ? ab.filter(m => this._sumupSel[m.sku.toUpperCase()]).length : ab.length; return sc ?`🆕 Ajout groupé : ${n} coché(s) absent(s) de SumUp` : `🆕 Ajout groupé : ${ab.length} absent(s) de SumUp (tous)`; })()}</button>
       </div>
       <p class="muted help mt">Dans SumUp : Articles → Importer → choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> (le fichier ne contient QUE les articles cochés, avec leurs variantes) et vérifie que SumUp met bien à jour l'existant (pas de doublon créé) avant de faire un export complet. Un produit « absent » de SumUp n'est pas mis à jour : crée-le d'abord dans SumUp puis rafraîchis la référence. 🚫 = exclu définitivement (mémorisé).</p>
       <div class="table-wrap mt"><table><thead><tr>
