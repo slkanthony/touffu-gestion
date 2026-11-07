@@ -611,7 +611,24 @@ const Woo = {
   toggleSumupSel(sku, on) { this._sumupSel[String(sku).toUpperCase()] = !!on; this._sumupSelInfo(); },
   /* Aperçu de l'export SumUp regroupé par PRODUIT (Antho 2026-10-18) — mêmes gestes que l'export du site : case produit (tri-état) = tous ses formats d'un coup, repli du produit,
      🚫 / ↩ Inclure sur tout le produit (mémorisé dans `sumupExclude`, comme le 🚫 d'une ligne). _sumupExpRows / _sumupExclRows = lignes affichées / exclues, remplies à chaque rendu. */
-  _sumupGrpKey(m) { return U.normSearch(m.name || '').trim() + '|' + (m.kind || ''); },
+  /* Un accessoire se range comme dans SumUp et dans Stock → Accessoires (Antho 2026-11-07) : le PRODUIT = famille « type + largeur » (« Longe 20mm »), ses lignes = les longueurs (5 m, 7 m…) ou
+     les tailles (S, M, L). Mastication : produit = nom, lignes = formats. */
+  _sumupGrpKey(m) { return m.kind === 'A' && m.gid ? 'g' + m.gid + '|A' : U.normSearch(m.name || '').trim() + '|' + (m.kind || ''); },
+  _sumupGrpTitle(m) { return m.kind === 'A' && m.gname ? m.gname : m.name; },
+  _sumupRowLabel(m) { return m.kind === 'A' && m.gid && m.vlabel ? m.vlabel : (m.variant || m.name); },
+  _sumupUnits() {
+    return Ventes.units().filter(u => u.sku && this._inCat(u.kind) && !this._unitOff(u)).map(u => ({
+      sku: u.sku.trim(), name: u.name, variant: u.label || '', appType: u.kind === 'A' ? 'Accessoires' : (u.type || ''),
+      appPrice: u.price, appQty: u.availE, mode: u.mode, value: u.value, kind: u.kind, fmt: this._fmtKey(u.label),
+      gid: u.gid || '', gname: u.gname || '', vlabel: u.vlabel || '', sized: !!u.sized, srank: u.srank || 0, len: u.len || 0, perso: u.perso || 0, cat: u.type || ''
+    }));
+  },
+  _sumupNameCmp(a, b) {   // ordre « par nom » : produit (famille pour un accessoire), puis taille / longueur / personnalisation, puis format
+    const ttl = m => this._sumupGrpTitle(m);
+    return U.sortFr(ttl(a), ttl(b))
+      || (a.kind === 'A' && b.kind === 'A' ? ((a.srank - b.srank) || (a.len - b.len) || (a.perso - b.perso)) : 0)
+      || U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant);
+  },
   _sumupGrpClosed: new Set(),
   toggleSumupGroup(k, on) {
     (this._sumupExpRows || []).filter(m => this._sumupGrpKey(m) === k).forEach(m => { this._sumupSel[m.sku.toUpperCase()] = !!on; });
@@ -717,6 +734,40 @@ const Woo = {
     // SKU qui resteraient en double dans SumUp : une ligne NON reliée porte encore le SKU qu'une ligne reliée va recevoir
     const taking = new Set(chosen.filter(m => m.link).map(m => m.sku.toUpperCase())), dups = r.unknown.filter(l => l.taken && taking.has(l.sku.toUpperCase()));
     U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${nLinked ? `, dont ${nLinked} avec SKU corrigé` : ''}${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.${dups.length ? `\n\n⚠️ ${dups.length} ligne(s) SumUp gardent un SKU qu'un autre article va recevoir (${dups.slice(0, 3).map(l => l.sku).join(', ')}${dups.length > 3 ? '…' : ''}) : relie-les aussi, sinon SumUp aura ces SKU en double.` : ''}\n\nLe fichier ne contient que ${nItems} article${nItems > 1 ? 's' : ''} de ta bibliothèque SumUp (avec leurs variantes) : SumUp annoncera « ${nItems} article${nItems > 1 ? 's' : ''} importé${nItems > 1 ? 's' : ''} ». Les autres ne sont pas touchés.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
+  },
+  /* ── AJOUT GROUPÉ SumUp (Antho 2026-11-07) : « Articles → Autres options → Importer des articles » avec des articles que SumUp ne connaît pas encore (sans « Item id » = SumUp les CRÉE).
+     Même gabarit que l'export SumUp déposé (en-têtes exacts, lu dans le fichier de référence) : une ligne PRODUIT (famille « Longe 20mm », catégorie #ACCESSOIRES) + une ligne par déclinaison
+     (longueur / taille / format) avec SKU, prix TTC, quantité. Seuls les articles ABSENTS de SumUp (SKU introuvable dans la référence) partent : aucun doublon possible avec ceux déjà là. ── */
+  _sumupAbsent() {
+    const r = this._sumup ? this._sumupReport() : null, known = new Set(r ? r.matched.map(m => m.sku.toUpperCase()) : []);
+    if (this._sumup) (this._sumup.lines || []).forEach(l => { if (l.sku) known.add(String(l.sku).toUpperCase()); });
+    return this._sumupUnits().filter(m => !this._isSumupExcluded(m.sku) && !known.has(m.sku.toUpperCase()));
+  },
+  async exportSumupNew() {
+    if (!this._sumup || !this._sumup.raw) { U.toast('Dépose d\'abord ton export d\'articles SumUp : il me donne les colonnes exactes et me dit ce qui existe déjà (pour ne rien créer en double).', true); return; }
+    const absent = this._sumupAbsent(), n = this._sumupSelCount();
+    const chosen = (n ? absent.filter(m => this._sumupSel[m.sku.toUpperCase()]) : absent).sort((a, b) => this._sumupNameCmp(a, b));
+    if (!chosen.length) { U.toast(n ? 'Aucun des articles cochés n\'est absent de SumUp (ceux qui y sont déjà se mettent à jour avec l\'autre bouton).' : 'Rien à ajouter : tout ce qui est affiché existe déjà dans SumUp.', true); return; }
+    const map = new Map(), groups = [];
+    chosen.forEach(m => { const k = this._sumupGrpKey(m); let g = map.get(k); if (!g) { map.set(k, g = { rows: [] }); groups.push(g); } g.rows.push(m); });
+    const list = groups.slice(0, 5).map(g => this._sumupGrpTitle(g.rows[0])).join(', ') + (groups.length > 5 ? '…' : '');
+    if (!await U.confirm(`${n ? 'Le fichier ne contiendra que les articles cochés ABSENTS de SumUp' : 'Aucune sélection : le fichier contiendra TOUS les articles affichés absents de SumUp'} : ${groups.length} produit(s), ${chosen.length} article(s) (${list}).\n\nSumUp va les CRÉER (rien n'est modifié sur les articles existants). Pour un premier essai, coche plutôt 1 ou 2 produits. Continuer ?`, { title: '🆕 Ajout groupé SumUp', okLabel: 'Générer le fichier' })) return;
+    const head = this._sumup.raw[0].map(h => String(h).trim()), ix = h => head.indexOf(h), iCat = ix('Category'), iName = ix('Item name');
+    const catA = (() => { for (const row of this._sumup.raw.slice(1)) { const c = String(row[iCat] || '').trim(); if (iName >= 0 && String(row[iName] || '').trim() && /accessoire/i.test(c)) return c; } return '#ACCESSOIRES'; })();
+    const track = this.sumupExpQty;
+    const mk = vals => { const row = head.map(() => ''); Object.entries(vals).forEach(([h, v]) => { const i = ix(h); if (i >= 0) row[i] = String(v); }); return row; };
+    const base = (name, cat) => ({ 'Item name': name, 'Variable price? (Yes/No)': 'No', 'On sale in Online Store?': 'No', 'Set up different prices and VAT for takeaway': 'No', 'Unit': 'each.each', 'Track inventory? (Yes/No)': track ? 'Yes' : 'No', 'Category': cat, 'Display item at Checkout? (Yes/No)': 'Yes', 'Display item in Online Store? (Yes/No)': 'No', 'Display service in Bookings? (Yes/No)': 'No' });
+    const priceQty = m => ({ 'Is variation visible? (Yes/No)': 'Yes', 'Price': U.num(m.appPrice).toFixed(2), 'SKU': m.sku, ...(track ? { 'Quantity': String(Math.round(U.num(m.appQty))), 'Low stock threshold': '0' } : {}) });
+    const optSet = m => m.kind === 'A' ? (m.sized ? 'TAILLES' : 'TAILLE DE LONGES') : m.mode === 'gram' ? 'poids' : m.mode === 'piece' ? 'LOT' : 'TAILLES';
+    const out = [head.map(h => this._csvField(h)).join(',')];
+    groups.forEach(g => {
+      const f = g.rows[0], title = this._sumupGrpTitle(f), cat = f.kind === 'A' ? catA : (f.appType || '');
+      if (g.rows.length === 1 && !(f.kind === 'A' && f.gid)) { out.push(mk({ ...base(title, cat), ...priceQty(f) }).map(x => this._csvField(x)).join(',')); return; }
+      out.push(mk(base(title, cat)).map(x => this._csvField(x)).join(','));
+      g.rows.forEach(m => { const lb = this._sumupRowLabel(m); out.push(mk({ 'Variations': lb, 'Option set 1': optSet(m), 'Option 1': lb, ...priceQty(m) }).map(x => this._csvField(x)).join(',')); });
+    });
+    U.download('sumup-ajout-groupe-' + U.today() + '.csv', out.join('\n') + '\n', 'text/csv;charset=utf-8');
+    U.alert(`Fichier généré : ${groups.length} produit(s), ${chosen.length} article(s) à créer dans SumUp (prix TTC${track ? ' + quantités du stock événement' : ''}, catégorie ${groups[0].rows[0].kind === 'A' ? catA : groups[0].rows[0].appType || '—'}).\n\nDans SumUp : Articles → Autres options → Importer des articles → choisis ce fichier. Les articles ne sont pas publiés dans la boutique en ligne. Vérifie le résultat sur 1 ou 2 produits avant d'en envoyer beaucoup.\n\nGarde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde.`, '🆕 Ajout groupé SumUp');
   },
   compareSumup(inp) {
     this._readPicked(inp, 'woo_sumup_file', 'Choisis d\'abord le fichier exporté depuis SumUp (Articles → Exporter).', (text, file) => {
@@ -919,10 +970,7 @@ const Woo = {
     // générer (identifiants cachés des articles → mise à jour sans doublons).
     const r = this._sumup ? this._sumupReport() : null;
     const inSumup = new Map(); if (r) r.matched.forEach(m => inSumup.set(m.sku.toUpperCase(), m));
-    const units = Ventes.units().filter(u => u.sku && this._inCat(u.kind) && !this._unitOff(u)).map(u => ({
-      sku: u.sku.trim(), name: u.name, variant: u.label || '', appType: u.kind === 'A' ? 'Accessoires' : (u.type || ''),
-      appPrice: u.price, appQty: u.availE, mode: u.mode, value: u.value, kind: u.kind, fmt: this._fmtKey(u.label)
-    }));
+    const units = this._sumupUnits();
     const isExcl = u => this._isSumupExcluded(u.sku);
     const exportable = units.filter(u => !isExcl(u));
     const excludedCount = units.length - exportable.length;
@@ -933,10 +981,10 @@ const Woo = {
     const fmtList = [...new Set(exportable.map(m => m.fmt))];
     this._sumupFmtList = fmtList;
     const fmtSel = this._sumupFmtSel();
-    const byName = (a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant);
+    const byName = (a, b) => this._sumupNameCmp(a, b);
     const sdir = f.sortDir === 'desc' ? -1 : 1;
     const stRank = m => !r ? 0 : inSumup.has(m.sku.toUpperCase()) ? (inSumup.get(m.sku.toUpperCase()).link ? 1 : 2) : 3;   // sans référence · à corriger · présent · absent
-    const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.has(m.name + ' ' + m.variant + ' ' + m.sku, q)))
+    const visible = exportable.filter(m => fmtSel.includes(m.fmt) && (f.meat === 'all' || m.appType === f.meat) && (!q || U.has(m.name + ' ' + m.gname + ' ' + m.variant + ' ' + m.sku, q)))
       .sort((a, b) => {
         let c;
         if (f.sort === 'sku') c = U.sortFr(a.sku, b.sku);
@@ -983,7 +1031,10 @@ const Woo = {
         ${selCount > 0 ? `<button class="btn-ghost btn-sm" style="flex:0;" onclick="Woo.clearSumupSel()">Vider la sélection</button>` : ''}
       </div>
       ${refBlock}
-      <button id="sumup_exp_btn2" class="btn-cta mt" onclick="Woo.exportSumupImport()">${exportLabel}</button>
+      <div class="mt" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <button id="sumup_exp_btn2" class="btn-cta" onclick="Woo.exportSumupImport()">${exportLabel}</button>
+        <button class="btn-ghost" onclick="Woo.exportSumupNew()" title="Crée dans SumUp les articles qu'il ne connaît pas encore (Articles → Autres options → Importer des articles). Les articles déjà dans SumUp ne sont pas touchés.">🆕 Ajout groupé : ${this._sumupAbsent().length} absent(s) de SumUp</button>
+      </div>
       <p class="muted help mt">Dans SumUp : Articles → Importer → choisis ce fichier. <b>Coche 1 ou 2 produits pour un premier essai</b> (le fichier ne contient QUE les articles cochés, avec leurs variantes) et vérifie que SumUp met bien à jour l'existant (pas de doublon créé) avant de faire un export complet. Un produit « absent » de SumUp n'est pas mis à jour : crée-le d'abord dans SumUp puis rafraîchis la référence. 🚫 = exclu définitivement (mémorisé).</p>
       <div class="table-wrap mt"><table><thead><tr>
         <th style="width:34px;"><input type="checkbox" ${allVisSel ? 'checked' : ''} onchange="Woo.sumupExpSelectAll(this.checked)" title="Tout sélectionner"></th>
@@ -994,7 +1045,7 @@ const Woo = {
           const row = (m, k, multi) => { const sku = m.sku.toUpperCase(); const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<tr data-grp="${U.esc(k)}"${multi && this._sumupGrpClosed.has(k) ? ' hidden' : ''}>
           <td><input type="checkbox" class="ssel" data-grp="${U.esc(k)}" ${this._sumupSel[sku] ? 'checked' : ''} onchange="Woo.toggleSumupSel('${skuJs}',this.checked);Woo.render();"></td>
           <td><span class="tag">${U.esc(m.sku)}</span></td>
-          <td class="col-name"${multi ? ' data-fmt="1"' : ''}>${multi ? U.esc(m.variant || m.name) : U.esc(m.name) + (m.variant ? ' — ' + U.esc(m.variant) : '')}</td>
+          <td class="col-name"${multi ? ' data-fmt="1"' : ''}>${multi ? U.esc(this._sumupRowLabel(m)) : (m.kind === 'A' && m.gid ? U.esc(this._sumupGrpTitle(m)) + (m.vlabel ? ' — ' + U.esc(m.vlabel) : '') : U.esc(m.name) + (m.variant ? ' — ' + U.esc(m.variant) : ''))}</td>
           <td>${m.appType ? `<span class="badge info">${U.esc(m.appType)}</span>` : '—'}</td>
           <td class="num">${this.sumupExpPrice ? U.eur(m.appPrice) : '—'}</td>
           <td class="num">${this.sumupExpQty ? U.qty(m.appQty) : '—'}</td>
@@ -1004,7 +1055,7 @@ const Woo = {
             if (g.rows.length < 2) return row(g.rows[0], g.k, false);
             const closed = this._sumupGrpClosed.has(g.k);
             return `<tr class="wgrp"><td><input type="checkbox" data-sgbox="${U.esc(g.k)}" title="Cocher tous les formats de ce produit" onchange="Woo.toggleSumupGroup(this.dataset.sgbox,this.checked)"></td>
-              <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(g.rows[0].name)}</b> <span class="muted">· ${g.rows.length} formats</span></td>
+              <td colspan="6" style="cursor:pointer;" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupGrpFold(this.dataset.gk)">${closed ? '▸' : '▾'} <b>${U.esc(this._sumupGrpTitle(g.rows[0]))}</b> <span class="muted">· ${g.rows.length} ${g.rows[0].kind === 'A' ? (g.rows[0].sized ? 'tailles' : 'longueurs') : 'formats'}</span></td>
               <td><button class="btn-icon" title="Exclure tous les formats de ce produit de SumUp (ne jamais les envoyer)" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupExcludeGroup(this.dataset.gk,true)">🚫</button></td></tr>` + g.rows.map(m => row(m, g.k, true)).join('');
           }).join('');
         })() || '<tr><td colspan="8" class="muted">Aucun article ne correspond au filtre.</td></tr>'}</tbody></table>
@@ -1013,9 +1064,9 @@ const Woo = {
       ${excludedCount > 0 ? `<details class="fold mt" ${this._sumupExclOpen ? 'open' : ''} ontoggle="Woo._sumupExclOpen=this.open"><summary>🚫 ${excludedCount} article(s) exclu(s) de SumUp</summary><div class="fold-body">
         ${(() => {
           const map = new Map(), groups = [];
-          units.filter(isExcl).sort((a, b) => U.sortFr(a.name + ' ' + a.variant, b.name + ' ' + b.variant)).forEach(m => { const k = this._sumupGrpKey(m); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(m); });
-          return groups.map(g => (g.rows.length > 1 ? `<div class="frow" style="gap:10px;align-items:center;padding:6px 0 2px;"><b style="flex:1;">${U.esc(g.rows[0].name)} <span class="muted" style="font-weight:400;">· ${g.rows.length} formats</span></b><button class="btn-ghost btn-sm" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupExcludeGroup(this.dataset.gk,false)">↩ Inclure tout le produit</button></div>` : '')
-            + g.rows.map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;${g.rows.length > 1 ? 'margin-left:18px;' : ''}"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(g.rows.length > 1 ? (m.variant || m.name) : m.name + (m.variant ? ' — ' + m.variant : ''))}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">↩ Inclure</button></div>`; }).join('')).join('');
+          units.filter(isExcl).sort((a, b) => this._sumupNameCmp(a, b)).forEach(m => { const k = this._sumupGrpKey(m); let g = map.get(k); if (!g) { map.set(k, g = { k, rows: [] }); groups.push(g); } g.rows.push(m); });
+          return groups.map(g => (g.rows.length > 1 ? `<div class="frow" style="gap:10px;align-items:center;padding:6px 0 2px;"><b style="flex:1;">${U.esc(this._sumupGrpTitle(g.rows[0]))} <span class="muted" style="font-weight:400;">· ${g.rows.length} formats</span></b><button class="btn-ghost btn-sm" data-gk="${U.esc(g.k)}" onclick="Woo.toggleSumupExcludeGroup(this.dataset.gk,false)">↩ Inclure tout le produit</button></div>` : '')
+            + g.rows.map(m => { const skuJs = String(m.sku).replace(/'/g, "\\'"); return `<div class="frow" style="gap:10px;align-items:center;padding:3px 0;${g.rows.length > 1 ? 'margin-left:18px;' : ''}"><span class="tag">${U.esc(m.sku)}</span><span style="flex:1;">${U.esc(g.rows.length > 1 ? this._sumupRowLabel(m) : m.name + (m.variant && !(m.kind === 'A' && m.gid) ? ' — ' + m.variant : ''))}</span><button class="btn-ghost btn-sm" onclick="Woo.toggleSumupExclude('${skuJs}')">↩ Inclure</button></div>`; }).join('')).join('');
         })()}
       </div></details>` : ''}
     `;

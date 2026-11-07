@@ -57,7 +57,10 @@ const Ventes = {
     }));
     Store.state.catalogA.forEach(a => {
       const width = a.mainWidth || (Array.isArray(a.strapWidths) && a.strapWidths[0]) || '';
-      out.push({ key: 'A|' + a.id, kind: 'A', mode: 'acc', pId: a.id, vId: '', name: a.name, label: a.category || '', type: a.category || 'Accessoire', width, sku: a.sku || '', price: Pricing.accCalc(a).priceTTC, availG: U.num(a.stockGeneral), availE: U.num(a.stockEvent), lots: [] });
+      // famille (type + largeur : « Longe 20mm ») et libellé de la déclinaison (« 5 m », « L ») : utilisés par Synchro pour ranger les accessoires comme dans SumUp
+      const len = Accessoires._lenOf(a), vlabel = a.sizeLabel ? String(a.sizeLabel) : len > 0 ? U.qty(len) + 'm' : '';
+      out.push({ key: 'A|' + a.id, kind: 'A', mode: 'acc', pId: a.id, vId: '', name: a.name, label: a.category || '', type: a.category || 'Accessoire', width, sku: a.sku || '', price: Pricing.accCalc(a).priceTTC, availG: U.num(a.stockGeneral), availE: U.num(a.stockEvent), lots: [],
+        gid: a.groupId || '', gname: a.groupName || '', vlabel, sized: !!a.sizeLabel, srank: Accessoires._sizeRank(a), len, perso: Accessoires._persoRank(a) });
     });
     return out.sort((a, b) => {
       const key = U.sortFr(a.type + a.name, b.type + b.name);
