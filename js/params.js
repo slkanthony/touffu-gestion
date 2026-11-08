@@ -429,13 +429,18 @@ const Params = {
               ${hasUsers ? `<div style="min-width:220px;">${U.customSelect({ value: this._journalUser || 'all', options: [{ v: 'all', l: 'Tous les utilisateurs' }].concat(users.map(u => ({ v: u || '_none', l: u || '— (non renseigné)' }))), onPick: 'Params._setJournalUser' })}</div>` : ''}
             </div>`;
           })()}
+          <div class="frow" style="margin-bottom:8px;"><div class="fg" style="margin:0;"><input type="text" id="jrn_q" placeholder="🔍 Chercher dans le journal (produit, client, action…)" value="${U.esc(this._journalQ || '')}" oninput="Params._journalQ=this.value;Params._journalN=100;App.rerender();U.refocus('jrn_q')"></div></div>
           <div class="table-wrap" style="max-height:340px; overflow-y:auto;"><table><tbody>
-            ${Store.state.journal.filter(j => !this._journalUser || this._journalUser === 'all' || (j.user || '_none') === this._journalUser).slice(0, 100).map(j => `<tr>
+            ${(() => {
+              const all = Store.state.journal.filter(j => (!this._journalUser || this._journalUser === 'all' || (j.user || '_none') === this._journalUser) && (!this._journalQ || U.has(j.label + ' ' + j.action, this._journalQ))), n = this._journalN || 100;
+              this._journalMore = Math.max(0, all.length - n);
+              return (all.slice(0, n).map(j => `<tr>
               <td style="white-space:nowrap;" class="muted">${U.frDateTime(j.ts)}</td>
               <td style="white-space:nowrap;" class="muted">${U.esc(j.user || '—')}</td>
               <td>${U.esc(j.label)}</td>
-              <td class="right">${j.undo ? `<button class="btn-ghost btn-sm" onclick="Params.undo('${j.id}')">Annuler</button>` : ''}</td>
-            </tr>`).join('') || '<tr><td class="muted">Aucun mouvement.</td></tr>'}
+              <td class="right">${j.undo ? `<button class="btn-ghost btn-sm" onclick="Params.undo('${j.id}',{fromJournal:true})">Annuler</button>` : ''}</td>
+            </tr>`).join('') || '<tr><td class="muted">Aucun mouvement.</td></tr>') + (this._journalMore ? `<tr><td colspan="4" style="text-align:center;"><button class="btn-ghost btn-sm" onclick="Params._journalN=(Params._journalN||100)+200;App.rerender()">Afficher ${Math.min(200, this._journalMore)} de plus (${this._journalMore} restants)</button></td></tr>` : '');
+            })()}
           </tbody></table></div>
         </div>
       </div>
@@ -729,11 +734,12 @@ const Params = {
     const nv = Math.max(0, U.num(val)), old = U.num(S.portRates[cat]);
     if (nv === old) { App.rerender(); return; }
     if (!await U.confirm(`Passer les frais de port d'achat estimés « ${lab.replace(/^\S+\s/, '')} » de ${U.qty(old)} % à ${U.qty(nv)} % ?\n\nLes prix calculés des fiches concernées sont recalculés (prix de vente TTC du stock lié compris).`, { okLabel: 'Appliquer', title: "🚚 Changer les frais de port d'achat estimés ?" })) { App.rerender(); return; }
+    const B = JSON.parse(JSON.stringify(S));
     S.portRates[cat] = nv;
     Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
-    Store.log('paramètres', `Frais de port d'achat estimés « ${lab.replace(/^\S+\s/, '')} » : ${U.qty(old)} % → ${U.qty(nv)} %`);
+    const entry = Store.log('paramètres', `Frais de port d'achat estimés « ${lab.replace(/^\S+\s/, '')} » : ${U.qty(old)} % → ${U.qty(nv)} %`, this._settingsUndo(B, true));
     Store.save('settings', 'stockM'); App.rerender();
-    U.toast("Frais de port d'achat estimés enregistrés : " + U.qty(nv) + ' %. Prix recalculés.');
+    U.toast("Frais de port d'achat estimés enregistrés : " + U.qty(nv) + ' %. Prix recalculés.', false, entry.id);
   },
 
   /* Réordonnancement des blocs de Réglages financiers (↑↓). L'ordre est stocké dans S.finOrder ; l'affichage suit via CSS flex `order`. */
@@ -768,7 +774,7 @@ const Params = {
     Store.save('settings');
   },
   saveSettings() {
-    const S = Store.state.settings;
+    const S = Store.state.settings, B = JSON.parse(JSON.stringify(S));
     S.vatRate = U.numVal('p_vat'); S.socialTaxRate = U.numVal('p_soc'); S.socialTaxRateHandmade = U.numVal('p_soc_hm'); S.cardFeeRate = U.numVal('p_cb'); S.stripeFeeRate = U.numVal('p_stripe');
     if (document.getElementById('p_fuel_cons')) { S.fuelConsumption = U.numVal('p_fuel_cons'); S.fuelPrice = U.numVal('p_fuel_price'); }
     S.laborRate = U.numVal('p_labor'); S.bulkDiscount = U.numVal('p_bulk');
@@ -788,9 +794,9 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     if (document.getElementById('p_fa_name')) this.saveFa();
     // recalcule les prix TTC du stock lié
     Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
-    Store.log('paramètres', 'Réglages financiers mis à jour');
+    const entry = Store.log('paramètres', 'Réglages financiers mis à jour', this._settingsUndo(B, true));
     Store.save('settings', 'stockM');
-    U.toast('Réglages enregistrés.');
+    U.toast('Réglages enregistrés.', false, entry.id);
   },
 
   addItem(key, isSupplier) {
@@ -2792,6 +2798,12 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     if (u.type === 'restoreItem') return { type: 'restoreItem', data: { domain: u.data.domain, id: u.data.id, before: cur(u.data.domain, u.data.id) } };
     if (u.type === 'restoreBatch') return { type: 'restoreBatch', data: u.data.map(sn => ({ domain: sn.domain, id: sn.id, before: cur(sn.domain, sn.id) })) };
     if (u.type === 'deleteCreated') return { type: 'restoreItem', data: { domain: u.data.domain, id: u.data.id, before: cur(u.data.domain, u.data.id) } };
+    if (u.type === 'bankItem') { const f = (Compta._bank()[u.data.kind] || []).find(x => x.id === u.data.id); return { type: 'bankItem', data: { kind: u.data.kind, id: u.data.id, before: f ? JSON.parse(JSON.stringify(f)) : null } }; }
+    if (u.type === 'settingsKeys') {
+      const S = Store.state.settings, before = {}, absent = [];
+      Object.keys(u.data.before).concat(u.data.absent || []).forEach(k => { if (S[k] === undefined) absent.push(k); else before[k] = JSON.parse(JSON.stringify(S[k])); });
+      return { type: 'settingsKeys', data: { before, absent, resync: u.data.resync } };
+    }
     return null;
   },
   _apply(u) {
@@ -2803,6 +2815,18 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
       doms.add(sn.domain);
     };
     const doms = new Set();
+    if (u.type === 'bankItem') {
+      const arr = Compta._bank()[u.data.kind] || [], idx = arr.findIndex(x => x.id === u.data.id);
+      if (u.data.before === null) { if (idx >= 0) arr.splice(idx, 1); } else if (idx >= 0) arr[idx] = JSON.parse(JSON.stringify(u.data.before)); else arr.push(JSON.parse(JSON.stringify(u.data.before)));
+      Store.save('bank'); return;
+    }
+    if (u.type === 'settingsKeys') {
+      const S = Store.state.settings;
+      Object.keys(u.data.before).forEach(k => { S[k] = JSON.parse(JSON.stringify(u.data.before[k])); });
+      (u.data.absent || []).forEach(k => { delete S[k]; });
+      if (u.data.resync) { Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id)); Store.save('settings', 'stockM'); } else Store.save('settings');
+      return;
+    }
     if (u.type === 'restoreItem') one(u.data, doms); else u.data.forEach(sn => one(sn, doms));
     Store.save(...doms);
   },
@@ -2823,7 +2847,132 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
       U.toast('Action refaite : ' + r.label);
     } catch (e) { U.toast('Impossible de refaire : ' + e.message, true); }
   },
-  undo(journalId) {
+  /* ── Annulation SANS mauvaise surprise (Antho 2026-11-08) ──
+     Avant d'annuler une action, l'appli compare la fiche TELLE QU'ELLE EST maintenant à celle d'avant l'action et liste ce qui va changer
+     (« stock général : 12 → 8 »). La fenêtre s'ouvre : depuis le journal (toujours), ou depuis le bouton ↺ / Ctrl+Z quand la fiche a été
+     touchée par d'autres actions depuis (sinon l'annulation immédiate reste en un clic). */
+  _FR: { qtyGeneral: 'stock général', qtyEvent: 'stock événement', stockGeneral: 'stock général', stockEvent: 'stock événement', priceTTC: 'prix TTC', priceTTCManual: 'prix TTC fixé', name: 'nom', sku: 'SKU', coefficient: 'coeff', meatType: 'viande', label: 'libellé', minG: 'mini général', minE: 'mini événement', lotNumber: 'n° de lot', dluo: 'DLUO', costUnit: 'coût unitaire', qty: 'quantité', price: 'prix', total: 'total', url: 'lien', ref: 'réf.', note: 'note', variants: 'variantes', lots: 'lots', suppliers: 'fournisseurs', items: 'articles', customerName: 'client', rolls: 'rouleaux', amount: 'montant', date: 'date', ready: 'validation', lines: 'lignes', vatRate: 'taux de TVA', portRates: 'frais de port estimés', laborRate: 'taux horaire' },
+  _undoKeys(u) {
+    if (!u) return [];
+    if (u.type === 'restoreItem' || u.type === 'deleteCreated') return [u.data.domain + '|' + u.data.id];
+    if (u.type === 'restoreBatch') return u.data.map(s => s.domain + '|' + s.id);
+    if (u.type === 'bankItem') return ['bank|' + u.data.id];
+    if (u.type === 'settingsKeys') return Object.keys(u.data.before).concat(u.data.absent || []).map(k => 'settings|' + k);
+    return [];
+  },
+  _nm(o) {
+    if (!o || typeof o !== 'object') return '';
+    if (o.items && o.ts && !o.name) return 'vente du ' + U.frDateTime(o.ts) + (o.customerName ? ' · ' + o.customerName : '');
+    return String(o.label || o.name || o.variant || o.lotNumber || o.lot || o.sku || o.title || '');
+  },
+  _fv(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'boolean') return v ? 'oui' : 'non';
+    if (typeof v === 'number') return U.qty(v);
+    if (typeof v === 'object') return Array.isArray(v) ? '(' + v.length + ' élément' + (v.length > 1 ? 's' : '') + ')' : '(détail)';
+    const s = String(v); return s.length > 48 ? s.slice(0, 46) + '…' : s;
+  },
+  /* Liste les écarts entre l'état ACTUEL (cur) et l'état APRÈS annulation (bef). t : chg = valeur changée, add = élément remis, del = élément retiré. */
+  _diff(cur, bef, path, out) {
+    if (out.length > 60) return;
+    const lab = k => this._FR[k] || k;
+    if (Array.isArray(cur) || Array.isArray(bef)) {
+      const a = Array.isArray(cur) ? cur : [], b = Array.isArray(bef) ? bef : [];
+      const all = a.concat(b);
+      if (all.length && all.every(x => x && typeof x === 'object' && x.id !== undefined)) {
+        const ids = []; all.forEach(x => { if (!ids.includes(x.id)) ids.push(x.id); });
+        ids.forEach(id => {
+          const x = a.find(y => y.id === id), y = b.find(z => z.id === id), nm = this._nm(y || x) || 'ligne';
+          if (x && !y) out.push({ p: path, t: 'del', v: nm });
+          else if (!x && y) out.push({ p: path, t: 'add', v: nm });
+          else this._diff(x, y, path.concat(nm), out);
+        });
+      } else {
+        const n = Math.max(a.length, b.length);
+        for (let i = 0; i < n; i++) this._diff(a[i], b[i], path.concat('n°' + (i + 1)), out);
+      }
+      return;
+    }
+    if (cur && bef && typeof cur === 'object' && typeof bef === 'object') {
+      Array.from(new Set(Object.keys(cur).concat(Object.keys(bef)))).forEach(k => { if (k.charAt(0) !== '_') this._diff(cur[k], bef[k], path.concat(lab(k)), out); });
+      return;
+    }
+    if (JSON.stringify(cur) !== JSON.stringify(bef)) out.push({ p: path, t: 'chg', from: cur, to: bef });
+  },
+  /* Aperçu d'une annulation : { rows, since } (null si ce type d'annulation n'a pas d'aperçu détaillé). */
+  _undoPreview(j) {
+    const u = j.undo, rows = [];
+    let snaps = null;
+    if (u.type === 'restoreItem') snaps = [u.data];
+    else if (u.type === 'restoreBatch') snaps = u.data;
+    else if (u.type === 'deleteCreated') snaps = [{ domain: u.data.domain, id: u.data.id, before: null }];
+    else if (u.type === 'bankItem') {
+      const c = (Compta._bank()[u.data.kind] || []).find(x => x.id === u.data.id), b = u.data.before;
+      const title = (c && (c.label || c.note)) || (b && (b.label || b.note)) || (c || b || {}).date || '';
+      if (c && !b) rows.push({ title, kind: 'gone' }); else if (!c && b) rows.push({ title, kind: 'back' });
+    } else if (u.type === 'settingsKeys') {
+      const S = Store.state.settings, out = [];
+      Object.keys(u.data.before).forEach(k => this._diff(S[k], u.data.before[k], [this._FR[k] || k], out));
+      (u.data.absent || []).forEach(k => this._diff(S[k], undefined, [this._FR[k] || k], out));
+      if (out.length) rows.push({ title: 'Réglages', kind: 'diff', out });
+    } else return null;
+    (snaps || []).forEach(sn => {
+      const c = (Store.state[sn.domain] || []).find(x => x.id === sn.id), b = sn.before;
+      const title = this._nm(c || b) || '(fiche)';
+      if (c && !b) rows.push({ title, kind: 'gone' });
+      else if (!c && b) rows.push({ title, kind: 'back' });
+      else if (c && b) { const out = []; this._diff(c, b, [], out); if (out.length) rows.push({ title, kind: 'diff', out }); }
+    });
+    const jr = Store.state.journal, idx = jr.indexOf(j), keys = this._undoKeys(u);
+    const since = jr.slice(0, Math.max(0, idx)).filter(k => k.undo && this._undoKeys(k.undo).some(x => keys.includes(x))).length;
+    return { rows, since };
+  },
+  _undoHtml(j, pv) {
+    const e = U.esc;
+    let h = `<p style="margin:0 0 8px;line-height:1.5;"><b>${e(j.label)}</b><br><span class="muted">${U.frDateTime(j.ts)}${j.user ? ' · ' + e(j.user) : ''}</span></p>`;
+    if (!pv) return h + '<p style="margin:0;line-height:1.5;">Cette action sera défaite telle qu\'elle a été faite.</p>';
+    if (pv.since > 0) h += `<p style="margin:0 0 8px;color:var(--warn);line-height:1.5;">⚠️ Depuis, cet élément a été touché par ${pv.since} autre${pv.since > 1 ? 's' : ''} action${pv.since > 1 ? 's' : ''}. Annuler le remet comme AVANT cette action : ce qui est listé ci-dessous sera perdu.</p>`;
+    if (!pv.rows.length) return h + '<p style="margin:0;line-height:1.5;">Rien ne changerait : tout est déjà dans cet état.</p>';
+    h += '<div style="max-height:46vh;overflow:auto;font-size:.88rem;line-height:1.5;"><div class="muted" style="margin-bottom:4px;">Ce qui va changer (maintenant → après annulation) :</div>';
+    pv.rows.slice(0, 6).forEach(r => {
+      h += `<div style="margin:6px 0;padding:6px 8px;border-left:3px solid var(--caramel);background:var(--th-bg);border-radius:4px;"><b>${e(r.title)}</b>`;
+      if (r.kind === 'gone') h += '<div>🗑 sera supprimé(e)</div>';
+      else if (r.kind === 'back') h += '<div>♻️ sera remis(e)</div>';
+      else {
+        r.out.slice(0, 12).forEach(d => {
+          const p = d.p.length ? e(d.p.join(' › ')) : '';
+          if (d.t === 'chg') h += `<div>${p ? p + ' : ' : ''}<span class="muted">${e(this._fv(d.from))}</span> → <b>${e(this._fv(d.to))}</b></div>`;
+          else if (d.t === 'add') h += `<div>♻️ ${p ? p + ' › ' : ''}« ${e(d.v)} » sera remis(e)</div>`;
+          else h += `<div>➖ ${p ? p + ' › ' : ''}« ${e(d.v)} » sera retiré(e)</div>`;
+        });
+        if (r.out.length > 12) h += `<div class="muted">… et ${r.out.length - 12} autre(s) changement(s)</div>`;
+      }
+      h += '</div>';
+    });
+    if (pv.rows.length > 6) h += `<div class="muted">… et ${pv.rows.length - 6} autre(s) fiche(s)</div>`;
+    return h + '</div>';
+  },
+  async undo(journalId, opts = {}) {
+    const j = Store.state.journal.find(x => x.id === journalId);
+    if (!j || !j.undo) return;
+    const pv = this._undoPreview(j);
+    if (opts.fromJournal || (pv && pv.since > 0)) {
+      const ok = await U.ask({ title: '↺ Annuler cette action ?', html: this._undoHtml(j, pv), okLabel: 'Oui, annuler', cancelLabel: 'Non, laisser' });
+      if (!ok) return;
+    }
+    this._undoRun(journalId);
+  },
+  /* Réglages : compare un instantané des réglages (beforeS) à l'état actuel et renvoie l'annulation des seules clés modifiées (null si rien n'a changé). */
+  _settingsUndo(beforeS, resync) {
+    const S = Store.state.settings, before = {}, absent = [];
+    Array.from(new Set(Object.keys(beforeS).concat(Object.keys(S)))).forEach(k => {
+      if (/^(pay[A-Z]|fa[A-Z])/.test(k)) return;   // IBAN / coordonnées de facturation : jamais copiés dans le journal (lisible par l'équipe)
+      if (JSON.stringify(beforeS[k]) === JSON.stringify(S[k])) return;
+      if (beforeS[k] === undefined) absent.push(k); else before[k] = beforeS[k];
+    });
+    return (Object.keys(before).length || absent.length) ? { type: 'settingsKeys', data: { before, absent, resync: !!resync } } : null;
+  },
+  _undoRun(journalId) {
     const j = Store.state.journal.find(x => x.id === journalId);
     if (!j || !j.undo) return;
     const u = j.undo;
@@ -2873,6 +3022,20 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
       if (u.type === 'deleteCreated') {
         Store.state[u.data.domain] = (Store.state[u.data.domain] || []).filter(x => x.id !== u.data.id);
         Store.save(u.data.domain);
+      }
+      /* Pointage bancaire / mouvement hors appli (Compta) : remet ou retire UNE ligne. */
+      if (u.type === 'bankItem') {
+        const arr = Compta._bank()[u.data.kind] || [], idx = arr.findIndex(x => x.id === u.data.id);
+        if (u.data.before === null) { if (idx >= 0) arr.splice(idx, 1); }
+        else if (idx >= 0) arr[idx] = JSON.parse(JSON.stringify(u.data.before)); else arr.push(JSON.parse(JSON.stringify(u.data.before)));
+        Store.save('bank');
+      }
+      /* Réglages : remet les seules clés modifiées (puis recalcule les prix du stock si le réglage les touchait). */
+      if (u.type === 'settingsKeys') {
+        const S = Store.state.settings;
+        Object.keys(u.data.before).forEach(k => { S[k] = JSON.parse(JSON.stringify(u.data.before[k])); });
+        (u.data.absent || []).forEach(k => { delete S[k]; });
+        if (u.data.resync) { Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id)); Store.save('settings', 'stockM'); } else Store.save('settings');
       }
       if (u.type === 'unmergeProducts') {
         const d = u.data;

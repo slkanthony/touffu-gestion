@@ -1906,22 +1906,25 @@ const Ventes = {
     if (!c) { U.toast('Choisis un consommable.', true); return; }
     if (qty <= 0) { U.toast('Quantité invalide.', true); return; }
     const cost = U.num(c.costUnit) * Pricing.vatK() * qty;
+    const snaps = [Store.snapshot('sales', s), Store.snapshot('consumables', c)];   // annulation (2026-11-08) : ticket + stock du consommable d'avant
     let take = 0;
     if (!s.historical) {
       take = Math.min(U.num(c.qty), qty);
       if (take > 0) { c.qty = U.num(c.qty) - take; (s.undoOps = s.undoOps || []).push({ kind: 'C', pId: c.id, qty: take }); }
     }
     (s.items = s.items || []).push({ kind: 'C', pId: c.id, vId: '', name: c.name, label: '', sku: '', lotLabel: '', qty, price: 0, cost, _take: take });
-    Store.log('vente', `Consommable ajouté au ticket ${U.frDateTime(s.ts)} : ${c.name} ×${U.qty(qty)} · coût ${U.eur(cost)}`);
+    const entry = Store.log('vente', `Consommable ajouté au ticket ${U.frDateTime(s.ts)} : ${c.name} ×${U.qty(qty)} · coût ${U.eur(cost)}`, { type: 'restoreBatch', data: snaps });
     this.ticketConsoId = ''; this.ticketConsoQty = 1;
     Store.save(...(s.historical ? ['sales'] : ['sales', 'consumables']));
     this.render();
-    U.toast(`📦 ${c.name} ×${U.qty(qty)} ajouté · coût ${U.eur(cost)}${s.historical ? ' (stock non déduit)' : ''}.`);
+    U.toast(`📦 ${c.name} ×${U.qty(qty)} ajouté · coût ${U.eur(cost)}${s.historical ? ' (stock non déduit)' : ''}.`, false, entry.id);
   },
   removeTicketConso(idx) {
     const s = Store.state.sales.find(x => x.id === this.editTicketId); if (!s) return;
     const it = (s.items || [])[idx];
     if (!it || it.kind !== 'C') return;
+    const snaps = [Store.snapshot('sales', s)], co0 = Store.state.consumables.find(x => x.id === it.pId);
+    if (co0) snaps.push(Store.snapshot('consumables', co0));
     if (!s.historical && U.num(it._take) > 0) {
       const co = Store.state.consumables.find(x => x.id === it.pId);
       if (co) co.qty = U.num(co.qty) + U.num(it._take);
@@ -1929,10 +1932,10 @@ const Ventes = {
       if (oi >= 0) s.undoOps.splice(oi, 1);
     }
     s.items.splice(idx, 1);
-    Store.log('vente', `Consommable retiré du ticket ${U.frDateTime(s.ts)} : ${it.name}`);
+    const entry = Store.log('vente', `Consommable retiré du ticket ${U.frDateTime(s.ts)} : ${it.name}`, { type: 'restoreBatch', data: snaps });
     Store.save('sales', 'consumables');
     this.render();
-    U.toast('Consommable retiré du ticket.');
+    U.toast('Consommable retiré du ticket.', false, entry.id);
   },
 
   /* ── Modifier les PRODUITS d'une vente déjà enregistrée (2026-10-09) : retirer une ligne, changer sa quantité, la remplacer, en ajouter ──

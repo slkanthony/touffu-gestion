@@ -995,9 +995,10 @@ const B2B = {
       qty: { ...(this._qt.qty || {}) }, off: { ...(this._qt.off || {}) }, opts: JSON.parse(JSON.stringify(this._qt.opts || {})), iban: this._qt.iban !== false, msg: this._qt.msg == null ? null : this._qt.msg, per: this._qt.per, dv: { ...this._dvState() }, updated: now,
       lines: rows.map(r => ({ key: r.key, pId: r.pId || '', vid: r.vid || '', aId: r.aId || '', name: r.name, variant: r.variant, qty: r.qty, price: Math.round(r.price * 100) / 100, reco: r.reco, ht: r.ht, opts: r.aId && r.opts ? r.opts : undefined })),
       total: Math.round(total * 100) / 100 };
+    const snap = rec ? Store.snapshot('baskets', rec) : null;   // annulation (2026-11-08)
     if (rec) Object.assign(rec, data); else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._qt.pendId = rec.id;
-    Store.log('devis pro', `Devis pro en attente — ${who} (${no})`);
+    Store.log('devis pro', `Devis pro en attente — ${who} (${no})`, snap ? { type: 'restoreItem', data: snap } : { type: 'deleteCreated', data: { domain: 'baskets', id: rec.id } });
     Store.save('baskets', 'journal', 'meta');
     U.closeModal();
     if (addOther) {   // on passe à l'autre catégorie : le devis reste « en cours » jusqu'à ce qu'il soit complété (ou abandonné)
@@ -1048,9 +1049,11 @@ const B2B = {
   async delPro(id) {
     const rec = this._proPending().find(x => x.id === id); if (!rec) return;
     if (!await U.confirm('Supprimer le devis pro en attente de ' + rec.name + ' ?', { okLabel: 'Supprimer' })) return;
+    const entry = Store.log('devis pro', `Devis pro en attente supprimé — ${rec.name}`, { type: 'restoreItem', data: Store.snapshot('baskets', rec) });
     Store.state.baskets = (Store.state.baskets || []).filter(x => x.id !== id);
     if (this._link === id) this._link = null;
-    Store.save('baskets'); this.render();
+    Store.save('baskets', 'journal'); this.render();
+    U.toast('Devis pro supprimé.', false, entry.id);
   },
   /* variante de stock reliée à une ligne de fiche prix (même fiche + même ligne de variante) */
   _stockUnitFor(units, catId, catVid) {

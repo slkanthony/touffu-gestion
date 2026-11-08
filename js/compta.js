@@ -322,29 +322,34 @@ const Compta = {
     if (isNaN(amt)) { U.toast('Indique le solde de ton compte (en €).', true); return; }
     const b = this._bank();
     if (b.points.some(p => p.date === date && Math.abs(U.num(p.amount) - amt) < 0.005)) { U.toast('Ce pointage existe déjà.', true); return; }
-    b.points.push({ id: U.uid(), date, amount: Math.round(amt * 100) / 100, note: String(U.val('bk_note') || '').trim() });
-    Store.log('compta', 'Pointage bancaire — ' + U.frDate(date));
+    const pt = { id: U.uid(), date, amount: Math.round(amt * 100) / 100, note: String(U.val('bk_note') || '').trim() };
+    b.points.push(pt);
+    const entry = Store.log('compta', 'Pointage bancaire — ' + U.frDate(date), { type: 'bankItem', data: { kind: 'points', id: pt.id, before: null } });
     Store.save('bank', 'journal'); this.render();
-    U.toast(b.points.length === 1 ? 'Point de départ enregistré : l\'appli suit maintenant ton solde.' : 'Pointage enregistré.');
+    U.toast(b.points.length === 1 ? 'Point de départ enregistré : l\'appli suit maintenant ton solde.' : 'Pointage enregistré.', false, entry.id);
   },
   async delPoint(id) {
     const b = this._bank(), p = b.points.find(x => x.id === id); if (!p) return;
     if (!await U.confirm('Supprimer le pointage du ' + U.frDate(p.date) + ' ?', { okLabel: 'Supprimer' })) return;
-    b.points = b.points.filter(x => x.id !== id); Store.save('bank'); this.render();
+    Store.log('compta', 'Pointage bancaire supprimé — ' + U.frDate(p.date));   // pas d'annulation : le journal est lisible par l'équipe, il ne doit pas garder les montants de la banque (la suppression est déjà confirmée)
+    b.points = b.points.filter(x => x.id !== id); Store.save('bank', 'journal'); this.render();
   },
   addMove() {
     const date = U.val('mv_date'), raw = String(U.val('mv_amt') || '').trim(), label = String(U.val('mv_label') || '').trim();
     if (!date) { U.toast('Choisis la date du mouvement.', true); return; }
     const amt = this._money(raw);
     if (isNaN(amt) || amt === 0) { U.toast('Indique le montant (négatif si c\'est une sortie).', true); return; }
-    this._bank().moves.push({ id: U.uid(), date, amount: Math.round(amt * 100) / 100, label });
-    Store.log('compta', 'Mouvement hors appli — ' + (label || U.frDate(date)));
+    const mv = { id: U.uid(), date, amount: Math.round(amt * 100) / 100, label };
+    this._bank().moves.push(mv);
+    const entry = Store.log('compta', 'Mouvement hors appli — ' + (label || U.frDate(date)), { type: 'bankItem', data: { kind: 'moves', id: mv.id, before: null } });
     Store.save('bank', 'journal'); this.render();
+    U.toast('Mouvement enregistré.', false, entry.id);
   },
   async delMove(id) {
     const b = this._bank(), m = b.moves.find(x => x.id === id); if (!m) return;
     if (!await U.confirm('Supprimer ce mouvement (' + (m.label || U.frDate(m.date)) + ') ?', { okLabel: 'Supprimer' })) return;
-    b.moves = b.moves.filter(x => x.id !== id); Store.save('bank'); this.render();
+    Store.log('compta', 'Mouvement hors appli supprimé — ' + (m.label || U.frDate(m.date)));   // pas d'annulation (voir pointage)
+    b.moves = b.moves.filter(x => x.id !== id); Store.save('bank', 'journal'); this.render();
   },
 
   /* ---------- exports ---------- */

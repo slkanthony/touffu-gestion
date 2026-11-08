@@ -846,18 +846,19 @@ const Paniers = {
     let rec = this._pendId ? list.find(x => x.id === this._pendId) : null;
     const no = this._dvCommit();
     const data = this._pendingData(this._dv, name, now);
+    const snap = rec ? Store.snapshot('baskets', rec) : null;   // annulation (2026-11-08) : le panier tel qu'il était avant cette mise en attente
     if (rec) { Object.assign(rec, data); delete rec.ready; }   // contenu modifié → la validation « prêt à traiter » est à refaire
     else { rec = Object.assign({ id: U.uid(), ts: now }, data); list.push(rec); }
     this._pendId = rec.id; this._pendUpd = rec.updated;
-    Store.log('panier', `Panier en attente — ${name} (devis ${no})`);
+    const entry = Store.log('panier', `Panier en attente — ${name} (devis ${no})`, snap ? { type: 'restoreItem', data: snap } : { type: 'deleteCreated', data: { domain: 'baskets', id: rec.id } });
     Store.save('baskets', 'journal');
-    return { rec, no };
+    return { rec, no, entry };
   },
   savePending() {
     const r = this._storePending(); if (!r) return;
     const no = r.no;
     U.closeModal();
-    U.toast('Panier mis en attente — devis n° ' + no + ' (« Reprendre » pour le retrouver).');
+    U.toast('Panier mis en attente — devis n° ' + no + ' (« Reprendre » pour le retrouver).', false, r.entry && r.entry.id);
     // Le panier est maintenant dans la liste « en attente » : l'espace de travail repart à vide (plus de panier en cours, plus de blocage au « Reprendre »)
     this.clearBasket();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -871,14 +872,16 @@ const Paniers = {
      il reste dans « Paniers en attente » (partagé) avec rec.ready = { by, ts } ; Antho le voit « prêt à traiter » et fait « 🛒 Envoyer en vente » de son côté. Modifier le panier retire la validation. */
   _setReady(rec, on) {
     const me = (Store.session && Store.session.user && Store.session.user.email) || 'équipe';
+    const snap = Store.snapshot('baskets', rec);
     if (on) rec.ready = { by: me, ts: Date.now() }; else delete rec.ready;
-    Store.log('panier', `${on ? 'Panier validé — prêt à traiter' : 'Validation retirée'} — ${rec.name}`);
+    const entry = Store.log('panier', `${on ? 'Panier validé — prêt à traiter' : 'Validation retirée'} — ${rec.name}`, { type: 'restoreItem', data: snap });
     Store.save('baskets', 'journal');
+    return entry;
   },
   toggleReady(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
-    this._setReady(rec, !rec.ready); this.render();
-    U.toast(rec.ready ? '✅ Panier validé : Antho le verra « prêt à traiter ».' : 'Validation retirée.');
+    const entry = this._setReady(rec, !rec.ready); this.render();
+    U.toast(rec.ready ? '✅ Panier validé : Antho le verra « prêt à traiter ».' : 'Validation retirée.', false, entry.id);
   },
   validateCurrent() {   // profil équipe : « Valider pour la vente » depuis le panier composé = mis en attente + prêt à traiter
     this._shClient = String(this.client || this._shClient || '').trim();
@@ -984,17 +987,19 @@ const Paniers = {
     const copy = Object.assign({ id: U.uid(), ts: now }, this._pendingData(dv, this._shClient, now), { label: '' });
     list.push(copy);
     this._pendId = copy.id; this._pendUpd = copy.updated; this._dv = { ...dv }; this._shLabel = '';
-    Store.log('panier', `Variante de devis — ${this._shClient} (${Devis.no(parent.dv)} → ${Devis.no(dv)})`);
+    const entry = Store.log('panier', `Variante de devis — ${this._shClient} (${Devis.no(parent.dv)} → ${Devis.no(dv)})`, { type: 'deleteCreated', data: { domain: 'baskets', id: copy.id } });
     Store.save('baskets', 'journal');
     this.render(); window.scrollTo({ top: 0, behavior: 'smooth' });
-    U.toast('Variante créée — devis n° ' + Devis.no(dv) + '. Change tes produits puis « Mettre en attente ».');
+    U.toast('Variante créée — devis n° ' + Devis.no(dv) + '. Change tes produits puis « Mettre en attente ».', false, entry.id);
   },
   async delPending(id) {
     const rec = this._pending().find(x => x.id === id); if (!rec) return;
     if (!await U.confirm('Supprimer le panier en attente de ' + Clients.show(rec.name) + ' ?', { okLabel: 'Supprimer' })) return;
+    const entry = Store.log('panier', `Panier en attente supprimé — ${rec.name}`, { type: 'restoreItem', data: Store.snapshot('baskets', rec) });
     Store.state.baskets = this._pending().filter(x => x.id !== id);
     if (this._pendId === id) this._pendId = null;
-    Store.save('baskets'); this.render();
+    Store.save('baskets', 'journal'); this.render();
+    U.toast('Panier en attente supprimé.', false, entry.id);
   },
   sendToSale(id) { const rec = this._pending().find(x => x.id === id); if (rec) this._sendRecToSale(rec); },
   /* Panier composé → Ventes DIRECTEMENT, sans passer par « en attente » (vente immédiate / cliente déjà d'accord). Le panier reste ici
