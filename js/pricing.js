@@ -133,6 +133,11 @@ const Pricing = {
     const costBase = prodCost + sacCost + labelCost;
     const portCost = prodCost * this.portRate('mastication') + (sacCost + labelCost) * this.portRate('conso');
     const cost = costBase + portCost;
+    /* BASE DE PRIX UNIVERSELLE (Antho 2026-11-08) : `costHT` = même coût mais TOUT en HT (sans la TVA d'achat du fournisseur) ; avec l'interrupteur `priceBaseHT`, c'est lui que multiplie le coefficient
+       (prix HT = costHT × coeff, puis + TVA de vente) : le coefficient ne dépend plus du fournisseur ni de la TVA d'achat, et la TVA n'est plus comptée deux fois. `cost` (TVA d'achat comprise) reste le coût RÉEL des marges, du stock et des seuils. */
+    const bk = (base || this.baseUnitCost(p)).k || 1, prodHT = prodCost / bk, sacHT = sac ? U.num(sac.cost) : 0, labHT = Store.labelCostOf(p);
+    const costHT = prodHT + sacHT + labHT + prodHT * this.portRate('mastication') + (sacHT + labHT) * this.portRate('conso');
+    const costP = S.priceBaseHT ? costHT : cost;
 
     const bulkPct = U.num(p.bulkDiscount !== undefined && p.bulkDiscount !== '' ? p.bulkDiscount : S.bulkDiscount);
     const n = nActive || 1;
@@ -142,20 +147,20 @@ const Pricing = {
     if (priceFixed) {
       priceTTC = U.num(v.priceTTCManual);
       priceHT = priceTTC / (1 + vat);
-      coeff = cost > 0 ? priceHT / cost : 0;
+      coeff = costP > 0 ? priceHT / costP : 0;
     } else {
       // Coefficient propre à la ligne = coefficient final (la décote paliers ne s'y ajoute pas) ;
       // sinon coefficient commun du produit, diminué de la décote du palier (2026-09-27).
       if (U.num(v.coeff) > 0) { coeff = U.num(v.coeff); discount = 0; }
       else coeff = U.num(p.coefficient) || 2;
-      priceHT = cost * coeff * (1 - discount);
+      priceHT = costP * coeff * (1 - discount);
       priceTTC = priceHT * (1 + vat);
       // Prix TTC calculé toujours arrondi à 0,10 € (4,50 / 4,70…) — demande d'Antho. Un prix saisi
       // à la main (prix fixé) reste exactement tel quel.
       if (priceTTC > 0) {
         priceTTC = Math.round(priceTTC * 10) / 10;
         priceHT = priceTTC / (1 + vat);
-        if (discount > 0) discount = cost > 0 && coeff > 0 ? 1 - priceHT / (cost * coeff) : discount;
+        if (discount > 0) discount = costP > 0 && coeff > 0 ? 1 - priceHT / (costP * coeff) : discount;
       }
     }
     const margin = priceHT - cost;
@@ -164,11 +169,12 @@ const Pricing = {
     const socialTTC = priceTTC * (U.num(S.socialTaxRate) / 100);
     const profitAssujetti = margin - social;               // bénéfice si assujetti (TVA mise de côté) = base de fixation des prix
     const profitActuel = priceTTC - cost - socialTTC;      // bénéfice réel aujourd'hui, TVA conservée = Stats
-    const effCoeff = cost > 0 ? priceHT / cost : 0;
+    const effCoeff = cost > 0 ? priceHT / cost : 0;   // coefficient sur le coût RÉEL (seuils, Revente pro, Stats)
+    const coeffU = costP > 0 ? priceHT / costP : 0;   // coefficient de PRIX (celui de la fiche) : = effCoeff tant que l'interrupteur `priceBaseHT` est éteint
     // Réglage propre à la ligne (coeff ou prix tapé) : signalé (↺) seulement s'il donne un prix DIFFÉRENT du calcul automatique
     let own = priceFixed || U.num(v.coeff) > 0;
     if (own && !_noRec) { const auto = this.variantCalc(p, { ...v, coeff: '', priceTTCManual: undefined }, idxActive, base, nActive, true); if (Math.abs(auto.priceTTC - priceTTC) < 0.005) own = false; }
-    return { prodCost, sacCost, labelCost, costBase, portCost, cost, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
+    return { prodCost, sacCost, labelCost, costBase, portCost, cost, costHT, costP, coeffU, coeff, discount, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, priceFixed, ownCoeff: own, critical: effCoeff < U.num(S.b2bCoeffThreshold) };
   },
 
   labelVariant(v) {
@@ -346,7 +352,10 @@ const Pricing = {
     const print3dCost = U.num(a.print3dMin) / 60 * this.print3dCostPerHour();   // impression 3D : minutes ÷ 60 × (électricité + usure)/h
     const costBase = matCost + laborCost + U.num(a.extraCost) + uvCost + laserCost + print3dCost;
     const portCost = matCost * this.portRate('matiere');
-    return { matCost, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, print3dCost, portCost, costBase, cost: costBase + portCost };
+    // Base de prix universelle (voir variantCalc) : matières HT (sans la TVA d'achat), le reste (main d'œuvre, encre, laser…) tel quel
+    const matHT = (a.bom || []).reduce((acc, l) => acc + Accessoires.bomLineCostHT(l) * U.num(l.qty), 0);
+    const costHT = matHT + laborCost + U.num(a.extraCost) + uvCost + laserCost + print3dCost + matHT * this.portRate('matiere');
+    return { matCost, matHT, laborCost, extraCost: U.num(a.extraCost), uvCost, laserCost, print3dCost, portCost, costBase, cost: costBase + portCost, costHT, costP: S.priceBaseHT ? costHT : costBase + portCost };
   },
   /* ---------- SKU automatique ---------- */
   slugify(text) {
@@ -505,7 +514,8 @@ const Pricing = {
      d'un cran (+0,50 €) quand cela suffit à repasser au-dessus (ex. 26,50 → 27,00) ; un coefficient volontairement très bas n'est pas « remonté ». */
   accAutoTTC(a, c, coeff) {
     const S = Store.state.settings, vat = U.num(S.vatRate) / 100, st = this.accPriceStep(), thr = U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    let p = this.roundAccPrice(c.cost * coeff * (1 + vat)) + this.persoSupplement(a);
+    const pb = S.priceBaseHT && c.costP > 0 ? c.costP : c.cost;   // base du coefficient : coût HT universel (interrupteur `priceBaseHT`) ; les seuils restent sur le coût RÉEL
+    let p = this.roundAccPrice(pb * coeff * (1 + vat)) + this.persoSupplement(a);
     if (thr > 0 && c.cost > 0 && p / (1 + vat) / c.cost < thr && (p + st) / (1 + vat) / c.cost >= thr) p = Math.round((p + st) * 100) / 100;
     return p;
   },
@@ -520,7 +530,7 @@ const Pricing = {
       priceFixed = true;
       priceTTC = U.num(a.priceTTCManual);
       priceHT = priceTTC / (1 + vat);
-      coeff = c.cost > 0 ? priceHT / c.cost : 0;
+      coeff = c.costP > 0 ? priceHT / c.costP : 0;
     } else {
       coeff = storedCoeff;
       priceTTC = this.accAutoTTC(a, c, coeff);   // prix « rond » (0,50 € par défaut) quand on passe par le coefficient ; un prix tapé reste exact
@@ -533,8 +543,100 @@ const Pricing = {
     const profitAssujetti = margin - social;
     const profitActuel = priceTTC - c.cost - socialTTC;
     const effCoeff = c.cost > 0 ? priceHT / c.cost : 0;
+    const coeffU = c.costP > 0 ? priceHT / c.costP : 0;
     const thr = U.num(S.accCoeffThreshold || S.b2bCoeffThreshold);
-    return { ...c, coeff, storedCoeff, persoSup: sup, priceFixed, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, critical: effCoeff < thr };
+    return { ...c, coeffU, coeff, storedCoeff, persoSup: sup, priceFixed, priceHT, priceTTC, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff, critical: effCoeff < thr };
+  },
+
+  /* ───── Passage à la BASE DE PRIX HT UNIVERSELLE (Antho 2026-11-08, option 1 : « mes prix TTC ne bougent pas ») ─────
+     Avant : coût (TVA d'achat du fournisseur comprise) × coeff, puis + TVA de vente = TVA comptée deux fois, coefficient dépendant du fournisseur.
+     Après (`settings.priceBaseHT`) : coût HT × coeff, puis + TVA de vente. Pour que AUCUN prix TTC ne bouge, on recalcule les coefficients ; si un prix tombait quand même
+     à côté (arrondi, sachet plus cher…), il est FIGÉ à son prix actuel (prix fixé, ↺ pour revenir au calcul). Ne modifie rien : renvoie le plan (et l'applique avec `applyPriceBase`). */
+  _withBase(on, fn) { const S = Store.state.settings, was = S.priceBaseHT; S.priceBaseHT = on; try { return fn(); } finally { S.priceBaseHT = was; } },
+  _calcAllM(p, on) {
+    return this._withBase(on, () => {
+      const base = this.baseUnitCost(p), vs = p.variants || [], na = vs.filter(v => v.enabled !== false).length; let idx = 0;
+      return vs.map(v => { const en = v.enabled !== false; const c = this.variantCalc(p, v, en ? idx : 0, base, na); if (en) idx++; return c; });
+    });
+  },
+  priceBasePlan() {
+    const S = Store.state.settings, r4 = x => Math.round(x * 10000) / 10000, cl = o => JSON.parse(JSON.stringify(o));
+    const ratio = c => (c.costHT > 0 && c.cost > 0) ? c.cost / c.costHT : 1;
+    const plan = { mast: [], acc: [], products: 0, lines: 0, frozen: 0, changedCoeff: 0 };
+    (Store.state.catalogM || []).forEach(p => {
+      const vs = p.variants || []; if (!vs.length) return;
+      const old = this._calcAllM(p, false), np = cl(p), fixed = v => U.num(v.priceTTCManual) > 0;
+      np.variants.forEach((v, i) => { if (!fixed(v) && U.num(v.coeff) > 0) v.coeff = r4(U.num(v.coeff) * ratio(old[i])); });
+      const autoIdx = vs.map((v, i) => (v.enabled !== false && !fixed(v) && !(U.num(v.coeff) > 0)) ? i : -1).filter(i => i >= 0);
+      const common = U.num(p.coefficient) || 2;
+      const cands = [...new Set(autoIdx.map(i => r4(common * ratio(old[i]))))];
+      let best = cands[0], bestN = -1;
+      if (!cands.length) best = r4(common * ratio(old[0]));
+      cands.forEach(cd => {
+        np.coefficient = cd;
+        const nc = this._calcAllM(np, true), n = autoIdx.filter(i => Math.abs(nc[i].priceTTC - old[i].priceTTC) < 0.001).length;
+        if (n > bestN) { bestN = n; best = cd; }
+      });
+      np.coefficient = best;
+      let nc = this._calcAllM(np, true);
+      const rows = vs.map((v, i) => {
+        let frozen = false;
+        if (v.enabled !== false && Math.abs(nc[i].priceTTC - old[i].priceTTC) > 0.001) { np.variants[i].priceTTCManual = Math.round(old[i].priceTTC * 100) / 100; np.variants[i].coeff = ''; frozen = true; }
+        return { v, i, frozen };
+      });
+      if (rows.some(r => r.frozen)) nc = this._calcAllM(np, true);
+      const out = rows.map(r => ({ label: this.labelVariant(r.v), enabled: r.v.enabled !== false, oldTTC: old[r.i].priceTTC, newTTC: nc[r.i].priceTTC, oldCoeff: old[r.i].effCoeff, newCoeff: nc[r.i].coeffU, wasFixed: fixed(r.v), frozen: r.frozen }));
+      plan.mast.push({ p, np, name: p.name, rows: out });
+      out.forEach(r => { if (r.enabled) { plan.lines++; if (r.frozen) plan.frozen++; } });
+      plan.products++;
+    });
+    // Accessoires : un coefficient par fiche (commun à la famille s'il la suit)
+    const allA = (Store.state.catalogA || []), groups = {};
+    allA.forEach(a => { (groups[a.groupId || ('solo:' + a.id)] = groups[a.groupId || ('solo:' + a.id)] || []).push(a); });
+    const calcA = (a, on) => this._withBase(on, () => this.accCalc(a));
+    Object.values(groups).forEach(mem => {
+      const olds = mem.map(a => calcA(a, false)), nms = mem.map(a => cl(a));
+      const fixedA = a => a.manual || U.num(a.priceTTCManual) > 0;
+      const followers = mem.map((a, i) => (!fixedA(a) && (Accessoires._follows(a) || mem.length === 1)) ? i : -1).filter(i => i >= 0);
+      mem.forEach((a, i) => { if (!fixedA(a) && !followers.includes(i)) nms[i].coefficient = r4((U.num(a.coefficient) || 2) * ratio(olds[i])); });
+      const gc = U.num(mem[0].groupCoeff) || U.num(mem[followers[0]] && mem[followers[0]].coefficient) || 2;
+      const cands = [...new Set(followers.map(i => r4((U.num(mem[i].coefficient) || gc) * ratio(olds[i]))))];
+      let best = cands[0] || r4(gc), bestN = -1;
+      cands.forEach(cd => {
+        const n = followers.filter(i => { const t = cl(nms[i]); t.coefficient = cd; return Math.abs(calcA(t, true).priceTTC - olds[i].priceTTC) < 0.001; }).length;
+        if (n > bestN) { bestN = n; best = cd; }
+      });
+      mem.forEach((a, i) => {
+        if (followers.includes(i)) nms[i].coefficient = best;
+        if (a.groupId) nms[i].groupCoeff = best;
+        const base = calcA(nms[i], true);
+        let frozen = false;
+        if (!fixedA(a) && Math.abs(base.priceTTC - olds[i].priceTTC) > 0.001) { nms[i].priceTTCManual = Math.round(olds[i].priceTTC * 100) / 100; frozen = true; }
+        const nc = frozen ? calcA(nms[i], true) : base;
+        if (a.manual) return;   // pièce « prête à finir » : prix saisi, rien à changer
+        plan.acc.push({ a, na: nms[i], name: a.name, group: a.groupName || '', oldTTC: olds[i].priceTTC, newTTC: nc.priceTTC, oldCoeff: olds[i].coeff, newCoeff: nc.coeff, wasFixed: fixedA(a), frozen });
+        plan.lines++; if (frozen) plan.frozen++;
+      });
+    });
+    return plan;
+  },
+  /* Applique le plan : remplace coefficients / prix fixés, allume l'interrupteur, UNE seule entrée « Annuler » (fiches + réglage). */
+  applyPriceBase() {
+    const S = Store.state.settings; if (S.priceBaseHT) return null;
+    const plan = this.priceBasePlan(), snaps = [], cl = o => JSON.parse(JSON.stringify(o));
+    plan.mast.forEach(m => {
+      snaps.push({ domain: 'catalogM', id: m.p.id, before: cl(m.p) });
+      m.p.coefficient = m.np.coefficient; m.p.variants.forEach((v, i) => { v.coeff = m.np.variants[i].coeff; if (U.num(m.np.variants[i].priceTTCManual) > 0) v.priceTTCManual = m.np.variants[i].priceTTCManual; });
+    });
+    plan.acc.forEach(r => {
+      snaps.push({ domain: 'catalogA', id: r.a.id, before: cl(r.a) });
+      r.a.coefficient = r.na.coefficient; if (r.a.groupId) r.a.groupCoeff = r.na.groupCoeff; if (r.frozen) r.a.priceTTCManual = r.na.priceTTCManual;
+    });
+    S.priceBaseHT = true;
+    Store.state.catalogM.forEach(c => Stock.syncPricesFromCatalog(c.id));
+    const entry = Store.log('paramètres', `Prix calculés sur une base HT universelle : ${plan.products} produit(s) mastication, ${plan.acc.length} accessoire(s), ${plan.frozen} prix figé(s) pour ne pas bouger`, { type: 'restoreBatch', data: snaps, settingsBefore: { priceBaseHT: false } });
+    Store.save('settings', 'catalogM', 'catalogA', 'stockM');
+    return { plan, entry };
   },
 
   /* Coût de revient TOTAL d'une ligne de vente (pour la marge).

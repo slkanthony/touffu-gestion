@@ -88,8 +88,8 @@ const Accessoires = {
       if (!a.groupId || cnt[a.groupId] !== 1) return;
       const c = Pricing.accCalc(a);
       let coef = U.num(a.coefficient) || 2;
-      if (c.priceFixed && c.cost > 0) {
-        coef = Math.round((c.priceTTC - U.num(c.persoSup)) / (1 + U.num(Store.state.settings.vatRate) / 100) / c.cost * 1e6) / 1e6;
+      if (c.priceFixed && c.costP > 0) {
+        coef = Math.round((c.priceTTC - U.num(c.persoSup)) / (1 + U.num(Store.state.settings.vatRate) / 100) / c.costP * 1e6) / 1e6;
         if (coef > 0 && Math.abs(U.num(a.coefficient) - coef) > 1e-6) { a.coefficient = coef; changed = true; }
       }
       const g = Math.round(coef * 100) / 100;
@@ -410,9 +410,9 @@ const Accessoires = {
         key = (m.kind || 'autre') + ':' + prod;
         label = prod;
       }
-      if (!groups[key]) groups[key] = { key, label, kind: m.kind, unit: m.unit, materials: [], totalCost: 0 };
+      if (!groups[key]) groups[key] = { key, label, kind: m.kind, unit: m.unit, materials: [], totalCost: 0, totalCostHT: 0 };
       groups[key].materials.push(m);
-      groups[key].totalCost += this.matCost(m);
+      groups[key].totalCost += this.matCost(m); groups[key].totalCostHT += U.num(m.costUnit);
     }
     // Familles « type + taille » (Mousquetons 20mm = moyenne de TOUS les mousquetons 20mm, toutes finitions/produits confondus) pour les catégories à la pièce
     // hors sangles : proposées seulement quand la fiche accessoire a une largeur de sangle, et seulement si elles regroupent au moins 2 produits.
@@ -421,13 +421,14 @@ const Accessoires = {
       if (Store.isSangleKind(m.kind) || m.unit !== 'piece') continue;
       const size = this._sizeOf(m); if (!size) continue;
       const key = 'size:' + (m.kind || 'autre') + ':' + size;
-      (bySize[key] = bySize[key] || { key, label: (kindLabel[m.kind] || 'Matière') + ' ' + size, kind: m.kind, unit: 'piece', size, bySize: true, materials: [], totalCost: 0, prods: new Set() });
-      const g = bySize[key]; g.materials.push(m); g.totalCost += this.matCost(m); g.prods.add(m.product || m.name);
+      (bySize[key] = bySize[key] || { key, label: (kindLabel[m.kind] || 'Matière') + ' ' + size, kind: m.kind, unit: 'piece', size, bySize: true, materials: [], totalCost: 0, totalCostHT: 0, prods: new Set() });
+      const g = bySize[key]; g.materials.push(m); g.totalCost += this.matCost(m); g.totalCostHT += U.num(m.costUnit); g.prods.add(m.product || m.name);
     }
     Object.values(bySize).forEach(g => { if (g.prods.size >= 2) groups[g.key] = g; });
     return Object.values(groups).map(g => ({
       ...g,
       avgCost: g.totalCost / g.materials.length,
+      avgCostHT: g.totalCostHT / g.materials.length,
       count: g.materials.length
     })).sort((a, b) => U.sortFr(a.label, b.label));
   },
@@ -451,6 +452,13 @@ const Accessoires = {
   /* Coût unitaire d'une matière POUR LES CALCULS : coût stocké HT + TVA d'achat de la matière (m.costVat, sinon taux global) tant qu'Antho n'est pas assujetti (TVA non récupérable). */
   matCost(m) { return U.num(m.costUnit) * Pricing.vatK(Stock.matVat(m)); },
 
+  /* Même coût mais HT (sans la TVA d'achat de la matière) : base de prix universelle (Pricing.accCost → costHT) */
+  familyCostHT(familyKey) { const fam = familyKey ? this.families().find(f => f.key === familyKey) : null; return fam ? fam.avgCostHT : 0; },
+  bomLineCostHT(l) {
+    if (l.familyKey) return this.familyCostHT(l.familyKey);
+    if (l.materialId) { const m = Store.material(l.materialId); return m ? U.num(m.costUnit) : 0; }
+    return 0;
+  },
   bomLineCost(l) {
     if (l.familyKey) return this.familyCost(l.familyKey);
     if (l.materialId) { const m = Store.material(l.materialId); return m ? this.matCost(m) : 0; }
@@ -560,10 +568,10 @@ const Accessoires = {
      Le prix n'est « forcé » (↺) que s'il n'est pas un « prix rond » (multiple de l'arrondi des Paramètres, 0,50 € par défaut) : le calcul auto arrondit ainsi. */
   _applyTtc(a, ttc) {
     if (!(ttc > 0)) { a.priceTTCManual = ''; return; }
-    const sup = Pricing.persoSupplement(a), cost = U.num(Pricing.accCost(a).cost), k = 1 + U.num(Store.state.settings.vatRate) / 100;   // supplément de personnalisation retiré avant de déduire le coefficient
+    const sup = Pricing.persoSupplement(a), ac = Pricing.accCost(a), cost = U.num(ac.cost), costP = U.num(ac.costP), k = 1 + U.num(Store.state.settings.vatRate) / 100;   // supplément de personnalisation retiré avant de déduire le coefficient
     if (!(cost > 0)) { a.priceTTCManual = ttc; return; }
-    a.coefficient = Math.round((ttc - sup) / k / cost * 1e6) / 1e6;
-    a.priceTTCManual = Math.abs(Pricing.accAutoTTC(a, { cost }, a.coefficient) - ttc) < 0.005 ? '' : ttc;   // même règle que le prix automatique (arrondi + seuil critique)
+    a.coefficient = Math.round((ttc - sup) / k / costP * 1e6) / 1e6;
+    a.priceTTCManual = Math.abs(Pricing.accAutoTTC(a, { cost, costP }, a.coefficient) - ttc) < 0.005 ? '' : ttc;   // même règle que le prix automatique (arrondi + seuil critique)
   },
 
   /* Maintenir l'appui sur « Profit net » : gain réel avec la TVA conservée (comme « Bénéfice » dans Prix mastication). */

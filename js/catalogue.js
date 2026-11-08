@@ -122,7 +122,7 @@ const Catalogue = {
       vs.forEach((v, i) => {
         const label = Pricing.labelVariant(v); if (sh.size.length && !sh.size.includes(label)) return;
         const c = Pricing.variantCalc(p, v, i, base, vs.length), pk = Store.sachet(v.sachetId);
-        rows.push({ id: p.id, name: p.name, meat, sup: hide ? '' : sup, variant: label, sku: v.sku || '', pack: pk ? pk.name : '', coeff: c.effCoeff, price: c.priceTTC });
+        rows.push({ id: p.id, name: p.name, meat, sup: hide ? '' : sup, variant: label, sku: v.sku || '', pack: pk ? pk.name : '', coeff: c.coeffU, price: c.priceTTC });
       });
     });
     const key = r => sh.group === 'sup' ? r.sup : sh.group === 'meat' ? r.meat : '';
@@ -462,7 +462,7 @@ const Catalogue = {
     let sizeMeta = '', sizeCoeff = '';
     if (perSize) {
       const calcs = actives.map((v, k) => Pricing.variantCalc(p, v, k, base, na));
-      const costs = calcs.map(c => c.cost), cfs = calcs.map(c => c.effCoeff || c.coeff || 0);
+      const costs = calcs.map(c => c.cost), cfs = calcs.map(c => c.coeffU || c.coeff || 0);
       const rng = (arr, f) => { const lo = Math.min(...arr), hi = Math.max(...arr); return Math.abs(hi - lo) < 0.005 ? f(lo) : f(lo) + ' → ' + f(hi); };
       sizeMeta = `<span style="white-space:nowrap;">${na} taille(s) · <span class="sensitive">coût ${rng(costs, x => U.eur(x))}</span></span>`;
       sizeCoeff = `<span class="b2b-disc-badge sensitive" style="width:auto;" title="Chaque taille a son propre prix d'achat et son propre coefficient (voir le tableau)"><label>Coeff</label><span style="padding:0 8px;font-weight:700;">${rng(cfs, x => x.toFixed(2))}</span></span>`;
@@ -486,7 +486,7 @@ const Catalogue = {
         const vatAmt = priceTTC - priceHT;
         const profitAssujetti = margin - social;
         const profitActuel = priceTTC - cost - priceTTC * (U.num(S.socialTaxRate) / 100);
-        c = { ...cRaw, priceHT, priceTTC, coeff, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff: coeff, priceFixed: true, critical: coeff < U.num(S.b2bCoeffThreshold) };
+        c = { ...cRaw, priceHT, priceTTC, coeff, coeffU: cRaw.costP > 0 ? priceHT / cRaw.costP : 0, margin, social, vatAmt, profitAssujetti, profitActuel, effCoeff: coeff, priceFixed: true, critical: coeff < U.num(S.b2bCoeffThreshold) };
       }
       if (on) { idx++; if (c.critical) critCount++; }
       return `<tr class="${on ? '' : 'dim'}">
@@ -981,7 +981,7 @@ const Catalogue = {
      automatique, écart réel pour une ligne dont le prix / coeff est fixé. Masquée sous 1 %. */
   decoteTag(c, common) {
     const k = U.num(common) || 2;
-    const d = c.ownCoeff ? (c.effCoeff > 0 ? 1 - c.effCoeff / k : 0) : U.num(c.discount);
+    const d = c.ownCoeff ? (c.coeffU > 0 ? 1 - c.coeffU / k : 0) : U.num(c.discount);
     if (Math.abs(d) < 0.01) return '';
     return `<span class="coeff-dec${d < 0 ? ' plus' : ''}" title="Écart de cette ligne par rapport au coeff commun (${k})">${d > 0 ? 'décote ' : '+'}${U.pct(Math.abs(d) * 100)}</span>`;
   },
@@ -989,7 +989,7 @@ const Catalogue = {
     const own = !!c.ownCoeff;
     const tip = own ? (c.priceFixed ? 'Prix TTC fixé à la main — le coefficient en découle. Modifier le coefficient retire le prix fixé.' : 'Coefficient propre à cette variante')
       : ('Calculé : coeff commun' + (c.discount ? ' − décote ' + U.pct(c.discount * 100) : ''));
-    return `<span class="coeff-wrap"><span class="coeff-cell"><input type="number" step="0.01" min="0" value="${(c.effCoeff || 0).toFixed(2)}" class="coeff-in${own ? '' : ' auto'}" title="${tip}" onchange="${onChange}"><button type="button" class="btn-icon coeff-reset" title="Revenir au calcul automatique (coeff commun − décote)" ${own ? '' : 'style="visibility:hidden" tabindex="-1"'} onclick="${onReset}">↺</button></span>${common !== undefined ? this.decoteTag(c, common) : ''}</span>`;
+    return `<span class="coeff-wrap"><span class="coeff-cell"><input type="number" step="0.01" min="0" value="${(c.coeffU || 0).toFixed(2)}" class="coeff-in${own ? '' : ' auto'}" title="${tip}" onchange="${onChange}"><button type="button" class="btn-icon coeff-reset" title="Revenir au calcul automatique (coeff commun − décote)" ${own ? '' : 'style="visibility:hidden" tabindex="-1"'} onclick="${onReset}">↺</button></span>${common !== undefined ? this.decoteTag(c, common) : ''}</span>`;
   },
   setCardCommonCoeff(prodId, val) {
     const p = Store.state.catalogM.find(x => String(x.id) === String(prodId)); if (!p) return;
@@ -1079,7 +1079,7 @@ const Catalogue = {
     if (ttc > 0 && this._isRef(p, v)) {   // 1re variante : son prix devient le coeff commun (les lots en automatique en découlent)
       const actives = (p.variants || []).filter(x => x.enabled !== false);
       const c = Pricing.variantCalc(p, v, 0, Pricing.baseUnitCost(p), actives.length);
-      if (c.effCoeff > 0) { p.coefficient = Math.round(c.effCoeff * 10000) / 10000; common = p.coefficient; }
+      if (c.coeffU > 0) { p.coefficient = Math.round(c.coeffU * 10000) / 10000; common = p.coefficient; }
     }
     Stock.syncPricesFromCatalog(p.id);
     const entry = Store.commitSnapshot(snap, 'catalogue', 'Prix TTC modifié — ' + p.name + ' ' + Pricing.labelVariant(v));
