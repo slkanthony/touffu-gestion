@@ -147,10 +147,21 @@ const Store = {
     if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.receptions; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
     if (!isViewer && role !== 'team') setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // admin : reprend ce que l'équipe a coché / saisi et met la copie sans prix à jour
+    if (!isViewer && role !== 'team') setTimeout(() => { try { this.autoPriceBase(); } catch (e) { console.error(e); } }, 50);   // admin : passage automatique (une seule fois) à la base de prix HT
     // première utilisation : pousser les valeurs par défaut
     if (!data || !data.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
   },
 
+  /* Base de prix HT universelle (Antho 2026-11-08) : appliquée AUTOMATIQUEMENT une seule fois, à la première ouverture après la mise à jour (admin). Les prix TTC ne bougent pas (coefficients recalculés,
+     prix qui tomberaient à côté figés) ; si un seul prix devait bouger, rien n'est appliqué. Annulable dans le Journal. Voir Pricing.priceBasePlan / applyPriceBase. */
+  autoPriceBase() {
+    const S = this.state && this.state.settings; if (!S || S.priceBaseHT || this._modalOpen() || this._dirty.size) return;
+    if (!(this.state.catalogM || []).length && !(this.state.catalogA || []).length) { S.priceBaseHT = true; this.save('settings'); return; }   // base vide : directement la nouvelle formule
+    const r = Pricing.applyPriceBase(); if (!r) return;
+    if (r.blocked) { console.warn('Base de prix HT : non appliquée,', r.bad, 'prix auraient bougé'); U.toast('Nouveau calcul des prix NON appliqué : ' + r.bad + ' prix auraient changé. Rien n’a bougé, préviens Claude.', true); return; }
+    U.toast(`Prix recalculés sur une base HT : ${r.plan.lines} prix inchangés, ${r.plan.frozen} fixés pour ne pas bouger. Coefficients mis à jour.`, false, r.entry.id);
+    if (window.App && App.rerender) App.rerender();
+  },
   merge(loaded) {
     const s = this.defaults();
     if (loaded) this.DOMAINS.forEach(d => {

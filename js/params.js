@@ -156,7 +156,6 @@ const Params = {
         </div>
         <div class="fin-block" style="order:${finPos('port')}">${finTools('port')}
         ${this.portCard()}
-        ${this.priceBaseCard()}
         </div>
         <div class="fin-block" style="order:${finPos('paniers')}">${finTools('paniers')}
         <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🛒 Paniers & livraison</div>
@@ -728,31 +727,6 @@ const Params = {
       <div class="frow" style="align-items:center;gap:10px;margin-bottom:8px;"><div class="fg" style="max-width:240px;margin:0;"><label>Calculer sur</label><select onchange="Params.setPortPeriod(this.value)">${opts.map(o => `<option value="${o[0]}" ${String(per) === String(o[0]) ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div></div>
       <div class="table-wrap"><table><thead><tr><th style="text-align:left;">Catégorie</th><th class="num">Frais de livraison payés (HT)</th><th class="num">Marchandises (HT)</th><th class="num">Taux calculé</th><th class="num">Taux appliqué</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="muted help" style="font-size:.82rem;margin-top:6px;">Changer un taux recalcule les prix des fiches concernées. Les anciennes factures se rentrent avec « 📚 Ancienne facture (statistiques) » dans Achats.</p>`;
-  },
-  /* ───── Base de prix HT universelle (Antho 2026-11-08) : voir Pricing.priceBasePlan. Les prix TTC ne bougent pas, seuls les coefficients sont recalculés. ───── */
-  priceBaseCard() {
-    const S = Store.state.settings, on = !!S.priceBaseHT;
-    return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--card-border);">
-      <div style="font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:8px;">🧮 Base de calcul des prix ${U.info("<b>Avant</b> : le coût comprenait la TVA d'achat de ton fournisseur, puis l'appli ajoutait encore la TVA de vente : la TVA était comptée deux fois et le coefficient dépendait du fournisseur.<br><br><b>Après</b> : prix HT = coût HT × coefficient, puis + 20 % de TVA. Le coefficient est le même quel que soit le fournisseur. Le coût RÉEL (TVA d'achat comprise) reste utilisé pour tes marges, ton bénéfice, ton stock et les seuils de coefficient critique.<br><br>Au passage, <b>aucun prix TTC ne change</b> : les coefficients sont recalculés, et si un prix devait quand même bouger il est fixé à son prix actuel (↺ pour revenir au calcul).")}</div>
-      ${on ? `<p style="margin:0;"><span class="badge ok">✔ Actif</span> Les prix sont calculés sur le coût HT. Pour revenir en arrière : Journal → « Annuler » sur la ligne « Prix calculés sur une base HT universelle ».</p>`
-           : `<p class="muted" style="margin:0 0 8px;">Calcul actuel : coût TVA d'achat comprise × coefficient, puis TVA de vente. Tu vois d'abord le tableau, rien ne change avant ta validation.</p><button class="btn-cta" onclick="Params.openPriceBase()">Voir le tableau et passer à la base HT</button>`}
-    </div>`;
-  },
-  openPriceBase() {
-    const plan = Pricing.priceBasePlan(), e = U.esc, f2 = x => (Math.round(x * 100) / 100).toFixed(2).replace('.', ',');
-    const mrows = plan.mast.slice().sort((a, b) => U.sortFr(a.name, b.name)).map(m => m.rows.filter(r => r.enabled).map((r, k) => `<tr><td style="text-align:left;">${k === 0 ? '<b>' + e(m.name) + '</b>' : ''}</td><td style="text-align:left;">${e(r.label)}</td><td class="num">${f2(r.oldTTC)} €</td><td class="num">${f2(r.newTTC)} €</td><td class="num">${f2(r.oldCoeff)} → <b>${f2(r.newCoeff)}</b></td><td>${r.frozen ? '<span class="badge warn">prix fixé</span>' : r.wasFixed ? '<span class="muted">déjà fixé</span>' : '<span class="muted">auto</span>'}</td></tr>`).join('')).join('');
-    const arows = plan.acc.slice().sort((a, b) => U.sortFr(a.name, b.name)).map(r => `<tr><td style="text-align:left;" colspan="2"><b>${e(r.name)}</b></td><td class="num">${f2(r.oldTTC)} €</td><td class="num">${f2(r.newTTC)} €</td><td class="num">${f2(r.oldCoeff)} → <b>${f2(r.newCoeff)}</b></td><td>${r.frozen ? '<span class="badge warn">prix fixé</span>' : r.wasFixed ? '<span class="muted">déjà fixé</span>' : '<span class="muted">auto</span>'}</td></tr>`).join('');
-    const bad = plan.mast.reduce((n, m) => n + m.rows.filter(r => r.enabled && Math.abs(r.newTTC - r.oldTTC) > 0.001).length, 0) + plan.acc.filter(r => Math.abs(r.newTTC - r.oldTTC) > 0.001).length;
-    const head = '<thead><tr><th style="text-align:left;">Produit</th><th style="text-align:left;">Variante</th><th class="num">Prix TTC avant</th><th class="num">Prix TTC après</th><th class="num">Coeff avant → après</th><th></th></tr></thead>';
-    U.modal({ title: '🧮 Passer à la base de prix HT', wide: true, okLabel: 'Appliquer', hideOk: bad > 0,
-      body: `<p style="margin:0 0 8px;line-height:1.5;"><b>${plan.lines}</b> prix examinés · <b>${bad}</b> prix qui changeraient · <b>${plan.frozen}</b> prix fixés pour ne pas bouger.</p>
-        ${bad ? '<p style="color:var(--alerte);">⚠️ Des prix changeraient : application bloquée.</p>' : '<p class="muted" style="margin:0 0 8px;">Tous les prix TTC restent exactement les mêmes. Seuls les coefficients changent (et quelques prix sont fixés). Annulable en un clic dans le Journal.</p>'}
-        <div class="table-wrap" style="max-height:52vh;overflow:auto;"><table class="stk">${head}<tbody>${mrows}${arows ? '<tr><td colspan="6" style="text-align:left;"><b>🐕 Accessoires</b></td></tr>' + arows : ''}</tbody></table></div>`,
-      onOk: () => {
-        const r = Pricing.applyPriceBase(); U.closeModal();
-        if (r) U.toast(`Base de prix HT activée : ${r.plan.lines} prix inchangés, ${r.plan.frozen} fixés.`, false, r.entry.id);
-        App.rerender();
-      } });
   },
   async setPortRate(cat, val) {
     const S = Store.state.settings, lab = (this._PORT_CATS.find(x => x[0] === cat) || [cat, cat])[1];

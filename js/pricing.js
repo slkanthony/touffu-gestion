@@ -624,6 +624,9 @@ const Pricing = {
   applyPriceBase() {
     const S = Store.state.settings; if (S.priceBaseHT) return null;
     const plan = this.priceBasePlan(), snaps = [], cl = o => JSON.parse(JSON.stringify(o));
+    // Garde-fou : si un seul prix TTC devait bouger, on n'applique RIEN (l'ancien calcul reste en place)
+    const bad = plan.mast.reduce((n, m) => n + m.rows.filter(r => r.enabled && Math.abs(r.newTTC - r.oldTTC) > 0.001).length, 0) + plan.acc.filter(r => Math.abs(r.newTTC - r.oldTTC) > 0.001).length;
+    if (bad > 0) return { blocked: true, bad, plan };
     plan.mast.forEach(m => {
       snaps.push({ domain: 'catalogM', id: m.p.id, before: cl(m.p) });
       m.p.coefficient = m.np.coefficient; m.p.variants.forEach((v, i) => { v.coeff = m.np.variants[i].coeff; if (U.num(m.np.variants[i].priceTTCManual) > 0) v.priceTTCManual = m.np.variants[i].priceTTCManual; });
