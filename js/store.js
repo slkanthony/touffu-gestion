@@ -147,7 +147,7 @@ const Store = {
     if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.receptions; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
     if (!isViewer && role !== 'team') setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // admin : reprend ce que l'équipe a coché / saisi et met la copie sans prix à jour
-    if (!isViewer && role !== 'team') setTimeout(() => { try { this.autoPriceBase(); } catch (e) { console.error(e); } }, 50);   // admin : passage automatique (une seule fois) à la base de prix HT
+    if (!isViewer && role !== 'team') setTimeout(() => { try { this.autoPriceBase(); this.normSingleCoeff(); } catch (e) { console.error(e); } }, 50);   // admin : passage automatique (une seule fois) à la base de prix HT
     // première utilisation : pousser les valeurs par défaut
     if (!data || !data.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
   },
@@ -160,6 +160,27 @@ const Store = {
     const r = Pricing.applyPriceBase(); if (!r) return;
     if (r.blocked) { console.warn('Base de prix HT : non appliquée,', r.bad, 'prix auraient bougé'); U.toast('Nouveau calcul des prix NON appliqué : ' + r.bad + ' prix auraient changé. Rien n’a bougé, préviens Claude.', true); return; }
     U.toast(`Prix recalculés sur une base HT : ${r.plan.lines} prix inchangés, ${r.plan.frozen} fixés pour ne pas bouger. Coefficients mis à jour.`, false, r.entry.id);
+    if (window.App && App.rerender) App.rerender();
+  },
+  /* Produit à UNE seule variante active : son coefficient EST le coefficient commun (Antho 2026-11-08, « le coef c'est le coef, point »). Aligne `coefficient` sur celui de la ligne (prix fixé ou coeff propre) :
+     le prix ne bouge pas (prix fixé inchangé ; coeff propre = même valeur). Idempotent, annulable (Journal). */
+  normSingleCoeff() {
+    const S = this.state && this.state.settings; if (!S || !S.priceBaseHT || this._modalOpen() || this._dirty.size) return;
+    const snaps = [];
+    (this.state.catalogM || []).forEach(p => {
+      const act = (p.variants || []).filter(v => v.enabled !== false); if (act.length !== 1) return;
+      const v = act[0]; if (!(U.num(v.priceTTCManual) > 0) && !(U.num(v.coeff) > 0)) return;
+      const k = Math.round(Pricing.variantCalc(p, v, 0, Pricing.baseUnitCost(p), 1).coeffU * 10000) / 10000;
+      if (!(k > 0) || (Math.abs(U.num(p.coefficient) - k) < 0.00005 && !(U.num(v.coeff) > 0))) return;
+      const before = JSON.parse(JSON.stringify(p));
+      p.coefficient = k; if (U.num(v.coeff) > 0) v.coeff = '';
+      const after = Math.round(Pricing.variantCalc(p, v, 0, Pricing.baseUnitCost(p), 1).priceTTC * 100) / 100, was = Math.round(Pricing.variantCalc(before, before.variants.find(x => x.id === v.id), 0, Pricing.baseUnitCost(before), 1).priceTTC * 100) / 100;
+      if (Math.abs(after - was) > 0.001) { Object.keys(p).forEach(x => delete p[x]); Object.assign(p, before); return; }   // sécurité : jamais de prix qui bouge
+      snaps.push({ domain: 'catalogM', id: p.id, before });
+    });
+    if (!snaps.length) return;
+    this.log('catalogue', `Coefficient commun aligné sur la variante unique : ${snaps.length} produit(s)`, { type: 'restoreBatch', data: snaps });
+    this.save('catalogM');
     if (window.App && App.rerender) App.rerender();
   },
   merge(loaded) {
