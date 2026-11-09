@@ -71,7 +71,18 @@ const Stock = {
     { value: 'nourl',    label: 'Sans lien site Touffu',      badge: 'info', icon: '🔗' },
     { value: 'nocat',    label: 'Sans lien catalogue prix',   badge: 'info', icon: '💰' },
     { value: 'hascat',   label: 'Lié au catalogue prix',      badge: 'ok',   icon: '💰' },
+    { value: 'zeroprice', label: 'Prix à 0,00 (achat ou vente)', badge: 'bad', icon: '🚨' },
   ],
+  /* Variantes dont le prix de vente OU le prix d'achat affiché est à 0,00 (même source que l'écran : fiche reliée sinon saisie).
+     Risque : site WooCommerce / SumUp synchronisés avec un prix vide. Vrac exclu (pas de prix à la pièce). */
+  zeroPriceVariants(p) {
+    return (p.variants || []).filter(v => {
+      if (v.mode === 'vrac') return false;
+      const rc = this.refCalc(p, v);
+      const pv = rc ? rc.calc.priceTTC : v.priceTTC, pa = rc ? rc.calc.cost : v.costUnit;
+      return !(U.num(pv) > 0) || !(U.num(pa) > 0);
+    });
+  },
   /* Compte lecture seule (viewer) : produits/lots expirés jamais montrés (2026-09-26). */
   _hideExpired() { return !!(window.App && App.isViewer); },
   dluoFilterHTML(current, setter) {
@@ -207,6 +218,7 @@ const Stock = {
       if (f.dluo === 'nourl') return !p.url;
       if (f.dluo === 'nocat') return !this.productHasFiche(p);
       if (f.dluo === 'hascat') return this.productHasFiche(p);
+      if (f.dluo === 'zeroprice') return this.zeroPriceVariants(p).length > 0;
       return true;
     }).sort((a, b) => {
       const dir = f.sortDir === 'desc' ? -1 : 1;
@@ -216,7 +228,15 @@ const Stock = {
 
     const sortHead = (key, label) => `<span class="sortable ${f.sort===key?'active':''}" onclick="Stock.setSort('${key}')">${label} ${f.sort===key?(f.sortDir==='asc'?'▲':'▼'):'⇕'}</span>`;
 
-    document.getElementById('stockBody').innerHTML = `
+    const zeroProds = Store.state.stockM.map(p => ({ p, vs: this.zeroPriceVariants(p) })).filter(x => x.vs.length);
+    const zeroBanner = zeroProds.length ? `<div class="card" style="padding:12px 16px;border:2px solid var(--alerte);">
+        <div class="frow" style="gap:10px;align-items:center;">
+          <b style="color:var(--alerte);">🚨 ${zeroProds.reduce((a, x) => a + x.vs.length, 0)} variante(s) avec un prix à 0,00 — ${zeroProds.length} produit(s)</b>
+          <span class="muted">Risque de prix vide sur le site et SumUp. ${zeroProds.slice(0, 6).map(x => U.esc(x.p.name) + ' (' + x.vs.map(v => U.esc(Pricing.labelVariant(v))).join(', ') + ')').join(' · ')}${zeroProds.length > 6 ? ' …' : ''}</span>
+          ${f.dluo === 'zeroprice' ? '' : `<button class="btn-sm" style="margin-left:auto;" onclick="Stock.setDluoFilter('zeroprice')">Voir la liste</button>`}
+        </div>
+      </div>` : '';
+    document.getElementById('stockBody').innerHTML = zeroBanner + `
       <div class="card" style="padding:12px 16px;">
         <div class="grid c4">
           <div class="fg mb0"><label>Recherche</label><input id="stock_q_mast" value="${U.esc(f.q)}" placeholder="nom du produit…" oninput="Stock.filters.q=this.value;Stock.renderM();U.refocus('stock_q_mast')"></div>
@@ -852,6 +872,11 @@ const Stock = {
     return lot?{p,v,lot}:null;
   },
 
+  _avHint(mode) {
+    const h = { gram: ['Valeur (grammes)', 'ex: 100, 200…'], piece: ['Valeur (nb de pièces)', 'ex: 1, 2, 3…'], size: ['Taille (S, M, L…)', 'ex: S, M, 25CM…'], vrac: ['Valeur (kg ou pc)', 'ex: 1…'] }[mode] || ['Valeur', ''];
+    const lb = document.getElementById('av_val_lb'), inp = document.getElementById('av_val');
+    if (lb) lb.textContent = h[0]; if (inp) inp.placeholder = h[1];
+  },
   /* ─── Ajouter une variante à un produit existant ─── */
   addVariant(pId) {
     const p = Store.state.stockM.find(x=>x.id===pId); if(!p) return;
@@ -859,10 +884,10 @@ const Stock = {
     U.modal({
       title:'＋ Variante — '+U.esc(p.name), okLabel:'Ajouter',
       body:`<div class="frow">
-        <div class="fg"><label>Mode</label><select id="av_mode">
+        <div class="fg"><label>Mode</label><select id="av_mode" onchange="Stock._avHint(this.value)">
           <option value="gram">Poids (g)</option><option value="piece">Pièce / lot</option>
           <option value="size">Taille (S/M/L…)</option><option value="vrac">Vrac (kg ou pc)</option></select></div>
-        <div class="fg"><label>Valeur / taille</label><input id="av_val" placeholder="ex: 100, S, 1…"></div>
+        <div class="fg"><label id="av_val_lb">Valeur (grammes)</label><input id="av_val" placeholder="ex: 100, 200…"></div>
       </div>
       ${_tops.length ? `<div class="frow">
         <div class="fg"><label>Déclinaison de (optionnel)</label><select id="av_parent" onchange="document.getElementById('av_pack_block').style.display=this.value?'':'none';document.getElementById('av_virtual_block').style.display=this.value?'':'none'">
