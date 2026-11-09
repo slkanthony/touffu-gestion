@@ -1477,6 +1477,29 @@ const Stock = {
     });
   },
 
+  /* Lots déjà connus (stock actuel + factures d'achat) : couples n° de lot / DLUO. Un même n° de lot peut avoir plusieurs DLUO → on les propose tous. */
+  knownLots() {
+    const out = [], seen = new Set();
+    const add = (lot, dluo, src) => { lot = String(lot || '').trim(); dluo = String(dluo || '').trim(); if (!lot) return; const k = lot.toLowerCase() + '|' + dluo; if (seen.has(k)) return; seen.add(k); out.push({ lot, dluo, src }); };
+    Store.state.stockM.forEach(p => p.variants.forEach(v => (v.lots || []).forEach(l => add(l.lotNumber, l.dluo, 'stock'))));
+    try { if (typeof Achats !== 'undefined') Achats.list().forEach(pu => (pu.lines || []).forEach(l => add(l.lot, l.dluo, 'achat'))); } catch (e) {}
+    return out;
+  },
+  _lotSug() {
+    const box = document.getElementById('nl_sug'), inp = document.getElementById('nl_num'); if (!box || !inp) return;
+    const q = inp.value.trim().toLowerCase();
+    if (!q) { box.innerHTML = ''; return; }
+    const all = this.knownLots().filter(k => k.lot.toLowerCase().includes(q));
+    all.sort((a, b) => (b.lot.toLowerCase() === q) - (a.lot.toLowerCase() === q) || (b.dluo || '').localeCompare(a.dluo || ''));
+    this._lotSugList = all.slice(0, 8);
+    box.innerHTML = this._lotSugList.map((k, i) => `<button type="button" class="btn-date-quick" onclick="Stock._lotPick(${i})">${U.esc(k.lot)}${k.dluo ? ' · DLUO ' + U.frDate(k.dluo) : ' · sans DLUO'}</button>`).join('');
+  },
+  _lotPick(i) {
+    const k = (this._lotSugList || [])[i]; if (!k) return;
+    const n = document.getElementById('nl_num'), d = document.getElementById('nl_dluo');
+    if (n) n.value = k.lot; if (d && k.dluo) { d.value = k.dluo; d.dispatchEvent(new Event('change')); }
+    const box = document.getElementById('nl_sug'); if (box) box.innerHTML = '';
+  },
   _pickRecv(val) {   // choix d'une réception d'achat dans « ＋ Ajouter un lot » → pré-remplit n° de lot et DLUO
     const r = (this._pend || []).find(x => x.pid + '|' + x.lid === val); if (!r) return;
     const n = document.getElementById('nl_num'), d = document.getElementById('nl_dluo');
@@ -1497,7 +1520,7 @@ const Stock = {
     U.modal({
       title:'＋ Lot — '+U.esc(p.name)+' › '+U.esc(Pricing.labelVariant(v)), okLabel:'Ajouter',
       body:`${pend.length ? `<div class="fg"><label>📥 Provenance (achat à ranger)</label><select id="nl_src" onchange="Stock._pickRecv(this.value)"><option value="">— aucune —</option>${pend.map(r=>`<option value="${r.pid}|${r.lid}" ${one?'selected':''}>${U.esc(r.label)}</option>`).join('')}</select></div>` : ''}
-      <div class="fg"><label>N° de lot</label><input id="nl_num" placeholder="lot fournisseur" value="${one?U.esc(one.lot):''}"></div>
+      <div class="fg"><label>N° de lot</label><input id="nl_num" placeholder="lot fournisseur" autocomplete="off" value="${one?U.esc(one.lot):''}" oninput="Stock._lotSug()"><div id="nl_sug" class="date-quick-btns" style="margin-top:6px;"></div></div>
       ${U.datePickerHTML('nl_dluo','DLUO').replace('<input id="nl_dluo" type="date"', `<input id="nl_dluo" type="date" value="${one?U.esc(one.dluo):''}"`)}
       <div class="frow">
         <div class="fg"><label>Qté stock général</label><input id="nl_qg" type="number" step="${v.mode==='vrac'?'0.001':'1'}" min="0" value="0"></div>
