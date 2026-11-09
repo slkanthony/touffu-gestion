@@ -746,6 +746,7 @@ const Catalogue = {
         return;
       }
       this._d = JSON.parse(JSON.stringify(found));
+      if (!App.isTeam && !App.isViewer) setTimeout(() => { try { this.autoFillSkus(undefined, true); const n = this._skuPlan().length; if (n) U.toast(`⚠️ ${n} SKU ne correspondent pas au nom du produit : clique sur « 🔄 SKU » pour les vérifier.`, true); } catch (e) { console.error(e); } }, 400);
       return;
     }
     this._d = { id: U.uid(), name: '', meatType: S.meatTypes[0], mainSupplierId: '', coefficient: 2.1, labelTypeId: (Store.labelDefault() || {}).id || '', labelCost: Store.labelDefault() ? U.num(Store.labelDefault().cost) : S.labelCost, vatRate: '', bulkDiscount: '', suppliers: [], variants: [] };
@@ -785,8 +786,8 @@ const Catalogue = {
       <div class="card" style="border-left:4px solid var(--caramel);">
         <h2>🏷️ 1. Informations produit</h2>
         <div class="frow">
-          <div class="fg" style="flex:2;"><label>Nom du produit</label><input id="cp_name" value="${U.esc(p.name)}" oninput="Catalogue._d.name=this.value"></div>
-          <div class="fg"><label>Viande</label><select id="cp_meat" onchange="Catalogue._d.meatType=this.value">${S.meatTypes.slice().sort(U.sortFr).map(m => `<option ${((p.meatType || '').toLowerCase() === m.toLowerCase()) ? 'selected' : ''}>${U.esc(m)}</option>`).join('')}</select></div>
+          <div class="fg" style="flex:2;"><label>Nom du produit</label><input id="cp_name" value="${U.esc(p.name)}" oninput="Catalogue._d.name=this.value" onchange="Catalogue._d.name=this.value;Catalogue.checkSkus(true)"></div>
+          <div class="fg"><label>Viande</label><select id="cp_meat" onchange="Catalogue._d.meatType=this.value;Catalogue.checkSkus(true)">${S.meatTypes.slice().sort(U.sortFr).map(m => `<option ${((p.meatType || '').toLowerCase() === m.toLowerCase()) ? 'selected' : ''}>${U.esc(m)}</option>`).join('')}</select></div>
         </div>
       </div>
 
@@ -1169,7 +1170,8 @@ const Catalogue = {
       if (!groupRows.length) return '';
       if (g.mode === 'size') return this.sizeTable(g, groupRows, base);
       return `<h3 class="cp-var-title">${g.title}
-          <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('${g.mode}')">🗑️</button></h3>
+          <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('${g.mode}')">🗑️</button>
+          <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button></h3>
         <div class="table-wrap"><table class="cp-var-table">
           <thead><tr><th></th><th>${g.col}</th><th>Sachet / Blister</th><th class="num">Coût revient</th><th class="num">Prix vente HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">Bénéfice</th><th class="num">dont TVA ${Store.state.settings.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Prix vente TTC</th><th></th></tr></thead>
           <tbody>${groupRows.map((r, j) => this.variantRow(r, base, j, groupRows.length)).join('')}</tbody>
@@ -1207,7 +1209,8 @@ const Catalogue = {
       </tr>`;
     }).join('');
     return `<h3 class="cp-var-title">${g.title}
-        <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button></h3>
+        <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button>
+        <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button></h3>
       <div class="table-wrap"><table class="cp-var-table cp-size-table">
         <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff', 'ctr')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('Bénéfice')}${th('dont TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Prix vente TTC')}<th></th></tr></thead>
         <tbody>${rows}</tbody>
@@ -1377,7 +1380,7 @@ const Catalogue = {
      base = SKU d'une variante déjà remplie de la fiche (même mode d'abord), sinon nom du produit ;
      puis suffixe de la variante (100G, LOT2, S…). Rempli dans le brouillon (visible, modifiable),
      enregistré avec « Enregistrer ». Un SKU déjà pris ailleurs → alerte, jamais bloqué. */
-  autoFillSkus(mode) {
+  autoFillSkus(mode, quiet) {
     const vs = this._d.variants || [];
     const refs = vs.filter(r => r.sku && String(r.sku).trim());
     const ref = refs.find(r => r.mode === mode && Pricing.skuBaseFrom(r)) || refs.find(r => Pricing.skuBaseFrom(r));
@@ -1392,8 +1395,39 @@ const Catalogue = {
       taken.add(sku); v.sku = sku; made.push(sku);
       if (this._skuExists(sku)) dupes.push(sku);
     });
+    if (quiet) { if (made.length) { this.drawVars(); U.toast(`SKU manquant${made.length > 1 ? 's' : ''} généré${made.length > 1 ? 's' : ''} : ${made.join(', ')} (enregistré avec la fiche).`); } return; }
     if (dupes.length) U.toast(`⚠️ SKU généré déjà utilisé ailleurs : ${dupes.join(', ')} — vérifie/modifie-le.`, true);
     else if (made.length) U.toast(`SKU généré${made.length > 1 ? 's' : ''} : ${made.join(', ')} (modifiable, enregistré avec la fiche).`);
+  },
+
+  /* Vérification des SKU de la fiche (bouton « 🔄 SKU », changement de nom / de viande) : SKU attendu de chaque ligne = base du produit + suffixe de la ligne.
+     Base : le SKU du produit Stock relié s'il existe (le Stock est prioritaire), sinon déduite du nom. Rien n'est changé sans validation d'Antho. */
+  _skuPlan() {
+    const d = this._d; if (!d) return [];
+    const name = (U.val('cp_name') || d.name || '').trim(); if (!name) return [];
+    const norm = x => String(x || '').trim().toUpperCase();
+    const sp = Store.state.stockM.find(p => p.catalogId === this.editId && this.editId);
+    const lk = sp && sp.variants.find(sv => !Stock.parentOf(sp, sv) && sv.catalogVariantId && (d.variants || []).some(v => v.id === sv.catalogVariantId) && Pricing.skuBaseFrom(sv));
+    const base = lk ? Pricing.skuBaseFrom(lk) : Pricing.autoSku(name, d.meatType, '');
+    if (!base) return [];
+    const plan = [], used = new Set();
+    (d.variants || []).forEach(v => {
+      const sv = sp && sp.variants.find(x => x.catalogVariantId === v.id && x.sku);
+      const want = sv ? norm(sv.sku) : norm(Pricing.skuWithBase(base, v));
+      if (!want || used.has(want)) return; used.add(want);
+      if (norm(v.sku) !== want) plan.push({ v, from: v.sku || '', to: want });
+    });
+    return plan;
+  },
+  checkSkus(auto) {
+    const plan = this._skuPlan();
+    if (!plan.length) { if (!auto) U.toast('✔ Les SKU sont déjà cohérents avec le nom du produit.'); return; }
+    U.modal({
+      title: '🔄 Mettre à jour les SKU', okLabel: 'Mettre à jour',
+      body: `<p class="muted" style="margin:0 0 8px;">${auto ? 'Le nom / la viande a changé : ' : ''}${plan.length} SKU ne correspond${plan.length > 1 ? 'ent' : ''} pas au produit. Les SKU sont liés au site et à SumUp : vérifie avant de valider.</p>
+        <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${this._skuExists(x.to) ? ' <span class="badge warn" title="Déjà utilisé ailleurs">⚠ déjà pris</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`,
+      onOk: () => { plan.forEach(x => { x.v.sku = x.to; }); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
+    });
   },
 
   /* Un SKU est-il déjà pris par une AUTRE fiche (Stock, ou une autre fiche Catalogue) ?
