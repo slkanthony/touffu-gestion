@@ -1426,7 +1426,7 @@ const Catalogue = {
       title: '🔄 Mettre à jour les SKU', okLabel: 'Mettre à jour',
       body: `<p class="muted" style="margin:0 0 8px;">${auto === 'open' ? '⚠️ ' : auto ? 'Le nom / la viande a changé : ' : ''}${plan.length} SKU ne correspond${plan.length > 1 ? 'ent' : ''} pas au produit. Les SKU sont liés au site et à SumUp : vérifie avant de valider.</p>
         <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${this._skuExists(x.to) ? ' <span class="badge warn" title="Déjà utilisé ailleurs">⚠ déjà pris</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`,
-      onOk: () => { plan.forEach(x => { x.v.sku = x.to; }); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
+      onOk: () => { plan.forEach(x => { x.v.sku = x.to; }); U.closeModal(); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
     });
   },
 
