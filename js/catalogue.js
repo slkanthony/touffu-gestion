@@ -746,7 +746,7 @@ const Catalogue = {
         return;
       }
       this._d = JSON.parse(JSON.stringify(found));
-      if (!App.isTeam && !App.isViewer) setTimeout(() => { try { this.autoFillSkus(undefined, true); const n = this._skuPlan().length; if (n) U.toast(`⚠️ ${n} SKU ne correspondent pas au nom du produit : clique sur « 🔄 SKU » pour les vérifier.`, true); } catch (e) { console.error(e); } }, 400);
+      if (!App.isTeam && !App.isViewer) setTimeout(() => { try { this.autoFillSkus(undefined, true); if (this._skuPlan().length) this.checkSkus('open'); } catch (e) { console.error(e); } }, 400);
       return;
     }
     this._d = { id: U.uid(), name: '', meatType: S.meatTypes[0], mainSupplierId: '', coefficient: 2.1, labelTypeId: (Store.labelDefault() || {}).id || '', labelCost: Store.labelDefault() ? U.num(Store.labelDefault().cost) : S.labelCost, vatRate: '', bulkDiscount: '', suppliers: [], variants: [] };
@@ -1424,7 +1424,7 @@ const Catalogue = {
     if (!plan.length) { if (!auto) U.toast('✔ Les SKU sont déjà cohérents avec le nom du produit.'); return; }
     U.modal({
       title: '🔄 Mettre à jour les SKU', okLabel: 'Mettre à jour',
-      body: `<p class="muted" style="margin:0 0 8px;">${auto ? 'Le nom / la viande a changé : ' : ''}${plan.length} SKU ne correspond${plan.length > 1 ? 'ent' : ''} pas au produit. Les SKU sont liés au site et à SumUp : vérifie avant de valider.</p>
+      body: `<p class="muted" style="margin:0 0 8px;">${auto === 'open' ? '⚠️ ' : auto ? 'Le nom / la viande a changé : ' : ''}${plan.length} SKU ne correspond${plan.length > 1 ? 'ent' : ''} pas au produit. Les SKU sont liés au site et à SumUp : vérifie avant de valider.</p>
         <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${this._skuExists(x.to) ? ' <span class="badge warn" title="Déjà utilisé ailleurs">⚠ déjà pris</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`,
       onOk: () => { plan.forEach(x => { x.v.sku = x.to; }); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
     });
