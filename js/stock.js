@@ -309,7 +309,7 @@ const Stock = {
         <b>${U.esc(p.name)}</b>
         <span>
           ${hasAlert ? '<span class="badge bad">⚠ Lot(s) périmé(s)</span>' : hasSoon ? '<span class="badge warn">⏳ DLUO proche</span>' : ''}
-          ${hasAnyCatLink ? (() => { const fid = (cat && cat.id) || (p.variants.map(v => this.ficheOf(p, v)).find(Boolean)) || ''; return `<a class="badge ok" href="#/catalogue/edit/${fid}" onclick="event.stopPropagation()" title="Lié au catalogue prix — clic : ouvrir la fiche" style="text-decoration:none;">💰</a>`; })() : ''}
+          ${hasAnyCatLink ? (() => { const fid = (cat && cat.id) || (p.variants.map(v => this.ficheOf(p, v)).find(Boolean)) || ''; return `<a class="badge ok" href="#/catalogue/edit/${fid}" onclick="event.stopPropagation()" onauxclick="event.stopPropagation()" title="Lié au catalogue prix — clic : ouvrir la fiche (clic molette : nouvel onglet)" style="text-decoration:none;">💰</a>`; })() : ''}
         </span>
         <span class="type-col">
           <span class="badge info">${U.esc(p.meatType||'—')}</span>
@@ -1336,7 +1336,7 @@ const Stock = {
     const cat=Store.state.catalogM.find(c=>c.id===catalogId); if(!cat) return false;
     const norm = s => String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
     const sameVar = (cv, sv) => {
-      if ((cv.mode==='gram'||cv.mode==='piece') && sv.mode===cv.mode) return U.num(cv.value)===U.num(sv.value);
+      if ((cv.mode==='gram'||cv.mode==='piece') && sv.mode===cv.mode) { const pv = x => (cv.mode==='piece' ? (U.num(x.value) || 1) : U.num(x.value)); return pv(cv)===pv(sv); }   // « pièce » sans valeur (0) = 1 pièce
       return norm(cv.label||Pricing.labelVariant(cv))===norm(sv.label||Pricing.labelVariant(sv));
     };
     const base=Pricing.baseUnitCost(cat);
@@ -1394,6 +1394,20 @@ const Stock = {
       const par = Stock.parentOf(sp, sv); if (!par) return;
       if ((par.catalogId || sp.catalogId) === catalogId && Stock.resolveChild(sp, sv).catChanged) catChanged = true;
     }));
+    // SKU : une fiche dont des lignes portent le SKU d'un AUTRE produit (fiche dupliquée, ex. « BOUDIN-CER » sur Boudin Agneau) est réalignée sur le SKU de son produit stock.
+    // Seules les lignes non reliées à une variante stock ET dont le SKU est déjà pris ailleurs sont touchées ; le SKU stock reste prioritaire.
+    { const taken = new Set();
+      Store.state.stockM.forEach(sp => sp.variants.forEach(sv => { if (sv.sku && !(linked.includes(sp))) taken.add(norm(sv.sku)); }));
+      Store.state.catalogM.forEach(c => { if (c.id !== catalogId) (c.variants||[]).forEach(x => { if (x.sku) taken.add(norm(x.sku)); }); });
+      linked.forEach(sp => {
+        const lk = sp.variants.find(sv => !Stock.parentOf(sp, sv) && sv.catalogVariantId && Pricing.skuBaseFrom(sv)); if (!lk) return;
+        const base = Pricing.skuBaseFrom(lk);
+        const used = new Set(sp.variants.map(sv => sv.catalogVariantId).filter(Boolean));
+        (cat.variants||[]).forEach(cv => {
+          if (used.has(cv.id) || !cv.sku || !taken.has(norm(cv.sku))) return;
+          const ns = Pricing.skuWithBase(base, cv); if (ns && ns !== cv.sku && !taken.has(norm(ns))) { cv.sku = ns; catChanged = true; }
+        });
+      }); }
     if (catChanged) Store.save('catalogM');
     return catChanged;
   },
