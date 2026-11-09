@@ -1519,7 +1519,7 @@ const Stock = {
         U.toast('Lot ajouté.', false, entry.id);
         // Fenêtre facultative de conditionnement (sachet) — « Fermer » pour passer.
         const units = U.num(newLot.qtyGeneral) + U.num(newLot.qtyEvent);
-        if (units > 0 && this.packConsos().length) this.packLot(p.id, v.id, newLot.id);
+        if (units > 0 && !v.noPack && this.packConsos().length) this.packLot(p.id, v.id, newLot.id);
       }
     });
   },
@@ -1638,7 +1638,7 @@ const Stock = {
         ? `Déjà conditionnés : <b>${U.qty(U.num(lot.pack && lot.pack.qty))}</b>. Indique les sachets faits <b>depuis</b> : ils s'ajoutent au stock du lot et sont déduits du stock de sachets. <b>Fermer</b> = annuler.`
         : `Facultatif : indique l'emballage utilisé pour ce lot. <b>Fermer</b> = passer (déjà conditionné / pas nécessaire).`}</p>
         <div class="frow mt">
-          <div class="fg" style="flex:3;"><label>Sachet / blister utilisé</label><select id="pk_conso" onchange="Stock._packRefresh()"><option value="">— choisir —</option>${opts}</select></div>
+          <div class="fg" style="flex:3;"><label>Sachet / blister utilisé</label><select id="pk_conso" onchange="Stock._packRefresh()"><option value="">— choisir —</option><option value="none">✋ Sans conditionnement (produit tel quel)</option>${opts}</select></div>
           <div class="fg"><label>${more ? 'Nombre fait depuis' : 'Nombre (sachets / découpes)'}</label><input id="pk_qty" type="number" step="1" min="0" value="${more ? '' : units}" placeholder="0" oninput="Stock._packRefresh()"></div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:.92rem;white-space:nowrap;"><input type="checkbox" id="pk_partial" style="width:auto;flex:none;" ${more ? 'checked' : ''}> Conditionnement pas terminé <span class="muted" style="cursor:help;" title="Coché : la ligne du lot affiche « En cours » avec un bouton « ＋ Compléter » pour ajouter plus tard les sachets faits ensuite (le stock du lot et les sachets sont mis à jour).">ⓘ</span></label>
@@ -1654,6 +1654,7 @@ const Stock = {
     const o = this._packSel();
     const qty = U.numVal('pk_qty');
     let html = '';
+    if (U.val('pk_conso') === 'none') { box.innerHTML = `<p class="muted">Aucun sachet ni blister déduit, prix inchangés. Cette fenêtre ne s'ouvrira plus à l'ajout d'un lot de cette variante.</p>`; return; }
     if (o && o.flag) html += `<p style="color:var(--warn,#e0a040);">🚩 Emballage marqué « à ne plus racheter »${o.conso && o.conso.replaceNote ? ' — ' + U.esc(o.conso.replaceNote) : ''}.</p>`;
     if (o && o.type === 'sachet' && qty > U.num(o.conso.qty)) html += `<p style="color:var(--alerte);">⚠️ Stock de ce sachet insuffisant (${U.num(o.conso.qty)} dispo) — il sera mis à 0.</p>`;
     { const tot = U.num(f.lot.qtyGeneral) + U.num(f.lot.qtyEvent);
@@ -1707,14 +1708,21 @@ const Stock = {
   _packApply() {
     const ctx = this._packCtx; if (!ctx) return;
     const f = this.findLot(ctx.pId, ctx.vId, ctx.lId); if (!f) return;
+    if (U.val('pk_conso') === 'none') {   // produit non conditionné (déjà emballé / tel quel) : rien n'est déduit, la fenêtre ne se rouvre plus pour cette variante
+      const snap = Store.snapshot('stockM', f.p); f.v.noPack = true;
+      const entry = Store.commitSnapshot(snap, 'stock', `Sans conditionnement — ${f.p.name}/${Pricing.labelVariant(f.v)}`);
+      Store.save('stockM'); U.closeModal(); App.rerender();
+      U.toast('Noté « sans conditionnement » : plus de question pour cette variante.', false, entry.id); return;
+    }
     const o = this._packSel();
-    if (!o) { U.toast('Choisis un sachet / blister, ou « Fermer » pour passer.', true); return false; }
+    if (!o) { U.toast('Choisis un sachet / blister, « Sans conditionnement », ou « Fermer » pour passer.', true); return false; }
     const qty = Math.max(0, Math.round(U.numVal('pk_qty')));
     const more = !!ctx.more, partialEl = document.getElementById('pk_partial'), partial = !!(partialEl && partialEl.checked);
     if (more && !(qty > 0)) { U.toast('Indique le nombre de sachets faits depuis (ou « Fermer »).', true); return false; }
     const { p, v, lot } = f;
     const info = this._packCatInfo(p, v);
     const snaps = [Store.snapshot('stockM', p)];
+    delete v.noPack;
     // Les sachets faits sont des pièces EN STOCK : « Compléter » les ajoute au lot ; au 1er passage, si le lot en a moins (ex. créé à 0), on ajoute la différence.
     // S'il vient d'un achat « à ranger » non terminé, le tri de cet achat les compte aussi.
     const grow = more ? qty : (v.mode === 'vrac' ? 0 : Math.max(0, qty - (U.num(lot.qtyGeneral) + U.num(lot.qtyEvent))));
