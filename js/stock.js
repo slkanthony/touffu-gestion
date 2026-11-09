@@ -418,7 +418,7 @@ const Stock = {
       </span></div></td></tr>`;
     }
     return `<tr>
-      <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b><span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
+      <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b>${this._wTag(v)}<span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
       <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
       <td class="num v-ming"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"><span style="font-size:.8rem;" aria-hidden="true">🛒</span><input type="checkbox" ${this.reorderOn(p, v) ? 'checked' : ''} title="Coché : ce format compte pour la commande (Faible stock). Décoché : il ne déclenche plus de commande (ex. 250G / 500G d'un produit acheté au kilo)." onchange="Stock.toggleReorder('${p.id}','${v.id}')" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></td>
       <td class="num v-mine"><input type="number" step="1" value="${lowE}" style="width:60px;" title="Stock min événement" onchange="Stock.setVarMin('${p.id}','${v.id}','lowEvent',this.value)"></td>
@@ -872,6 +872,8 @@ const Stock = {
     return lot?{p,v,lot}:null;
   },
 
+  /* Poids indicatif d'une variante vendue à la pièce (ex. boudin 200 g) : affiché entre parenthèses, aucun effet sur les prix ni la liaison. */
+  _wTag(v) { return v.mode === 'piece' && U.num(v.wAvg) > 0 ? ` <span class="muted" style="font-weight:400;font-size:.85em;" title="Poids moyen d'une pièce (modifiable dans « Modifier »)">(${Math.round(U.num(v.wAvg))} g)</span>` : ''; },
   _avHint(mode) {
     const h = { gram: ['Valeur (grammes)', 'ex: 100, 200…'], piece: ['Valeur (nb de pièces)', 'ex: 1, 2, 3…'], size: ['Taille (S, M, L…)', 'ex: S, M, 25CM…'], vrac: ['Valeur (kg ou pc)', 'ex: 1…'] }[mode] || ['Valeur', ''];
     const lb = document.getElementById('av_val_lb'), inp = document.getElementById('av_val');
@@ -898,6 +900,7 @@ const Stock = {
       <p class="muted help">Déclinaison = la même taille vendue par plusieurs pièces (ex. 25CM → 25CM LOT 2) : fiche prix (ligne « Lot de N ») et tags repris de la taille. Le mode est alors ignoré ; si « Valeur / taille » reste vide, le nom est composé automatiquement (ex. 25CM LOT 2).</p>` : ''}
       <div class="frow">
         <div class="fg"><label>SKU WooCommerce</label><input id="av_sku" placeholder="optionnel"></div>
+        <div class="fg" style="max-width:170px;"><label>Poids (g) — indicatif</label><input id="av_w" type="number" min="0" step="any" placeholder="ex: 200"></div>
       </div>
       <div class="frow">
         <div class="fg"><label>Prix TTC (€)</label><input id="av_price" type="number" step="0.01" value="0"></div>
@@ -924,6 +927,7 @@ const Stock = {
           return;
         }
         const _nv = {id:U.uid(),catalogVariantId:'',mode,value,label:mode==='size'?raw:'',sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]};
+        if (U.numVal('av_w') > 0) _nv.wAvg = U.numVal('av_w');
         p.variants.push(_nv);
         const entry=Store.commitSnapshot(snap,'stock','Variante ajoutée — '+p.name+' ('+raw+')');
         Store.save('stockM'); U.closeModal(); App.rerender();
