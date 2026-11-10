@@ -731,7 +731,7 @@ const Stock = {
   _addPackSkuRow() { const box = document.getElementById('ev_packs'); if (box) box.insertAdjacentHTML('beforeend', this._packSkuRow('', '')); },
   /* Gabarit déduit de la taille (XS…XXL) : S = petit ; M = moyen ; L = moyen + grand ; XL, XXL = grand ; XS = petit. */
   SIZE_GABARIT: { XS: ['petit'], S: ['petit'], M: ['moyen'], L: ['moyen', 'grand'], XL: ['grand'], XXL: ['grand'] },
-  sizeGabarit(v) { return v && v.mode === 'size' ? (this.SIZE_GABARIT[String(v.value || v.label || '').toUpperCase().trim()] || []) : []; },
+  sizeGabarit(v) { if (!v || v.mode !== 'size') return []; const k = x => this.SIZE_GABARIT[String(x || '').toUpperCase().trim()]; return k(v.label) || k(v.value) || []; },
   /* Gabarit par défaut d'une variante : celui du produit s'il en a un, sinon celui de la taille. */
   defaultGabarit(p, v) { return ((p.tags || {}).gabarit || []).length ? [] : this.sizeGabarit(v); },
   variantTags(p, v) {
