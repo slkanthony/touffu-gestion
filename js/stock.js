@@ -145,6 +145,8 @@ const Stock = {
   /* Poil : celui de la fiche ; tant qu'elle n'a rien d'enregistré, « avec poil(s) » dans le nom suffit. */
   nameHasHair(name) { return /avec\s+poils?/i.test(String(name || '')); },
   poilOf(p) { const h = (p.tags || {}).poil; return h || (this.nameHasHair(p.name) ? 'avec' : ''); },
+  /* Espèce : par défaut « chien » seul ; coche Chat en plus (produit mixte) ou décoche Chien (chat seul). */
+  speciesOf(p) { const sp = (p.tags || {}).species; return sp && sp.length ? sp : ['chien']; },
   hypoOf(p) { const h = (p.tags || {}).hypo; return h === true ? 'oui' : (h || this.hypoDefault(p.meatType)); },
   effTags(p) { return Object.assign({}, p.tags || {}, { hypo: this.hypoOf(p), poil: this.poilOf(p) }); },
   /* Pastilles à cocher arrondies (âge, espèce, gabarit) : mêmes cases à cocher qu'avant (lues par `input:checked`), seule la présentation change. */
@@ -731,8 +733,8 @@ const Stock = {
         <p class="muted help" style="font-size:.78rem;margin-top:4px;">Associe cette variante à sa propre fiche du calcul de prix — chaque variante peut pointer vers une fiche différente.</p>
       </div>
       </div>
-      <div class="fg" id="ev_species" style="margin-top:10px;"><label>Espèce <span class="muted help">Chien / Chat : coche ce qui convient à cette variante. Vide = hérite du produit (tout). Un produit coché « Chat » seul n'est jamais proposé dans les paniers pour chiens.</span></label>
-        ${Stock.chipsHTML('ev_species_chips', [['chien','🐕 Chien'],['chat','🐈 Chat']], (v.tags||{}).species)}</div>
+      <div class="fg" id="ev_species" style="margin-top:10px;"><label>Espèce <span class="muted help">Par défaut = comme le produit. Décoche Chien et coche Chat pour une variante chat seul ; coche les deux pour chien + chat.</span></label>
+        ${Stock.chipsHTML('ev_species_chips', [['chien','🐕 Chien'],['chat','🐈 Chat']], ((v.tags||{}).species && v.tags.species.length ? v.tags.species : Stock.speciesOf(p)))}</div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
       <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
         ${[['Poil', Stock.poilOf(p) === 'avec' ? 'Avec poil' : 'Sans poil'], ['Hypoallergénique', Stock.hypoOf(p) === 'oui' ? 'Oui' : Stock.hypoOf(p) === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
@@ -824,7 +826,7 @@ const Stock = {
           delete v.tags;
         }
         { const evSp = [...document.querySelectorAll('#ev_species input:checked')].map(c => c.value);
-          if (evSp.length) { v.tags = v.tags || {}; v.tags.species = evSp; } else if (v.tags) { delete v.tags.species; if (!Object.keys(v.tags).length) delete v.tags; } }
+          if (evSp.length && evSp.slice().sort().join() !== Stock.speciesOf(p).slice().sort().join()) { v.tags = v.tags || {}; v.tags.species = evSp; } else if (v.tags) { delete v.tags.species; if (!Object.keys(v.tags).length) delete v.tags; } }
         // Les déclinaisons de cette taille suivent son (nouveau) lien.
         Stock.childrenOf(p, v).forEach(c => { if (Stock.resolveChild(p, c).catChanged) catSkuChanged = true; });
         const entry=Store.commitSnapshot(snap,'stock','Variante modifiée — '+p.name+' ('+Pricing.labelVariant(v)+')');
@@ -1098,8 +1100,8 @@ const Stock = {
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Poil</label>${Stock.chipsHTML('sp_poil', [['avec','Avec poil']], Stock.poilOf(p) === 'avec' ? ['avec'] : [])}<p class="muted" style="font-size:.72rem;margin-top:2px;">Non coché = sans poil.</p></div>
         <div class="fg"><label>Espèce</label>
-          ${Stock.chipsHTML('sp_species', [['chien','🐕 Chien'],['chat','🐈 Chat']], (p.tags||{}).species)}
-          <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = tous. « Chat » seul : jamais proposé dans les paniers pour chiens.</p>
+          ${Stock.chipsHTML('sp_species', [['chien','🐕 Chien'],['chat','🐈 Chat']], Stock.speciesOf(p))}
+          <p class="muted" style="font-size:.72rem;margin-top:2px;">Par défaut : chien. Décoche Chien et coche Chat = chat seul ; les deux cochés = chien + chat.</p>
         </div>
         <div class="fg"><label>Gabarit</label>
           ${Stock.chipsHTML('sp_gabarit', [['petit','Petit'],['moyen','Moyen'],['grand','Grand']], (p.tags||{}).gabarit)}
@@ -1161,7 +1163,7 @@ const Stock = {
         const ageVal = ageEl ? [...ageEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
         const gabaritEl = document.getElementById('sp_gabarit');
         const gabaritVal = gabaritEl ? [...gabaritEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
-        const speciesVal = [...document.querySelectorAll('#sp_species input:checked')].map(c => c.value);
+        let speciesVal = [...document.querySelectorAll('#sp_species input:checked')].map(c => c.value); if (!speciesVal.length) speciesVal = ['chien'];
         p.tags = { poil: poilVal, hypo: hypoVal, resistance: resistanceVal, type: typeVal, odeur: odeurVal, gras: grasVal, age: ageVal, gabarit: gabaritVal, species: speciesVal };
         if(!id) Store.state.stockM.push(p);
         if(cat) this.syncPricesFromCatalog(cat.id);
