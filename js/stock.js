@@ -140,6 +140,10 @@ const Stock = {
     };
   },
 
+  /* Hypoallergénique par défaut (lapin, agneau, cheval, cerf) tant que la fiche produit n'a rien de renseigné. */
+  hypoDefault(meat) { const m = String(meat || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /(?:^|[^a-z])(lapin|agneau|cheval|cerf)(?![a-z])/.test(m) ? 'oui' : ''; },
+  hypoOf(p) { const h = (p.tags || {}).hypo; return h === true ? 'oui' : (h || this.hypoDefault(p.meatType)); },
+  effTags(p) { return Object.assign({}, p.tags || {}, { hypo: this.hypoOf(p) }); },
   /* Pastilles à cocher arrondies (âge, espèce, gabarit) : mêmes cases à cocher qu'avant (lues par `input:checked`), seule la présentation change. */
   chipsHTML(id, items, selected) {
     const sel = selected || [];
@@ -728,7 +732,7 @@ const Stock = {
         ${Stock.chipsHTML('ev_species_chips', [['chien','🐕 Chien'],['chat','🐈 Chat']], (v.tags||{}).species)}</div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
       <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
-        ${[['Poil', pt.poil === 'avec' ? 'Avec poil' : 'Sans poil'], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
+        ${[['Poil', pt.poil === 'avec' ? 'Avec poil' : 'Sans poil'], ['Hypoallergénique', Stock.hypoOf(p) === 'oui' ? 'Oui' : Stock.hypoOf(p) === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
         <p class="muted" style="font-size:.74rem;margin:4px 0 0;">À modifier dans « ✏️ Modifier le produit ».</p></div>
       <p class="muted" style="font-size:.78rem;margin:10px 0 8px;">Propres à cette taille — vide = hérite du produit</p>
       <div class="frow" style="gap:12px;">
@@ -1057,9 +1061,9 @@ const Stock = {
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien site Touffu (optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Hypoallergénique</label><select id="sp_hypo">
-          <option value="" ${!(p.tags||{}).hypo?'selected':''}>— non renseigné —</option>
-          <option value="oui" ${(p.tags||{}).hypo==='oui'||(p.tags||{}).hypo===true?'selected':''}>Oui</option>
-          <option value="non" ${(p.tags||{}).hypo==='non'?'selected':''}>Non</option>
+          <option value="" ${!Stock.hypoOf(p)?'selected':''}>— non renseigné —</option>
+          <option value="oui" ${Stock.hypoOf(p)==='oui'?'selected':''}>Oui</option>
+          <option value="non" ${Stock.hypoOf(p)==='non'?'selected':''}>Non</option>
         </select></div>
         <div class="fg"><label>Résistance</label><select id="sp_resistance">
           <option value="" ${!(p.tags||{}).resistance?'selected':''}>— non renseigné —</option>

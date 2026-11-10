@@ -54,7 +54,7 @@ const Paniers = {
     const vt = vTags || {};
     return {
       poil: pt.poil || '',
-      hypo: pt.hypo || false,
+      hypo: pt.hypo === 'oui' || pt.hypo === true,
       // Poil, hypo, résistance, type, odeur, gras : toujours ceux du PRODUIT (identiques pour toutes
       // les tailles, demande d'Antho 2026-09-29) ; seuls âge et gabarit peuvent varier par variante.
       resistance: pt.resistance || '',
@@ -147,7 +147,7 @@ const Paniers = {
       if (this.excludeMeats.includes(p.meatType)) return;
       if (this.excludeProducts.includes(p.id)) return;
 
-      const pTags = p.tags || {};
+      const pTags = Stock.effTags(p);
       if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return;
       if (this.poilFilter === 'sans' && pTags.poil === 'avec') return;
       if (this.hypoOnly && !pTags.hypo) return;
@@ -382,7 +382,7 @@ const Paniers = {
         const sp = Store.state.stockM.find(x => x.id === b.pId);
         if (!sp) return false;
         const sv = sp.variants.find(x => x.id === b.vId);
-        const mt = this._mergeTags(sp.tags, sv ? Stock.variantTags(sp, sv) : null);
+        const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
         return ['forte', 'tres-forte'].includes(mt.resistance);
       });
       if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
@@ -563,7 +563,7 @@ const Paniers = {
       const sp = Store.state.stockM.find(x => x.id === b.pId);
       if (!sp) return false;
       const sv = sp.variants.find(x => x.id === b.vId);
-      const mt = this._mergeTags(sp.tags, sv ? Stock.variantTags(sp, sv) : null);
+      const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
       return ['forte', 'tres-forte'].includes(mt.resistance);
     });
     if (otherHard) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
@@ -632,7 +632,7 @@ const Paniers = {
       const sp = Store.state.stockM.find(x => x.id === b.pId);
       if (!sp) return false;
       const sv = sp.variants.find(x => x.id === b.vId);
-      const mt = this._mergeTags(sp.tags, sv ? Stock.variantTags(sp, sv) : null);
+      const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
       return ['forte', 'tres-forte'].includes(mt.resistance);
     });
     const eligibleFor = rej => {
@@ -1217,7 +1217,7 @@ const Paniers = {
         const rc = Stock.refCalc(p, v);   // prix = fiche Prix mastication (la référence), jamais la copie du Stock
         const price = rc ? rc.calc.priceTTC : U.num(v.priceTTC);   // ajout manuel : même sans prix de vente renseigné (affiché 0,00 €)
         const coeff = rc ? (rc.calc.effCoeff || 0) : 0;
-        const tags = this._mergeTags(p.tags || {}, Stock.variantTags(p, v));
+        const tags = this._mergeTags(Stock.effTags(p), Stock.variantTags(p, v));
         lots.forEach(l => {
           const avail = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
           const daysLeft = U.daysTo(l.dluo);
