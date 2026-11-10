@@ -190,6 +190,32 @@ const Stock = {
       ${n ? `<div class="tagfilter-grp"><button class="btn-ghost btn-sm" onclick="Stock.clearTagFilters()">✖ Tout effacer</button></div>` : ''}</div>`;
     return { btn, panel };
   },
+  _tagsOpen: {},
+  _tagsAll() { try { return localStorage.getItem('touffu_tagpills') === '1'; } catch (e) { return false; } },
+  tagPillsShown(p) { return p.id in this._tagsOpen ? this._tagsOpen[p.id] : this._tagsAll(); },
+  toggleTagPills(id) { const p = Store.state.stockM.find(x => x.id === id); if (!p) return; this._tagsOpen[id] = !this.tagPillsShown(p); this.renderM(); },
+  toggleAllTagPills() { try { localStorage.setItem('touffu_tagpills', this._tagsAll() ? '0' : '1'); } catch (e) {} this._tagsOpen = {}; this.renderM(); },
+  /* Petites pastilles lisibles sur la ligne du produit : ce qui est coché (y compris les valeurs par défaut). */
+  tagPills(p) {
+    const pt = p.tags || {}, out = [];
+    if (this.poilOf(p) === 'avec') out.push(['Poil', 'Avec poil']);
+    if (this.hypoOf(p) === 'oui') out.push(['Hypo', 'Hypoallergénique']);
+    const sp = this.speciesOf(p);
+    out.push([sp.includes('chat') ? (sp.includes('chien') ? '🐕🐈' : '🐈 seul') : '🐕', 'Espèce : ' + sp.join(' + ')]);
+    if ((pt.type || 'occupation') !== 'occupation') out.push([Store.productTypeLabel(pt.type).split(' ')[0] || pt.type, 'Type : ' + Store.productTypeLabel(pt.type)]);
+    const L = { faible: 'faible', moyenne: 'moy.', forte: 'forte', 'tres-forte': 'très forte' };
+    if (pt.resistance) out.push(['Rés. ' + L[pt.resistance], 'Résistance : ' + pt.resistance]);
+    if (pt.odeur) out.push(['Odeur ' + L[pt.odeur], 'Odeur : ' + pt.odeur]);
+    if (pt.gras && pt.gras !== 'non') out.push(['Gras ' + ({ peu: 'peu', moyen: 'moy.', gras: '+' }[pt.gras] || ''), 'Gras : ' + pt.gras]);
+    const uni = k => { const set = new Set(pt[k] || []); p.variants.forEach(v => ((this.variantTags(p, v) || {})[k] || []).forEach(x => set.add(x))); return [...set]; };
+    const gOrder = ['petit', 'moyen', 'grand'], gl = { petit: 'Petit', moyen: 'Moyen', grand: 'Grand' };
+    const g = uni('gabarit').sort((a, b) => gOrder.indexOf(a) - gOrder.indexOf(b));
+    if (g.length) out.push([g.map(x => gl[x]).join('·'), 'Gabarit : ' + g.join(', ')]);
+    const aOrder = ['0-3', '3-5', '6-10', '11+', 'senior'];
+    const a = uni('age').sort((x, y) => aOrder.indexOf(x) - aOrder.indexOf(y));
+    if (a.length) out.push([a.map(x => x === 'senior' ? 'Sénior' : x).join(' · '), 'Âge : ' + a.join(', ')]);
+    return out;
+  },
   /* Hypoallergénique par défaut (lapin, agneau, cheval, cerf) tant que la fiche produit n'a rien de renseigné. */
   hypoDefault(meat) { const m = String(meat || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /(?:^|[^a-z])(lapin|agneau|cheval|cerf)(?![a-z])/.test(m) ? 'oui' : ''; },
   /* Poil : celui de la fiche ; tant qu'elle n'a rien d'enregistré, « avec poil(s) » dans le nom suffit. */
@@ -331,6 +357,7 @@ const Stock = {
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="Stock.editProduct()">＋ Nouveau produit</button>
           ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? t : t.btn; })()}
+          <button class="btn-ghost btn-sm" style="flex:none;width:auto;" title="Afficher / masquer les pastilles sur toutes les lignes" onclick="Stock.toggleAllTagPills()">🏷️ Pastilles ${this._tagsAll() ? '✓' : ''}</button>
           ${U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAll(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAll(true)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${list.length} produit(s) · ${list.reduce((a,p)=>a+p.variants.reduce((b,v)=>b+v.lots.reduce((c,l)=>c+U.num(l.qtyGeneral)+U.num(l.qtyEvent),0),0),0).toFixed(0)} unités en stock</span>
         </div>
@@ -393,7 +420,7 @@ const Stock = {
 
     return `<details class="fold prod-fold" id="prod-${p.id}" ${prodOpen ? 'open' : ''} ontoggle="Stock.setProdOpen('${p.id}',this.open)">
       <summary onclick="Stock.summaryNav(event,'${p.id}')" onauxclick="Stock.summaryNav(event,'${p.id}')" title="Clic molette / Ctrl+clic : ouvrir la fiche dans un nouvel onglet">
-        <b>${U.esc(p.name)}</b>
+        <span class="prod-nm"><b>${U.esc(p.name)}</b><button type="button" class="tag-toggle${this.tagPillsShown(p) ? ' on' : ''}" title="Afficher / masquer les pastilles (poil, espèce, gabarit…)" onclick="event.preventDefault();event.stopPropagation();Stock.toggleTagPills('${p.id}')">🏷️ ${this.tagPills(p).length}</button>${this.tagPillsShown(p) ? `<span class="prod-tags">${this.tagPills(p).map(([t, ti]) => `<span class="tag-pill" title="${U.esc(ti)}">${U.esc(t)}</span>`).join('')}</span>` : ''}</span>
         <span>
           ${hasAlert ? '<span class="badge bad">⚠ Lot(s) périmé(s)</span>' : hasSoon ? '<span class="badge warn">⏳ DLUO proche</span>' : ''}
           ${hasAnyCatLink ? (() => { const fid = (cat && cat.id) || (p.variants.map(v => this.ficheOf(p, v)).find(Boolean)) || ''; return `<a class="badge ok" href="#/catalogue/edit/${fid}" onclick="event.stopPropagation()" onauxclick="event.stopPropagation()" title="Lié au catalogue prix — clic : ouvrir la fiche (clic molette : nouvel onglet)" style="text-decoration:none;">💰</a>`; })() : ''}

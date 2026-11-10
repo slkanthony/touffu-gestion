@@ -1787,3 +1787,13 @@ tr.wgrp td[colspan] { text-align: left; }
 .tagfilter-grp { min-width: 140px; }
 .tagfilter-grp .chk-chips { margin-top: 4px !important; }
 .tagfilter-grp > label { color: var(--caramel-2, var(--caramel)); font-weight: 700; }
+
+/* Pastilles de lecture sur la ligne produit (Stock) */
+.prod-nm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.prod-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-pill { display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 0.68rem; font-weight: 600; white-space: nowrap;
+  color: var(--caramel-2, var(--caramel)); background: rgba(166, 113, 83, 0.12); border: 1px solid rgba(166, 113, 83, 0.30); }
+
+.tag-toggle { flex: none; cursor: pointer; padding: 1px 8px; border-radius: 12px; font-size: 0.68rem; font-weight: 600; font-family: inherit;
+  color: var(--caramel-2, var(--caramel)); background: transparent; border: 1px dashed rgba(166, 113, 83, 0.55); }
+.tag-toggle:hover, .tag-toggle.on { background: rgba(166, 113, 83, 0.18); border-style: solid; }
