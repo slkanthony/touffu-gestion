@@ -1477,6 +1477,9 @@ const Catalogue = {
     const target = String(sku).trim().toLowerCase();
     if (!target) return null;
     const same = v => (v.sku || '').trim().toLowerCase() === target;
+    // Doublon DANS le Stock (deux variantes de stock avec le même SKU) = vrai conflit, quel que soit leur lien.
+    { const hits = []; Store.state.stockM.forEach(p => (p.variants || []).forEach(v => { if (same(v)) hits.push({ p, v }); }));
+      if (hits.length > 1) return { kind: 'conflict', label: 'doublon dans le Stock : ' + hits.slice(0, 3).map(h => `${h.p.name} › ${Pricing.labelVariant(h.v)}`).join(' / '), href: '#/stock/mastication/' + hits[0].p.id + '/' + hits[0].v.id }; }
     for (const p of Store.state.stockM) {
       const v = (p.variants || []).find(same); if (!v) continue;
       if (this.editId && (p.catalogId === this.editId || v.catalogId === this.editId)) continue;
