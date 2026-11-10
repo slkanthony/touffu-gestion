@@ -1171,7 +1171,8 @@ const Catalogue = {
       if (g.mode === 'size') return this.sizeTable(g, groupRows, base);
       return `<h3 class="cp-var-title">${g.title}
           <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('${g.mode}')">🗑️</button>
-          <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button></h3>
+          <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button>
+          <button class="btn-icon" title="Ajouter une ligne dans ce tableau (rangée automatiquement au bon endroit)" onclick="Catalogue.addOne('${g.mode}')" style="font-size:.75rem;width:auto;padding:0 8px;">＋ Ajouter</button></h3>
         <div class="table-wrap"><table class="cp-var-table">
           <thead><tr><th></th><th>${g.col}</th><th>Sachet / Blister</th><th class="num">Coût revient</th><th class="num">Prix vente HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">Bénéfice</th><th class="num">dont TVA ${Store.state.settings.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Prix vente TTC</th><th></th></tr></thead>
           <tbody>${groupRows.map((r, j) => this.variantRow(r, base, j, groupRows.length)).join('')}</tbody>
@@ -1192,7 +1193,7 @@ const Catalogue = {
       return `<tr class="${on ? '' : 'dim'}">
         <td class="sz-ck"><input type="checkbox" ${on ? 'checked' : ''} onchange="Catalogue._d.variants[${i}].enabled=this.checked;if(this.checked)Catalogue.autoFillSkus('size');Catalogue.drawVars()">
           <span class="mini-reorder"><button class="btn-icon" title="Monter" ${j <= 0 ? 'disabled' : ''} onclick="Catalogue.moveVar(${i},-1)">↑</button><button class="btn-icon" title="Descendre" ${j >= groupRows.length - 1 ? 'disabled' : ''} onclick="Catalogue.moveVar(${i},1)">↓</button></span></td>
-        <td class="sz-name"><input value="${U.esc(v.label || '')}" class="v-num" placeholder="S, M, L…" onchange="Catalogue._d.variants[${i}].label=this.value;Catalogue.drawVars()">${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</td>
+        <td class="sz-name"><input value="${U.esc(v.label || '')}" class="v-num" placeholder="S, M, L…" onchange="Catalogue._d.variants[${i}].label=this.value;Catalogue._sortGroup('size');Catalogue.drawVars()">${c.critical && on ? ' <span class="badge bad" style="font-size:.6rem;padding:1px 5px;">critique</span>' : ''}</td>
         <td class="num sensitive"><input type="number" step="0.01" value="${v.value || ''}" class="v-price" placeholder="${kilo ? '—' : 'achat'}" title="Prix d'achat HT de cette taille (prioritaire sur le poids si renseigné)" onchange="Catalogue._d.variants[${i}].value=this.value;Catalogue.drawVars()"></td>
         ${kilo ? `<td class="num sensitive"><input type="number" step="1" value="${v.weight || ''}" class="v-price" placeholder="g" title="Poids de cette taille en grammes (coût = prix au kilo × poids)" onchange="Catalogue._d.variants[${i}].weight=this.value;Catalogue.drawVars()"></td>` : ''}
         <td>${this.packPicker(i, v.sachetId, v.mode)}</td>
@@ -1210,7 +1211,8 @@ const Catalogue = {
     }).join('');
     return `<h3 class="cp-var-title">${g.title}
         <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button>
-        <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button></h3>
+        <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button>
+        <button class="btn-icon" title="Ajouter une taille (rangée automatiquement : XS en haut, XXL en bas)" onclick="Catalogue.addOne('size')" style="font-size:.75rem;width:auto;padding:0 8px;">＋ Ajouter</button></h3>
       <div class="table-wrap"><table class="cp-var-table cp-size-table">
         <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff', 'ctr')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('Bénéfice')}${th('dont TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Prix vente TTC')}<th></th></tr></thead>
         <tbody>${rows}</tbody>
@@ -1220,9 +1222,9 @@ const Catalogue = {
   variantRow({ v, i, c, on }, base, j, groupLen) {
     let firstCell;
     if (v.mode === 'gram') {
-      firstCell = `<input type="number" step="1" value="${v.value}" class="v-num" onchange="Catalogue._d.variants[${i}].value=this.value;Catalogue.drawVars()"> g`;
+      firstCell = `<input type="number" step="1" value="${v.value}" class="v-num" onchange="Catalogue._d.variants[${i}].value=this.value;Catalogue._sortGroup('gram');Catalogue.drawVars()"> g`;
     } else if (v.mode === 'piece') {
-      firstCell = `Lot de <input type="number" step="1" value="${v.value}" class="v-num" onchange="Catalogue._d.variants[${i}].value=this.value;Catalogue.drawVars()"> pc`;
+      firstCell = `Lot de <input type="number" step="1" value="${v.value}" class="v-num" onchange="Catalogue._d.variants[${i}].value=this.value;Catalogue._sortGroup('piece');Catalogue.drawVars()"> pc`;
     } else {
       const weightField = base.unit === 'kilo'
         ? `<input type="number" step="1" value="${v.weight || ''}" class="v-num" placeholder="poids (g)" title="Poids de cette taille en grammes — utilisé pour calculer le coût à partir du prix au kilo (laisse vide si tu préfères saisir un prix d'achat direct)" onchange="Catalogue._d.variants[${i}].weight=this.value;Catalogue.drawVars()">`
@@ -1262,6 +1264,33 @@ const Catalogue = {
      standards. Le tableau `variants` reste plat (3 modes mélangés) : on
      retrouve les indices du même mode puis on échange à leurs vraies
      positions, sans dépendre de leur contiguïté dans le tableau. */
+  /* Range les lignes d'un groupe : tailles XXS…5XL (U.sortFr), poids et lots par ordre croissant. Les autres groupes ne bougent pas. */
+  _sortGroup(mode) {
+    const vs = this._d.variants, idx = vs.reduce((a, v, i) => { if (v.mode === mode) a.push(i); return a; }, []);
+    const rows = idx.map(i => vs[i]);
+    rows.sort((a, b) => mode === 'size' ? U.sortFr(a.label || '', b.label || '') : (Number(a.value) || 0) - (Number(b.value) || 0));
+    idx.forEach((i, k) => { vs[i] = rows[k]; });
+  },
+  async addOne(mode) {
+    const T = { size: ['Nouvelle taille', 'Taille (ex. XS, XXL, 10CM)', 'text'], gram: ['Nouveau poids', 'Poids en grammes (ex. 150)', 'number'], piece: ['Nouveau lot', 'Nombre de pièces du lot (ex. 6)', 'number'] }[mode]; if (!T) return;
+    this._aov = '';
+    setTimeout(() => { const e = document.getElementById('addone_v'); if (e) e.focus(); }, 60);
+    if (!await U.ask({ title: T[0], okLabel: 'Ajouter', html: `<div class="fg"><label>${T[1]}</label><input id="addone_v" type="${T[2]}" ${T[2] === 'number' ? 'min="1" step="1"' : ''} autocomplete="off" oninput="Catalogue._aov=this.value"></div>` })) return;
+    const raw = this._aov || '';
+    const vs = this._d.variants;
+    let nv;
+    if (mode === 'size') {
+      const lb = raw.trim().toUpperCase(); if (!lb) return;
+      if (vs.some(v => v.mode === 'size' && (v.label || '').toUpperCase() === lb)) { U.toast('Cette taille existe déjà.', true); return; }
+      nv = { mode, value: '', label: lb };
+    } else {
+      const n = Math.round(Number(raw)); if (!(n > 0)) { U.toast('Indique un nombre supérieur à 0.', true); return; }
+      if (vs.some(v => v.mode === mode && Number(v.value) === n)) { U.toast('Cette ligne existe déjà.', true); return; }
+      nv = { mode, value: n, label: '' };
+    }
+    vs.push(Object.assign({ id: U.uid(), sachetId: '0', coeff: '', priceTTCManual: '', sku: '', enabled: true }, nv));
+    this._sortGroup(mode); this.autoFillSkus(mode); this.drawVars();
+  },
   moveVar(i, dir) {
     const variants = this._d.variants;
     const mode = variants[i].mode;
