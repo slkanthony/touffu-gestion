@@ -728,7 +728,7 @@ const Stock = {
         ${Stock.chipsHTML('ev_species_chips', [['chien','🐕 Chien'],['chat','🐈 Chat']], (v.tags||{}).species)}</div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
       <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
-        ${[['Poil', {avec:'Avec poil', sans:'Sans poil', les_deux:'Avec ou sans'}[pt.poil] || ''], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
+        ${[['Poil', {avec:'Avec poil', sans:'Sans poil'}[pt.poil] || ''], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
         <p class="muted" style="font-size:.74rem;margin:4px 0 0;">À modifier dans « ✏️ Modifier le produit ».</p></div>
       <p class="muted" style="font-size:.78rem;margin:10px 0 8px;">Propres à cette taille — vide = hérite du produit</p>
       <div class="frow" style="gap:12px;">
@@ -1060,7 +1060,6 @@ const Stock = {
           <option value="" ${!(p.tags||{}).poil?'selected':''}>— non renseigné —</option>
           <option value="avec" ${(p.tags||{}).poil==='avec'?'selected':''}>Avec poil</option>
           <option value="sans" ${(p.tags||{}).poil==='sans'?'selected':''}>Sans poil</option>
-          <option value="les_deux" ${(p.tags||{}).poil==='les_deux'?'selected':''}>Avec ou sans</option>
         </select></div>
         <div class="fg"><label>Hypoallergénique</label><select id="sp_hypo">
           <option value="" ${!(p.tags||{}).hypo?'selected':''}>— non renseigné —</option>
