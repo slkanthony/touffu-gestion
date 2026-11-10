@@ -1786,3 +1786,4 @@ tr.wgrp td[colspan] { text-align: left; }
 .tagfilter-panel { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: flex-start; }
 .tagfilter-grp { min-width: 140px; }
 .tagfilter-grp .chk-chips { margin-top: 4px !important; }
+.tagfilter-grp > label { color: var(--caramel-2, var(--caramel)); font-weight: 700; }
