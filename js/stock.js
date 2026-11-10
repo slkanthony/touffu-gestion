@@ -687,7 +687,7 @@ const Stock = {
     const _packDef = U.num(v.packQty) > 1 ? v.packQty : (_lotM ? U.num(_lotM[1]) : (v.mode === 'piece' && U.num(v.value) > 1 ? U.num(v.value) : 2));
     const pt = p.tags || {};
     const _rLb = {'faible':'Faible','moyenne':'Moyenne','forte':'Forte','tres-forte':'Très Forte'}[pt.resistance] || '';
-    const _tLb = Store.productTypeLabel(pt.type);
+    const _tLb = Store.productTypeLabel(pt.type || 'occupation');
     const _oLb = {'faible':'Faible','moyenne':'Moyenne','forte':'Forte'}[pt.odeur] || '';
     const _grLb = {'non':'Non gras','peu':'Peu gras','moyen':'Moyennement gras','gras':'Gras'}[pt.gras] || '';
     const _aLb = (pt.age||[]).map(a => a==='11+'?'11 mois +':a==='senior'?'Sénior':a+' mois').join(', ');
@@ -1069,8 +1069,8 @@ const Stock = {
           <option value="tres-forte" ${(p.tags||{}).resistance==='tres-forte'?'selected':''}>Très Forte</option>
         </select></div>
         <div class="fg"><label>Type</label><select id="sp_type">
-          <option value="" ${!(p.tags||{}).type?'selected':''}>— non renseigné —</option>
-          ${Store.productTypes().map(t => `<option value="${U.esc(t.value)}" ${(p.tags||{}).type===t.value?'selected':''}>${U.esc(t.label)}</option>`).join('')}
+          
+          ${Store.productTypes().map(t => `<option value="${U.esc(t.value)}" ${((p.tags||{}).type||'occupation')===t.value?'selected':''}>${U.esc(t.label)}</option>`).join('')}
         </select></div>
       </div>
       <div class="frow" style="gap:12px;">

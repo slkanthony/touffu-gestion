@@ -166,7 +166,7 @@ const Paniers = {
           const r = tags.resistance;
           if (r && !this.resistanceInclude.includes(r)) return;
         }
-        if (this.typeFilter !== 'all' && tags.type && tags.type !== this.typeFilter) return;
+        if (this.typeFilter !== 'all' && (tags.type || 'occupation') !== this.typeFilter) return;
         if (this.odeurInclude.length && tags.odeur && !this.odeurInclude.includes(tags.odeur)) return;
         if (this.grasInclude.length && tags.gras && !this.grasInclude.includes(tags.gras)) return;
         if (this.ageInclude.length && tags.age.length > 0 && !tags.age.some(a => this.ageInclude.includes(a))) return;
@@ -247,7 +247,7 @@ const Paniers = {
   },
 
   _typePrefScore(c) {
-    const t = (c.tags && c.tags.type) || '';
+    const t = (c.tags && c.tags.type) || 'occupation';
     if (t === 'occupation') return 1.0;
     if (t === 'education') return 0.2;
     return 0.6;
