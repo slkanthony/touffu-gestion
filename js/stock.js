@@ -175,7 +175,7 @@ const Stock = {
       if (k === 'type') return sel.includes(pt.type || 'occupation');
       if (k === 'age' || k === 'gabarit') {
         const own = pt[k] || [];
-        const vs = p.variants.map(v => (v.tags || {})[k] || []);
+        const vs = p.variants.map(v => (this.variantTags(p, v) || {})[k] || []);
         if (!own.length && !vs.some(a => a.length)) return true;   // rien de précisé = pour tous
         return own.some(x => sel.includes(x)) || vs.some(a => a.some(x => sel.includes(x)));
       }
@@ -702,7 +702,17 @@ const Stock = {
     return `<div class="pack-sku-row"><input class="ps-sku" placeholder="ex : SABOTS-VEAU-LOT5" value="${U.esc(sku || '')}"><span class="muted">=</span><input class="ps-n" type="number" min="2" step="1" value="${n || ''}" placeholder="5"><span class="muted">pièces</span><button type="button" class="btn-icon" title="Retirer" onclick="this.parentElement.remove()">✕</button></div>`;
   },
   _addPackSkuRow() { const box = document.getElementById('ev_packs'); if (box) box.insertAdjacentHTML('beforeend', this._packSkuRow('', '')); },
-  variantTags(p, v) { const src = this.parentOf(p, v) || v; return src.tags || null; },
+  /* Gabarit déduit de la taille (XS…XXL) : S = petit ; M = moyen ; L = moyen + grand ; XL, XXL = grand ; XS = petit. */
+  SIZE_GABARIT: { XS: ['petit'], S: ['petit'], M: ['moyen'], L: ['moyen', 'grand'], XL: ['grand'], XXL: ['grand'] },
+  sizeGabarit(v) { return v && v.mode === 'size' ? (this.SIZE_GABARIT[String(v.value || v.label || '').toUpperCase().trim()] || []) : []; },
+  /* Gabarit par défaut d'une variante : celui du produit s'il en a un, sinon celui de la taille. */
+  defaultGabarit(p, v) { return ((p.tags || {}).gabarit || []).length ? [] : this.sizeGabarit(v); },
+  variantTags(p, v) {
+    const src = this.parentOf(p, v) || v; const t = src.tags || null;
+    if (t && (t.gabarit || []).length) return t;
+    const d = this.defaultGabarit(p, src);
+    return d.length ? Object.assign({}, t || {}, { gabarit: d }) : t;
+  },
   /* Famille = une taille + ses déclinaisons (sert aux paniers : jamais 2 variantes de la même famille). */
   familyKey(p, v) { const par = this.parentOf(p, v); return p.id + ':' + (par ? par.id : v.id); },
   /* Recopie sur la déclinaison le lien de sa taille : même fiche, ligne « Lot de N » (N = pièces par lot). */
@@ -799,7 +809,7 @@ const Stock = {
           <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = hérite du produit${_aLb?' ('+_aLb+')':''}</p>
         </div>
         <div class="fg"><label>Gabarit</label>
-          ${Stock.chipsHTML('ev_gabarit', [['petit','Petit'],['moyen','Moyen'],['grand','Grand']], (v.tags||{}).gabarit)}
+          ${Stock.chipsHTML('ev_gabarit', [['petit','Petit'],['moyen','Moyen'],['grand','Grand']], ((v.tags||{}).gabarit && v.tags.gabarit.length ? v.tags.gabarit : Stock.defaultGabarit(p, v)))}
           <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = hérite du produit${_gLb?' ('+_gLb+')':''}</p>
         </div>
       </div></div>` : ''}`,
@@ -874,7 +884,8 @@ const Stock = {
           const evAge = evAgeEl ? [...evAgeEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
           const evGabaritEl = document.getElementById('ev_gabarit');
           const evGabarit = evGabaritEl ? [...evGabaritEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
-          v.tags = { age: evAge, gabarit: evGabarit };
+          const _dg = Stock.defaultGabarit(p, v);
+          v.tags = { age: evAge, gabarit: evGabarit.slice().sort().join() === _dg.slice().sort().join() ? [] : evGabarit };
         } else {
           delete v.tags;
         }
