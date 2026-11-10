@@ -1171,8 +1171,8 @@ const Catalogue = {
       if (g.mode === 'size') return this.sizeTable(g, groupRows, base);
       return `<h3 class="cp-var-title">${g.title}
           <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('${g.mode}')">🗑️</button>
-          <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button>
-          <button class="btn-icon" title="Ajouter une ligne dans ce tableau (rangée automatiquement au bon endroit)" onclick="Catalogue.addOne('${g.mode}')" style="font-size:.75rem;width:auto;padding:0 8px;">＋ Ajouter</button></h3>
+          <button class="btn-ghost btn-sm" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()">🔄 SKU</button>
+          <button class="btn-cta btn-sm" title="Ajouter une ligne dans ce tableau (rangée automatiquement au bon endroit)" onclick="Catalogue.addOne('${g.mode}')" style="margin-left:10px;">＋ Ajouter</button></h3>
         <div class="table-wrap"><table class="cp-var-table">
           <thead><tr><th></th><th>${g.col}</th><th>Sachet / Blister</th><th class="num">Coût revient</th><th class="num">Prix vente HT</th><th class="num">Marge</th><th class="num" style="white-space:normal;line-height:1.2;">Cotisations<br>URSSAF</th><th class="num">Bénéfice</th><th class="num">dont TVA ${Store.state.settings.vatActive ? '(reversée)' : '(conservée)'}</th><th class="num">Prix vente TTC</th><th></th></tr></thead>
           <tbody>${groupRows.map((r, j) => this.variantRow(r, base, j, groupRows.length)).join('')}</tbody>
@@ -1211,8 +1211,8 @@ const Catalogue = {
     }).join('');
     return `<h3 class="cp-var-title">${g.title}
         <button class="btn-icon" title="Supprimer tout ce groupe (${groupRows.length} ligne${groupRows.length > 1 ? 's' : ''})" onclick="Catalogue.removeVarGroup('size')">🗑️</button>
-        <button class="btn-icon" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()" style="font-size:.75rem;width:auto;padding:0 8px;">🔄 SKU</button>
-        <button class="btn-icon" title="Ajouter une taille (rangée automatiquement : XS en haut, XXL en bas)" onclick="Catalogue.addOne('size')" style="font-size:.75rem;width:auto;padding:0 8px;">＋ Ajouter</button></h3>
+        <button class="btn-ghost btn-sm" title="Vérifier / mettre à jour les SKU de cette fiche" onclick="Catalogue.checkSkus()">🔄 SKU</button>
+        <button class="btn-cta btn-sm" title="Ajouter une taille (rangée automatiquement : XS en haut, XXL en bas)" onclick="Catalogue.addOne('size')" style="margin-left:10px;">＋ Ajouter</button></h3>
       <div class="table-wrap"><table class="cp-var-table cp-size-table">
         <thead><tr><th></th>${th('Taille', 'sz-name')}${th('Prix d\'achat HT')}${kilo ? th('Poids (g)') : ''}${th('Sachet / Blister', '')}${th('SKU', '')}${th('Coût revient')}${th('Coeff', 'ctr')}${th('Prix vente HT')}${th('Marge')}${th('Cotisations URSSAF')}${th('Bénéfice')}${th('dont TVA ' + (S.vatActive ? '(reversée)' : '(conservée)'))}${th('Prix vente TTC')}<th></th></tr></thead>
         <tbody>${rows}</tbody>
