@@ -714,12 +714,12 @@ const Woo = {
     const lines = this._sumup.rawText.slice();
     const sameCount = lines.length === raw.length;
     const { iPrice, iQty, iSku } = this._sumup.cols;
-    const touched = new Set();
+    const touched = new Set(), zeroSkipS = [];
     chosen.forEach(m => {
       const row = raw[m.ri]; if (!row) return;
       if (m.link && iSku >= 0) row[iSku] = m.sku;   // ligne reliée : SumUp reçoit le SKU de l'appli (prioritaire)
       if (this.sumupExpQty) row[iQty] = String(Math.round(U.num(m.appQty)));
-      if (this.sumupExpPrice) row[iPrice] = U.num(m.appPrice).toFixed(2);
+      if (this.sumupExpPrice) { if (U.num(m.appPrice) > 0) row[iPrice] = U.num(m.appPrice).toFixed(2); else zeroSkipS.push(m); }   // prix à 0,00 : on laisse le prix SumUp tel quel
       touched.add(m.ri);
     });
     // Le fichier ne contient QUE les articles choisis (en-tête + la ligne de chaque article touché avec toutes ses variantes, qui sont recopiées telles quelles) — comme l'export du site :
@@ -736,6 +736,7 @@ const Woo = {
     const out = idx.map(i => touched.has(i) || !sameCount ? raw[i].map(f => this._csvField(f)).join(',') : lines[i]);
     const text = out.join('\n') + '\n';
     U.download('sumup-import-' + U.today() + '.csv', text, 'text/csv;charset=utf-8');
+    if (zeroSkipS.length) U.alert(zeroSkipS.length + " article(s) ont un prix à 0,00 dans l'appli : leur prix SumUp n'a PAS été modifié (" + zeroSkipS.slice(0, 10).map(m => m.appName || m.name).join(', ') + '). Relie-les à leur fiche de calcul de prix.', '🛡️ Prix à 0,00 ignorés');
     // SKU qui resteraient en double dans SumUp : une ligne NON reliée porte encore le SKU qu'une ligne reliée va recevoir
     const taking = new Set(chosen.filter(m => m.link).map(m => m.sku.toUpperCase())), dups = r.unknown.filter(l => l.taken && taking.has(l.sku.toUpperCase()));
     U.alert(`Fichier généré : ${chosen.length} article(s) mis à jour (${changes} avec une vraie différence)${nLinked ? `, dont ${nLinked} avec SKU corrigé` : ''}${untracked ? `, dont ${untracked} sans suivi de stock dans SumUp — leur quantité n'aura aucun effet tant que le suivi n'est pas activé` : ''}.${dups.length ? `\n\n⚠️ ${dups.length} ligne(s) SumUp gardent un SKU qu'un autre article va recevoir (${dups.slice(0, 3).map(l => l.sku).join(', ')}${dups.length > 3 ? '…' : ''}) : relie-les aussi, sinon SumUp aura ces SKU en double.` : ''}\n\nLe fichier ne contient que ${nItems} article${nItems > 1 ? 's' : ''} de ta bibliothèque SumUp (avec leurs variantes) : SumUp annoncera « ${nItems} article${nItems > 1 ? 's' : ''} importé${nItems > 1 ? 's' : ''} ». Les autres ne sont pas touchés.\n\nDans SumUp : Articles → Importer → choisis ce fichier. Garde ton export d'origine (${this._sumup.file}) : c'est ta sauvegarde si le résultat ne te convient pas.`, '📥 Fichier d\'import SumUp');
@@ -1459,7 +1460,11 @@ const Woo = {
     const selCount = this._selCount(inScope);
     const chosen = selCount > 0 ? inScope.filter(l => this._sel[l.sku]) : inScope;
     let linked = chosen.filter(l => !this._isExcluded(l.sku));
+    // SÉCURITÉ PRIX À 0 : un prix à 0,00 (fiche prix pas reliée) écraserait le vrai prix du site → ces lignes ne partent PAS dans le fichier.
+    const zeroSkip = this.includePrice ? linked.filter(l => !(U.num(l.price) > 0)) : [];
+    if (zeroSkip.length) linked = linked.filter(l => U.num(l.price) > 0);
     if (!linked.length) {
+      if (zeroSkip.length) { U.alert('Aucune ligne exportée : ' + zeroSkip.length + ' produit(s) ont un prix à 0,00 (' + zeroSkip.slice(0, 8).map(l => l.name + (l.variant ? ' ' + l.variant : '')).join(', ') + '). Relie-les à leur fiche de calcul de prix, puis relance l’export.', '🛡️ Export bloqué : prix à 0,00'); return; }
       U.toast(selCount > 0 ? 'Aucun produit sélectionné à exporter (exclus du site ?).' : 'Aucun produit à exporter (tous sans SKU ou exclus).', true);
       return;
     }
@@ -1508,6 +1513,7 @@ const Woo = {
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     const fname = `woocommerce-touffu-${U.today()}.csv`;
     U.download(fname, '﻿' + csv, 'text/csv');
+    if (zeroSkip.length) U.alert(zeroSkip.length + ' ligne(s) NON exportée(s) car leur prix est à 0,00 : ' + zeroSkip.slice(0, 12).map(l => l.name + (l.variant ? ' ' + l.variant : '')).join(', ') + (zeroSkip.length > 12 ? '…' : '') + '. Sur le site, leur prix actuel reste inchangé. Relie-les à leur fiche de calcul de prix pour les exporter.', '🛡️ Prix à 0,00 ignorés');
     U.toast(`CSV WooCommerce exporté : ${linked.length} produit(s)${selCount > 0 ? ' (sélection)' : ''}.${ids ? ' Les fiches reliées reçoivent aussi leur nouvel UGS.' : ''}${skipped ? ` ${skipped} produit(s) absent(s) du site non exporté(s) (ils créeraient des produits vides).` : ''}${blocked ? ` ⚠️ ${blocked} UGS sont encore portés par une autre fiche du site absente de l'export : coche aussi cette fiche, sinon WooCommerce refusera la ligne.` : ''}`);
     // Produits à contrôler sur le site après l'import : tous si ≤ 3, sinon 3 au hasard
     const pool = linked.slice(), pick = [];
