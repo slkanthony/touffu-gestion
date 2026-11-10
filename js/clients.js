@@ -19,6 +19,7 @@ const Clients = {
      les onchange / oninput existants des champs font le reste. Le nom tapé librement (nouveau client) reste accepté. */
   _cb: null,
   _cbRows(q, mode) {
+    if (mode === 'opt:varnames') return Stock.knownVariantNames().filter(x => !q || U.has(x, q)).map(x => ({ show: x, dogs: [] }));   // noms de variante déjà utilisés (Stock + fiches prix + réglages)
     if (mode.startsWith('opt:')) return ((mode === 'opt:lens' ? Accessoires.optLengths(Accessoires._optA) : Accessoires.optChoices()[mode.slice(4)]) || []).filter(x => !q || U.has(x, q)).map(x => ({ show: x, dogs: [] }));   // détails d'accessoire : couleurs / mousquetons / finitions des Matières premières
     if (mode === 'codes') {   // codes des partenaires : on montre la réduction du client, jamais le % reversé au partenaire
       if (this.ro()) return [];

@@ -62,7 +62,8 @@ const Paniers = {
       odeur: pt.odeur || '',
       gras: pt.gras || '',
       age: (vt.age && vt.age.length) ? vt.age : (pt.age || []),
-      gabarit: (vt.gabarit && vt.gabarit.length) ? vt.gabarit : (pt.gabarit || [])
+      gabarit: (vt.gabarit && vt.gabarit.length) ? vt.gabarit : (pt.gabarit || []),
+      species: (vt.species && vt.species.length) ? vt.species : (pt.species || [])
     };
   },
 
@@ -170,6 +171,7 @@ const Paniers = {
         if (this.grasInclude.length && tags.gras && !this.grasInclude.includes(tags.gras)) return;
         if (this.ageInclude.length && tags.age.length > 0 && !tags.age.some(a => this.ageInclude.includes(a))) return;
         if (this.gabaritInclude.length && tags.gabarit.length > 0 && !tags.gabarit.some(g => this.gabaritInclude.includes(g))) return;
+        if (tags.species && tags.species.length && !tags.species.includes('chien')) return;   // produit réservé aux chats : jamais dans un panier pour chiens
         let suits = null;
         if (pd) { suits = pd.filter(d => this._dogSuits(d, p, pTags, tags)); if (!suits.length) return; }
 

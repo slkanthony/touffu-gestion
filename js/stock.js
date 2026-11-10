@@ -140,6 +140,17 @@ const Stock = {
     };
   },
 
+  /* Tous les noms de variante déjà en usage (Stock, fiches prix, réglages), sans doublon de casse : sert aux suggestions du champ « Nom de la variante ». */
+  knownVariantNames() {
+    const seen = new Map(), add = x => { x = String(x || '').trim(); if (!x) return; const k = x.toLowerCase(); if (!seen.has(k)) seen.set(k, x); };
+    Store.state.stockM.forEach(p => p.variants.forEach(v => add(Pricing.labelVariant(v))));
+    Store.state.catalogM.forEach(c => (c.variants || []).forEach(v => add(Pricing.labelVariant(v))));
+    const vp = Store.state.settings.variantPresets || {};
+    (vp.gram || []).forEach(g => add(Pricing.labelVariant({ mode: 'gram', value: g })));
+    (vp.piece || []).forEach(n => add(isNaN(Number(n)) ? n : Pricing.labelVariant({ mode: 'piece', value: n })));
+    (vp.size || []).forEach(add);
+    return [...seen.values()].sort(U.sortFr);
+  },
   allVariantLabels() {
     return [...new Set(Store.state.stockM.flatMap(p => p.variants.map(v => Pricing.labelVariant(v))).filter(Boolean))].sort(U.sortFr);
   },
@@ -679,7 +690,7 @@ const Stock = {
     U.modal({
       title:'✏️ Modifier variante — '+U.esc(p.name), okLabel:'Enregistrer',
       body:`<div class="frow">
-        <div class="fg"><label>Nom de la variante</label><input id="ev_label" value="${U.esc(Pricing.labelVariant(v))}" placeholder="ex: 25CM, 100G, LOT 2…"></div>
+        <div class="fg"><label>Nom de la variante</label><input id="ev_label" value="${U.esc(Pricing.labelVariant(v))}" placeholder="ex: 25CM, 100G, LOT 2…" data-clcombo="opt:varnames" autocomplete="off"></div>
         <div class="fg"><label>SKU WooCommerce</label><input id="ev_sku" value="${U.esc(v.sku||'')}"></div>
       </div>
       ${v.mode==='vrac' ? '' : `<div class="frow">
@@ -708,6 +719,8 @@ const Stock = {
         <p class="muted help" style="font-size:.78rem;margin-top:4px;">Associe cette variante à sa propre fiche du calcul de prix — chaque variante peut pointer vers une fiche différente.</p>
       </div>
       </div>
+      <div class="fg" id="ev_species" style="margin-top:10px;"><label>Espèce <span class="muted help">Chien / Chat : coche ce qui convient à cette variante. Vide = hérite du produit (tout). Un produit coché « Chat » seul n'est jamais proposé dans les paniers pour chiens.</span></label>
+        <div style="display:flex;gap:18px;margin-top:4px;">${[['chien','🐕 Chien'],['chat','🐈 Chat']].map(([k, lb]) => `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" value="${k}" ${((v.tags || {}).species || []).includes(k) ? 'checked' : ''}> ${lb}</label>`).join('')}</div></div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
       <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
         ${[['Poil', {avec:'Avec poil', sans:'Sans poil', les_deux:'Avec ou sans'}[pt.poil] || ''], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
@@ -810,6 +823,8 @@ const Stock = {
         } else {
           delete v.tags;
         }
+        { const evSp = [...document.querySelectorAll('#ev_species input:checked')].map(c => c.value);
+          if (evSp.length) { v.tags = v.tags || {}; v.tags.species = evSp; } else if (v.tags) { delete v.tags.species; if (!Object.keys(v.tags).length) delete v.tags; } }
         // Les déclinaisons de cette taille suivent son (nouveau) lien.
         Stock.childrenOf(p, v).forEach(c => { if (Stock.resolveChild(p, c).catChanged) catSkuChanged = true; });
         const entry=Store.commitSnapshot(snap,'stock','Variante modifiée — '+p.name+' ('+Pricing.labelVariant(v)+')');
@@ -1098,6 +1113,10 @@ const Stock = {
           }).join('')}
           </div>
         </div>
+        <div class="fg"><label>Espèce</label>
+          <div id="sp_species" style="display:flex;gap:18px;margin-top:4px;">${[['chien','🐕 Chien'],['chat','🐈 Chat']].map(([k, lb]) => `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" value="${k}" ${((p.tags || {}).species || []).includes(k) ? 'checked' : ''}> ${lb}</label>`).join('')}</div>
+          <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = tous. « Chat » seul : jamais proposé dans les paniers pour chiens.</p>
+        </div>
         <div class="fg"><label>Gabarit</label>
           <div id="sp_gabarit" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;justify-content:center;">
           ${['petit','moyen','grand'].map(g => {
@@ -1159,7 +1178,8 @@ const Stock = {
         const ageVal = ageEl ? [...ageEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
         const gabaritEl = document.getElementById('sp_gabarit');
         const gabaritVal = gabaritEl ? [...gabaritEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
-        p.tags = { poil: poilVal, hypo: hypoVal, resistance: resistanceVal, type: typeVal, odeur: odeurVal, gras: grasVal, age: ageVal, gabarit: gabaritVal };
+        const speciesVal = [...document.querySelectorAll('#sp_species input:checked')].map(c => c.value);
+        p.tags = { poil: poilVal, hypo: hypoVal, resistance: resistanceVal, type: typeVal, odeur: odeurVal, gras: grasVal, age: ageVal, gabarit: gabaritVal, species: speciesVal };
         if(!id) Store.state.stockM.push(p);
         if(cat) this.syncPricesFromCatalog(cat.id);
         const entry = Store.log('stock',(id?'Produit modifié':'Produit créé')+' — '+p.name,
