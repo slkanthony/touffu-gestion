@@ -140,6 +140,11 @@ const Stock = {
     };
   },
 
+  /* Pastilles à cocher arrondies (âge, espèce, gabarit) : mêmes cases à cocher qu'avant (lues par `input:checked`), seule la présentation change. */
+  chipsHTML(id, items, selected) {
+    const sel = selected || [];
+    return `<div id="${id}" class="chk-chips">${items.map(([k, lb]) => `<label class="chk-chip"><input type="checkbox" value="${k}" ${sel.includes(k) ? 'checked' : ''}><span>${lb}</span></label>`).join('')}</div>`;
+  },
   /* Tous les noms de variante déjà en usage (Stock, fiches prix, réglages), sans doublon de casse : sert aux suggestions du champ « Nom de la variante ». */
   knownVariantNames() {
     const seen = new Map(), add = x => { x = String(x || '').trim(); if (!x) return; const k = x.toLowerCase(); if (!seen.has(k)) seen.set(k, x); };
@@ -720,7 +725,7 @@ const Stock = {
       </div>
       </div>
       <div class="fg" id="ev_species" style="margin-top:10px;"><label>Espèce <span class="muted help">Chien / Chat : coche ce qui convient à cette variante. Vide = hérite du produit (tout). Un produit coché « Chat » seul n'est jamais proposé dans les paniers pour chiens.</span></label>
-        <div style="display:flex;gap:18px;margin-top:4px;">${[['chien','🐕 Chien'],['chat','🐈 Chat']].map(([k, lb]) => `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" value="${k}" ${((v.tags || {}).species || []).includes(k) ? 'checked' : ''}> ${lb}</label>`).join('')}</div></div>
+        ${Stock.chipsHTML('ev_species_chips', [['chien','🐕 Chien'],['chat','🐈 Chat']], (v.tags||{}).species)}</div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
       <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
         ${[['Poil', {avec:'Avec poil', sans:'Sans poil', les_deux:'Avec ou sans'}[pt.poil] || ''], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
@@ -728,23 +733,11 @@ const Stock = {
       <p class="muted" style="font-size:.78rem;margin:10px 0 8px;">Propres à cette taille — vide = hérite du produit</p>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Âge</label>
-          <div id="ev_age" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;justify-content:center;">
-          ${['0-3','3-5','6-10','11+','senior'].map(a => {
-            const chk = ((v.tags||{}).age||[]).includes(a) ? 'checked' : '';
-            const lb = a==='11+'?'11 mois +':a==='senior'?'Sénior':a+' mois';
-            return '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:.88rem;"><input type="checkbox" value="'+a+'" '+chk+'> '+lb+'</label>';
-          }).join('')}
-          </div>
+          ${Stock.chipsHTML('ev_age', [['0-3','0-3 mois'],['3-5','3-5 mois'],['6-10','6-10 mois'],['11+','11 mois +'],['senior','Sénior']], (v.tags||{}).age)}
           <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = hérite du produit${_aLb?' ('+_aLb+')':''}</p>
         </div>
         <div class="fg"><label>Gabarit</label>
-          <div id="ev_gabarit" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;justify-content:center;">
-          ${['petit','moyen','grand'].map(g => {
-            const chk = ((v.tags||{}).gabarit||[]).includes(g) ? 'checked' : '';
-            const lb = g==='petit'?'Petit':g==='moyen'?'Moyen':'Grand';
-            return '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:.88rem;"><input type="checkbox" value="'+g+'" '+chk+'> '+lb+'</label>';
-          }).join('')}
-          </div>
+          ${Stock.chipsHTML('ev_gabarit', [['petit','Petit'],['moyen','Moyen'],['grand','Grand']], (v.tags||{}).gabarit)}
           <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = hérite du produit${_gLb?' ('+_gLb+')':''}</p>
         </div>
       </div></div>` : ''}`,
@@ -1105,26 +1098,14 @@ const Stock = {
       </div>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Âge</label>
-          <div id="sp_age" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;justify-content:center;">
-          ${['0-3','3-5','6-10','11+','senior'].map(a => {
-            const chk = ((p.tags||{}).age||[]).includes(a) ? 'checked' : '';
-            const lb = a==='11+'?'11 mois +':a==='senior'?'Sénior':a+' mois';
-            return '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:.88rem;"><input type="checkbox" value="'+a+'" '+chk+'> '+lb+'</label>';
-          }).join('')}
-          </div>
+          ${Stock.chipsHTML('sp_age', [['0-3','0-3 mois'],['3-5','3-5 mois'],['6-10','6-10 mois'],['11+','11 mois +'],['senior','Sénior']], (p.tags||{}).age)}
         </div>
         <div class="fg"><label>Espèce</label>
-          <div id="sp_species" style="display:flex;gap:18px;margin-top:4px;">${[['chien','🐕 Chien'],['chat','🐈 Chat']].map(([k, lb]) => `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" value="${k}" ${((p.tags || {}).species || []).includes(k) ? 'checked' : ''}> ${lb}</label>`).join('')}</div>
+          ${Stock.chipsHTML('sp_species', [['chien','🐕 Chien'],['chat','🐈 Chat']], (p.tags||{}).species)}
           <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = tous. « Chat » seul : jamais proposé dans les paniers pour chiens.</p>
         </div>
         <div class="fg"><label>Gabarit</label>
-          <div id="sp_gabarit" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;justify-content:center;">
-          ${['petit','moyen','grand'].map(g => {
-            const chk = ((p.tags||{}).gabarit||[]).includes(g) ? 'checked' : '';
-            const lb = g==='petit'?'Petit':g==='moyen'?'Moyen':'Grand';
-            return '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:.88rem;"><input type="checkbox" value="'+g+'" '+chk+'> '+lb+'</label>';
-          }).join('')}
-          </div>
+          ${Stock.chipsHTML('sp_gabarit', [['petit','Petit'],['moyen','Moyen'],['grand','Grand']], (p.tags||{}).gabarit)}
         </div>
       </div>`,
       onOk:()=>{

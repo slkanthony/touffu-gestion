@@ -1767,3 +1767,13 @@ tr.wgrp td[colspan] { text-align: left; }
 .ck-row.ok .ck-box { background: var(--ok); border-color: var(--ok); color: #fff; }
 .ck-row.ok .ck-name { text-decoration: line-through; }
 @media (max-width: 720px) { .ck-main { gap: 8px; } .ck-qty { min-width: 0; } .ck-lot { padding-left: 6px; } }
+
+/* Pastilles à cocher arrondies (âge, espèce, gabarit des variantes / produits) */
+.chk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px !important; align-content: flex-start; }
+.chk-chip { position: relative; cursor: pointer; display: inline-block; text-transform: none; letter-spacing: 0; margin: 0; }
+.chk-chip input { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+.chk-chip span { display: inline-block; padding: 5px 12px; border-radius: 16px; font-size: 0.78rem; font-weight: 600; text-transform: none; letter-spacing: 0;
+  color: var(--texte, inherit); background: rgba(166, 113, 83, 0.10); border: 1px solid rgba(166, 113, 83, 0.35); transition: background .15s, border-color .15s; white-space: nowrap; }
+.chk-chip:hover span { border-color: var(--caramel); }
+.chk-chip input:checked + span { background: var(--caramel); border-color: var(--caramel); color: #fff; }
+.chk-chip input:focus-visible + span { outline: 2px solid var(--caramel); outline-offset: 2px; }
