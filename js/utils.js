@@ -931,6 +931,7 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('modalBg') || document.getElementById('askBg')) return;
   if (typeof Store === 'undefined' || !Store.state || typeof Params === 'undefined') return;
   e.preventDefault();
+  if (k === 'z' && !e.shiftKey && typeof Catalogue !== 'undefined' && Catalogue.undoDraft && Catalogue.undoDraft()) return;   // dans l'éditeur d'une fiche prix : annule d'abord le brouillon
   if (k === 'y' || e.shiftKey) Params.redo(); else Params.undoLast();
 });
 

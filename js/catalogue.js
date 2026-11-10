@@ -745,7 +745,8 @@ const Catalogue = {
         this.mode = 'list'; this.editId = null; this._loadedKey = null;
         return;
       }
-      this._d = JSON.parse(JSON.stringify(found));
+      this._d = JSON.parse(JSON.stringify(found)); this._ul = [];
+      ['size', 'gram', 'piece'].forEach(m => this._sortGroup(m));   // tailles XS→XXL, poids et lots croissants
       if (!App.isTeam && !App.isViewer) setTimeout(() => { try { this.autoFillSkus(undefined, true); if (this._skuPlan().length) this.checkSkus('open'); } catch (e) { console.error(e); } }, 400);
       return;
     }
@@ -1265,6 +1266,12 @@ const Catalogue = {
      retrouve les indices du même mode puis on échange à leurs vraies
      positions, sans dépendre de leur contiguïté dans le tableau. */
   /* Range les lignes d'un groupe : tailles XXS…5XL (U.sortFr), poids et lots par ordre croissant. Les autres groupes ne bougent pas. */
+  /* Annulation (Ctrl+Z) DANS l'éditeur de fiche : le brouillon n'étant pas enregistré, le journal général ne le connaît pas. */
+  _pushUndo() { (this._ul = this._ul || []).push(JSON.stringify(this._d.variants)); if (this._ul.length > 25) this._ul.shift(); },
+  undoDraft() {
+    if (!this._d || !this._ul || !this._ul.length || !document.getElementById('cp_vars')) return false;
+    this._d.variants = JSON.parse(this._ul.pop()); this.drawVars(); U.toast('Dernière modification de la fiche annulée (Ctrl+Z).'); return true;
+  },
   _sortGroup(mode) {
     const vs = this._d.variants, idx = vs.reduce((a, v, i) => { if (v.mode === mode) a.push(i); return a; }, []);
     const rows = idx.map(i => vs[i]);
@@ -1288,10 +1295,12 @@ const Catalogue = {
       if (vs.some(v => v.mode === mode && Number(v.value) === n)) { U.toast('Cette ligne existe déjà.', true); return; }
       nv = { mode, value: n, label: '' };
     }
+    this._pushUndo();
     vs.push(Object.assign({ id: U.uid(), sachetId: '0', coeff: '', priceTTCManual: '', sku: '', enabled: true }, nv));
     this._sortGroup(mode); this.autoFillSkus(mode); this.drawVars();
   },
   moveVar(i, dir) {
+    this._pushUndo();
     const variants = this._d.variants;
     const mode = variants[i].mode;
     const groupIdx = variants.reduce((acc, v, idx) => { if (v.mode === mode) acc.push(idx); return acc; }, []);
@@ -1309,6 +1318,7 @@ const Catalogue = {
     const label = { gram: 'les poids', piece: 'les lots (pièces)', size: 'les tailles' }[mode] || mode;
     const n = (this._d.variants || []).filter(v => v.mode === mode).length;
     if (!await U.confirm(`Supprimer ${label} (${n} ligne${n > 1 ? 's' : ''}) de ce produit ?`)) return;
+    this._pushUndo();
     this._d.variants = this._d.variants.filter(v => v.mode !== mode);
     this.drawVars();
   },
@@ -1454,19 +1464,30 @@ const Catalogue = {
     U.modal({
       title: '🔄 Mettre à jour les SKU', okLabel: 'Mettre à jour',
       body: `<p class="muted" style="margin:0 0 8px;">${auto === 'open' ? '⚠️ ' : auto ? 'Le nom / la viande a changé : ' : ''}${plan.length} SKU ne correspond${plan.length > 1 ? 'ent' : ''} pas au produit. Les SKU sont liés au site et à SumUp : vérifie avant de valider.</p>
-        <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${this._skuExists(x.to) ? ' <span class="badge warn" title="Déjà utilisé ailleurs">⚠ déjà pris</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`,
-      onOk: () => { plan.forEach(x => { x.v.sku = x.to; }); U.closeModal(); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
+        <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${(() => { const o = this._skuOwner(x.to); return o ? ` <a class="badge warn" href="${o.href}" target="_blank" style="text-decoration:none;" title="Ouvrir (nouvel onglet)">⚠ déjà pris par ${U.esc(o.label)}</a>` : ''; })()}</td></tr>`).join('')}</tbody></table></div>`,
+      onOk: () => { this._pushUndo(); plan.forEach(x => { x.v.sku = x.to; }); U.closeModal(); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
     });
   },
 
   /* Un SKU est-il déjà pris par une AUTRE fiche (Stock, ou une autre fiche Catalogue) ?
      Utilisé pour alerter (pas bloquer) quand autoFillSkus() génère un SKU en doublon. */
-  _skuExists(sku) {
+  /* Qui porte déjà ce SKU ? Renvoie {label, href} ou null. Le produit du Stock relié à CETTE fiche n'est pas un conflit (c'est son jumeau). */
+  _skuOwner(sku) {
     const target = String(sku).trim().toLowerCase();
-    if (!target) return false;
-    if (Store.state.stockM.some(p => (p.variants || []).some(v => (v.sku || '').trim().toLowerCase() === target))) return true;
-    return Store.state.catalogM.some(p => p.id !== this.editId && (p.variants || []).some(v => (v.sku || '').trim().toLowerCase() === target));
+    if (!target) return null;
+    const same = v => (v.sku || '').trim().toLowerCase() === target;
+    for (const p of Store.state.stockM) {
+      const v = (p.variants || []).find(same); if (!v) continue;
+      if (this.editId && (p.catalogId === this.editId || v.catalogId === this.editId)) continue;
+      return { label: `Stock : ${p.name} › ${Pricing.labelVariant(v)}`, href: '#/stock/mastication/' + p.id };
+    }
+    for (const p of Store.state.catalogM) {
+      if (p.id === this.editId) continue;
+      const v = (p.variants || []).find(same); if (v) return { label: `Fiche prix : ${p.name} › ${Pricing.labelVariant(v)}`, href: '#/catalogue/edit/' + p.id };
+    }
+    return null;
   },
+  _skuExists(sku) { return !!this._skuOwner(sku); },
 
   save() {
     if (App.isTeam) return this._saveTeam();
