@@ -728,7 +728,7 @@ const Stock = {
         ${Stock.chipsHTML('ev_species_chips', [['chien','🐕 Chien'],['chat','🐈 Chat']], (v.tags||{}).species)}</div>
       ${(v.mode === 'size' || _kids.length || _parOpts.length) ? `<div id="ev_tags_block" style="${_parSel?'display:none;':''}"><hr class="sep">
       <div class="tags-inherited"><span class="muted">🔒 Hérités du produit (identiques pour toutes les tailles) :</span>
-        ${[['Poil', {avec:'Avec poil', sans:'Sans poil'}[pt.poil] || ''], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
+        ${[['Poil', pt.poil === 'avec' ? 'Avec poil' : 'Sans poil'], ['Hypoallergénique', (pt.hypo === 'oui' || pt.hypo === true) ? 'Oui' : pt.hypo === 'non' ? 'Non' : ''], ['Résistance', _rLb], ['Type', _tLb], ['Odeur', _oLb], ['Gras', _grLb]].map(([k, val]) => `<span class="tag-inh${val ? '' : ' empty'}">${k} : <b>${val ? U.esc(val) : 'non renseigné'}</b></span>`).join(' ')}
         <p class="muted" style="font-size:.74rem;margin:4px 0 0;">À modifier dans « ✏️ Modifier le produit ».</p></div>
       <p class="muted" style="font-size:.78rem;margin:10px 0 8px;">Propres à cette taille — vide = hérite du produit</p>
       <div class="frow" style="gap:12px;">
@@ -1056,11 +1056,7 @@ const Stock = {
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien site Touffu (optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
-        <div class="fg"><label>Poil</label><select id="sp_poil">
-          <option value="" ${!(p.tags||{}).poil?'selected':''}>— non renseigné —</option>
-          <option value="avec" ${(p.tags||{}).poil==='avec'?'selected':''}>Avec poil</option>
-          <option value="sans" ${(p.tags||{}).poil==='sans'?'selected':''}>Sans poil</option>
-        </select></div>
+        <div class="fg"><label>Poil</label>${Stock.chipsHTML('sp_poil', [['avec','Avec poil']], (p.tags||{}).poil === 'avec' ? ['avec'] : [])}<p class="muted" style="font-size:.72rem;margin-top:2px;">Non coché = sans poil.</p></div>
         <div class="fg"><label>Hypoallergénique</label><select id="sp_hypo">
           <option value="" ${!(p.tags||{}).hypo?'selected':''}>— non renseigné —</option>
           <option value="oui" ${(p.tags||{}).hypo==='oui'||(p.tags||{}).hypo===true?'selected':''}>Oui</option>
@@ -1148,7 +1144,7 @@ const Stock = {
         p.name=stockName||cat?.name||'Sans nom';
         p.meatType=U.val('sp_meat')||cat?.meatType||'';
         p.url=U.val('sp_url').trim();
-        const poilVal = U.val('sp_poil');
+        const poilVal = document.querySelector('#sp_poil input:checked') ? 'avec' : 'sans';
         const hypoVal = U.val('sp_hypo');
         const resistanceVal = U.val('sp_resistance');
         const typeVal = U.val('sp_type');

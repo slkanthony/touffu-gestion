@@ -149,7 +149,7 @@ const Paniers = {
 
       const pTags = p.tags || {};
       if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return;
-      if (this.poilFilter === 'sans' && pTags.poil !== 'sans' && pTags.poil !== 'les_deux') return;
+      if (this.poilFilter === 'sans' && pTags.poil === 'avec') return;
       if (this.hypoOnly && !pTags.hypo) return;
       if (cl) {
         if (Clients.conflictsFor(cl.dogs, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
