@@ -1781,3 +1781,8 @@ tr.wgrp td[colspan] { text-align: left; }
 /* Intitulés des champs dans les fenêtres : en caramel pour mieux ressortir */
 .modal label, .modal-box label, .modal-body label { color: var(--caramel-2, var(--caramel)); font-weight: 600; }
 .chk-chip { color: inherit; font-weight: inherit; }
+
+/* Panneau de filtres par pastilles (Stock) */
+.tagfilter-panel { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: flex-start; }
+.tagfilter-grp { min-width: 140px; }
+.tagfilter-grp .chk-chips { margin-top: 4px !important; }

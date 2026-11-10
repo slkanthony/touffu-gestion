@@ -14,7 +14,7 @@ const Stock = {
   focusId: null,  // id produit à ouvrir/scroller automatiquement (lien profond depuis un autre onglet)
   SIZE_ORDER: ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'],
 
-  filters: { q: '', meat: 'all', variants: [], dluo: 'all', variantsOpen: false, sort: 'meat', sortDir: 'asc' },
+  filters: { q: '', meat: 'all', variants: [], dluo: 'all', tags: {}, tagsOpen: false, variantsOpen: false, sort: 'meat', sortDir: 'asc' },
   _allVariantsCache: [],
   _lotsOpen: {},   // vId -> true/false, remplace le défaut auto (ouvert si alerte DLUO)
   _prodOpen: {},   // pId -> true/false, mémorise les fiches produit dépliées entre deux re-rendus
@@ -140,6 +140,56 @@ const Stock = {
     };
   },
 
+  /* ---- Filtre par pastilles (poil, hypo, espèce, type, résistance, odeur, gras, âge, gabarit) ---- */
+  tagGroups() {
+    return [
+      { k: 'poil', l: 'Poil', o: [['avec', 'Avec poil'], ['sans', 'Sans poil']] },
+      { k: 'hypo', l: 'Hypoallergénique', o: [['oui', 'Oui'], ['non', 'Non']] },
+      { k: 'species', l: 'Espèce', o: [['chien', '🐕 Chien'], ['chat', '🐈 Chat']] },
+      { k: 'type', l: 'Type', o: Store.productTypes().map(t => [t.value, t.label]) },
+      { k: 'resistance', l: 'Résistance', o: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte'], ['tres-forte', 'Très forte']] },
+      { k: 'odeur', l: 'Odeur', o: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte']] },
+      { k: 'gras', l: 'Gras', o: [['non', 'Non gras'], ['peu', 'Peu gras'], ['moyen', 'Moyennement gras']] },
+      { k: 'age', l: 'Âge', o: [['0-3', '0-3 mois'], ['3-5', '3-5 mois'], ['6-10', '6-10 mois'], ['11+', '11 mois +'], ['senior', 'Sénior']] },
+      { k: 'gabarit', l: 'Gabarit', o: [['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']] }
+    ];
+  },
+  tagFilterCount() { return Object.values(this.filters.tags || {}).reduce((a, x) => a + (x ? x.length : 0), 0); },
+  toggleTagFilter(k, val) {
+    const t = this.filters.tags = this.filters.tags || {}; const a = t[k] = t[k] || [];
+    const i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val);
+    this.renderM();
+  },
+  clearTagFilters() { this.filters.tags = {}; this.renderM(); },
+  toggleTagsPanel() { this.filters.tagsOpen = !this.filters.tagsOpen; this.renderM(); },
+  /* Un produit passe si, pour chaque groupe filtré, au moins une des pastilles choisies lui correspond. */
+  matchTags(p) {
+    const t = this.filters.tags || {};
+    return Object.keys(t).every(k => {
+      const sel = t[k]; if (!sel || !sel.length) return true;
+      const pt = p.tags || {};
+      if (k === 'poil') return sel.includes(this.poilOf(p) === 'avec' ? 'avec' : 'sans');
+      if (k === 'hypo') return sel.includes(this.hypoOf(p) === 'oui' ? 'oui' : 'non');
+      if (k === 'species') return this.speciesOf(p).some(x => sel.includes(x))
+        || p.variants.some(v => ((v.tags || {}).species || []).some(x => sel.includes(x)));
+      if (k === 'type') return sel.includes(pt.type || 'occupation');
+      if (k === 'age' || k === 'gabarit') {
+        const own = pt[k] || [];
+        const vs = p.variants.map(v => (v.tags || {})[k] || []);
+        if (!own.length && !vs.some(a => a.length)) return true;   // rien de précisé = pour tous
+        return own.some(x => sel.includes(x)) || vs.some(a => a.some(x => sel.includes(x)));
+      }
+      return sel.includes(pt[k] || '');
+    });
+  },
+  tagFilterHTML() {
+    const f = this.filters, n = this.tagFilterCount();
+    const btn = `<button class="btn-ghost btn-sm" style="flex:none;width:auto;" onclick="Stock.toggleTagsPanel()">🎚️ Filtres${n ? ' (' + n + ')' : ''} ${f.tagsOpen ? '▲' : '▼'}</button>`;
+    if (!f.tagsOpen) return btn;
+    const panel = `<div class="tagfilter-panel">${this.tagGroups().map(g => `<div class="tagfilter-grp"><label>${g.l}</label><div class="chk-chips">${g.o.map(([val, lb]) => `<label class="chk-chip"><input type="checkbox" ${((f.tags || {})[g.k] || []).includes(val) ? 'checked' : ''} onchange="Stock.toggleTagFilter('${g.k}','${val}')"><span>${lb}</span></label>`).join('')}</div></div>`).join('')}
+      ${n ? `<div class="tagfilter-grp"><button class="btn-ghost btn-sm" onclick="Stock.clearTagFilters()">✖ Tout effacer</button></div>` : ''}</div>`;
+    return { btn, panel };
+  },
   /* Hypoallergénique par défaut (lapin, agneau, cheval, cerf) tant que la fiche produit n'a rien de renseigné. */
   hypoDefault(meat) { const m = String(meat || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /(?:^|[^a-z])(lapin|agneau|cheval|cerf)(?![a-z])/.test(m) ? 'oui' : ''; },
   /* Poil : celui de la fiche ; tant qu'elle n'a rien d'enregistré, « avec poil(s) » dans le nom suffit. */
@@ -240,6 +290,7 @@ const Stock = {
       if (fixed) Store.save('stockM'); }
     const list = Store.state.stockM.filter(p => {
       if (f.q && !U.has(p.name, f.q)) return false;
+      if (!this.matchTags(p)) return false;
       if (f.meat !== 'all' && (p.meatType || '').toLowerCase() !== f.meat.toLowerCase()) return false;
       if (f.variants.length && !p.variants.some(v => f.variants.includes(Pricing.labelVariant(v)))) return false;
       if (f.dluo === 'expired' && this._hideExpired()) return true;
@@ -279,10 +330,12 @@ const Stock = {
         </div>
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="Stock.editProduct()">＋ Nouveau produit</button>
+          ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? t : t.btn; })()}
           ${U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAll(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAll(true)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${list.length} produit(s) · ${list.reduce((a,p)=>a+p.variants.reduce((b,v)=>b+v.lots.reduce((c,l)=>c+U.num(l.qtyGeneral)+U.num(l.qtyEvent),0),0),0).toFixed(0)} unités en stock</span>
         </div>
       </div>
+      ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? '' : `<div class="card" style="padding:12px 16px;">${t.panel}</div>`; })()}
       <div class="prod-list-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
         <span>Alertes</span>
