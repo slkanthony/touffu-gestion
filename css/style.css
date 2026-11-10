@@ -1777,3 +1777,7 @@ tr.wgrp td[colspan] { text-align: left; }
 .chk-chip:hover span { border-color: var(--caramel); }
 .chk-chip input:checked + span { background: var(--caramel); border-color: var(--caramel); color: #fff; }
 .chk-chip input:focus-visible + span { outline: 2px solid var(--caramel); outline-offset: 2px; }
+
+/* Intitulés des champs dans les fenêtres : en caramel pour mieux ressortir */
+.modal label, .modal-box label, .modal-body label { color: var(--caramel-2, var(--caramel)); font-weight: 600; }
+.chk-chip { color: inherit; font-weight: inherit; }

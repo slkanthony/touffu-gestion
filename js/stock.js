@@ -1056,14 +1056,11 @@ const Stock = {
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien site Touffu (optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
       <div class="frow" style="gap:12px;">
-        <div class="fg"><label>Poil</label>${Stock.chipsHTML('sp_poil', [['avec','Avec poil']], (p.tags||{}).poil === 'avec' ? ['avec'] : [])}<p class="muted" style="font-size:.72rem;margin-top:2px;">Non coché = sans poil.</p></div>
         <div class="fg"><label>Hypoallergénique</label><select id="sp_hypo">
           <option value="" ${!(p.tags||{}).hypo?'selected':''}>— non renseigné —</option>
           <option value="oui" ${(p.tags||{}).hypo==='oui'||(p.tags||{}).hypo===true?'selected':''}>Oui</option>
           <option value="non" ${(p.tags||{}).hypo==='non'?'selected':''}>Non</option>
         </select></div>
-      </div>
-      <div class="frow" style="gap:12px;">
         <div class="fg"><label>Résistance</label><select id="sp_resistance">
           <option value="" ${!(p.tags||{}).resistance?'selected':''}>— non renseigné —</option>
           <option value="faible" ${(p.tags||{}).resistance==='faible'?'selected':''}>Faible</option>
@@ -1092,15 +1089,18 @@ const Stock = {
         </select></div>
       </div>
       <div class="frow" style="gap:12px;">
-        <div class="fg"><label>Âge</label>
-          ${Stock.chipsHTML('sp_age', [['0-3','0-3 mois'],['3-5','3-5 mois'],['6-10','6-10 mois'],['11+','11 mois +'],['senior','Sénior']], (p.tags||{}).age)}
-        </div>
+        <div class="fg"><label>Poil</label>${Stock.chipsHTML('sp_poil', [['avec','Avec poil']], (p.tags||{}).poil === 'avec' ? ['avec'] : [])}<p class="muted" style="font-size:.72rem;margin-top:2px;">Non coché = sans poil.</p></div>
         <div class="fg"><label>Espèce</label>
           ${Stock.chipsHTML('sp_species', [['chien','🐕 Chien'],['chat','🐈 Chat']], (p.tags||{}).species)}
           <p class="muted" style="font-size:.72rem;margin-top:2px;">Vide = tous. « Chat » seul : jamais proposé dans les paniers pour chiens.</p>
         </div>
         <div class="fg"><label>Gabarit</label>
           ${Stock.chipsHTML('sp_gabarit', [['petit','Petit'],['moyen','Moyen'],['grand','Grand']], (p.tags||{}).gabarit)}
+        </div>
+      </div>
+      <div class="frow" style="gap:12px;">
+        <div class="fg"><label>Âge</label>
+          ${Stock.chipsHTML('sp_age', [['0-3','0-3 mois'],['3-5','3-5 mois'],['6-10','6-10 mois'],['11+','11 mois +'],['senior','Sénior']], (p.tags||{}).age)}
         </div>
       </div>`,
       onOk:()=>{
