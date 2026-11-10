@@ -192,6 +192,12 @@ const Stock = {
     this._allVariantsCache = allVariants;
     f.variants = f.variants.filter(v => allVariants.includes(v));
 
+    // Une seule fois : variantes rangées par taille / poids / lot (demande d'Antho 2026-11-10).
+    if (!(window.App && (App.isViewer || App.isTeam)) && Store.state.meta && !Store.state.meta.sortVars1) {
+      Store.state.meta.sortVars1 = true; let ch = false;
+      Store.state.stockM.forEach(p => { if (this.sortVariants(p)) ch = true; });
+      Store.save('meta'); if (ch) Store.save('stockM');
+    }
     // Une seule fois : prix TTC arrondis à 0,10 € dans les fiches → on recopie sur les variantes reliées (7,69 → 7,70).
     if (!(window.App && (App.isViewer || App.isTeam)) && Store.state.meta && !Store.state.meta.roundSync1) {
       Store.state.meta.roundSync1 = true;
@@ -590,6 +596,24 @@ const Stock = {
     return { g: Math.floor(g / n), e: Math.floor(e / n), t: Math.floor((g + e) / n), n, par };
   },
   /* Ordre d'affichage : chaque taille suivie de ses déclinaisons. */
+  /* Range les variantes d'un produit : par mode, poids croissants, lots croissants, tailles XXS→5XL (puis autres tailles A→Z).
+     Chaque mode garde ses places dans la liste (un produit « 1 pièce + S/M » ne mélange pas) ; les déclinaisons restent sous leur taille. Renvoie true si l'ordre a changé. */
+  sortVariants(p) {
+    const vs = p.variants || [], top = vs.filter(v => !this.parentOf(p, v));
+    const so = l => this.SIZE_ORDER.indexOf(String(l || '').toUpperCase().trim());
+    const cmp = (a, b) => {
+      if (a.mode === 'size') { const x = so(Pricing.labelVariant(a)), y = so(Pricing.labelVariant(b)); return (x < 0 ? 999 : x) - (y < 0 ? 999 : y) || U.sortFr(Pricing.labelVariant(a), Pricing.labelVariant(b)); }
+      return (U.num(a.value) || 0) - (U.num(b.value) || 0);
+    };
+    let changed = false;
+    ['gram', 'piece', 'size'].forEach(m => {
+      const slots = top.map((v, i) => v.mode === m ? i : -1).filter(i => i >= 0);
+      const rows = slots.map(i => top[i]).sort(cmp);
+      slots.forEach((i, k) => { if (top[i] !== rows[k]) changed = true; top[i] = rows[k]; });
+    });
+    if (changed) { const kids = vs.filter(v => this.parentOf(p, v)); p.variants = top.concat(kids); }
+    return changed;
+  },
   orderedVariants(p) {
     const out = [];
     p.variants.filter(v => !this.parentOf(p, v)).forEach(t => { out.push(t); this.childrenOf(p, t).forEach(c => out.push(c)); });
@@ -931,7 +955,9 @@ const Stock = {
         }
         const _nv = {id:U.uid(),catalogVariantId:'',mode,value,label:mode==='size'?raw:'',sku:U.val('av_sku'),priceTTC:U.numVal('av_price'),costUnit:0,low:U.numVal('av_low'),lowEvent:U.numVal('av_lowe'),lots:[]};
         if (U.numVal('av_w') > 0) _nv.wAvg = U.numVal('av_w');
-        p.variants.push(_nv);
+        { const li = p.variants.reduce((acc, w, i) => (w.mode === mode && !this.parentOf(p, w)) ? i : acc, -1);   // à côté des variantes du même mode, puis rangement
+          if (li >= 0) p.variants.splice(li + 1, 0, _nv); else p.variants.push(_nv); }
+        this.sortVariants(p);
         const entry=Store.commitSnapshot(snap,'stock','Variante ajoutée — '+p.name+' ('+raw+')');
         Store.save('stockM'); U.closeModal(); App.rerender();
         U.toast('Variante ajoutée.', false, entry.id);
