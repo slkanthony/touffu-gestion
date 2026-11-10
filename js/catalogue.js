@@ -1275,7 +1275,8 @@ const Catalogue = {
   _sortGroup(mode) {
     const vs = this._d.variants, idx = vs.reduce((a, v, i) => { if (v.mode === mode) a.push(i); return a; }, []);
     const rows = idx.map(i => vs[i]);
-    rows.sort((a, b) => mode === 'size' ? U.sortFr(a.label || '', b.label || '') : (Number(a.value) || 0) - (Number(b.value) || 0));
+    const so = l => Stock.SIZE_ORDER.indexOf(String(l || '').toUpperCase().trim());   // XXS, XS, S, M, L, XL, XXL… dans cet ordre ; autres tailles (10CM…) ensuite, triées
+    rows.sort((a, b) => mode === 'size' ? ((so(a.label) < 0 ? 999 : so(a.label)) - (so(b.label) < 0 ? 999 : so(b.label)) || U.sortFr(a.label || '', b.label || '')) : (Number(a.value) || 0) - (Number(b.value) || 0));
     idx.forEach((i, k) => { vs[i] = rows[k]; });
   },
   async addOne(mode) {
@@ -1464,7 +1465,7 @@ const Catalogue = {
     U.modal({
       title: '🔄 Mettre à jour les SKU', okLabel: 'Mettre à jour',
       body: `<p class="muted" style="margin:0 0 8px;">${auto === 'open' ? '⚠️ ' : auto ? 'Le nom / la viande a changé : ' : ''}${plan.length} SKU ne correspond${plan.length > 1 ? 'ent' : ''} pas au produit. Les SKU sont liés au site et à SumUp : vérifie avant de valider.</p>
-        <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${(() => { const o = this._skuOwner(x.to); return o ? ` <a class="badge warn" href="${o.href}" target="_blank" style="text-decoration:none;" title="Ouvrir (nouvel onglet)">⚠ déjà pris par ${U.esc(o.label)}</a>` : ''; })()}</td></tr>`).join('')}</tbody></table></div>`,
+        <div class="table-wrap"><table><thead><tr><th>Ligne</th><th>SKU actuel</th><th>Nouveau SKU</th></tr></thead><tbody>${plan.map(x => `<tr><td>${U.esc(Pricing.labelVariant(x.v))}</td><td>${x.from ? U.esc(x.from) : '<span class="muted">vide</span>'}</td><td><b>${U.esc(x.to)}</b>${(() => { const o = this._skuOwner(x.to); return !o ? '' : o.kind === 'twin' ? ` <a class="badge ok" href="${o.href}" target="_blank" style="text-decoration:none;" title="Ce SKU est celui du produit du Stock non encore relié à cette fiche (clic : l'ouvrir dans un nouvel onglet)">✔ SKU du stock : ${U.esc(o.label.replace('Stock : ', ''))}</a>` : ` <a class="badge warn" href="${o.href}" target="_blank" style="text-decoration:none;" title="Ouvrir (nouvel onglet)">⚠ déjà pris par ${U.esc(o.label)}</a>`; })()}</td></tr>`).join('')}</tbody></table></div>`,
       onOk: () => { this._pushUndo(); plan.forEach(x => { x.v.sku = x.to; }); U.closeModal(); this.drawVars(); U.toast(`${plan.length} SKU mis à jour (enregistré avec la fiche).`); }
     });
   },
@@ -1479,15 +1480,16 @@ const Catalogue = {
     for (const p of Store.state.stockM) {
       const v = (p.variants || []).find(same); if (!v) continue;
       if (this.editId && (p.catalogId === this.editId || v.catalogId === this.editId)) continue;
-      return { label: `Stock : ${p.name} › ${Pricing.labelVariant(v)}`, href: '#/stock/mastication/' + p.id };
+      const linked = !!(v.catalogId || p.catalogId);   // relié à UNE AUTRE fiche = vrai conflit ; non relié = c'est son jumeau du stock (liaison à faire)
+      return { kind: linked ? 'conflict' : 'twin', label: `Stock : ${p.name} › ${Pricing.labelVariant(v)}`, href: '#/stock/mastication/' + p.id + '/' + v.id };
     }
     for (const p of Store.state.catalogM) {
       if (p.id === this.editId) continue;
-      const v = (p.variants || []).find(same); if (v) return { label: `Fiche prix : ${p.name} › ${Pricing.labelVariant(v)}`, href: '#/catalogue/edit/' + p.id };
+      const v = (p.variants || []).find(same); if (v) return { kind: 'conflict', label: `Fiche prix : ${p.name} › ${Pricing.labelVariant(v)}`, href: '#/catalogue/edit/' + p.id };
     }
     return null;
   },
-  _skuExists(sku) { return !!this._skuOwner(sku); },
+  _skuExists(sku) { const o = this._skuOwner(sku); return !!o && o.kind !== 'twin'; },
 
   save() {
     if (App.isTeam) return this._saveTeam();

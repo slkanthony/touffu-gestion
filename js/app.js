@@ -286,7 +286,7 @@ const App = {
     const id = this.views.some(v => v.id === rawId) ? rawId : 'dashboard';
     if (id === 'stock') {
       if (this.stockTabs.includes(sub)) Stock.tab = sub;
-      Stock.focusId = parts[2] || null;
+      Stock.focusId = parts[2] || null; Stock.focusVid = parts[3] || null;
     }
     if (id === 'ventes') {
       // #/ventes/retour = panneau « Retour d'événement » ouvert (survit à un F5)

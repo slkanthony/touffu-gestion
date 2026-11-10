@@ -10,6 +10,7 @@
    ============================================================ */
 const Stock = {
   tab: 'mastication',
+  focusVid: null,  // variante à centrer dans le produit ouvert (#/stock/mastication/<produit>/<variante>)
   focusId: null,  // id produit à ouvrir/scroller automatiquement (lien profond depuis un autre onglet)
   SIZE_ORDER: ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'],
 
@@ -35,7 +36,7 @@ const Stock = {
     // Synchronise l'URL avec l'onglet courant (sans empiler d'historique) pour qu'un F5
     // ou un clic sur "Stock" dans le menu revienne sur le bon onglet, pas toujours Mastication.
     // Le 3e segment (focusId) est préservé s'il y en a un : lien profond vers un produit précis.
-    const route = 'stock/' + this.tab + (this.focusId ? '/' + this.focusId : '');
+    const route = 'stock/' + this.tab + (this.focusId ? '/' + this.focusId + (this.focusVid ? '/' + this.focusVid : '') : '');
     if (location.hash.replace(/^#\/?/, '') !== route) history.replaceState(null, '', '#/' + route);
     App.mount(`
       <div class="view-title"><h1>Stock</h1><span class="sub">général & événement · lots, DLUO, seuils</span></div>
@@ -180,6 +181,7 @@ const Stock = {
     // Lien profond (#/stock/mastication/<id>) : ouvre la fiche et la fait défiler à l'écran,
     // une seule fois — consommé ici pour ne pas re-scroller à chaque re-rendu suivant (filtre, etc.).
     const focusId = this.focusId; this.focusId = null;
+    const focusVid = this.focusVid; this.focusVid = null;
     if (focusId) {
       this._prodOpen[focusId] = true;
       f.q = ''; f.meat = 'all'; f.variants = []; f.dluo = 'all';
@@ -260,8 +262,9 @@ const Stock = {
       ${list.map(p => this.productCard(p)).join('') || '<div class="card empty"><span class="big">📦</span>Aucun résultat. Importe ton inventaire depuis Paramètres ou ajuste tes filtres.</div>'}`;
     if (focusId) {
       setTimeout(() => {
-        const el = document.getElementById('prod-' + focusId);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const ve = focusVid && document.getElementById('var-' + focusVid);
+        const el = ve || document.getElementById('prod-' + focusId);
+        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (ve) { ve.style.transition = 'background .6s'; ve.style.background = 'rgba(166,113,83,.35)'; setTimeout(() => { ve.style.background = ''; }, 2500); } }
       }, 80);
     }
   },
@@ -398,7 +401,7 @@ const Stock = {
 
     if (this.isVirtual(p, v)) {
       const vq = this.virtualQty(p, v);
-      return `<tr class="virt-row">
+      return `<tr class="virt-row" id="var-${v.id}">
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind"><span class="muted" title="Déclinaison sans stock propre de ${U.esc(Pricing.labelVariant(vq.par))}">↳</span></span><span style="width:22px;display:inline-block;"></span><b class="vc-name">${U.esc(label)}</b><span class="vc-badges"> <span class="badge info" style="font-size:.65rem;cursor:help;" title="Pas de stock propre : chaque vente retire ${vq.n} pièces de ${U.esc(Pricing.labelVariant(vq.par))}. Stock affiché = stock de ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}.">pris sur ${U.esc(Pricing.labelVariant(vq.par))} ÷ ${vq.n}</span>${!v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="La fiche prix n'a pas de ligne « Lot de ${vq.n} pc » (prix du lot à saisir ici)">⚠ prix non lié</span>` : ''}</span></div></td>
       <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU du lot')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
       <td class="num muted v-ming" title="Les alertes de stock bas sont sur la variante principale">—</td>
@@ -417,7 +420,7 @@ const Stock = {
         <button class="btn-icon" title="Supprimer" onclick="Stock.delVariant('${p.id}','${v.id}')">🗑️</button>
       </span></div></td></tr>`;
     }
-    return `<tr>
+    return `<tr id="var-${v.id}">
       <td class="col-name var-cell"><div class="vc"><span class="vc-ind">${par ? `<span class="muted" title="Déclinaison de ${U.esc(Pricing.labelVariant(par))} — fiche prix et tags hérités" style="cursor:help;">↳</span>` : ''}</span><button class="btn-icon" title="${open?'Replier':'Déplier'} les lots" onclick="Stock.toggleLotsOpen('${v.id}',${open})" style="margin:0;">${open?'▾':'▸'}</button><b class="vc-name">${U.esc(label)}</b>${this._wTag(v)}<span class="vc-badges">${par && !v.catalogVariantId ? ` <span class="badge warn" style="font-size:.65rem;cursor:help;" title="${(par.catalogId||p.catalogId) ? `La fiche prix de ${U.esc(Pricing.labelVariant(par))} n'a pas de ligne « Lot de ${this.packQtyOf(v)} pc »` : `${U.esc(Pricing.labelVariant(par))} n'est liée à aucune fiche prix`}">⚠ prix non lié</span>` : ''}${isVrac?` <span class="badge info">vrac</span>`:''}${vDluoBadge}${v.catalogId ? (() => { const lc = Store.state.catalogM.find(c=>c.id===v.catalogId); return lc ? ` <a class="badge pk-link" href="#/catalogue/edit/${lc.id}" onclick="event.stopPropagation()" title="Lié à : ${U.esc(lc.name)} — clic : ouvrir la fiche" style="font-size:.65rem;background:var(--caramel);color:#fff;text-decoration:none;">💰</a>` : ''; })() : ''}${(() => { const u = this.usualPack(v); return u ? ` <span class="badge info" style="font-size:.65rem;cursor:help;" title="Sachet habituel : ${U.esc(u.name)} ${U.esc(u.dims)} — utilisé ${u.n} fois sur ${u.total} conditionnement(s)">📦 ${U.esc(u.dims || u.name)}</span>` : ''; })()}</span></div></td>
       <td class="v-sku"><div class="sku-cell"><input value="${U.esc(v.sku||'')}" placeholder="SKU" title="${U.esc(v.sku||'SKU — lien WooCommerce ↔ calcul de prix')}" class="sku-input" onchange="Stock.setVarSku('${p.id}','${v.id}',this.value)">${v.sku ? '' : `<button class="btn-icon sku-gen" title="Générer le SKU automatiquement" onclick="Stock.proposeSku('${p.id}','${v.id}')">✨</button>`}</div></td>
       <td class="num v-ming"><div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;"><input type="number" step="1" value="${low}" style="width:60px;" title="Stock min général" onchange="Stock.setVarMin('${p.id}','${v.id}','low',this.value)"><span style="font-size:.8rem;" aria-hidden="true">🛒</span><input type="checkbox" ${this.reorderOn(p, v) ? 'checked' : ''} title="Coché : ce format compte pour la commande (Faible stock). Décoché : il ne déclenche plus de commande (ex. 250G / 500G d'un produit acheté au kilo)." onchange="Stock.toggleReorder('${p.id}','${v.id}')" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></td>
