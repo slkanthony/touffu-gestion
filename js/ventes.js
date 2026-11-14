@@ -641,7 +641,7 @@ const Ventes = {
     const shortfalls = [];
     const touched = [];
     for (let c of lines) {
-      let missing = 0;
+      let missing = 0, fromGen = 0;
       const srcL = c.src || source;   // une ligne peut venir d'un autre stock que le ticket (panier : événement d'abord, général en repli)
       // Coût de revient FIGÉ sur la ligne au moment de la vente (pour la vraie marge) :
       // mastication = coût réel des lots consommés (FEFO) ; accessoire = coût calculé (matières+main d'œuvre) ; consommable = coût unitaire.
@@ -661,6 +661,14 @@ const Ventes = {
             if (remaining <= 0) break;
             const take = Math.min(U.num(l[field]), remaining);
             if (take > 0) { l[field] = U.num(l[field]) - take; remaining -= take; lineCost += take * Stock.lotCost(p, v, l); sale.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: l.id, field, qty: take, lotMeta: { lotNumber: l.lotNumber, dluo: l.dluo, costUnit: l.costUnit } }); }
+          }
+          // Stock événement insuffisant : le reste part du stock GÉNÉRAL (Antho 2026-11-14 : si c'est vendu, c'est que la pièce existait — oubli de transfert ou erreur de stock). « Manquant » = général aussi épuisé.
+          if (remaining > 0 && field === 'qtyEvent') {
+            for (const l of ordered) {
+              if (remaining <= 0) break;
+              const take = Math.min(U.num(l.qtyGeneral), remaining);
+              if (take > 0) { l.qtyGeneral = U.num(l.qtyGeneral) - take; remaining -= take; fromGen += take; lineCost += take * Stock.lotCost(p, v, l); sale.undoOps.push({ kind: 'M', pId: p.id, vId: v.id, lId: l.id, field: 'qtyGeneral', qty: take, lotMeta: { lotNumber: l.lotNumber, dluo: l.dluo, costUnit: l.costUnit } }); }
+            }
           }
           if (remaining > 0) { missing = remaining; shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: remaining, src: srcL }); lineCost += remaining * U.num(v.costUnit); }
           if (!touched.includes(v)) touched.push(v);
@@ -685,7 +693,7 @@ const Ventes = {
           if (c.qty - take > 0) shortfalls.push({ name: c.name, label: c.label, sold: c.qty, missing: c.qty - take, src: source });
         }
       }
-      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(c.det && c.det.length ? { det: c.det } : {}), ...(c.auto ? { auto: c.auto } : {}), ...(missing > 0 ? { missing } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
+      sale.items.push({ kind: c.kind, pId: c.pId, vId: c.vId, name: c.name, label: c.label, sku: c.sku, lotLabel: c.lotLabel, qty: c.qty, price: c.price, cost: lineCost, ...(c.det && c.det.length ? { det: c.det } : {}), ...(c.auto ? { auto: c.auto } : {}), ...(missing > 0 ? { missing } : {}), ...(fromGen > 0 ? { fromGeneral: fromGen } : {}), ...(U.num(c.pack) >= 2 ? { pack: U.num(c.pack), packs: U.num(c.packs) } : {}) });
       sale.total += c.price * c.qty;
     }
     touched.forEach(v => { v.lots = v.lots.filter(l => U.num(l.qtyGeneral) > 0 || U.num(l.qtyEvent) > 0); });
@@ -693,7 +701,7 @@ const Ventes = {
   },
 
   _alertShortfalls(shortfalls) {
-    const rows = shortfalls.map(s => `<li><b>${U.esc(s.name)}</b>${s.label ? ' ' + U.esc(s.label) : ''} — vendu ${U.qty(s.sold)}, <b class="warn-txt">${U.qty(s.missing)} non déduit(s)</b> (stock ${s.src === 'event' ? 'événement' : 'général'} épuisé)</li>`).join('');
+    const rows = shortfalls.map(s => `<li><b>${U.esc(s.name)}</b>${s.label ? ' ' + U.esc(s.label) : ''} — vendu ${U.qty(s.sold)}, <b class="warn-txt">${U.qty(s.missing)} non déduit(s)</b> (stock ${s.src === 'event' ? 'événement ET général' : 'général'} épuisé)</li>`).join('');
     U.modal({
       title: '⚠️ Stock insuffisant — mis à 0',
       hideOk: true,
@@ -1690,9 +1698,16 @@ const Ventes = {
     const days = Object.values(dayMap).sort((a, b) => b.ts - a.ts);
     if (!days.length) { U.toast('Aucune vente exploitable dans ce fichier.', true); return; }
     const latest = days[0] && days[0].key !== 'date-inconnue' ? days[0].key : new Date().toISOString().slice(0, 10);
+    this._rv = null;
     this.retourData = { days, mergeOne: false, cashLines: [], cashDate: latest, standFees: {}, cashStandFee: '', mealFees: {}, cashMealFee: '', consoLines: [], cardsGiven: '' };
     this.render();
   },
+  /* Filtres et tri de la revue du retour d'événement (affichage seulement) : view all | ok (déduits) | todo (non déduits), sub = motif, q = recherche, sort = tri par tableau. */
+  _rvGet() { return this._rv || (this._rv = { view: 'all', sub: '', q: '', sort: { safe: { k: 'name', d: 1 }, amb: { k: 'name', d: 1 }, prob: { k: 'name', d: 1 } } }); },
+  setRvView(v) { const rv = this._rvGet(); if (v === 'all' || rv.view === v) { rv.view = 'all'; rv.sub = ''; if (v === 'all') rv.q = ''; } else { rv.view = v; rv.sub = ''; } this.render(); },
+  setRvSub(c) { const rv = this._rvGet(); if (rv.sub === c) { rv.sub = ''; rv.view = 'all'; } else { rv.sub = c; rv.view = 'todo'; } this.render(); },
+  setRvQ(q) { this._rvGet().q = q; this.render(); },
+  setRvSort(tbl, k) { const s = this._rvGet().sort[tbl]; if (s.k === k) s.d = -s.d; else { s.k = k; s.d = 1; } this.render(); },
   setStandFee(key, val) { if (this.retourData) { (this.retourData.standFees = this.retourData.standFees || {})[key] = U.num(val); } },
   /* Frais de repas de midi (2026-09-30, Antho : il paie à manger pour lui + sa compagne qui l'aide
      sur les événements — un coût réel du jour, variable selon ce qu'ils trouvent à manger, donc
@@ -1743,12 +1758,13 @@ const Ventes = {
     safeItems.forEach(g => { const k = g.kind + '|' + g.pId + '|' + (g.vId || '') + '|' + (g.pack || 1); const x = safeMap[k] || (safeMap[k] = { ...g, qty: 0, ttc: 0, packs: 0 }); x.qty += g.qty; x.packs += U.num(g.packs); x.ttc += g.ttc; x.mapped = x.mapped || g.mapped; });
     const unitsByKey = {}; this.units().forEach(u => { unitsByKey[u.kind === 'A' ? 'A|' + u.pId + '|' : u.key] = u; });
     const packTxt = x => U.num(x.pack) >= 2 ? ` <span class="badge info">${U.qty(x.packs)} lot${x.packs > 1 ? 's' : ''} de ${x.pack}</span>` : '';
-    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const _sp = g.kind === 'M' ? Store.state.stockM.find(x => x.id === g.pId) : null; const _sv = _sp && Stock.stockVar(_sp, g.vId); const cur = _sv ? _sv.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0) : (u ? U.num(u.availE) : 0); const short = g.kind === 'A' ? 0 : Math.max(0, g.qty - cur); return { ...g, cur, after: Math.max(0, cur - g.qty), short }; })
+    const safeList = Object.values(safeMap).map(g => { const u = unitsByKey[g.kind + '|' + g.pId + '|' + (g.vId || '')]; const _sp = g.kind === 'M' ? Store.state.stockM.find(x => x.id === g.pId) : null; const _sv = _sp && Stock.stockVar(_sp, g.vId); const cur = _sv ? _sv.lots.reduce((a, l) => a + U.num(l.qtyEvent), 0) : (u ? U.num(u.availE) : 0); const gen = _sv ? _sv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; const short = g.kind === 'A' ? 0 : Math.max(0, g.qty - cur); return { ...g, cur, gen, after: Math.max(0, cur - g.qty), short, fromGen: 0 }; })
       .sort((a, b) => U.sortFr(a.name + ' ' + (a.label || ''), b.name + ' ' + (b.label || '')));
     // Plusieurs lignes pour une même variante (à l'unité + en lot) : le stock « après » se cumule.
+    // Stock événement insuffisant → le reste est pris dans le stock GÉNÉRAL (même règle que _deductSale) ; « manquant » = les deux épuisés.
     const _run = {};
-    safeList.forEach(x => { if (x.kind === 'A') return; const _p = Store.state.stockM.find(y => y.id === x.pId); const _v = _p && Stock.stockVar(_p, x.vId); const vk = x.pId + '|' + (_v ? _v.id : x.vId); const cur = vk in _run ? _run[vk] : x.cur; x.cur = cur; x.after = Math.max(0, cur - x.qty); x.short = Math.max(0, x.qty - cur); _run[vk] = x.after; });
-    const shortQty = safeList.reduce((a, x) => a + x.short, 0);
+    safeList.forEach(x => { if (x.kind === 'A') return; const _p = Store.state.stockM.find(y => y.id === x.pId); const _v = _p && Stock.stockVar(_p, x.vId); const vk = x.pId + '|' + (_v ? _v.id : x.vId); const r = _run[vk] || { ev: x.cur, gen: x.gen }; const useEv = Math.min(r.ev, x.qty), rest = x.qty - useEv, useGen = Math.min(r.gen, rest); x.cur = r.ev; x.gen = r.gen; x.after = r.ev - useEv; x.fromGen = useGen; x.short = rest - useGen; _run[vk] = { ev: x.after, gen: r.gen - useGen }; });
+    const shortQty = safeList.reduce((a, x) => a + x.short, 0), fromGenQty = safeList.reduce((a, x) => a + x.fromGen, 0);
     const ambMap = {};
     ambItems.forEach(a => { const k = a.pId + '|' + a.vId; const g = ambMap[k] || (ambMap[k] = { ...a, qty: 0 }); g.qty += a.qty; });
     const ambList = Object.values(ambMap);
@@ -1759,13 +1775,33 @@ const Ventes = {
     const deduct = this.retourDeduct;
     const notParts = [ambQty ? `${ambQty} à plusieurs lots` : '', nBy('noSku') ? `${nBy('noSku')} sans SKU` : '', nBy('unknownSku') ? `${nBy('unknownSku')} SKU inconnu` : '', nBy('dupSku') ? `${nBy('dupSku')} SKU en double` : '', shortQty ? `${shortQty} manquant(s) en stock` : ''].filter(Boolean);
     const reasonTxt = st => st === 'noSku' ? 'Sans SKU' : st === 'dupSku' ? 'SKU en double dans ton stock' : 'SKU inconnu dans ton stock';
+    // ── Filtres / tri de la revue (Antho 2026-11-14) : case verte / jaune, motif, recherche, titres de colonnes. Affichage seulement : ce qui sera déduit ne change pas. ──
+    const rv = this._rvGet(), qOk = s => !rv.q || U.has(s, rv.q);
+    let safeShow = safeList, ambShow = ambList, probShow = gp;
+    if (rv.view === 'todo') safeShow = safeList.filter(x => x.short > 0);
+    else if (rv.view === 'ok') { ambShow = []; probShow = []; }
+    if (rv.sub) { safeShow = rv.sub === 'short' ? safeShow.filter(x => x.short > 0) : []; ambShow = rv.sub === 'multi' ? ambShow : []; probShow = ['noSku', 'unknownSku', 'dupSku'].includes(rv.sub) ? probShow.filter(l => l.status === rv.sub) : []; }
+    safeShow = safeShow.filter(x => qOk(x.name + ' ' + (x.label || '') + ' ' + (x.sku || '')));
+    ambShow = ambShow.filter(x => qOk(x.name + ' ' + (x.label || '') + ' ' + (x.sku || '')));
+    probShow = probShow.filter(l => qOk((l.desc || '') + ' ' + (l.sku || '')));
+    const rvOn = rv.view !== 'all' || !!rv.sub || !!rv.q;
+    const rvCmp = (tbl, list, getters) => { const s = rv.sort[tbl], g = getters[s.k] || getters.name; return list.slice().sort((a, b) => { const x = g(a), y = g(b); const r = typeof x === 'number' ? x - y : U.sortFr(String(x), String(y)); return (r || U.sortFr(String(getters.name(a)), String(getters.name(b)))) * s.d; }); };
+    const rvTh = (tbl, k, label, cls) => { const s = rv.sort[tbl]; return `<th class="sortable${s.k === k ? ' active' : ''}${cls ? ' ' + cls : ''}" style="cursor:pointer;" onclick="Ventes.setRvSort('${tbl}','${k}')">${label} ${s.k === k ? (s.d > 0 ? '▲' : '▼') : '⇕'}</th>`; };
+    const rvChips = [['multi', ambQty, 'à plusieurs lots'], ['noSku', nBy('noSku'), 'sans SKU'], ['unknownSku', nBy('unknownSku'), 'SKU inconnu'], ['dupSku', nBy('dupSku'), 'SKU en double'], ['short', shortQty, 'manquant(s) en stock']].filter(c => c[1] > 0);
     return `<div class="card">
       <h2>📥 Retour d'événement — revue avant validation</h2>
       ${!(safeQty + ambQty + probQty) ? `<div class="retour-summary"><div class="rs-box hist"><div class="rs-n">0</div><div><b>rien de nouveau à importer</b><br><span class="muted">${nDup ? 'toutes les lignes de ce fichier ont déjà été importées' : 'aucune journée cochée'}</span></div></div></div>`
       : deduct ? `<div class="retour-summary">
-        <div class="rs-box ok"><div class="rs-n">${U.qty(safeQty - shortQty)}</div><div><b>article(s) déduits</b> du stock événement à la validation<br><span class="muted">${safeList.length} produit(s) reconnus par leur SKU${nMapped ? ` (dont ${nMapped} par une association retenue 🧠)` : ''}</span></div></div>
-        <div class="rs-box todo"><div class="rs-n">${U.qty(ambQty + probQty + shortQty)}</div><div><b>article(s) NON déduits</b> maintenant → à traiter juste après<br><span class="muted">${notParts.join(' · ') || 'aucun'}</span></div></div>
+        <div class="rs-box ok clickable${rv.view === 'ok' ? ' sel' : ''}" role="button" title="Cliquer : n'afficher que les articles déduits (re-cliquer : tout afficher)" onclick="Ventes.setRvView('ok')"><div class="rs-n">${U.qty(safeQty - shortQty)}</div><div><b>article(s) déduits</b> du stock événement${fromGenQty ? ' (ou général)' : ''} à la validation<br><span class="muted">${safeList.length} produit(s) reconnus par leur SKU${nMapped ? ` (dont ${nMapped} par une association retenue 🧠)` : ''}${fromGenQty ? ` · dont ${U.qty(fromGenQty)} pris au stock général` : ''}</span></div></div>
+        <div class="rs-box todo clickable${rv.view === 'todo' ? ' sel' : ''}" role="button" title="Cliquer : n'afficher que les articles NON déduits (re-cliquer : tout afficher)" onclick="Ventes.setRvView('todo')"><div class="rs-n">${U.qty(ambQty + probQty + shortQty)}</div><div><b>article(s) NON déduits</b> maintenant → à traiter juste après<br><span class="muted">${notParts.join(' · ') || 'aucun'}</span></div></div>
       </div>
+      ${(safeList.length || ambList.length || gp.length) ? `<div class="sumup-filters mt" style="align-items:center;">
+        <input id="rv_q" type="text" autocomplete="off" placeholder="🔍 Rechercher un produit, un SKU…" style="flex:1 1 220px;max-width:340px;" value="${U.esc(rv.q)}" oninput="Ventes.setRvQ(this.value);U.refocus('rv_q')">
+        ${rvChips.map(c => `<button class="${rv.sub === c[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Ventes.setRvSub('${c[0]}')">${c[2]} <b>(${U.qty(c[1])})</b></button>`).join('')}
+        ${rvOn ? `<button class="btn-ghost btn-sm" onclick="Ventes.setRvView('all')">✖ Tout afficher</button>` : ''}
+        ${rvOn ? `<span class="muted" style="font-size:.82rem;">Affichage filtré — la validation traite toujours tout.</span>` : ''}
+      </div>
+      ${rvOn && !safeShow.length && !ambShow.length && !probShow.length ? '<p class="muted mt">Aucun article ne correspond à ce filtre.</p>' : ''}` : ''}
       <p class="muted help">Tous les articles vendus sont enregistrés dans le ticket (chiffre d'affaires juste). Ceux qui ne sont pas déduits s'ouvrent juste après la validation dans « 🧩 Articles à traiter » : associer le bon produit (des ressemblances de nom te sont proposées), choisir le lot, puis déduire.</p>`
       : `<div class="retour-summary"><div class="rs-box hist"><div class="rs-n">${U.qty(safeQty + ambQty + probQty)}</div><div><b>article(s) ajoutés aux statistiques</b><br><span class="muted">import historique : le stock n'est PAS touché</span></div></div></div>`}
       <div class="frow" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
@@ -1775,30 +1811,34 @@ const Ventes = {
         <input type="checkbox" ${d.mergeOne ? 'checked' : ''} onclick="Ventes.setRetourMerge(this.checked)">
         Fusionner les journées cochées en un seul ticket (ex : marché sur un week-end)</label>
       <div class="mt">${d.days.map(g => this.retourDayCard(g, imported)).join('')}</div>
-      ${safeList.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen !== false ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>✅ ${safeList.length} produit(s) ${deduct ? 'déduits du stock événement' : 'reconnus (enregistrés sans déduction)'}</b> (${U.qty(safeQty)} article(s))${deduct && shortQty ? ` <span class="badge bad">⚠️ stock insuffisant sur ${safeList.filter(x => x.short).length}</span>` : ''}</summary><div class="fold-body">
+      ${safeShow.length ? `<details class="fold" style="margin-top:12px;" ${this._retourSafeOpen !== false ? 'open' : ''} ontoggle="Ventes._retourSafeOpen=this.open"><summary><b>${rv.view === 'todo' || rv.sub === 'short' ? '📉' : '✅'} ${safeShow.length} produit(s) ${rv.view === 'todo' || rv.sub === 'short' ? 'avec du stock manquant (ni événement ni général)' : deduct ? 'déduits du stock' : 'reconnus (enregistrés sans déduction)'}</b> (${U.qty(safeShow.reduce((a, x) => a + x.qty, 0))} article(s))${deduct && shortQty ? ` <span class="badge bad">⚠️ stock insuffisant sur ${safeList.filter(x => x.short).length}</span>` : ''}${deduct && fromGenQty ? ` <span class="badge info" title="Le stock événement ne suffisait pas : le reste est pris au stock général (ça veut dire que tu les avais bien, sans doute un transfert oublié)">dont ${U.qty(fromGenQty)} pris au stock général</span>` : ''}</summary><div class="fold-body">
         ${(() => {
-          const gs = this._grpRows(safeList, x => x.kind + '|' + x.pId);
+          const sortS = rvCmp('safe', safeShow, { name: x => x.name + ' ' + (x.label || ''), label: x => x.label || '', sku: x => x.sku || '', qty: x => x.qty, cur: x => x.kind === 'A' ? -1 : x.cur, gen: x => x.kind === 'A' ? -1 : x.gen, after: x => x.kind === 'A' ? -1 : x.after });
+          const byName = rv.sort.safe.k === 'name';   // tri par produit = blocs fusionnés ; autre tri = lignes à plat (le nom est répété)
+          const gs = byName ? this._grpRows(sortS, x => x.kind + '|' + x.pId) : sortS.map(x => ({ rows: [x] }));
           const extra = x => packTxt(x) + (x.mapped ? ' <span class="badge info" title="Relié par une association que tu as retenue lors d\'un import précédent">🧠 retenu</span>' : '');
           const curTxt = x => x.kind === 'A' ? '<span class="muted">accessoire</span>' : U.qty(x.cur);
-          const shortBadge = x => x.short ? ` <span class="badge bad" title="Stock événement insuffisant : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : '';
-          const afterTxt = x => x.kind === 'A' ? '—' : deduct ? `<b>${U.qty(x.after)}</b>${shortBadge(x)}` : U.qty(x.cur);
-          const desk = `<div class="table-wrap perem-desk"><table><thead><tr><th class="col-name">Produit</th><th>Variante</th><th>SKU</th><th class="num">Qté vendue</th><th class="num">Stock évén. actuel</th><th class="num">${deduct ? 'Après validation' : 'Après (inchangé)'}</th><th></th></tr></thead>`
-            + gs.map((g, gi) => `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((x, i) => `<tr${x.short && deduct ? ' style="color:var(--alerte);"' : ''}>${i === 0 ? `<td class="col-name perem-name" rowspan="${g.rows.length}"><b>${U.esc(x.name)}</b></td>` : ''}<td>${U.esc(x.label || '')}${extra(x)}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${curTxt(x)}</td><td class="num">${afterTxt(x)}</td><td>${this.openLink(x.kind, x.pId)}</td></tr>`).join('') + '</tbody>').join('')
+          const genTxt = x => x.kind === 'A' ? '<span class="muted">—</span>' : U.qty(x.gen);
+          const shortBadge = x => x.short ? ` <span class="badge bad" title="Ni le stock événement ni le stock général ne suffisent : ${U.qty(x.short)} ne pourront pas être déduits (sans doute un stock pas encore saisi)">−${U.qty(x.short)} manquant</span>` : '';
+          const genBadge = x => x.fromGen ? ` <span class="badge info" title="Stock événement insuffisant : ${U.qty(x.fromGen)} seront pris dans le stock général">+${U.qty(x.fromGen)} en général</span>` : '';
+          const afterTxt = x => x.kind === 'A' ? '—' : deduct ? `<b>${U.qty(x.after)}</b>${genBadge(x)}${shortBadge(x)}` : U.qty(x.cur);
+          const desk = `<div class="table-wrap perem-desk"><table><thead><tr>${rvTh('safe', 'name', 'Produit', 'col-name')}${rvTh('safe', 'label', 'Variante')}${rvTh('safe', 'sku', 'SKU')}${rvTh('safe', 'qty', 'Qté vendue', 'num')}${rvTh('safe', 'cur', 'Stock évén. actuel', 'num')}${rvTh('safe', 'gen', 'Stock général', 'num')}${rvTh('safe', 'after', deduct ? 'Après validation' : 'Après (inchangé)', 'num')}<th></th></tr></thead>`
+            + gs.map((g, gi) => `<tbody class="perem-prod${gi % 2 ? ' alt' : ''}">` + g.rows.map((x, i) => `<tr${x.short && deduct ? ' style="color:var(--alerte);"' : ''}>${i === 0 ? `<td class="col-name perem-name" rowspan="${g.rows.length}"><b>${U.esc(x.name)}</b></td>` : ''}<td>${U.esc(x.label || '')}${extra(x)}</td><td>${x.sku ? `<span class="tag">${U.esc(x.sku)}</span>` : '—'}</td><td class="num"><b>${U.qty(x.qty)}</b></td><td class="num">${curTxt(x)}</td><td class="num">${genTxt(x)}</td><td class="num">${afterTxt(x)}</td><td>${this.openLink(x.kind, x.pId)}</td></tr>`).join('') + '</tbody>').join('')
             + '</table></div>';
-          const mob = `<div class="perem-mob no-print">` + gs.map(g => `<div class="pm-card"><div class="pm-head"><b>${U.esc(g.rows[0].name)}</b>${this.openLink(g.rows[0].kind, g.rows[0].pId)}</div>${g.rows.map(x => `<div class="pm-row nochk"${x.short && deduct ? ' style="color:var(--alerte);"' : ''}><div class="pm-main"><div>${x.label ? `<b>${U.esc(x.label)}</b>` : ''}${extra(x)}${x.sku ? ` <span class="tag">${U.esc(x.sku)}</span>` : ''}</div><div class="pm-sub">vendu <b>${U.qty(x.qty)}</b>${x.kind === 'A' ? ' · accessoire' : ` · stock ${U.qty(x.cur)} → ${afterTxt(x)}`}</div></div></div>`).join('')}</div>`).join('') + '</div>';
+          const mob = `<div class="perem-mob no-print">` + this._grpRows(sortS, x => x.kind + '|' + x.pId).map(g => `<div class="pm-card"><div class="pm-head"><b>${U.esc(g.rows[0].name)}</b>${this.openLink(g.rows[0].kind, g.rows[0].pId)}</div>${g.rows.map(x => `<div class="pm-row nochk"${x.short && deduct ? ' style="color:var(--alerte);"' : ''}><div class="pm-main"><div>${x.label ? `<b>${U.esc(x.label)}</b>` : ''}${extra(x)}${x.sku ? ` <span class="tag">${U.esc(x.sku)}</span>` : ''}</div><div class="pm-sub">vendu <b>${U.qty(x.qty)}</b>${x.kind === 'A' ? ' · accessoire' : ` · stock évén. ${U.qty(x.cur)} (général ${U.qty(x.gen)}) → ${afterTxt(x)}`}</div></div></div>`).join('')}</div>`).join('') + '</div>';
           return desk + mob;
         })()}
-        <p class="muted help" style="font-size:.82rem;">Un seul lot en stock événement, ou tous les lots vendus en entier : la déduction est sûre, elle se fait directement (DLUO la plus courte d'abord). Le stock ne passe jamais en négatif.</p>
+        <p class="muted help" style="font-size:.82rem;">Un seul lot en stock événement, ou tous les lots vendus en entier : la déduction est sûre, elle se fait directement (DLUO la plus courte d'abord). Si le stock événement ne suffit pas, le reste est pris dans le stock général (tu l'avais bien puisque tu l'as vendu) ; le stock ne passe jamais en négatif.</p>
       </div></details>` : ''}
-      ${ambList.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>🔀 ${ambList.length} produit(s) à plusieurs lots</b> (${U.qty(ambQty)} article(s)) — ${deduct ? 'tu choisiras le lot juste après' : 'enregistrés sans déduction'}</summary><div class="fold-body">
+      ${ambShow.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>🔀 ${ambShow.length} produit(s) à plusieurs lots</b> (${U.qty(ambShow.reduce((a, x) => a + x.qty, 0))} article(s)) — ${deduct ? 'tu choisiras le lot juste après' : 'enregistrés sans déduction'}</summary><div class="fold-body">
         <p class="muted help">Plusieurs numéros de lot en stock événement et vendus seulement en partie : impossible de savoir lequel est parti. Après la validation, tu indiques combien sont partis de chaque lot (ou tu acceptes la proposition « DLUO la plus courte d'abord ») et la déduction se fait.</p>
-        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Vendu</th><th>Lots en stock événement</th><th></th></tr></thead>
-        <tbody>${ambList.map(a => `<tr><td class="col-name"><b>${U.esc(a.name)}</b> <span class="muted">${U.esc(a.label || '')}</span></td><td class="num"><b>${U.qty(a.qty)}</b> / ${U.qty(a.total)}</td><td>${(a.lots || []).map(l => `<span class="tag">${U.esc(l.n)} · ${l.dluo ? U.frDate(l.dluo) : 'sans DLUO'} · ${U.qty(l.q)}</span>`).join(' ')}</td><td>${this.openLink(a.kind, a.pId)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr>${rvTh('amb', 'name', 'Produit', 'col-name')}${rvTh('amb', 'qty', 'Vendu', 'num')}<th>Lots en stock événement</th><th></th></tr></thead>
+        <tbody>${rvCmp('amb', ambShow, { name: x => x.name + ' ' + (x.label || ''), qty: x => x.qty }).map(a =>`<tr><td class="col-name"><b>${U.esc(a.name)}</b> <span class="muted">${U.esc(a.label || '')}</span></td><td class="num"><b>${U.qty(a.qty)}</b> / ${U.qty(a.total)}</td><td>${(a.lots || []).map(l => `<span class="tag">${U.esc(l.n)} · ${l.dluo ? U.frDate(l.dluo) : 'sans DLUO'} · ${U.qty(l.q)}</span>`).join(' ')}</td><td>${this.openLink(a.kind, a.pId)}</td></tr>`).join('')}</tbody></table></div>
       </div></details>` : ''}
-      ${gp.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>⚠️ ${gp.length} produit(s) sans produit reconnu</b> (${U.qty(probQty)} article(s)) — ${deduct ? 'à associer juste après' : 'enregistrés par leur nom'}</summary><div class="fold-body">
+      ${probShow.length ? `<details class="fold" style="margin-top:12px;" open><summary><b>⚠️ ${probShow.length} produit(s) sans produit reconnu</b> (${U.qty(probShow.reduce((a, l) => a + l.qty, 0))} article(s)) — ${deduct ? 'à associer juste après' : 'enregistrés par leur nom'}</summary><div class="fold-body">
         <p class="muted help">Pas de SKU, SKU absent de ton stock, ou SKU porté par plusieurs produits. Après la validation, l'appli te propose les produits dont le nom ressemble : tu choisis le bon (ou tu cherches), et tu peux le retenir pour les prochains imports.</p>
-        <div class="table-wrap"><table><thead><tr><th class="col-name">Produit (SumUp)</th><th>SKU</th><th class="num">Qté</th><th class="num">Montant</th><th>Motif</th></tr></thead>
-        <tbody>${gp.map(l => `<tr><td class="col-name" style="text-align:left;">${U.esc(l.desc)}</td><td>${l.sku ? `<span class="tag">${U.esc(l.sku)}</span>` : '—'}</td><td class="num">${U.qty(l.qty)}</td><td class="num sensitive">${U.eur(l.ttc)}</td><td>${reasonTxt(l.status)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr>${rvTh('prob', 'name', 'Produit (SumUp)', 'col-name')}${rvTh('prob', 'sku', 'SKU')}${rvTh('prob', 'qty', 'Qté', 'num')}${rvTh('prob', 'ttc', 'Montant', 'num')}${rvTh('prob', 'motif', 'Motif')}</tr></thead>
+        <tbody>${rvCmp('prob', probShow, { name: l => l.desc || '', sku: l => l.sku || '', qty: l => l.qty, ttc: l => l.ttc, motif: l => reasonTxt(l.status) }).map(l =>`<tr><td class="col-name" style="text-align:left;">${U.esc(l.desc)}</td><td>${l.sku ? `<span class="tag">${U.esc(l.sku)}</span>` : '—'}</td><td class="num">${U.qty(l.qty)}</td><td class="num sensitive">${U.eur(l.ttc)}</td><td>${reasonTxt(l.status)}</td></tr>`).join('')}</tbody></table></div>
       </div></details>` : ''}
       ${this.cashSection()}
       ${this.retourConsoSection()}
@@ -2452,7 +2492,7 @@ const Ventes = {
       let key, name, label, after;
       if (op.kind === 'M') {
         const p = Store.state.stockM.find(x => x.id === op.pId), v = p && p.variants.find(x => x.id === op.vId); if (!v) return;
-        key = 'M|' + op.pId + '|' + op.vId; name = p.name; label = Pricing.labelVariant(v);
+        key = 'M|' + op.pId + '|' + op.vId + (op.field === 'qtyGeneral' ? '|g' : ''); name = p.name; label = Pricing.labelVariant(v) + (op.field === 'qtyGeneral' ? ' · stock général' : '');
         after = v.lots.reduce((a, l) => a + U.num(l[op.field]), 0);
       } else if (op.kind === 'A') {
         const a = Store.state.catalogA.find(x => x.id === op.pId); if (!a) return;
@@ -2470,7 +2510,7 @@ const Ventes = {
     if (!list.length && !missing.length) return;
     U.modal({
       title: '🧾 Récapitulatif des déductions', hideOk: true, wide: true,
-      body: `<p class="muted" style="margin-top:0;">Voici ce qui a réellement été retiré du stock <b>événement</b> (espèces, SumUp, consommables). Vérifie que ça correspond à ce que tu attendais.</p>
+      body: `<p class="muted" style="margin-top:0;">Voici ce qui a réellement été retiré du stock <b>événement</b> (espèces, SumUp, consommables) — et du stock <b>général</b> quand l'événement ne suffisait pas (ligne « stock général »). Vérifie que ça correspond à ce que tu attendais.</p>
         ${(() => {
           if (!list.length) return '<p class="muted">Rien n’a été retiré du stock.</p>';
           const gs = this._grpRows(list, r => r.pk);
