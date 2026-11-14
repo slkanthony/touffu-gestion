@@ -238,6 +238,11 @@ const Params = {
       </details>
 
 
+      <details class="fold card params-fold" ${this._linksOpen ? 'open' : ''} ontoggle="Params._linksOpen=this.open">
+        <summary><h2 style="display:inline;">🔗 Mes liens</h2> <span class="muted">(Caisse, réseaux sociaux, Linktree…)</span></summary>
+        <div class="fold-body">${this.linksCard()}</div>
+      </details>
+
       <details class="fold card params-fold" ${this._calcOpen ? 'open' : ''} ontoggle="Params._calcOpen=this.open">
         <summary><h2 style="display:inline;">🧮 Calculateur</h2> <span class="muted">(mode de référence par catégorie de matière)</span></summary>
         <div class="fold-body">
@@ -797,6 +802,50 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     const entry = Store.log('paramètres', 'Réglages financiers mis à jour', this._settingsUndo(B, true));
     Store.save('settings', 'stockM');
     U.toast('Réglages enregistrés.', false, entry.id);
+  },
+
+  /* 🔗 Mes liens (2026-11-14) : liens externes (Caisse, réseaux, Linktree…) gérés ici ; ceux cochés « bouton dans Ventes » y apparaissent. */
+  safeUrl(u) {
+    u = String(u || '').trim(); if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch (e) { return ''; }
+  },
+  _links() { const S = Store.state.settings; if (!Array.isArray(S.links)) S.links = []; return S.links; },
+  linksCard() {
+    const L = this._links(), ro = App.role !== 'admin' && Store.remote;
+    const rows = L.map(l => {
+      const href = this.safeUrl(l.url);
+      return `<tr>
+        <td style="width:64px;"><input value="${U.esc(l.emoji || '')}" maxlength="4" style="width:52px;text-align:center;" ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','emoji',this.value)"></td>
+        <td style="width:170px;"><input value="${U.esc(l.label || '')}" placeholder="Nom" ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','label',this.value)"></td>
+        <td><input value="${U.esc(l.url || '')}" placeholder="https://…" ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','url',this.value)"></td>
+        <td style="white-space:nowrap;text-align:center;"><label style="display:inline-flex;gap:6px;align-items:center;margin:0;"><input type="checkbox" ${l.btn ? 'checked' : ''} ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','btn',this.checked)"> bouton dans Ventes</label></td>
+        <td style="white-space:nowrap;text-align:right;">${href ? `<a class="btn-ghost btn-sm" style="text-decoration:none;" href="${U.esc(href)}" target="_blank" rel="noopener" title="Ouvrir dans un nouvel onglet">↗ Ouvrir</a>` : ''}${ro ? '' : ` <button class="btn-icon" title="Supprimer ce lien" onclick="Params.delLink('${l.id}')">🗑</button>`}</td>
+      </tr>`;
+    }).join('');
+    return `<p class="muted help mb0">Tes adresses web au même endroit. Coche <b>bouton dans Ventes</b> pour qu'un lien apparaisse en bouton à côté de « Retour d'événement ».${ro ? ' <i>Seul l\'administrateur peut les modifier.</i>' : ''}</p>
+      <div class="table-wrap mt"><table><thead><tr><th>Icône</th><th>Nom</th><th>Adresse</th><th style="text-align:center;">Affichage</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Aucun lien.</td></tr>'}</tbody></table></div>
+      ${ro ? '' : '<button class="btn-ghost btn-sm mt" onclick="Params.addLink()">＋ Ajouter un lien</button>'}`;
+  },
+  addLink() {
+    this._links().push({ id: U.uid(), emoji: '🔗', label: '', url: '', btn: false });
+    Store.save('settings'); App.rerender();
+  },
+  setLink(id, field, v) {
+    const l = this._links().find(x => x.id === id); if (!l) return;
+    if (field === 'btn') l.btn = !!v;
+    else if (field === 'url') {
+      v = String(v || '').trim();
+      if (v && !this.safeUrl(v)) { U.toast('Adresse non valide', true); App.rerender(); return; }
+      l.url = v ? this.safeUrl(v) : '';
+    } else l[field] = String(v || '').trim();
+    Store.save('settings'); App.rerender();
+  },
+  async delLink(id) {
+    const l = this._links().find(x => x.id === id); if (!l) return;
+    if (!await U.confirm(`Supprimer le lien « ${l.label || l.url || 'sans nom'} » ?`)) return;
+    Store.state.settings.links = this._links().filter(x => x.id !== id);
+    Store.save('settings'); App.rerender();
   },
 
   addItem(key, isSupplier) {
