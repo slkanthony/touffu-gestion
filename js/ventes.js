@@ -194,6 +194,7 @@ const Ventes = {
     App.mount(`
       <div class="view-title" style="justify-content:space-between;align-items:flex-start;gap:12px;"><div><h1>Ventes</h1><span class="sub">déclare une sortie · le stock se met à jour</span></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${this.todoCount() ? `<button class="btn-ghost" style="white-space:nowrap;" onclick="Ventes.openTodo()">🧩 À traiter (${this.todoCount()})</button>` : ''}
+        <a class="btn btn-cta" style="flex:0 0 auto;white-space:nowrap;text-decoration:none;" href="https://touffu-caisse.duckdns.org/#/calculette" target="_blank" rel="noopener" title="Ouvre ta caisse (Touffu-Caisse) dans un nouvel onglet">🧾 Caisse</a>
         <button class="btn-cta" style="flex:0 0 auto;white-space:nowrap;" onclick="Ventes.toggleRetour()">${this.retourOpen ? '← Vente manuelle' : '📥 Retour d\'événement'}</button></div></div>
 
       ${this.retourOpen ? this.retourPanel() : `
