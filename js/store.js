@@ -65,7 +65,7 @@ const Store = {
         sumupLinks: {}, // liaisons manuelles {SKU appli: identifiant de la ligne SumUp (Variant id, sinon Item id)} : SumUp reçoit le SKU de l'appli à l'import — voir Woo.openSumupLink
         wooLinks: {},// liaisons manuelles {SKU appli: ID de la fiche du site} : fiche du site à laquelle on remplace l'UGS (l'appli reste prioritaire) — voir Woo.openLink
         wooExclude: [], // SKU exclus DÉFINITIVEMENT de l'export WooCommerce (produits événement-only, tests…) — jamais envoyés au site
-        links: [{ id: 'caisse', emoji: '🧾', label: 'Caisse', url: 'https://touffu-caisse.duckdns.org/#/calculette', btn: true }], // 🔗 Mes liens (Paramètres) : {id, emoji, label, url, btn} — btn = bouton affiché dans Ventes
+        links: [{ id: 'caisse', emoji: '🧾', label: 'Caisse', url: 'https://touffu-caisse.duckdns.org/#/calculette' }], // 🔗 Mes liens (Paramètres) : {id, emoji, label, url} — « caisse » est verrouillé (bouton dans Ventes, seule l'adresse change)
         sumupExclude: [] // SKU (majuscules) exclus DÉFINITIVEMENT de l'export SumUp (ex: sachets 500g+ jamais emmenés sur les marchés) — jamais proposés à l'export
       },
       catalogM: [],    // produits mastication (tarification) — voir pricing.js

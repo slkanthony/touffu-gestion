@@ -810,31 +810,38 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
     try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch (e) { return ''; }
   },
-  _links() { const S = Store.state.settings; if (!Array.isArray(S.links)) S.links = []; return S.links; },
+  /* Le lien « Caisse » est verrouillé : le bouton existe dans Ventes, seule son adresse se modifie (ni suppression, ni retrait du bouton). Les autres liens sont libres, sans bouton. */
+  _isLocked(l) { return l.id === 'caisse'; },
+  _links() {
+    const S = Store.state.settings; if (!Array.isArray(S.links)) S.links = [];
+    let c = S.links.find(l => l.id === 'caisse');
+    if (!c) { c = { id: 'caisse', emoji: '🧾', label: 'Caisse', url: 'https://touffu-caisse.duckdns.org/#/calculette' }; S.links.unshift(c); }
+    return S.links;
+  },
   linksCard() {
     const L = this._links(), ro = App.role !== 'admin' && Store.remote;
     const rows = L.map(l => {
-      const href = this.safeUrl(l.url);
+      const href = this.safeUrl(l.url), lk = this._isLocked(l);
       return `<tr>
-        <td style="width:64px;"><input value="${U.esc(l.emoji || '')}" maxlength="4" style="width:52px;text-align:center;" ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','emoji',this.value)"></td>
-        <td style="width:170px;"><input value="${U.esc(l.label || '')}" placeholder="Nom" ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','label',this.value)"></td>
+        <td style="width:64px;"><input value="${U.esc(l.emoji || '')}" maxlength="4" style="width:52px;text-align:center;" ${ro || lk ? 'disabled' : ''} onchange="Params.setLink('${l.id}','emoji',this.value)"></td>
+        <td style="width:170px;"><input value="${U.esc(l.label || '')}" placeholder="Nom" ${ro || lk ? 'disabled' : ''} onchange="Params.setLink('${l.id}','label',this.value)"></td>
         <td><input value="${U.esc(l.url || '')}" placeholder="https://…" ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','url',this.value)"></td>
-        <td style="white-space:nowrap;text-align:center;"><label style="display:inline-flex;gap:6px;align-items:center;margin:0;"><input type="checkbox" ${l.btn ? 'checked' : ''} ${ro ? 'disabled' : ''} onchange="Params.setLink('${l.id}','btn',this.checked)"> bouton dans Ventes</label></td>
-        <td style="white-space:nowrap;text-align:right;">${href ? `<a class="btn-ghost btn-sm" style="text-decoration:none;" href="${U.esc(href)}" target="_blank" rel="noopener" title="Ouvrir dans un nouvel onglet">↗ Ouvrir</a>` : ''}${ro ? '' : ` <button class="btn-icon" title="Supprimer ce lien" onclick="Params.delLink('${l.id}')">🗑</button>`}</td>
+        <td style="white-space:nowrap;text-align:center;" class="muted">${lk ? '🔒 bouton dans Ventes' : ''}</td>
+        <td style="white-space:nowrap;text-align:right;">${href ? `<a class="btn-ghost btn-sm" style="text-decoration:none;" href="${U.esc(href)}" target="_blank" rel="noopener" title="Ouvrir dans un nouvel onglet">↗ Ouvrir</a>` : ''}${ro || lk ? '' : ` <button class="btn-icon" title="Supprimer ce lien" onclick="Params.delLink('${l.id}')">🗑</button>`}</td>
       </tr>`;
     }).join('');
-    return `<p class="muted help mb0">Tes adresses web au même endroit. Coche <b>bouton dans Ventes</b> pour qu'un lien apparaisse en bouton à côté de « Retour d'événement ».${ro ? ' <i>Seul l\'administrateur peut les modifier.</i>' : ''}</p>
-      <div class="table-wrap mt"><table><thead><tr><th>Icône</th><th>Nom</th><th>Adresse</th><th style="text-align:center;">Affichage</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Aucun lien.</td></tr>'}</tbody></table></div>
+    return `<p class="muted help mb0">Tes adresses web au même endroit. Le lien <b>Caisse</b> est verrouillé (son bouton existe dans Ventes) : tu peux seulement changer son adresse. Les autres sont des liens libres.${ro ? ' <i>Seul l\'administrateur peut les modifier.</i>' : ''}</p>
+      <div class="table-wrap mt"><table><thead><tr><th>Icône</th><th>Nom</th><th>Adresse</th><th style="text-align:center;"></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       ${ro ? '' : '<button class="btn-ghost btn-sm mt" onclick="Params.addLink()">＋ Ajouter un lien</button>'}`;
   },
   addLink() {
-    this._links().push({ id: U.uid(), emoji: '🔗', label: '', url: '', btn: false });
+    this._links().push({ id: U.uid(), emoji: '🔗', label: '', url: '' });
     Store.save('settings'); App.rerender();
   },
   setLink(id, field, v) {
     const l = this._links().find(x => x.id === id); if (!l) return;
-    if (field === 'btn') l.btn = !!v;
-    else if (field === 'url') {
+    if (this._isLocked(l) && field !== 'url') return;
+    if (field === 'url') {
       v = String(v || '').trim();
       if (v && !this.safeUrl(v)) { U.toast('Adresse non valide', true); App.rerender(); return; }
       l.url = v ? this.safeUrl(v) : '';
@@ -842,7 +849,7 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     Store.save('settings'); App.rerender();
   },
   async delLink(id) {
-    const l = this._links().find(x => x.id === id); if (!l) return;
+    const l = this._links().find(x => x.id === id); if (!l || this._isLocked(l)) return;
     if (!await U.confirm(`Supprimer le lien « ${l.label || l.url || 'sans nom'} » ?`)) return;
     Store.state.settings.links = this._links().filter(x => x.id !== id);
     Store.save('settings'); App.rerender();
