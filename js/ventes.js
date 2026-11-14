@@ -1564,7 +1564,7 @@ const Ventes = {
     this.cashSelKey = key; this.cashQ = u ? u.name + (u.label ? ' · ' + u.label : '') : this.cashQ;
     this.cashOpen = false; this.cashPrice = u ? Math.round(u.price * 100) / 100 : ''; this.cashQty = 1; this.render();
   },
-  setCashDate(v) { if (this.retourData) this.retourData.cashDate = v; },
+  setCashDate(v) { if (this.retourData) { this.retourData.cashDate = v; this.render(); } },   // redessin : les frais n'existent ici que si la date n'a pas de ticket SumUp
   addCashLine() {
     if (!this.retourData) return;
     const u = this.units().find(x => x.key === this.cashSelKey);
@@ -1854,6 +1854,12 @@ const Ventes = {
     </div>`;
   },
 
+  /* Les ventes en liquide d'une journée qui a déjà un ticket SumUp (cochée, avec des lignes à importer) n'ont PAS de frais à elles : stand / repas / déplacement vivent sur la journée SumUp (Antho 2026-11-14, doublon). */
+  _cashOnSumupDay() {
+    const d = this.retourData; if (!d || !d.cashDate) return false;
+    const imported = this._retourImportedRefs();
+    return d.days.some(g => g.include && g.key === d.cashDate && g.lines.some(l => !imported.has(l.ref)));
+  },
   cashSection() {
     const d = this.retourData;
     const cashSel = this.units().find(u => u.key === this.cashSelKey);
@@ -1874,10 +1880,11 @@ const Ventes = {
         <div class="fg"><label>Date de l'événement</label><input type="date" value="${d.cashDate}" onchange="Ventes.setCashDate(this.value)"></div>
       </div>
       <div class="fg"><label>🎪 Événement (ventes espèces)</label>${this.eventSelect(this.retourData && this.retourData.cashEventName || '', 'Ventes.setCashEventName(v)')}</div>
+      ${this._cashOnSumupDay() ? `<p class="muted" style="margin:6px 0;">ℹ️ Les frais de stand, de repas et de déplacement de cette journée sont déjà sur la journée SumUp du ${U.frDate(d.cashDate)} (bloc du haut, avec la case « 💵 frais payés en espèces ») : rien à saisir ici, ils ne sont jamais comptés deux fois.</p>` : `
       <div class="fg"><label>🏪 Frais de stand (€) <span class="muted help" style="text-transform:none;">— seulement si cette journée n'a PAS de ticket SumUp (sinon mets-le sur la journée ci-dessus)</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashStandFee) || ''}" onchange="Ventes.setCashStandFee(this.value)"></div>
       <div class="fg"><label>🍽️ Repas (€) <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label><input type="number" step="0.01" min="0" placeholder="0" style="max-width:160px;" value="${U.num(d.cashMealFee) || ''}" onchange="Ventes.setCashMealFee(this.value)"></div>
       <div class="fg"><label>🚗 Déplacement <span class="muted help" style="text-transform:none;">— idem, seulement sans ticket SumUp ce jour-là</span></label>${this.travelWidget((d.travelDet || {}).__cash, 'cash', d.cashTravel)}</div>
-      <div class="fg"><label style="text-transform:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" style="width:auto;" ${d.cashFeeCash ? 'checked' : ''} onchange="Ventes.setCashFeeCash(this.checked)"> 💵 Frais payés en espèces <span class="muted help" style="text-transform:none;">— stand, repas et déplacement payés en liquide : ils ne sortent pas de la banque</span></label></div>
+      <div class="fg"><label style="text-transform:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" style="width:auto;" ${d.cashFeeCash ? 'checked' : ''} onchange="Ventes.setCashFeeCash(this.checked)"> 💵 Frais payés en espèces <span class="muted help" style="text-transform:none;">— stand, repas et déplacement payés en liquide : ils ne sortent pas de la banque</span></label></div>`}
       ${cashSel ? `<div class="grid c2">
         <div class="fg"><label>Quantité</label><input id="cash_qty" type="number" step="1" min="1" value="${this.cashQty || 1}" onchange="Ventes.cashQty=Math.max(1,Math.round(U.num(this.value)))"></div>
         <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : Math.round(cashSel.price * 100) / 100}" onchange="Ventes.cashPrice=Math.round(U.num(this.value)*100)/100"></div>
@@ -2364,6 +2371,7 @@ const Ventes = {
     const buckets = this._retourBuckets(d, imported);
     const seen = new Set(imported);
     const deduct = this.retourDeduct;   // décoché = import HISTORIQUE (stats sans toucher au stock)
+    const cashFees = !this._cashOnSumupDay();   // journée avec ticket SumUp : les frais sont sur ce ticket, jamais en double sur le ticket espèces
     let created = 0, deducted = 0;
     const createdSales = [];
     // Ticket espèces séparé (payment 'cash', pas de frais SumUp), daté à la journée choisie.
@@ -2378,12 +2386,12 @@ const Ventes = {
       if (!deduct) {
         const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
         const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), ...(d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: cashFees ? U.num(d.cashStandFee) : 0, ...(cashFees && d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: cashFees ? U.num(d.cashMealFee) : 0, eventName: d.cashEventName || '', travelCost: cashFees ? U.num(d.cashTravel) : 0, travelDet: cashFees ? (d.travelDet || {}).__cash : undefined, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: U.num(d.cashStandFee), ...(d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: U.num(d.cashMealFee), eventName: d.cashEventName || '', travelCost: U.num(d.cashTravel), travelDet: (d.travelDet || {}).__cash, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
+        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: cashFees ? U.num(d.cashStandFee) : 0, ...(cashFees && d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: cashFees ? U.num(d.cashMealFee) : 0, eventName: d.cashEventName || '', travelCost: cashFees ? U.num(d.cashTravel) : 0, travelDet: cashFees ? (d.travelDet || {}).__cash : undefined, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
         this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
         this._markImported(sale.items);
         Store.state.sales.unshift(sale);
