@@ -1440,6 +1440,7 @@ const Paniers = {
     this.reductionCode = String(v || '').trim();
     const m = Partners.byCode(this.reductionCode); if (m) this.reductionCode = m.c.code;   // code partenaire : sa réduction se remplit toute seule
     if (m && U.num(m.c.discPct) > 0) { this.reduction = U.num(m.c.discPct); this._redAuto = false; this.render(); U.toast(`🤝 Code ${m.p.name} : −${U.qty(this.reduction)} %.`); }
+    else this._updateKPI();
   },
   setBudget(v) { this.budget = U.num(v); this._updateKPI(); },
   setLivraison(v) { this.livraison = U.num(v); this._updateKPI(); },
@@ -1479,7 +1480,7 @@ const Paniers = {
         <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
         ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
         <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
-        ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">Réduction (${U.qty(this.reduction)} %)</span></div>` : ''}
+        ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
         <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
       `;
     }
@@ -1731,7 +1732,7 @@ const Paniers = {
           <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
           ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
           <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
-        ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">Réduction (${U.qty(this.reduction)} %)</span></div>` : ''}
+        ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
           <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
         </div>
 
