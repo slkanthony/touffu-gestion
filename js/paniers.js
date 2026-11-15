@@ -13,7 +13,8 @@ const Paniers = {
   budget: 30,
   livraison: 0,
   reduction: 0,   // code de réduction du client (%), appliqué sur les produits (pas sur la livraison)
-  reductionCode: '',   // texte du code (info : devis en attente, ticket, historique) — jamais affiché sur le devis du client
+  reductionCode: '',   // texte du code (devis en attente, ticket, historique) — affiché aussi sur le devis du client depuis 2026-11-15 (« Réduction Zoomies (5 %) »), voir _redLabel
+  _redLabel(d) { return 'Réduction' + (d.redCode ? ' ' + d.redCode : '') + ' (' + U.qty(d.redPct) + ' %)'; },
   _redAuto: false,   // la réduction vient de la fiche du client (retirée si on change de client) et non d'une saisie à la main
   nbChiens: 1,
   priority: 'mix',    // 'dluo' | 'coeff' | 'mix'
@@ -690,9 +691,9 @@ const Paniers = {
     const av = this._balOn !== false && bal > 0 ? Math.round(Math.min(bal, Math.max(0, pre)) * 100) / 100 : 0;   // avoir déduit
     const det = this._balOn !== false && bal < 0 ? -bal : 0;   // dette à régler
     // n° de devis : prévu tant que rien n'est sorti ; lettre suivante si le contenu a changé depuis la dernière sortie (voir devis.js)
-    const h = Devis.hash({ l: lines.map(l => [l.name, l.variant, l.qty, l.unit, l.dog].concat(l.det.length ? [l.det.join('|')] : [])), r: red, s: ship, a: av, t: det, m: this._shMode || '' });
+    const h = Devis.hash({ l: lines.map(l => [l.name, l.variant, l.qty, l.unit, l.dog].concat(l.det.length ? [l.det.join('|')] : [])), r: red, s: ship, a: av, t: det, m: this._shMode || '', ...(red > 0 && this.reductionCode ? { rc: this.reductionCode } : {}) });
     if (!this._dv) this._dv = Devis.blank();
-    return { lines, sub, red, redPct: this.reduction, ship, av, det, bal, total: pre - av + det, no: Devis.show(this._dv, h), h, x: this._shareExtras() };
+    return { lines, sub, red, redPct: this.reduction, redCode: red > 0 ? String(this.reductionCode || '').trim() : '', ship, av, det, bal, total: pre - av + det, no: Devis.show(this._dv, h), h, x: this._shareExtras() };
   },
   /* Blocs facultatifs sous le total (réglés dans Paramètres → Paniers & livraison) : n'apparaissent que s'ils sont remplis */
   _payList() {
@@ -745,7 +746,7 @@ const Paniers = {
         <thead><tr style="border-bottom:2px solid var(--caramel);"><th style="padding:7px 10px;text-align:left;">Produit</th><th style="padding:7px 10px;text-align:center;">Variante</th><th style="padding:7px 10px;text-align:center;">Qté</th><th style="padding:7px 10px;text-align:right;">Prix unit.</th><th style="padding:7px 10px;text-align:right;">Sous-total</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot>
-          ${d.red > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Réduction (${U.qty(d.redPct)} %)</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.red)}</td></tr>` : ''}
+          ${d.red > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">${U.esc(this._redLabel(d))}</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.red)}</td></tr>` : ''}
           ${d.ship > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Livraison</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">${U.eur(d.ship)}</td></tr>` : ''}
           ${d.av > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Avoir déduit</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">− ${U.eur(d.av)}</td></tr>` : ''}
           ${d.det > 0 ? `<tr style="border-top:1px solid var(--card-border);"><td colspan="4" style="padding:7px 10px;text-align:right;">Solde à régler</td><td style="padding:7px 10px;text-align:right;white-space:nowrap;">+ ${U.eur(d.det)}</td></tr>` : ''}
@@ -1124,7 +1125,7 @@ const Paniers = {
     });
     if (d.red > 0) {
       x.fillStyle = fg; x.font = font(500, 17); x.textAlign = 'right';
-      x.fillText('Réduction (' + U.qty(d.redPct) + ' %)', rUnit, y + rowH / 2); x.fillText('− ' + U.eur(d.red), rTot, y + rowH / 2);
+      x.fillText(this._redLabel(d), rUnit, y + rowH / 2); x.fillText('− ' + U.eur(d.red), rTot, y + rowH / 2);
       y += rowH;
     }
     if (d.ship > 0) {
@@ -1173,7 +1174,7 @@ const Paniers = {
     const eur = n => n.toFixed(2).replace('.', ',') + ' €';
     const text = ['Votre panier Touffu' + (d.no ? ' — Devis n° ' + d.no : '')].concat(d.x.who ? [d.x.who] : [], [''],
       d.lines.flatMap(l => [`• ${l.name}${l.variant ? ' (' + l.variant + ')' : ''}${l.qty > 1 ? ' × ' + U.qty(l.qty) + ' (' + eur(l.unit) + ' l\'unité)' : ''} — ${eur(l.total)}${l.dog ? ' → pour ' + l.dog : ''}`].concat(l.det.map(t => '     – ' + t))),
-      [''], d.red > 0 ? ['Réduction (' + U.qty(d.redPct) + ' %) : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], [(d.x.vatMention ? 'Total' : 'Total TTC') + ' : ' + eur(d.total)],
+      [''], d.red > 0 ? [this._redLabel(d) + ' : − ' + eur(d.red)] : [], d.ship > 0 ? ['Livraison : ' + eur(d.ship)] : [], d.av > 0 ? ['Avoir déduit : − ' + eur(d.av)] : [], d.det > 0 ? ['Solde à régler : + ' + eur(d.det)] : [], [(d.x.vatMention ? 'Total' : 'Total TTC') + ' : ' + eur(d.total)],
       d.x.mode ? ['', d.x.mode] : [], d.x.valid ? ['', d.x.valid] : [], d.x.pay ? ['', d.x.pay] : [], d.x.ibanLines.length ? [''].concat(d.x.ibanLines, d.x.refHint ? [d.x.refHint] : []) : [], d.x.msg ? ['', d.x.msg] : [], d.x.vatMention ? ['', d.x.vatMention] : []).join('\n');
     const fallback = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); U.toast(ok ? 'Texte copié.' : 'Copie impossible', !ok); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => U.toast('Texte copié.')).catch(fallback); else fallback();
