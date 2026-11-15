@@ -492,7 +492,7 @@ const Catalogue = {
       return `<tr class="${on ? '' : 'dim'}">
         <td class="col-name"><b>${U.esc(Pricing.labelVariant(v))}</b>${c.critical && on ? ' <span class="badge bad">coeff critique</span>' : ''}</td>
         <td class="num sensitive">${U.eur(c.cost)}${Catalogue._portNote(c)}</td>
-        <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, (perSize || na < 2) ? undefined : (U.num(p.coefficient) || 2))}</td>
+        <td class="ctr sensitive">${this.coeffCell(c, `Catalogue.setCardCoeff('${p.id}','${v.id}',this.value)`, `Catalogue.resetCardLine('${p.id}','${v.id}')`, (perSize || na < 2) ? undefined : (this.refCoeffLive(p) ?? (U.num(p.coefficient) || 2)))}</td>
         <td class="num sensitive">${U.eur(c.priceHT)}</td>
         <td class="num sensitive num-marge">${U.eur(c.margin)}</td>
         <td class="num sensitive num-cotis">${U.eur(c.social)}</td>
@@ -539,7 +539,7 @@ const Catalogue = {
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
         <span class="cat-head-inputs" onclick="event.preventDefault();event.stopPropagation()">${perSize ? sizeCoeff : `<span class="b2b-disc-badge" title="Coefficient commun : appliqué à toutes les variantes qui n'ont pas leur propre coefficient (diminué de la décote paliers)">
-          <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((na === 1 ? (Pricing.variantCalc(p, actives[0], 0, base, 1).coeffU || U.num(p.coefficient) || 2) : (U.num(p.coefficient) || 2)) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
+          <label>Coeff</label><input type="number" min="0" step="0.01" value="${Math.round((na === 1 ? (Pricing.variantCalc(p, actives[0], 0, base, 1).coeffU || U.num(p.coefficient) || 2) : (this.refCoeffLive(p) ?? (U.num(p.coefficient) || 2))) * 100) / 100}" class="sensitive" onchange="Catalogue.setCardCommonCoeff('${p.id}',this.value)"></span>
         <span class="b2b-disc-badge">
           <label>Décote</label><input type="number" min="0" max="100" step="1" value="${p.bulkDiscount ?? ''}" placeholder="${S.bulkDiscount}" title="Décote paliers propre à ce produit — vide = suit le réglage global (${S.bulkDiscount}%)" onchange="Catalogue.setCardBulkDiscount('${p.id}',this.value)"><span>%</span>
         </span>`}</span>
@@ -864,7 +864,22 @@ const Catalogue = {
       coeffEl.value = (m < 100 && m > -1000) ? (1 / (1 - m / 100)).toFixed(2) : '';
     }
     this._d.coefficient = U.numVal('cp_coeff');
+    // La DERNIÈRE valeur modifiée commande (même règle que dans la liste) : taper le coeff commun retire les prix fixés, sinon la case reprendrait aussitôt le coeff de la 1re variante (annulable : Ctrl+Z)
+    if (this.refCoeffLive(this._d) !== null) {
+      this._pushUndo();
+      const n = this._freeLines(this._d, 0);
+      if (n) U.toast(`Coefficient commun modifié · ${n} prix fixé${n > 1 ? 's' : ''} retiré${n > 1 ? 's' : ''} (les variantes suivent le coeff). Ctrl+Z pour annuler.`);
+    }
     this.drawVars();
+  },
+  /* Garde la case « Coefficient par défaut » et la marge de la fiche en phase avec le coeff réel de la 1re variante (voir refCoeffLive), sans toucher au champ en cours de frappe. */
+  _liveCommonCoeff() {
+    const k = this.refCoeffLive(this._d);
+    if (k === null) return;
+    this._d.coefficient = k;
+    const a = document.getElementById('cp_coeff'), b = document.getElementById('cp_marge');
+    if (a && document.activeElement !== a) a.value = Math.round(k * 100) / 100;
+    if (b && document.activeElement !== b) b.value = ((1 - 1 / k) * 100).toFixed(1);
   },
 
   syncTaxFields() {
@@ -1042,6 +1057,17 @@ const Catalogue = {
     if (!actives.length || String(actives[0].id) !== String(v.id)) return false;
     return !actives.every(x => x.mode === 'size' && (U.num(x.value) > 0 || U.num(x.weight) > 0));
   },
+  /* Coefficient commun EN DIRECT (Antho 2026-11-15, « ça doit se mettre à jour en temps réel ») : quand la 1re variante (la référence) a un prix TTC fixé à la main, son vrai coefficient
+     = prix HT ÷ coût d'aujourd'hui (prix d'achat, pièces/kilo, TVA, port…) EST le coefficient commun. Le chiffre mémorisé (`p.coefficient`) devenait périmé dès que le coût changeait
+     (ex. 0,24 resté après la saisie des pièces/kilo). Renvoie null s'il n'y a pas de prix fixé sur la référence (alors on garde `p.coefficient`). Calcul pur : ne modifie rien. */
+  refCoeffLive(p) {
+    const actives = (p.variants || []).filter(x => x.enabled !== false);
+    if (!actives.length) return null;
+    const v = actives[0];
+    if (!(U.num(v.priceTTCManual) > 0) || !this._isRef(p, v)) return null;
+    const k = Pricing.variantCalc(p, v, 0, Pricing.baseUnitCost(p), actives.length).coeffU;
+    return k > 0 ? Math.round(k * 10000) / 10000 : null;
+  },
   /* Retire le prix TTC / coeff fixé des variantes actives à partir du rang `from` (0 = toutes, 1 = les lots) pour qu'elles suivent le coeff commun et la décote ; renvoie le nombre de lignes libérées.
      Produits « par taille » : rien (pas de coeff commun). */
   _freeLines(p, from) {
@@ -1056,7 +1082,7 @@ const Catalogue = {
     const n = actives.length, idx = actives.findIndex(x => String(x.id) === String(v.id));
     if (n < 2 || idx < 1) return null;
     const c = Pricing.variantCalc(p, v, idx, Pricing.baseUnitCost(p), n);
-    const common = U.num(p.coefficient) || 2;
+    const common = this.refCoeffLive(p) ?? (U.num(p.coefficient) || 2);
     if (!(c.coeff > 0) || c.cost <= 0) return null;
     const d = 1 - c.coeff / common;
     if (d <= 0) return null;
@@ -1156,6 +1182,7 @@ const Catalogue = {
   drawVars() {
     const box = document.getElementById('cp_vars');
     if (!box) return;
+    this._liveCommonCoeff();   // le coeff commun suit en direct la 1re variante (prix fixé) : plus de chiffre périmé
     const base = Pricing.baseUnitCost(this._d);
     const variants = this._d.variants || [];
     const na = variants.filter(v => v.enabled !== false).length;
