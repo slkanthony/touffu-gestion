@@ -318,6 +318,8 @@ details.fold.acc-fold.acc-critical { border-left: 4px solid var(--alerte) !impor
 :root[data-theme="light"] details.fold.acc-fold.acc-critical { background: rgba(192, 86, 74, 0.08) !important; }
 details.fold.cat-fold.cat-selected { border-left: 4px solid var(--caramel) !important; background: #3d2a1a !important; box-shadow: inset 0 0 0 1px rgba(166,113,83,0.5); }
 :root[data-theme="light"] details.fold.cat-fold.cat-selected { background: rgba(166,113,83,0.15) !important; box-shadow: inset 0 0 0 1px rgba(166,113,83,0.35); }
+details.fold.cat-fold.cat-off { opacity: .62; border-left: 4px dashed var(--caramel) !important; }
+details.fold.cat-fold.cat-off[open] { opacity: .85; }
 .cat-sel-active { background: var(--caramel) !important; color: #fff !important; border-color: var(--caramel) !important; }
 .cat-sel-bar {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);

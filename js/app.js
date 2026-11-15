@@ -370,7 +370,7 @@ const App = {
   /* ============ Vue unifiée : catalogue mastication + stock attaché ============ */
   inventoryRows() {
     const rows = []; const seen = new Set();
-    Store.state.catalogM.forEach(p => {
+    Store.catActive().forEach(p => {
       const base = Pricing.baseUnitCost(p); const na = (p.variants||[]).filter(v=>v.enabled!==false).length; let idx = 0;
       const sp = Store.state.stockM.find(s => s.catalogId === p.id);
       if (sp) seen.add(sp.id);

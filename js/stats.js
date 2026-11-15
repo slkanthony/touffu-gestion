@@ -230,7 +230,7 @@ const Stats = {
     // Fiches prix (variantes actives) qui utilisent chaque entrée du référentiel sachets/blisters
     // → « utilisation prévue », disponible tout de suite, même sans historique de conditionnement.
     const fichesByRef = {};
-    Store.state.catalogM.forEach(p => (p.variants || []).filter(v => v.enabled !== false).forEach(v => {
+    Store.catActive().forEach(p => (p.variants || []).filter(v => v.enabled !== false).forEach(v => {
       if (!v.sachetId || String(v.sachetId) === '0') return;
       (fichesByRef[v.sachetId] = fichesByRef[v.sachetId] || []).push(p.name + ' ' + Pricing.labelVariant(v));
     }));
@@ -411,8 +411,8 @@ const Stats = {
       });
     } else {
       const sidx = this._stockIndex();
-      (Store.state.catalogM || []).forEach(p => {
-        const base = Pricing.baseUnitCost(p), vs = (p.variants || []).filter(v => v.enabled !== false);
+      Store.catActive().forEach(p => {
+        const base = Pricing.baseUnitCost(p), vs =(p.variants || []).filter(v => v.enabled !== false);
         vs.forEach((v, i) => {
           const c = Pricing.variantCalc(p, v, i, base, vs.length), s = sidx[p.id + '|' + v.id] || { qty: 0, dluo: '' };
           all.push({ key: 'M|' + p.id + '|' + v.id, id: p.id, name: p.name, variant: Pricing.labelVariant(v), group: p.meatType || '', price: c.priceTTC, cost: c.cost, coeff: c.effCoeff, qty: s.qty, dluo: s.dluo });
@@ -501,7 +501,7 @@ const Stats = {
 
   renderPriceMast() {
     const S = Store.state.settings;
-    const products = Store.state.catalogM;
+    const products = Store.catActive();
     // même init paresseuse que B2B.render() : au cas où cette page est ouverte
     // avant la page Revente pro, la remise partagée doit quand même refléter
     // la dernière valeur enregistrée (ou 20% par défaut), pas rester à 0.
@@ -860,7 +860,7 @@ const Stats = {
     const d = this.detail;
     if (d && d.kind === 'coeff' && !d.acc && d.serie === serie && d.binIdx === binIdx) { this.closeDetail(); return; }
     const b = this._bins()[binIdx], rows = [];
-    Store.state.catalogM.forEach(p => {
+    Store.catActive().forEach(p => {
       const s = this.variantStats(p, true); if (!s) return;
       s.variants.forEach(v => { const c = serie === 0 ? v.coeff : v.coeffMicro; if (c >= b.min && c < b.max) rows.push({ p, v, key: c }); });
     });
@@ -874,7 +874,7 @@ const Stats = {
      clic sur une part de camembert ou une barre de coeff, avec pour
      chaque variante son coeff/marge — lien direct vers la fiche produit. */
   showDetail(filterFn, title, statsFn, min, max) {
-    const products = Store.state.catalogM.filter(filterFn);
+    const products = Store.catActive().filter(filterFn);
     const groups = {};
     products.forEach(p => { const m = p.meatType || 'Non spécifié'; (groups[m] = groups[m] || []).push(p); });
     this.detail = { title, meats: Object.keys(groups).sort(U.sortFr), groups, statsFn, min: min === undefined ? null : min, max: max === undefined ? null : max };
@@ -1035,7 +1035,7 @@ const Stats = {
     const lastSold = {};
     allSales.forEach(s => (s.items || []).forEach(i => { if (i.pId) lastSold[i.pId] = Math.max(lastSold[i.pId] || 0, s.ts); }));
     const dormant = [];
-    if (kind !== 'acc') Store.state.catalogM.forEach(p => { if (!soldPids.has(p.id)) dormant.push({ name: p.name, cat: p.meatType || '—', last: lastSold[p.id] || null }); });
+    if (kind !== 'acc') Store.catActive().forEach(p => { if (!soldPids.has(p.id)) dormant.push({ name: p.name, cat: p.meatType || '—', last: lastSold[p.id] || null }); });
     if (kind !== 'mast') Accessoires.crafted().forEach(a => { if (!soldPids.has(a.id)) dormant.push({ name: a.name, cat: 'Accessoire', last: lastSold[a.id] || null }); });
     dormant.sort((a, b) => (a.last || 0) - (b.last || 0));
     // Frais de livraison sur achats + frais généraux : les MÊMES charges que la Compta (Compta.chargesPeriod), sur la période choisie.

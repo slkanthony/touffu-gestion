@@ -7,7 +7,7 @@
 const Catalogue = {
   /* Petite ligne « dont port » sous le coût de revient quand un taux de port à l'achat (Paramètres) est appliqué : le coût affiché l'inclut déjà. */
   _portNote(c) { return c && c.portCost > 0.0005 ? `<div class="muted" style="font-size:.72rem;font-weight:400;" title="Frais de port d'achat estimés (Paramètres → Réglages financiers → Frais de port d'achat estimés), déjà compris dans le coût de revient">dont frais de port estimés ${U.eur(c.portCost)}</div>` : ''; },
-  filters: { q: '', meat: 'all', sup: 'all', ctl: 'all', sort: 'meat', sortDir: 'asc' },
+  filters: { q: '', meat: 'all', sup: 'all', ctl: 'all', act: 'active', sort: 'meat', sortDir: 'asc' },
   mode: 'list',      // 'list' | 'new' | 'edit'
   editId: null,
   _loadedKey: null,
@@ -19,6 +19,29 @@ const Catalogue = {
   _setMeatFilter(val) { this.filters.meat = val; this._meatFilterOpen = false; this.render(); },
   _setSupFilter(val) { this.filters.sup = val; this.render(); },
   _setCtlFilter(val) { this.filters.ctl = val; this.render(); },
+  _setActFilter(val) { this.filters.act = val; this.render(); },
+
+  /* ---------- Fiche ACTIVE / INACTIVE (Antho 2026-11-15) ----------
+     Une fiche inactive (p.inactive) = estimation / test d'un produit pas (encore) acheté : elle reste modifiable ici (comparaison de prix, essais
+     sans enregistrer) mais n'entre PAS dans les stats, Revente pro, exports WooCommerce/SumUp, alertes, fiche de contrôle (Store.catActive()).
+     Impossible de désactiver une fiche reliée au Stock (un produit réellement acheté doit compter). Par défaut : active. */
+  _isLinked(id) { return (Store.state.stockM || []).some(sp => sp.catalogId === id || (sp.variants || []).some(sv => sv.catalogId === id)); },
+  _linkedMsg: 'Cette fiche est reliée à un produit du Stock : elle ne peut pas être inactive (le produit est acheté, il doit compter dans les stats). Détache d\'abord la liaison dans le Stock.',
+  setActive(pId, on) {
+    const p = Store.state.catalogM.find(x => String(x.id) === String(pId)); if (!p) return;
+    if (!on && this._isLinked(p.id)) { U.alert(this._linkedMsg); App.rerender(); return; }
+    const snap = Store.snapshot('catalogM', p);
+    if (on) delete p.inactive; else p.inactive = true;
+    const entry = Store.commitSnapshot(snap, 'catalogue', (on ? 'Fiche réactivée' : 'Fiche passée inactive') + ' — ' + p.name);
+    Store.save('catalogM');
+    U.toast(on ? 'Fiche active : elle compte de nouveau (stats, exports).' : 'Fiche inactive : elle ne compte plus dans les stats ni les exports (filtre « Fiches » pour la revoir).', false, entry.id);
+    App.rerender();
+  },
+  /* Case « Fiche active » de l'éditeur : appliquée à l'enregistrement, comme le reste de la fiche */
+  setDraftActive(cb) {
+    if (!cb.checked && this._isLinked(this._d.id)) { cb.checked = true; U.alert(this._linkedMsg); return; }
+    if (cb.checked) delete this._d.inactive; else this._d.inactive = true;
+  },
 
   /* ---------- menu « Contrôle » (filtre d'aide au contrôle des fiches) ---------- */
   /* Rangé par thème, avec le nombre de produits concernés (Antho 2026-10-18 : 22 filtres à la suite = illisible). */
@@ -105,7 +128,7 @@ const Catalogue = {
     this.render();
   },
   _sheetOptions() {
-    const cat = Store.state.catalogM || [];
+    const cat = Store.catActive();
     return {
       sup: [...new Set(cat.map(p => p.mainSupplierId).filter(Boolean).map(id => Store.supplierName(id)))].sort(U.sortFr),
       meat: [...new Set(cat.map(p => p.meatType || 'Non spécifié'))].sort(U.sortFr),
@@ -114,7 +137,7 @@ const Catalogue = {
   },
   _sheetRows() {
     const sh = this.sheet, rows = [], hide = Store.hideSupplierInfo();
-    (Store.state.catalogM || []).forEach(p => {
+    Store.catActive().forEach(p => {
       const meat = p.meatType || 'Non spécifié', sup = p.mainSupplierId ? Store.supplierName(p.mainSupplierId) : '—';
       if (sh.meat.length && !sh.meat.includes(meat)) return;
       if (!hide && sh.sup.length && !sh.sup.includes(sup)) return;
@@ -365,7 +388,9 @@ const Catalogue = {
     const baseOk = p => (!f.q || U.has(this._searchText(p), f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
       (f.sup === 'all' || (f.sup === '_multi' ? (p.suppliers || []).length >= 2 : f.sup === '_single' ? (p.suppliers || []).length <= 1 : (p.suppliers || []).some(s => s.supplierId === f.sup)));
-    let list = Store.state.catalogM.filter(p => this._ctlMatch(p, f.ctl || 'all', linked, supSel) && baseOk(p));
+    const actOk = p => f.act === 'all' || (f.act === 'inactive' ? !!p.inactive : !p.inactive);
+    const nInact = Store.state.catalogM.filter(p => p.inactive).length, nAll = Store.state.catalogM.length;
+    let list = Store.state.catalogM.filter(p => actOk(p) && this._ctlMatch(p, f.ctl || 'all', linked, supSel) && baseOk(p));
     const dir = f.sortDir === 'desc' ? -1 : 1;
     const hasCritical = (p) => this._activeCalcs(p).some(c => c.critical);
     list.sort((a, b) => {
@@ -379,17 +404,18 @@ const Catalogue = {
     const sortHead = (key, label) => `<span class="sortable ${f.sort === key ? 'active' : ''}" onclick="Catalogue.setSort('${key}')">${label} ${f.sort === key ? (f.sortDir === 'asc' ? '▲' : '▼') : '⇕'}</span>`;
 
     App.mount(`
-      <div class="view-title"><h1>Prix mastication</h1><span class="sub">${list.length === Store.state.catalogM.length ? Store.state.catalogM.length + ' produits' : list.length + ' sur ' + Store.state.catalogM.length + ' produits'} · coefficient, marges & profit</span></div>
+      <div class="view-title"><h1>Prix mastication</h1><span class="sub">${list.length === nAll ? nAll + ' produits' : list.length + ' sur ' + nAll + ' produits'}${nInact ? ' (dont ' + nInact + ' inactif' + (nInact > 1 ? 's' : '') + ')' : ''} · coefficient, marges & profit</span></div>
       <div class="toolbar">
         <div class="fg"><label>Recherche</label><input id="cf_q" value="${U.esc(f.q)}" placeholder="nom, réf. fournisseur ou SKU…" oninput="Catalogue.filters.q=this.value;Catalogue.render();document.getElementById('cf_q').focus();document.getElementById('cf_q').setSelectionRange(999,999)"></div>
         <div class="fg"><label>Viande</label>${U.meatFilter({ current: f.meat, meats: S.meatTypes, count: Store.state.catalogM.length, setter: 'Catalogue._setMeatFilter', openState: this._meatFilterOpen, openSetter: 'Catalogue._meatFilterOpen' })}</div>
         <div class="fg"><label>Fournisseur</label>${U.customSelect({ value: f.sup, options: [{v:'all',l:'Tous'},{v:'_multi',l:'Multi fournisseurs'},{v:'_single',l:'Un seul fournisseur'}].concat(Store.suppliersOf('mastication').map(s => ({v:s.id,l:Store.supplierName(s.id)})).sort((a,b) => U.sortFr(a.l,b.l))), onPick: 'Catalogue._setSupFilter' })}</div>
-        <div class="fg ctl-fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._ctlOptions(linked, Store.state.catalogM.filter(baseOk), supSel), onPick: 'Catalogue._setCtlFilter' })}</div>
+        <div class="fg ctl-fg"><label>Contrôle</label>${U.customSelect({ value: f.ctl || 'all', options: this._ctlOptions(linked, Store.state.catalogM.filter(p => actOk(p) && baseOk(p)), supSel), onPick: 'Catalogue._setCtlFilter' })}</div>
+        ${nInact || f.act !== 'active' ? `<div class="fg"><label>Fiches ${U.info('Une fiche inactive = estimation ou test d\'un produit pas encore acheté : elle reste ici (modifiable, comparaison de prix) mais ne compte ni dans les stats, ni dans Revente pro, ni dans les exports.')}</label>${U.customSelect({ value: f.act || 'active', options: [{ v: 'active', l: `Actives (${nAll - nInact})` }, { v: 'inactive', l: `Inactives (${nInact})` }, { v: 'all', l: `Toutes (${nAll})` }], onPick: 'Catalogue._setActFilter' })}</div>` : ''}
         <button class="btn ${this.sheet.open ? 'btn-cta' : 'btn-ghost'}" onclick="Catalogue.sheetShow()" title="Liste imprimable / téléchargeable : produit, variante, SKU, sachet, coeff, prix">🖨 Fiche de contrôle</button>
         <a class="btn btn-cta" style="text-decoration:none;text-align:center;" href="#/catalogue/new">＋ Nouveau produit</a>
       </div>
       ${this.sheet.open ? this._sheetHTML() : ''}
-      ${(() => { const n = (f.ctl || 'all') === 'cheaper' ? 0 : Store.state.catalogM.filter(p => this._cheaper(p)).length; return n ? `<div class="card" style="border-left:4px solid var(--warn);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;"><span>💡 <b>${n} produit${n > 1 ? 's' : ''}</b> : le fournisseur principal n'est pas le moins cher.</span><button class="btn-ghost btn-sm" onclick="Catalogue._setCtlFilter('cheaper')">Les voir</button></div>` : ''; })()}
+      ${(() => { const n = (f.ctl || 'all') === 'cheaper' ? 0 : Store.catActive().filter(p => this._cheaper(p)).length; return n ? `<div class="card" style="border-left:4px solid var(--warn);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;"><span>💡 <b>${n} produit${n > 1 ? 's' : ''}</b> : le fournisseur principal n'est pas le moins cher.</span><button class="btn-ghost btn-sm" onclick="Catalogue._setCtlFilter('cheaper')">Les voir</button></div>` : ''; })()}
       ${list.length ? `<div class="toolbar" style="margin-top:-8px">
         ${U.seg([{ l: '📂 Tout développer', js: 'Catalogue.expandAll()' }, { l: '📁 Tout réduire', js: 'Catalogue.collapseAll()' }], { sm: true })}
       </div>` : ''}
@@ -467,7 +493,8 @@ const Catalogue = {
       sizeMeta = `<span style="white-space:nowrap;">${na} taille(s) · <span class="sensitive">coût ${rng(costs, x => U.eur(x))}</span></span>`;
       sizeCoeff = `<span class="b2b-disc-badge sensitive" style="width:auto;" title="Chaque taille a son propre prix d'achat et son propre coefficient (voir le tableau)"><label>Coeff</label><span style="padding:0 8px;font-weight:700;">${rng(cfs, x => x.toFixed(2))}</span></span>`;
     }
-    const ch = this._cheaper(p);   // fournisseur moins cher que le principal (ou null)
+    const off = !!p.inactive;   // fiche inactive : pas d'alertes (estimation / test)
+    const ch = off ? null : this._cheaper(p);   // fournisseur moins cher que le principal (ou null)
     let critCount = 0;
     let idx = 0;
     const varRow = (v, on) => {
@@ -531,10 +558,10 @@ const Catalogue = {
       if (isActive) return `<span class="sup-badge main" title="${isMain ? 'Fournisseur principal' : 'Comparaison — cliquer pour revenir au principal'}" onclick="event.preventDefault();event.stopPropagation();Catalogue.previewSup('${p.id}','${s.supplierId}')">${prefix}${U.esc(Store.supplierName(s.supplierId))}</span>`;
       return `<span class="sup-badge alt" title="Comparer avec ce fournisseur" onclick="event.preventDefault();event.stopPropagation();Catalogue.previewSup('${p.id}','${s.supplierId}')">${prefix}${U.esc(Store.supplierName(s.supplierId))}</span>`;
     }).join('');
-    return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
+    return `<details class="fold prod-fold cat-fold${selected ? ' cat-selected' : ''}${off ? ' cat-off' : ''}" data-cid="${p.id}" ${this._prodOpen[p.id] ? 'open' : ''} ontoggle="Catalogue.setCatOpen('${p.id}',this.open)">
       <summary onclick="Catalogue.summaryNav(event,'${p.id}')" onauxclick="Catalogue.summaryNav(event,'${p.id}')">
-        <b>${U.esc(p.name)}</b>${(() => { const t = this._ageTxt(this.priceDateOf(p, activeSup)); return t ? `<span class="px-date" title="Prix d'achat mis à jour le ${t}">${t}</span>` : ''; })()}
-        <span>${critCount ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${ch ? ` <span class="badge warn" title="${U.esc(ch.name)} est moins cher que le principal (${U.esc(ch.mainName)}) : −${U.pct(ch.pct)}">💡 moins cher ailleurs</span>` : ''}</span>
+        <b>${U.esc(p.name)}</b>${off ? ' <span class="badge info" title="Fiche inactive : estimation / test, ne compte pas dans les stats ni les exports">⏸ inactive</span>' : ''}${(() => { const t = this._ageTxt(this.priceDateOf(p, activeSup)); return t ? `<span class="px-date" title="Prix d'achat mis à jour le ${t}">${t}</span>` : ''; })()}
+        <span>${critCount && !off ? '<span class="badge bad">⚠ coeff critique</span>' : ''}${ch ? ` <span class="badge warn" title="${U.esc(ch.name)} est moins cher que le principal (${U.esc(ch.mainName)}) : −${U.pct(ch.pct)}">💡 moins cher ailleurs</span>` : ''}</span>
         <span><span class="badge info">${U.esc(p.meatType || '—')}</span></span>
         <span class="sup-badges" onclick="event.stopPropagation()">${(p.suppliers || []).length ? supBadges : '<span class="muted">—</span>'}</span>
         <span class="meta right">${perSize ? sizeMeta : `${actives.length} variante(s) · base <span class="sensitive kg-hl">${U.eur(base.unitCost)}/${base.unit === 'kilo' ? 'kg' : 'pc'}${base.k > 1 ? ' TTC' : ''}</span>${base.unit === 'kilo' && base.ppk > 0 ? ' <span class="kg-hl">' + U.qty(base.ppk) + ' pc/kg</span>' : ''} <i>(${base.src})</i>`}</span>
@@ -561,8 +588,9 @@ const Catalogue = {
         <div class="table-wrap"><table>
           <thead><tr><th class="col-name">Fournisseur</th><th class="num">Prix d'achat</th><th>Prix mis à jour</th><th></th></tr></thead>
           <tbody>${supRows || '<tr><td colspan="4" class="muted">Aucun fournisseur renseigné.</td></tr>'}</tbody></table></div>
-        <div class="frow mt">
+        <div class="frow mt" style="align-items:center;">
           <a class="btn btn-ghost" style="text-decoration:none;text-align:center;" href="#/catalogue/edit/${p.id}">Modifier</a>
+          <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;" title="Décoche pour une estimation / un test : la fiche reste ici mais ne compte pas dans les stats ni les exports"><input type="checkbox" ${off ? '' : 'checked'} onchange="Catalogue.setActive('${p.id}',this.checked)"> Fiche active</label>
         </div>
       </div>
     </details>`;
@@ -790,6 +818,7 @@ const Catalogue = {
           <div class="fg" style="flex:2;"><label>Nom du produit</label><input id="cp_name" value="${U.esc(p.name)}" oninput="Catalogue._d.name=this.value" onchange="Catalogue._d.name=this.value;Catalogue.checkSkus(true)"></div>
           <div class="fg"><label>Viande</label><select id="cp_meat" onchange="Catalogue._d.meatType=this.value;Catalogue.checkSkus(true)">${S.meatTypes.slice().sort(U.sortFr).map(m => `<option ${((p.meatType || '').toLowerCase() === m.toLowerCase()) ? 'selected' : ''}>${U.esc(m)}</option>`).join('')}</select></div>
         </div>
+        <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;margin-top:8px;"><input type="checkbox" id="cp_active" ${p.inactive ? '' : 'checked'} onchange="Catalogue.setDraftActive(this)"> Fiche active ${U.info('Décoche pour une estimation ou un test (produit pas encore acheté) : la fiche reste dans Prix mastication, tu peux la modifier librement, mais elle ne compte ni dans les stats, ni dans Revente pro, ni dans les exports, ni dans les alertes. Impossible si elle est reliée au Stock.')}</label>
       </div>
 
       <div class="card" style="border-left:4px solid #4a7c59;">

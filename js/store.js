@@ -673,6 +673,10 @@ const Store = {
   SUPPLIER_TYPES: [{ v: 'mastication', l: 'Mastication' }, { v: 'matiere', l: 'Matières premières' }, { v: 'conso', l: 'Consommables' }, { v: 'autre', l: 'Autre' }],
   supplierTypes(s) { return s && Array.isArray(s.types) && s.types.length ? s.types : ['mastication', 'matiere', 'conso']; },
   supplierTypesLabel(s) { const t = this.supplierTypes(s); return this.SUPPLIER_TYPES.filter(x => t.includes(x.v)).map(x => x.l).join(' · '); },
+  /* Fiches Prix mastication ACTIVES (Antho 2026-11-15) : une fiche « inactive » (p.inactive) sert de brouillon / de comparaison
+     (estimation d'un produit pas encore acheté…) — elle reste dans Prix mastication mais n'entre ni dans les stats, ni dans Revente pro,
+     ni dans les exports WooCommerce/SumUp, ni dans les alertes. Par défaut une fiche est active (aucune migration). */
+  catActive() { return (this.state.catalogM || []).filter(p => !p.inactive); },
   /* Fournisseurs d'un type (le fournisseur déjà choisi `keepId` est toujours conservé, même s'il n'a plus ce type) */
   suppliersOf(type, keepId) { return (this.state.settings.suppliers || []).filter(s => this.supplierTypes(s).includes(type) || s.id === keepId); },
   /* Nom affiché d'un fournisseur. Pour un compte viewer, anonymisé en « Fournisseur N »

@@ -109,7 +109,7 @@ const B2B = {
       const wd = a.mainWidth || w[0] || 'Standard';
       add(a.name, (rest || nm) + (fam.toLowerCase().includes(String(wd).toLowerCase()) ? '' : ' · ' + wd), Pricing.vatRate(a), it.discPct, it, { gname: fam, gk: a.groupId || fam, a });
     });
-    else Store.state.catalogM.forEach(p => { const it = this.productStats(p); it.rows.forEach(r => add(p.name, r.label, Pricing.vatRate(p), it.discPct, r)); });
+    else Store.catActive().forEach(p => { const it = this.productStats(p); it.rows.forEach(r => add(p.name, r.label, Pricing.vatRate(p), it.discPct, r)); });
     const srt = (a, b) => U.sortFr(a.gname, b.gname) || (a.a && b.a ? Accessoires._cmpAcc(a.a, b.a) : 0) || U.sortFr(a.variant, b.variant);
     return { capped: out.sort(srt), blocked: blocked.sort(srt) };
   },
@@ -139,7 +139,7 @@ const B2B = {
   renderMast() {
     const S = Store.state.settings;
     const f = this.filters;
-    const products = Store.state.catalogM.filter(p =>
+    const products = Store.catActive().filter(p =>
       (!f.q || U.has(p.name, f.q)) &&
       (f.meat === 'all' || (p.meatType || '').toLowerCase() === f.meat.toLowerCase()) &&
       (f.sup === 'all' || p.mainSupplierId === f.sup)
@@ -599,7 +599,7 @@ const B2B = {
     const q = this._qt; if (q.catC) return q.catC;
     const out = [];
     if ((this.tab || 'mast') === 'acc') Accessoires.crafted().map(a => this.accStats(a)).sort((a, b) => U.sortFr(a.a.name, b.a.name)).forEach(it => out.push(...this._qtItemRows('A', it)));
-    else Store.state.catalogM.map(p => this.productStats(p)).filter(it => it.rows.length).sort((a, b) => U.sortFr(a.p.name, b.p.name)).forEach(it => out.push(...this._qtItemRows('M', it)));
+    else Store.catActive().map(p => this.productStats(p)).filter(it => it.rows.length).sort((a, b) => U.sortFr(a.p.name, b.p.name)).forEach(it => out.push(...this._qtItemRows('M', it)));
     return q.catC = out;
   },
   _qtRows(all) {

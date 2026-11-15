@@ -1304,7 +1304,7 @@ const Woo = {
       add(v.sku, `${p.name} — ${Pricing.labelVariant(v)}`, U.num(v.priceTTC), stock, 'Mastication', p.meatType || '');
     }));
     // 2) Catalogue prix : si un SKU y est renseigné, il fournit/affine le prix calculé
-    Store.state.catalogM.forEach(p => {
+    Store.catActive().forEach(p => {
       const base = Pricing.baseUnitCost(p); const na = (p.variants||[]).filter(v=>v.enabled!==false).length; let idx = 0;
       (p.variants || []).forEach(v => {
         const on = v.enabled !== false; const c = Pricing.variantCalc(p, v, on ? idx : 0, base, na); if (on) idx++;
