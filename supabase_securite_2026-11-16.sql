@@ -49,3 +49,38 @@ drop policy if exists "connexions lecture admin" on public.connexions;
 create policy "connexions lecture admin" on public.connexions
   for select to authenticated
   using (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin');
+
+-- ───────── Copie nettoyée du compte visite (S1) — DÉJÀ APPLIQUÉ ─────────
+-- L'admin publie des clés v_<domaine> (js/visite.js). Le compte visite ne reçoit QUE ces clés ; l'équipe ne les lit pas ; personne d'autre que l'admin ne les écrit.
+drop policy if exists "app_state lecture" on public.app_state;
+create policy "app_state lecture" on public.app_state
+  for select to authenticated using (
+    coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin'
+    or (coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'team' and key not in ('purchases', 'bank', 'journalAdmin') and left(key, 2) <> 'v_'));
+
+create or replace function public.app_state_safe()
+returns table(key text, data jsonb)
+language plpgsql security definer set search_path = public as $fn$
+begin
+  if coalesce(auth.jwt()->'app_metadata'->>'role', 'admin') = 'admin' then
+    return query select a.key, a.data from public.app_state a where left(a.key, 2) <> 'v_';
+  elsif (auth.jwt()->'app_metadata'->>'role') = 'team' then
+    return query select a.key, a.data from public.app_state a where a.key not in ('purchases', 'bank', 'journalAdmin') and left(a.key, 2) <> 'v_';
+  elsif exists (select 1 from public.app_state a where a.key = 'v_settings') then
+    return query select substr(a.key, 3), a.data from public.app_state a where left(a.key, 2) = 'v_';
+  else
+    -- transition : tant que l'admin n'a pas publié la copie nettoyée, ancien filtrage (À RETIRER une fois les clés v_ présentes)
+    return query
+      select a.key,
+        case when a.key = 'sales' and jsonb_typeof(a.data) = 'array'
+             then (select coalesce(jsonb_agg(e - 'customerName'), '[]'::jsonb) from jsonb_array_elements(a.data) e)
+             else a.data end
+      from public.app_state a
+      where a.key not in ('clients', 'journal', 'journalAdmin', 'baskets', 'purchases', 'receptions', 'bank');
+  end if;
+end $fn$;
+revoke all on function public.app_state_safe() from public, anon;
+grant execute on function public.app_state_safe() to authenticated;
+
+-- Rôle admin explicite posé sur le compte sans rôle (2026-11-16) :
+-- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb where (raw_app_meta_data->>'role') is null;

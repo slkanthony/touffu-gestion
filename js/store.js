@@ -147,6 +147,7 @@ const Store = {
   _wire(k) {
     const J = this.state.journal || [];
     if (k === 'journal') return J.map(e => this._undoPrivate(e.undo) ? { ...e, undo: { type: 'vault' } } : e);
+    if (typeof Visite !== 'undefined' && Visite.isKey(k)) return Visite.wire(k);
     if (k === 'journalAdmin') { const o = {}; J.forEach(e => { if (this._undoPrivate(e.undo)) o[e.id] = e.undo; }); return o; }
     return this.state[k];
   },
@@ -168,7 +169,7 @@ const Store = {
     // Profil visite : la base refuse la lecture directe (données personnelles des clients) ; il passe par une fonction
     // SQL qui renvoie les données SANS clients, journal ni noms de clients sur les ventes (voir supabase_schema.sql).
     const isViewer = (this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role) === 'viewer';
-    const { data, error } = isViewer ? await this.sb.rpc('app_state_safe') : await this.sb.from('app_state').select('key,data');
+    const { data, error } = isViewer ? await this.sb.rpc('app_state_safe') : await this.sb.from('app_state').select('key,data').not('key', 'like', 'v_%');   // les copies « visite » (clés v_…) ne sont jamais rechargées par l'admin ni l'équipe
     if (error) throw error;
     // ⚠️ Course corrigée (2026-09-30, « je dois enregistrer plusieurs fois ») : la réponse arrive APRÈS coup. Si pendant
     // l'attente une fenêtre d'édition s'est ouverte (elle garde des références vers l'ANCIENS objets) ou si on a modifié /
@@ -181,6 +182,7 @@ const Store = {
     if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.receptions; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
     if (this._unvault(this.state.journal, obj.journalAdmin) && !this._vaultMig) { this._vaultMig = true; setTimeout(() => this.save('journal'), 0); }   // une fois : sort du journal les copies d'achats / de banque déjà enregistrées
+    if (this.isAdmin() && typeof Visite !== 'undefined' && this.state.meta.viewerVer !== Visite.VER) setTimeout(() => { try { Visite.publishAll(); } catch (e) { console.error(e); } }, 1500);   // copie nettoyée du compte visite : première publication (ou règles changées)
     if (!isViewer && role !== 'team') setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // admin : reprend ce que l'équipe a coché / saisi et met la copie sans prix à jour
     if (!isViewer && role !== 'team') setTimeout(() => { try { this.autoPriceBase(); this.normSingleCoeff(); } catch (e) { console.error(e); } }, 50);   // admin : passage automatique (une seule fois) à la base de prix HT
     // première utilisation : pousser les valeurs par défaut
@@ -519,7 +521,8 @@ const Store = {
     }
     if (domains.includes('purchases') && window.App && !window.App.isTeam && !window.App.isViewer) setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // toute modification d'achat : la copie « Réception » de l'équipe suit
     domains.forEach(d => this._dirty.add(d));
-    if (this.remote && this._dirty.has('journal') && this.isAdmin()) this._dirty.add('journalAdmin');   // le coffre part avec le journal (voir _wire)
+    if (this.remote && this._dirty.has('journal') && this.isAdmin()) this._dirty.add('journalAdmin');
+    if (this.remote && this.isAdmin() && typeof Visite !== 'undefined') Visite.keysFor(domains).forEach(k => this._dirty.add(k));   // la copie nettoyée du compte visite suit chaque enregistrement (voir visite.js)   // le coffre part avec le journal (voir _wire)
     this._saveSeq++;
     clearTimeout(this._saveT);
     this._saveT = setTimeout(() => this.flush(), 500);
