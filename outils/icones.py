@@ -25,6 +25,7 @@ MAP = {
  "🏆": (["trophy"], ""), "🦮": (["dog"], ""), "🐶": (["dog"], ""), "🚨": (["siren"], "bad"), "⭐": (["star"], ""), "❓": (["circle-question-mark", "circle-help", "help-circle"], ""),
  "🔧": (["wrench"], ""), "✂": (["scissors"], ""), "☁": (["cloud"], ""), "🙈": (["eye-off"], ""), "📎": (["paperclip"], ""), "🕒": (["clock"], ""), "⏸": (["pause"], ""),
  "🧭": (["compass"], ""), "📬": (["mailbox"], ""), "🦴": (["bone"], ""), "💪": (["biceps-flexed"], ""), "🎲": (["dices"], ""), "🔓": (["lock-open", "unlock"], ""),
+ "👃": (["wind"], ""), "🫠": (["droplet", "droplets"], ""), "💤": (["bed", "moon"], ""),
  "🔠": (["case-upper"], ""), "🛟": (["life-buoy"], ""), "🏭": (["factory"], ""), "➖": (["minus"], ""), "🎚": (["sliders-horizontal"], ""), "✋": (["hand"], ""),
 }
 cache, icons, table, missing = {}, {}, {}, []
