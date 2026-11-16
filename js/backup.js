@@ -13,6 +13,7 @@ const Backup = {
   RE: /^touffu-sauvegarde-(\d{4}-\d{2}-\d{2})\.json$/,
   _dir: null,        // dossier choisi (FileSystemDirectoryHandle), relu depuis IndexedDB
   _busy: false,
+  _lost: false,      // le dossier choisi n'existe plus (déplacé, renommé, supprimé, disque absent)
 
   allowed() { return !!(window.App && !App.isViewer && !App.isTeam); },
   supported() { return typeof window.showDirectoryPicker === 'function' && window.isSecureContext; },
@@ -58,13 +59,13 @@ const Backup = {
     let h;
     try { h = await window.showDirectoryPicker({ id: 'touffu-sauvegarde', mode: 'readwrite', startIn: 'documents' }); }
     catch (e) { return; }   // fenêtre de choix fermée : rien ne change
-    this._dir = h;
+    this._dir = h; this._lost = false;
     try { await this._set(h); } catch (e) { console.warn(e); }
     await this.run(true);
   },
   async forgetDir() {
     if (!await U.confirm('Ne plus ranger les sauvegardes dans ce dossier ? Les fichiers déjà enregistrés ne sont pas supprimés.', { okLabel: 'Oublier le dossier' })) return;
-    this._dir = null; try { await this._set(null); } catch (e) { console.warn(e); }
+    this._dir = null; this._lost = false; try { await this._set(null); } catch (e) { console.warn(e); }
     this.refresh();
   },
   /* Écrit la sauvegarde du jour. `manual` = déclenché par un clic (le navigateur accepte alors de redemander l'autorisation, ou de télécharger). */
@@ -79,7 +80,7 @@ const Backup = {
           const name = this.fileName(), fh = await this._dir.getFileHandle(name, { create: true }), w = await fh.createWritable();
           await w.write(this.dump()); await w.close();
           const removed = await this.prune();
-          this.mark('dossier');
+          this.mark('dossier'); this._lost = false;
           U.toast(`Sauvegarde de la semaine rangée dans « ${this._dir.name} »` + (removed ? ` (${removed} ancienne(s) retirée(s)).` : '.'));
           this.refresh(); return true;
         }
@@ -92,7 +93,11 @@ const Backup = {
       U.toast('Sauvegarde téléchargée (dossier « Téléchargements »).');
       this.refresh(); return true;
     } catch (e) {
-      console.error(e); U.toast('Sauvegarde impossible : ' + (e.message || e), true); return false;
+      console.error(e);
+      if (this._dir && e && e.name === 'NotFoundError') {   // dossier déplacé / renommé / supprimé : on le dit clairement et l'alerte propose de le choisir à nouveau
+        this._lost = true; U.toast('Dossier de sauvegarde introuvable (déplacé ou renommé) : choisis-le à nouveau.', true); this.refresh(); return false;
+      }
+      U.toast('Sauvegarde impossible : ' + (e.message || e), true); return false;
     } finally { this._busy = false; }
   },
   /* Ménage : garde les KEEP plus récentes ; parmi les plus anciennes, seulement la première de chaque mois. Renvoie le nombre de fichiers retirés. */
@@ -129,17 +134,17 @@ const Backup = {
   /* Alerte du Tableau de bord : seulement quand la sauvegarde de la semaine n'a pas pu se faire toute seule. */
   dashAlert() {
     if (!this.allowed() || !this.due()) return '';
-    const a = this.age(), txt = a === null ? 'Aucune sauvegarde hors Supabase pour l\'instant.' : `Dernière sauvegarde hors Supabase : il y a ${a} jours.`;
-    const need = !this._dir && this.supported();
+    const a = this.age(), txt = this._lost ? 'Dossier de sauvegarde introuvable (déplacé ou renommé).' : a === null ? 'Aucune sauvegarde hors Supabase pour l\'instant.' : `Dernière sauvegarde hors Supabase : il y a ${a} jours.`;
+    const need = (!this._dir || this._lost) && this.supported();
     return `<div class="card bk-alert"><span class="warn-txt">${txt}</span>
       <span class="bk-actions">${need ? '<button class="btn-ghost btn-sm" onclick="Backup.chooseDir()">Choisir mon dossier</button>' : ''}<button class="btn-cta btn-sm" onclick="Backup.run(true)">Sauvegarder maintenant</button></span></div>`;
   },
   /* Bloc de Paramètres → Import / export */
   paramsBlock() {
     if (!this.allowed()) return '';
-    const dir = this._dir ? `<b>${U.esc(this._dir.name)}</b>` : this.supported() ? 'aucun (la sauvegarde va dans « Téléchargements »)' : 'indisponible sur cet appareil (la sauvegarde va dans « Téléchargements »)';
-    return `<hr class="sep"><h3 class="bk-title">Sauvegarde automatique de la semaine <span class="muted help">Une fois par semaine, à l'ouverture de l'appli sur cet ordinateur, la sauvegarde complète est rangée toute seule dans le dossier choisi (conseil : Documents, Touffu, Sauvegarde, Touffu Gestion). Elle est gardée hors de Supabase : si la base tombe, tes données sont chez toi. Les 12 dernières sont gardées, puis une par mois. Le dossier se choisit une fois par ordinateur, avec Chrome ou Edge et l'adresse https.</span></h3>
+    const dir = this._dir ? `<b>${U.esc(this._dir.name)}</b>` + (this._lost ? ' <span class="warn-txt">introuvable (déplacé ou renommé) : choisis-le à nouveau</span>' : '') : this.supported() ? 'aucun (la sauvegarde va dans « Téléchargements »)' : 'indisponible sur cet appareil (la sauvegarde va dans « Téléchargements »)';
+    return `<hr class="sep"><h3 class="bk-title">Sauvegarde automatique de la semaine <span class="muted help">Une fois par semaine, à l'ouverture de l'appli sur cet ordinateur, la sauvegarde complète est rangée toute seule dans le dossier choisi (conseil : Documents, Touffu, Sauvegarde, Touffu Gestion). Elle est gardée hors de Supabase : si la base tombe, tes données sont chez toi. Les 12 dernières sont gardées, puis une par mois. Le dossier se choisit une fois par ordinateur, avec Chrome ou Edge et l'adresse https. Si tu changes d'ordinateur, si tu déplaces ou renommes le dossier : clique « Modifier le dossier » et montre le nouvel emplacement. Un navigateur n'a pas le droit d'écrire à un chemin tapé au clavier : il faut le lui montrer dans la fenêtre de choix.</span></h3>
       <p class="mb0">Dossier : ${dir}</p><p class="mb0">Dernière sauvegarde : ${this.lastTxt()}</p>
-      <div class="frow bk-row mt">${this.supported() ? `<button class="btn-ghost fit" onclick="Backup.chooseDir()">${this._dir ? 'Changer de dossier' : 'Choisir mon dossier'}</button>` : ''}<button class="btn-cta fit" onclick="Backup.run(true)">Sauvegarder maintenant</button>${this._dir ? '<button class="btn-ghost fit" onclick="Backup.forgetDir()">Oublier le dossier</button>' : ''}</div>`;
+      <div class="frow bk-row mt">${this.supported() ? `<button class="btn-ghost fit" onclick="Backup.chooseDir()">${this._dir ? 'Modifier le dossier' : 'Choisir mon dossier'}</button>` : ''}<button class="btn-cta fit" onclick="Backup.run(true)">Sauvegarder maintenant</button>${this._dir ? '<button class="btn-ghost fit" onclick="Backup.forgetDir()">Oublier le dossier</button>' : ''}</div>`;
   }
 };
