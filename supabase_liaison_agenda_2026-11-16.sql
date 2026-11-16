@@ -1,0 +1,4 @@
+-- Liaison Touffu Agenda (lecture seule) — DÉJÀ APPLIQUÉ le 2026-11-16 via le connecteur Supabase.
+-- Fonction agenda_resume(secret) : renvoie par jour de vente en événement CA, espèces, coût, frais (sans aucun nom de client).
+-- Le secret est dans la table secrets_liaison (illisible de l'extérieur) ; il est copié côté Agenda dans secrets_internes.
+-- Voir la migration « liaison_agenda_resume » du projet Supabase de Gestion.
