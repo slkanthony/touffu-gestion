@@ -832,7 +832,6 @@ body.visit-mode .kpi.sensitive .l::after { content: ' · masqué'; font-weight: 
 .kpi .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
 body.visit-mode .kpi.sensitive .l::after { content: none; }
 /* Barre « Afficher » du tableau de bord : les 4 boutons occupent toute la largeur */
-.dash-scope-bar .dash-scope-btn { flex: 1 1 0; min-width: 150px; padding: 10px 14px; font-size: .95rem; font-weight: 600; }
 /* Récapitulatif du tableau de bord (période + comparaison N-1) */
 .recap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .recap-tile { padding: 10px 12px; border-left-width: 4px; }
@@ -1840,3 +1839,20 @@ button .ico, .btn .ico, .badge .ico:not(.ico-fill), .tag .ico, #toast .ico, .kpi
   .topnav.nav-tight .topnav-inner { padding: 0 10px; }
   .topnav.nav-tight .topnav-inner .sync-state { padding: 10px 4px; }
 }
+
+/* ---------- Boutons : mêmes hauteurs, jamais étirés (design D4, règle d'Antho) ---------- */
+/* 1. Les boutons pleins ont la même bordure (invisible) que les boutons à contour : même hauteur côte à côte. */
+.btn-cta, .btn-ok, .btn-danger { border: 2px solid transparent; }
+/* 2. Une icône dans un bouton ne change pas sa hauteur. */
+button svg.ico, .btn svg.ico { margin-top: -0.15em; margin-bottom: -0.15em; }
+/* 3. Dans une ligne de champs, un bouton garde la taille de son texte (avant : étiré sur toute la largeur). */
+.frow > button, .frow > a.btn { flex: 0 0 auto; min-width: 0; }
+
+/* ---------- Tableau de bord : « Afficher » et périodes = mêmes onglets que le reste de l'appli (design D3) ---------- */
+.dash-scope-bar > .seg { flex: 1 1 520px; }
+@media (max-width: 700px) {
+  .dash-scope-bar > .seg.full { display: grid; grid-template-columns: 1fr 1fr; }
+  .dash-scope-bar > .seg.full > * { padding: 8px 6px; }
+}
+/* 4. Un lien habillé en bouton a la même hauteur qu'un vrai bouton. */
+a.btn { line-height: normal; }

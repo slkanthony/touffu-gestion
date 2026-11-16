@@ -1053,7 +1053,7 @@ U.icon = (name, o = {}) => {
   const cls = 'ico' + (o.size ? ' ico-' + o.size : '') + (o.tone ? ' ' + String(o.tone).split(' ').map(t => 'ico-' + t).join(' ') : '');
   return `<svg class="${cls}" viewBox="0 0 24 24" ${o.label ? `role="img" aria-label="${U.esc(o.label)}"` : 'aria-hidden="true"'}>${d}</svg>`;
 };
-U._emoRe = /\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*/gu;
+U._emoRe = /\uFF0B|\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*/gu;   // \uFF0B = \u00AB \uFF0B \u00BB pleine largeur (sa police de secours agrandissait les boutons)
 U._icoSkip = { OPTION: 1, SELECT: 1, TEXTAREA: 1, SCRIPT: 1, STYLE: 1, TITLE: 1 };
 U.iconize = (root) => {
   if (typeof EMOJI_ICON === 'undefined' || !root) return;

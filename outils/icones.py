@@ -26,6 +26,7 @@ MAP = {
  "🔧": (["wrench"], ""), "✂": (["scissors"], ""), "☁": (["cloud"], ""), "🙈": (["eye-off"], ""), "📎": (["paperclip"], ""), "🕒": (["clock"], ""), "⏸": (["pause"], ""),
  "🧭": (["compass"], ""), "📬": (["mailbox"], ""), "🦴": (["bone"], ""), "💪": (["biceps-flexed"], ""), "🎲": (["dices"], ""), "🔓": (["lock-open", "unlock"], ""),
  "👃": (["wind"], ""), "🫠": (["droplet", "droplets"], ""), "💤": (["bed", "moon"], ""),
+ "＋": (["plus"], ""),   # signe « plus » pleine largeur : sa police de secours grandit les boutons
  "🔠": (["case-upper"], ""), "🛟": (["life-buoy"], ""), "🏭": (["factory"], ""), "➖": (["minus"], ""), "🎚": (["sliders-horizontal"], ""), "✋": (["hand"], ""),
 }
 cache, icons, table, missing = {}, {}, {}, []
