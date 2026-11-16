@@ -1,0 +1,214 @@
+/* ═══════════ Tests automatiques des CALCULS (audit 2026-11-16, chantier 3) ═══════════
+   Lancer :   node tests/run.js      (depuis le dossier touffu-gestion ; aucun navigateur, aucune base, aucune donnée réelle)
+   Charge les vrais fichiers de l'appli (utils, store, pricing, achats, accessoires, compta…) dans un faux navigateur minimal, pose des données
+   FICTIVES en mémoire, puis compare chaque résultat à une valeur CALCULÉE À LA MAIN (le détail du calcul est en commentaire de chaque cas).
+   Règle : toute modification d'une formule commence par ajouter ou adapter son test ici. Sortie : code 1 si un seul test échoue. */
+process.env.TZ = 'Europe/Paris';   // les ventes sont datées en heure française (cas « vente à 00 h 30 le 1er du mois »)
+const fs = require('fs'), path = require('path'), vm = require('vm');
+const root = path.join(__dirname, '..');
+
+/* ---------- faux navigateur : juste de quoi charger les fichiers sans erreur ---------- */
+const noop = () => {};
+const el = () => new Proxy(function () {}, { get: (t, k) => k === 'style' || k === 'classList' || k === 'dataset' ? el() : k === 'length' ? 0 : k === Symbol.iterator ? function* () {} : k === Symbol.toPrimitive ? () => '' : el(), apply: () => el(), set: () => true });
+const store = {};
+const sandbox = {
+  console, setTimeout: noop, clearTimeout: noop, setInterval: noop, clearInterval: noop, URL, Blob: function () {}, Intl, Date, Math, JSON,
+  localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
+  sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+  navigator: { userAgent: 'node', onLine: true }, location: { hash: '', href: '', reload: noop }, indexedDB: {},
+  document: { addEventListener: noop, removeEventListener: noop, querySelectorAll: () => [], querySelector: () => null, getElementById: () => null, createElement: () => el(), documentElement: el(), body: el(), head: el() },
+  MutationObserver: function () { return { observe: noop, disconnect: noop }; }, ResizeObserver: function () { return { observe: noop, disconnect: noop }; }, IntersectionObserver: function () { return { observe: noop, disconnect: noop }; },
+  addEventListener: noop, removeEventListener: noop, matchMedia: () => ({ matches: false, addEventListener: noop }), requestAnimationFrame: noop, getComputedStyle: () => ({})
+};
+['HTMLElement', 'Element', 'Node', 'HTMLSelectElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLDetailsElement'].forEach(n => {
+  const C = function () {};
+  ['value', 'selectedIndex', 'checked', 'open', 'valueAsNumber'].forEach(k => Object.defineProperty(C.prototype, k, { configurable: true, get() { return undefined; }, set() {} }));
+  sandbox[n] = C;
+});
+sandbox.document.readyState = 'complete';
+sandbox.window = sandbox; sandbox.globalThis = sandbox;
+const ctx = vm.createContext(sandbox);
+const FILES = ['config', 'utils', 'store', 'pricing', 'visite', 'catalogue', 'accessoires', 'stock', 'ventes', 'paniers', 'b2b', 'woo', 'params', 'achats', 'compta', 'ship', 'devis', 'facture', 'clients', 'partners', 'stats', 'calc', 'backup'];
+FILES.forEach(f => { const p = path.join(root, 'js', f + '.js'); vm.runInContext(fs.readFileSync(p, 'utf8'), ctx, { filename: 'js/' + f + '.js' }); });
+const run = code => vm.runInContext(code, ctx);
+
+/* ---------- outils de test ---------- */
+let ok = 0, ko = 0; const fails = [];
+const near = (a, b, tol) => Math.abs(a - b) <= (tol === undefined ? 0.005 : tol);
+function eq(label, got, want, tol) {
+  const good = typeof want === 'number' ? (typeof got === 'number' && near(got, want, tol)) : JSON.stringify(got) === JSON.stringify(want);
+  if (good) ok++; else { ko++; fails.push(`✗ ${label}\n    obtenu  : ${JSON.stringify(got)}\n    attendu : ${JSON.stringify(want)}`); }
+}
+/* Remet des données propres avant chaque groupe. `S` = réglages à surcharger. */
+function reset(S) {
+  run(`Store.state = Store.merge(null); Store.remote = false; Store.session = null; Store.save = function () {}; window.App = { isViewer: false, isTeam: false, role: 'admin', rerender() {} };`);
+  const base = {
+    vatRate: 20, vatActive: false, priceBaseHT: true, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5, bulkDiscount: 0,
+    portRates: { mastication: 0, matiere: 0, conso: 0 }, b2bCoeffThreshold: 1, accCoeffThreshold: 2, accPriceStep: 0.5, laborRate: 20, labelCost: 0.05, labelTypes: [], labelDefaultId: '',
+    suppliers: [{ id: 's1', name: 'Fournisseur test', types: ['mastication'] }], sachets: [{ id: 'sc', name: 'Sachet test', cost: 0.10, type: 'sachet' }], uvEquip: [], uvMaintPct: 0
+  };
+  sandbox.__S = Object.assign(base, S || {});
+  run(`Object.assign(Store.state.settings, __S);`);
+}
+const prod = over => Object.assign({
+  id: 'p1', name: 'Produit test', meatType: 'Boeuf', mainSupplierId: 's1', coefficient: 2, labelTypeId: '', labelCost: 0.05,
+  suppliers: [{ id: 'l1', supplierId: 's1', price: 10, taxType: 'HT', vatRate: 10, unit: 'kilo', weight: 1, quantity: 1, piecesPerKilo: '' }],
+  variants: [{ id: 'v1', mode: 'gram', value: 100, sachetId: 'sc', enabled: true }]
+}, over || {});
+function calcAll(p) { sandbox.__p = p; return run(`Pricing._calcAllM(__p, !!Store.state.settings.priceBaseHT)`); }
+function saleProfit(s) { sandbox.__s = s; return run(`Pricing.saleProfit(__s)`); }
+
+/* ══════════ 1. PRIX D'UNE VARIANTE (mastication) ══════════ */
+/* Achat 10 € HT/kg, TVA d'achat 10 %, non assujetti → coût réel 11 €/kg. Variante 100 g + sachet 0,10 + étiquette 0,05.
+   Coût réel = 1,10 + 0,10 + 0,05 = 1,25.  Coût HT (base du coefficient) = 1,00 + 0,10 + 0,05 = 1,15.
+   Prix HT = 1,15 × 2 = 2,30 → TTC = 2,76 → arrondi à 0,10 € = 2,80.  HT réel = 2,80 / 1,2 = 2,3333. */
+reset();
+let c = calcAll(prod())[0];
+eq('1a coût réel 100 g', c.cost, 1.25);
+eq('1a coût HT (base du coefficient)', c.costHT, 1.15);
+eq('1a prix TTC arrondi à 0,10', c.priceTTC, 2.8);
+eq('1a prix HT', c.priceHT, 2.3333, 0.0001);
+eq('1a marge = HT − coût réel', c.margin, 1.0833, 0.0001);
+eq('1a bénéfice actuel = TTC − coût − 12,3 % du TTC', c.profitActuel, 2.8 - 1.25 - 2.8 * 0.123, 0.0001);   // 1,2056
+eq('1a coefficient réel (HT ÷ coût réel)', c.effCoeff, 1.8667, 0.0001);
+eq('1a prix non fixé', c.priceFixed, false);
+
+/* Ancienne base (coefficient sur le coût TVA d'achat comprise) : 1,25 × 2 = 2,50 → TTC 3,00. */
+reset({ priceBaseHT: false });
+eq('1b ancienne base de prix', calcAll(prod())[0].priceTTC, 3.0);
+
+/* Même achat saisi TTC : 11 € TTC à 10 % = 10 € HT → même prix. */
+reset();
+eq('1c fournisseur saisi en TTC', calcAll(prod({ suppliers: [{ id: 'l1', supplierId: 's1', price: 11, taxType: 'TTC', vatRate: 10, unit: 'kilo', weight: 1, quantity: 1 }] }))[0].priceTTC, 2.8);
+
+/* Assujetti à la TVA : la TVA d'achat n'est plus un coût → coût réel = 1,15 ; le prix ne change pas. */
+reset({ vatActive: true });
+c = calcAll(prod())[0];
+eq('1d assujetti : coût réel HT', c.cost, 1.15);
+eq('1d assujetti : même prix TTC', c.priceTTC, 2.8);
+eq('1d assujetti : marge', c.margin, 2.8 / 1.2 - 1.15, 0.0001);
+
+/* Deux variantes, décote par palier 10 % : la 2e (250 g) → coût HT 2,50 + 0,15 = 2,65 ; HT = 2,65 × 2 × 0,9 = 4,77 → TTC 5,724 → 5,70. */
+reset({ bulkDiscount: 10 });
+let all = calcAll(prod({ variants: [{ id: 'v1', mode: 'gram', value: 100, sachetId: 'sc', enabled: true }, { id: 'v2', mode: 'gram', value: 250, sachetId: 'sc', enabled: true }] }));
+eq('1e 1re variante sans décote', all[0].priceTTC, 2.8);
+eq('1e 2e variante décote 10 %', all[1].priceTTC, 5.7);
+
+/* Coefficient propre à la ligne (3) : 1,15 × 3 = 3,45 → TTC 4,14 → 4,10. Pas de décote. */
+reset({ bulkDiscount: 10 });
+eq('1f coefficient propre à la variante', calcAll(prod({ variants: [{ id: 'v1', mode: 'gram', value: 100, sachetId: 'sc', enabled: true, coeff: 3 }] }))[0].priceTTC, 4.1);
+
+/* Prix fixé à la main : jamais arrondi, jamais recalculé. */
+reset();
+c = calcAll(prod({ variants: [{ id: 'v1', mode: 'gram', value: 100, sachetId: 'sc', enabled: true, priceTTCManual: 4.99 }] }))[0];
+eq('1g prix fixé gardé tel quel', c.priceTTC, 4.99);
+eq('1g prix fixé signalé', c.priceFixed, true);
+
+/* Achat à la pièce : 6 € HT les 3 → 2 € HT pièce, TVA d'achat = taux global 20 %. Lot de 2 sans sachet :
+   coût HT = 4,00 + 0,05 = 4,05 → HT 8,10 → TTC 9,72 → 9,70. Coût réel = 4,80 + 0,05 = 4,85. */
+reset();
+c = calcAll(prod({ suppliers: [{ id: 'l1', supplierId: 's1', price: 6, taxType: 'HT', unit: 'piece', weight: 1, quantity: 3 }], variants: [{ id: 'v1', mode: 'piece', value: 2, sachetId: '', enabled: true }] }))[0];
+eq('1h achat à la pièce : coût réel du lot de 2', c.cost, 4.85);
+eq('1h achat à la pièce : prix TTC', c.priceTTC, 9.7);
+
+/* Achat au kilo, 20 pièces au kilo, vente par 2 pièces sans sachet : 2/20 kg = 1,00 € HT ; coût HT 1,05 → HT 2,10 → TTC 2,52 → 2,50. */
+reset();
+eq('1i pièces au kilo', calcAll(prod({ suppliers: [{ id: 'l1', supplierId: 's1', price: 10, taxType: 'HT', vatRate: 10, unit: 'kilo', weight: 1, quantity: 1, piecesPerKilo: 20 }], variants: [{ id: 'v1', mode: 'piece', value: 2, sachetId: '', enabled: true }] }))[0].priceTTC, 2.5);
+
+/* Port à l'achat 10 % sur la mastication : coût HT = 1,00 + 0,10 + 0,05 + 0,10 (port) = 1,25 → HT 2,50 → TTC 3,00. */
+reset({ portRates: { mastication: 10, matiere: 0, conso: 0 } });
+eq('1j port à l\'achat 10 %', calcAll(prod())[0].priceTTC, 3.0);
+
+/* ══════════ 2. ACCESSOIRE (fait main) ══════════ */
+/* Matière 2 € HT/m, TVA d'achat 20 % (non assujetti → 2,40 réel), 1,5 m ; 30 min à 20 €/h = 10 € ; frais 1 €.
+   Coût réel = 3,60 + 10 + 1 = 14,60. Coût HT = 3,00 + 10 + 1 = 14,00. Coefficient 2,5 → HT 35 → TTC 42,00 (pas de 0,50 €). */
+reset();
+run(`Store.state.materials = [{ id: 'm1', name: 'Sangle test', kind: 'sangle', unit: 'm', costUnit: 2, costTax: 'HT', costVat: 20, qty: 10, rolls: [{ id: 'r', qty: 10 }] }];
+     Store.state.catalogA = [{ id: 'a1', name: 'Laisse test', category: 'Laisse', bom: [{ materialId: 'm1', qty: 1.5 }], laborMinutes: 30, extraCost: 1, coefficient: 2.5 }];`);
+let a = run(`Pricing.accCalc(Store.state.catalogA[0])`);
+eq('2a accessoire : coût matières réel', a.matCost, 3.6);
+eq('2a accessoire : main d\'œuvre', a.laborCost, 10);
+eq('2a accessoire : coût réel', a.cost, 14.6);
+eq('2a accessoire : prix TTC', a.priceTTC, 42);
+eq('2a accessoire : cotisations 21,2 % du HT', a.social, 35 * 0.212, 0.0001);
+/* Arrondi au pas de 0,50 € : coefficient 2,53 → 14 × 2,53 × 1,2 = 42,504 → 42,50. */
+run(`Store.state.catalogA[0].coefficient = 2.53;`);
+eq('2b accessoire : arrondi à 0,50 €', run(`Pricing.accCalc(Store.state.catalogA[0])`).priceTTC, 42.5);
+
+/* ══════════ 3. RÉSULTAT D'UNE VENTE ══════════ */
+/* Carte SumUp, 2 × 5 € (coût total figé 3 €) : CA 10 ; frais 1,75 % = 0,175 ; cotisations 12,3 % = 1,23 ; net = 10 − 3 − 0,175 − 1,23 = 5,595. */
+reset();
+let r = saleProfit({ id: 's', ts: Date.now(), payment: 'sumup', items: [{ kind: 'M', pId: 'x', vId: 'y', price: 5, qty: 2, cost: 3 }] });
+eq('3a vente carte : CA', r.ca, 10);
+eq('3a vente carte : frais de paiement', r.fee, 0.175, 0.0001);
+eq('3a vente carte : cotisations', r.cotis, 1.23, 0.0001);
+eq('3a vente carte : bénéfice net', r.net, 5.595, 0.0001);
+/* Espèces, accessoire 30 € (coût 10) : cotisations 21,2 % = 6,36 ; net = 13,64. */
+r = saleProfit({ id: 's', ts: Date.now(), payment: 'cash', items: [{ kind: 'A', pId: 'zz', price: 30, qty: 1, cost: 10 }] });
+eq('3b vente accessoire : cotisations fait main', r.cotis, 6.36, 0.0001);
+eq('3b vente accessoire : bénéfice net', r.net, 13.64, 0.0001);
+/* Événement : stand 20 + déplacement 5 + repas 10 = 35 ; 100 € de ventes (coût 40), espèces : net = 100 − 40 − 35 − 12,30 = 12,70. */
+r = saleProfit({ id: 's', ts: Date.now(), payment: 'cash', eventFee: 20, travelCost: 5, mealFee: 10, items: [{ kind: 'M', pId: 'x', vId: 'y', price: 100, qty: 1, cost: 40 }] });
+eq('3c vente événement : frais', r.eventFee, 35);
+eq('3c vente événement : bénéfice net', r.net, 12.7, 0.0001);
+/* Port encaissé 6 €, envoi payé 5 €, Stripe 1,5 % sur 26 € = 0,39 ; cotisations sur 20 + 6 = 26 × 12,3 % = 3,198 ; net = 20 − 8 + 6 − 0,39 − 5 − 3,198 = 9,412. */
+r = saleProfit({ id: 's', ts: Date.now(), payment: 'stripe', shippingFeeCollected: 6, shippingCost: 5, items: [{ kind: 'M', pId: 'x', vId: 'y', price: 20, qty: 1, cost: 8 }] });
+eq('3d vente en ligne : bénéfice net', r.net, 9.412, 0.0001);
+/* Assujetti : 12 € TTC (coût 4), espèces. Cotisations sur le HT : 10 × 12,3 % = 1,23 ; TVA reversée 2 ; net = 12 − 4 − 1,23 − 2 = 4,77. */
+reset({ vatActive: true });
+r = saleProfit({ id: 's', ts: Date.now(), payment: 'cash', items: [{ kind: 'M', pId: 'x', vId: 'y', price: 12, qty: 1, cost: 4 }] });
+eq('3e assujetti : TVA reversée', r.tva, 2, 0.0001);
+eq('3e assujetti : bénéfice net', r.net, 4.77, 0.0001);
+/* Vente annulée : ne compte pas. */
+reset();
+eq('3f vente annulée ignorée', saleProfit({ id: 's', ts: Date.now(), cancelled: true, payment: 'cash', items: [{ kind: 'M', price: 9, qty: 1, cost: 1 }] }).ca, 0);
+
+/* ══════════ 4. COMPTA DU MOIS ══════════ */
+/* Deux ventes ce mois-ci : carte 10 € (coût 3) et espèces 30 € accessoire (coût 10). Un achat d'outillage 24 € TTC ce mois-ci.
+   Entrées 40 ; marge 27 ; frais de paiement 0,175 ; cotisations 1,23 + 6,36 = 7,59 ; dépenses 24.
+   Résultat = 27 − 0,175 − 7,59 − 24 = −4,765.  Trésorerie : sorties = 24 + 0,175 + 7,59 = 31,765 ; solde = 8,235. */
+reset();
+const now = new Date(), mk = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'), day = mk + '-' + String(now.getDate()).padStart(2, '0');
+sandbox.__now = now.getTime(); sandbox.__day = day;
+run(`Store.state.sales = [
+       { id: 'a', ts: __now, payment: 'sumup', items: [{ kind: 'M', pId: 'x', vId: 'y', price: 5, qty: 2, cost: 3 }] },
+       { id: 'b', ts: __now, payment: 'cash', items: [{ kind: 'A', pId: 'zz', price: 30, qty: 1, cost: 10 }] }];
+     Store.state.purchases = [{ id: 'f1', date: __day, supplierId: 's1', tax: 'TTC', lines: [{ id: 'l', cat: 'outillage', label: 'Outil test', qty: 1, price: 24 }] }];
+     Compta.f.period = 'year';`);
+let d = run(`Compta.data()`);
+eq('4a compta : le mois courant est présent', d.months.includes(mk), true);
+eq('4a compta : entrées du mois', d.M[mk].inc, 40);
+eq('4a compta : marge brute', d.M[mk].marge, 27);
+eq('4a compta : cotisations', d.M[mk].cotis, 7.59, 0.0001);
+eq('4a compta : dépenses du mois', d.M[mk].expensed, 24);
+eq('4a compta : bénéfice net', d.M[mk].net, -4.765, 0.0001);
+eq('4a compta : achats payés (trésorerie)', d.M[mk].buyPaid, 24);
+eq('4a compta : solde de trésorerie', d.M[mk].solde, 8.235, 0.0001);
+
+/* Une vente à 00 h 30 le 1er du mois (heure française) appartient à CE mois, pas au précédent. */
+const y = now.getFullYear(), first = new Date(y, 5, 1, 0, 30).getTime();   // 1er juin, 00 h 30
+sandbox.__first = first;
+eq('4b vente à 00 h 30 le 1er juin → mois de juin', run(`Compta.mk(__first)`), y + '-06');
+eq('4b jour local d\'une vente à 00 h 30', run(`U.dayKey(__first)`), y + '-06-01');
+eq('4b mois local d\'une vente à 23 h 30 le 31 mai', run(`U.monthKey(${new Date(y, 4, 31, 23, 30).getTime()})`), y + '-05');
+
+/* Amortissement daté : machine 1 200 € sur 2 ans achetée en janvier de l'an dernier → 50 €/mois, de janv. N−1 à déc. N ; plus rien en janvier N+1. */
+reset({ uvEquip: [{ id: 'e', name: 'Machine test', price: 1200, years: 2, buyDate: (y - 1) + '-01-15' }] });
+eq('4c amortissement : mois d\'achat', run(`Compta._amortFor('${y - 1}-01')`), 50);
+eq('4c amortissement : dernier mois', run(`Compta._amortFor('${y}-12')`), 50);
+eq('4c amortissement : terminé ensuite', run(`Compta._amortFor('${y + 1}-01')`), 0);
+eq('4c amortissement : rien avant l\'achat', run(`Compta._amortFor('${y - 2}-12')`), 0);
+
+/* ══════════ 5. COPIE DU COMPTE VISITE : rien de sensible, mêmes prix ══════════ */
+reset();
+run(`Store.state.settings.payIban = 'IBANTEST'; Store.state.settings.suppliers[0].name = 'NOMSECRET';
+     Store.state.catalogM = [${JSON.stringify(prod({ notes: 'NOTESECRETE', suppliers: [{ id: 'l1', supplierId: 's1', price: 10, taxType: 'HT', vatRate: 10, unit: 'kilo', weight: 1, quantity: 1, url: 'https://exemple.test/secret', ref: 'REFSECRETE' }] }))}];
+     Store.state.sales = [{ id: 'a', ts: 1, payment: 'cash', customerName: 'CLIENTSECRET', items: [{ kind: 'M', price: 5, qty: 1, cost: 3.21 }] }];`);
+const copy = JSON.stringify(run(`Visite.allKeys().map(k => Visite.wire(k))`));
+eq('5 copie visite : aucune valeur sensible', ['IBANTEST', 'NOMSECRET', 'NOTESECRETE', 'REFSECRETE', 'CLIENTSECRET', 'exemple.test', '3.21'].filter(x => copy.includes(x)), []);
+eq('5 copie visite : prix de vente figé identique', run(`Visite.catalogM()[0].variants[0].priceTTCManual`), 2.8);
+
+/* ---------- bilan ---------- */
+fails.forEach(f => console.log(f));
+console.log(`\n${ko ? '✗' : '✓'} ${ok} test(s) réussi(s), ${ko} en échec`);
+process.exit(ko ? 1 : 0);
