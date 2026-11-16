@@ -141,6 +141,8 @@ main.main { flex: 1; padding: 22px clamp(12px, 3vw, 36px) 90px; max-width: 1760p
 .view-title { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
 .view-title h1 { font-family: 'Berkshire Swash', cursive; font-weight: 400; font-size: 1.9rem; }
 .view-title .sub { color: var(--gris); font-size: 0.9rem; }
+.view-title .dash-apps { margin-left: auto; display: inline-flex; gap: 8px; align-self: center; }
+.view-title .dash-apps .btn { white-space: nowrap; }
 
 /* ---------- Cartes / tableaux ---------- */
 .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--ombre); padding: 18px; margin-bottom: 18px; }
