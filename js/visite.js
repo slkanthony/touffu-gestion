@@ -9,7 +9,7 @@
    La copie part avec l'enregistrement du domaine source (voir `Store.save` / `Store._wire`). Changer une règle de nettoyage → incrémenter `VER`
    (tout est republié à la prochaine ouverture par l'admin). */
 const Visite = {
-  VER: 1,
+  VER: 2,
   /* domaine source → clés de copie à republier quand il change (un prix figé dépend aussi des réglages, des consommables et des matières) */
   DEPS: {
     catalogM: ['catalogM'], stockM: ['stockM'], catalogA: ['catalogA'], sales: ['sales'],
@@ -24,7 +24,7 @@ const Visite = {
   /* Champs retirés PARTOUT, à n'importe quelle profondeur (filet de sécurité pour un champ ajouté plus tard) */
   ZERO: ['cost', 'costUnit', 'costTotal', 'costFinal', 'unitCost', 'wAvg', 'laborMinutes', 'extraCost', 'eventFee', 'travelCost', 'mealFee', 'shippingCost'],
   DROP: ['url', 'ref', 'notes', 'note', 'costQtyPer', 'costTax', 'costVat', 'purchaseVatRate', 'vatRate', 'priceDate', 'coeff', 'coefficient', 'groupCoeff', 'bulkDiscount',
-    'customerName', 'invoice', 'undoOps', '_ops', 'travelDet', 'partnerId', 'partnerName', 'partnerCode', 'partnerPct', 'src', 'replaceNote'],
+    'customerName', 'invoice', 'undoOps', '_ops', 'travelDet', 'partnerId', 'partnerName', 'partnerCode', 'partnerPct', 'discountCode', 'src', 'replaceNote'],
   _scrub(o) {
     if (Array.isArray(o)) { o.forEach(x => this._scrub(x)); return o; }
     if (!o || typeof o !== 'object') return o;

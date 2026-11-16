@@ -84,3 +84,8 @@ grant execute on function public.app_state_safe() to authenticated;
 
 -- Rôle admin explicite posé sur le compte d'Antho le 2026-11-16 (avec son accord). RESTE À FAIRE : ne plus accepter l'absence de rôle dans les règles.
 -- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb where (raw_app_meta_data->>'role') is null;
+
+-- ───────── ÉTAT FINAL (appliqué le 2026-11-16 au soir) ─────────
+-- Le rôle admin est posé sur le compte principal. Dans toutes les règles ci-dessus, « coalesce(role, admin) = admin » est remplacé par « role = admin » :
+-- un compte SANS rôle n a plus aucun droit. app_state_safe() : admin = tout sauf v_… ; team = idem sans purchases / bank / journalAdmin ;
+-- viewer = uniquement les clés v_… (rendues sans le préfixe) ; sans rôle = rien. Le repli de transition a été retiré.
