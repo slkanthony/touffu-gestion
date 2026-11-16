@@ -1803,3 +1803,10 @@ tr.wgrp td[colspan] { text-align: left; }
 .tag-toggle { flex: none; cursor: pointer; padding: 1px 8px; border-radius: 12px; font-size: 0.68rem; font-weight: 600; font-family: inherit;
   color: var(--caramel-2, var(--caramel)); background: transparent; border: 1px dashed rgba(166, 113, 83, 0.55); }
 .tag-toggle:hover, .tag-toggle.on { background: rgba(166, 113, 83, 0.18); border-style: solid; }
+
+/* Sauvegarde hebdomadaire hors Supabase (js/backup.js) */
+.bk-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-left: 5px solid var(--warn); margin-bottom: 14px; }
+.bk-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.bk-title { margin: 0 0 8px; }
+.bk-row { gap: 8px; }
+.bk-row .btn-cta, .bk-alert .btn-cta { border: 2px solid transparent; }   /* meme hauteur que le bouton contour voisin */

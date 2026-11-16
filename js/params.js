@@ -406,6 +406,7 @@ const Params = {
             <button class="btn-ghost mt" onclick="Params.importAll()">Restaurer (remplace tout)</button>
           </div>
         </div>
+        ${Backup.paramsBlock()}
         </div>
       </details>
 
@@ -2708,6 +2709,7 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
     const dump = { app: 'touffu-gestion', version: 1, exportedAt: new Date().toISOString() };
     Store.DOMAINS.forEach(d => dump[d] = Store.state[d]);
     U.download(`touffu-sauvegarde-${U.today()}.json`, JSON.stringify(dump, null, 2));
+    Backup.mark('telechargements');   // compte comme sauvegarde hors Supabase de la semaine (alerte du Tableau de bord)
     U.toast('Sauvegarde téléchargée.');
   },
   exportProducts(scope, withQty) {

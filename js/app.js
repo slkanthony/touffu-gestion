@@ -123,7 +123,7 @@ const App = {
     if (this.visitMode) document.body.classList.add('visit-mode');
     if (this.isViewer || this.isTeam) { const b = document.querySelector('.topnav-brand'); if (b) b.title = this.isViewer ? 'Mode lecture seule' : 'Profil équipe'; }
     Store.logConnexion();
-    if (!this.isViewer && !this.isTeam) setTimeout(() => this._maybeAskCleanup(), 4000); setTimeout(() => { if (typeof Compta !== 'undefined') Compta.maybeRemind(); }, 7000);
+    if (!this.isViewer && !this.isTeam) setTimeout(() => this._maybeAskCleanup(), 4000); setTimeout(() => { Backup.auto().catch(e => console.error(e)); }, 2500); setTimeout(() => { if (typeof Compta !== 'undefined') Compta.maybeRemind(); }, 7000);
     this._syncVisitEye();
     this.buildNav();
     // Molette → défilement horizontal sur TOUT bloc qui a une barre coulissante
@@ -647,6 +647,7 @@ const App = {
     this.mount(`
       <div class="view-title"><h1>${this.role === 'team' ? "Bonjour l'équipe" : this.role === 'viewer' ? 'Bienvenue' : 'Bonjour Antho'}</h1><span class="sub">${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
         <span class="dash-apps"><a class="btn btn-ghost fit" style="text-decoration:none" href="https://touffu-caisse.duckdns.org/#/" target="_blank" rel="noopener">📅 Agenda</a><a class="btn btn-ghost fit" style="text-decoration:none" href="${U.esc(((S.links || []).find(l => l.id === 'caisse') || {}).url || 'https://touffu-caisse.duckdns.org/#/calculette')}" target="_blank" rel="noopener">🧮 Calculette</a></span></div>
+      ${Backup.dashAlert()}
       <div class="grid c4">
         <div class="kpi sensitive" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${U.eur(valAchat)}</div><div class="l">Valeur stock (achat)</div></div>
         <div class="kpi good sensitive" onclick="Stock.tab='mastication';App.go('stock')"><div class="v">${U.eur(valVente)}</div><div class="l">Valeur stock (vente TTC)</div></div>
