@@ -1,3 +1,4 @@
+-- ⚠️ 2026-11-16 : les règles de app_state, la fonction app_state_safe() et « connexions lecture admin » ont été remplacées par supabase_securite_2026-11-16.sql (à exécuter APRÈS ce fichier sur une base neuve).
 -- ============================================================
 -- TOUFFU GESTION — schéma Supabase
 -- À coller dans : Supabase → SQL Editor → New query → Run

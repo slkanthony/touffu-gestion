@@ -129,6 +129,39 @@ const Store = {
     this.state = this.merge(parsed);
   },
 
+  /* Rôle du compte connecté (app_metadata.role) : 'admin' (ou absent, ancien fonctionnement), 'team', 'viewer'. Point d'entrée unique (audit sécurité 2026-11-16). */
+  roleOf() { const r = this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role; return r || 'admin'; },
+  isAdmin() { return this.roleOf() === 'admin'; },
+  /* COFFRE DU JOURNAL (audit sécurité 2026-11-16, S2). Le journal est lisible par l'équipe ; or « Annuler » garde une copie de la fiche d'avant, y compris des
+     factures d'achat et du pointage bancaire (réservés à l'admin). Ces copies-là ne partent donc plus dans la clé `journal` : elles vont dans la clé
+     `journalAdmin` ({ idEntrée: undo }, lisible par l'admin seulement — règle RLS), et l'entrée envoyée porte `undo: { type: 'vault' }`.
+     EN MÉMOIRE rien ne change pour l'admin (l'entrée garde son vrai `undo`, remis au chargement) ; l'équipe reçoit `undo: null` (pas de bouton « Annuler »). */
+  PRIVATE_UNDO_DOMAINS: ['purchases', 'bank'],
+  _undoPrivate(u) {
+    if (!u || !u.type || u.type === 'vault') return false;
+    if (u.type === 'bankItem') return true;
+    const snaps = Array.isArray(u.data) ? u.data : (u.data && typeof u.data === 'object' ? [u.data] : []);
+    return snaps.some(x => x && this.PRIVATE_UNDO_DOMAINS.includes(x.domain));
+  },
+  /* Donnée réellement envoyée à Supabase pour une clé (les autres clés partent telles quelles). */
+  _wire(k) {
+    const J = this.state.journal || [];
+    if (k === 'journal') return J.map(e => this._undoPrivate(e.undo) ? { ...e, undo: { type: 'vault' } } : e);
+    if (k === 'journalAdmin') { const o = {}; J.forEach(e => { if (this._undoPrivate(e.undo)) o[e.id] = e.undo; }); return o; }
+    return this.state[k];
+  },
+  /* Au chargement : l'admin retrouve ses copies depuis le coffre ; les autres profils n'ont pas de bouton « Annuler » sur ces entrées. Renvoie true si le journal
+     distant contient encore des copies réservées (journal d'avant le coffre) → à renvoyer une fois, nettoyé. */
+  _unvault(journal, vault) {
+    let legacy = false; const admin = this.isAdmin();
+    (journal || []).forEach(e => {
+      if (!e) return;
+      if (admin) { if (this._undoPrivate(e.undo)) legacy = true; else if (vault && vault[e.id]) e.undo = vault[e.id]; else if (e.undo && e.undo.type === 'vault') e.undo = null; }
+      else if (e.undo && (e.undo.type === 'vault' || this._undoPrivate(e.undo))) e.undo = null;
+    });
+    return legacy;
+  },
+
   _saveSeq: 0,
   async loadRemote() {
     const seq = this._saveSeq;
@@ -147,6 +180,7 @@ const Store = {
     if (role === 'team') delete obj.bank;   // soldes bancaires : admin seulement (la base ne bloque la lecture qu'après le SQL de supabase_schema.sql)
     if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.receptions; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
+    if (this._unvault(this.state.journal, obj.journalAdmin) && !this._vaultMig) { this._vaultMig = true; setTimeout(() => this.save('journal'), 0); }   // une fois : sort du journal les copies d'achats / de banque déjà enregistrées
     if (!isViewer && role !== 'team') setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // admin : reprend ce que l'équipe a coché / saisi et met la copie sans prix à jour
     if (!isViewer && role !== 'team') setTimeout(() => { try { this.autoPriceBase(); this.normSingleCoeff(); } catch (e) { console.error(e); } }, 50);   // admin : passage automatique (une seule fois) à la base de prix HT
     // première utilisation : pousser les valeurs par défaut
@@ -485,6 +519,7 @@ const Store = {
     }
     if (domains.includes('purchases') && window.App && !window.App.isTeam && !window.App.isViewer) setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // toute modification d'achat : la copie « Réception » de l'équipe suit
     domains.forEach(d => this._dirty.add(d));
+    if (this.remote && this._dirty.has('journal') && this.isAdmin()) this._dirty.add('journalAdmin');   // le coffre part avec le journal (voir _wire)
     this._saveSeq++;
     clearTimeout(this._saveT);
     this._saveT = setTimeout(() => this.flush(), 500);
@@ -493,7 +528,7 @@ const Store = {
 
   async flush() {
     if (!this._dirty.size) return;
-    const dirty = [...this._dirty]; this._dirty.clear();
+    const dirty = [...this._dirty].sort((a, b) => (b === 'journalAdmin') - (a === 'journalAdmin')); this._dirty.clear();   // le coffre d'abord : jamais de journal envoyé sans ses copies
     if (this.remote) {
       this._flushing = true;
       /* Un envoi PAR domaine (2026-09-29) : avant, tout partait en un seul paquet, donc un domaine
@@ -504,7 +539,7 @@ const Store = {
       const denied = [], retry = [];
       try {
         for (const k of dirty) {
-          const { error } = await this.sb.from('app_state').upsert({ key: k, data: this.state[k], updated_at: new Date().toISOString() });
+          const { error } = await this.sb.from('app_state').upsert({ key: k, data: this._wire(k), updated_at: new Date().toISOString() });
           if (!error) continue;
           console.error(k, error);
           if (error.code === '42501' || /row-level security|permission|policy/i.test(error.message || '')) denied.push(k); else retry.push(k);
@@ -517,7 +552,7 @@ const Store = {
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
-        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', purchases: 'achats', receptions: 'réception des commandes', journal: 'journal', meta: 'infos techniques' };
+        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', purchases: 'achats', journalAdmin: 'copies d’annulation des achats', receptions: 'réception des commandes', journal: 'journal', meta: 'infos techniques' };
         U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => names[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
       }
     } else {
@@ -572,7 +607,7 @@ const Store = {
   },
   async dailySnapshot() {
     // Sauvegardes complètes (achats + banque compris) : réservées à l'admin (audit sécurité 2026-11-05). Équipe / visiteur : rien, et surtout PAS de « lastSnapshotDay » posé à sa place.
-    if (this.remote && this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role) return;
+    if (this.remote && !this.isAdmin()) return;
     const day = U.today();
     if (this.state.meta.lastSnapshotDay === day) return;
     await this.takeSnapshot(day, true);
