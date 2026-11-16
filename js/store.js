@@ -531,7 +531,8 @@ const Store = {
 
   async flush() {
     if (!this._dirty.size) return;
-    const dirty = [...this._dirty].sort((a, b) => (b === 'journalAdmin') - (a === 'journalAdmin')); this._dirty.clear();   // le coffre d'abord : jamais de journal envoyé sans ses copies
+    const rank = k => k === 'journalAdmin' ? 0 : (typeof Visite !== 'undefined' && Visite.isKey(k)) ? 2 : 1;   // le coffre d'abord (jamais de journal envoyé sans ses copies), les vraies données ensuite, les copies « visite » en dernier
+    const dirty = [...this._dirty].sort((a, b) => rank(a) - rank(b)); this._dirty.clear();
     if (this.remote) {
       this._flushing = true;
       /* Un envoi PAR domaine (2026-09-29) : avant, tout partait en un seul paquet, donc un domaine
@@ -539,18 +540,22 @@ const Store = {
          l'enregistrement, et le paquet était renvoyé en boucle. Désormais : un domaine refusé
          (permission) est signalé clairement et abandonné ; les autres s'enregistrent normalement ;
          seule une vraie coupure réseau garde les domaines en attente pour un nouvel essai. */
-      const denied = [], retry = [];
+      const denied = [], retry = [], sent = [], wireErr = [];
       try {
         for (const k of dirty) {
-          const { error } = await this.sb.from('app_state').upsert({ key: k, data: this._wire(k), updated_at: new Date().toISOString() });
-          if (!error) continue;
+          let data;
+          try { data = this._wire(k); }
+          catch (e) { console.error('préparation de', k, e); wireErr.push(k + ' : ' + ((e && e.message) || e)); if (rank(k) === 1) retry.push(k); continue; }   // une copie dérivée qui plante est ABANDONNÉE (jamais renvoyée en boucle, jamais bloquante pour les vraies données)
+          const { error } = await this.sb.from('app_state').upsert({ key: k, data, updated_at: new Date().toISOString() });
+          if (!error) { sent.push(k); continue; }
           console.error(k, error);
           if (error.code === '42501' || /row-level security|permission|policy/i.test(error.message || '')) denied.push(k); else retry.push(k);
         }
       } catch (e) {
         console.error(e);
-        dirty.forEach(d => { if (!denied.includes(d)) retry.push(d); });
+        dirty.forEach(d => { if (!denied.includes(d) && !sent.includes(d) && !retry.includes(d) && !wireErr.some(w => w.startsWith(d + ' : '))) retry.push(d); });
       } finally { this._flushing = false; }
+      try { if (typeof Visite !== 'undefined') Visite.afterFlush(sent, wireErr); } catch (e) { console.error(e); }
       retry.forEach(d => this._dirty.add(d));
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');

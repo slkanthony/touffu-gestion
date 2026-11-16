@@ -99,11 +99,23 @@ const Visite = {
     if (d === 'materials' || d === 'consumables' || d === 'sales') return this.plain(d);
     return null;
   },
-  /* Première publication (ou règles de nettoyage changées) : tout republier une fois. Admin seulement. */
+  /* Première publication (ou règles de nettoyage changées) : tout republier une fois par ouverture de l'appli. Admin seulement.
+     `meta.viewerVer` n'est posé qu'APRÈS l'envoi réussi de toutes les clés (voir afterFlush) ; un échec est noté dans `meta.viewerErr` (lisible en base pour le diagnostic). */
+  _pending: false, _tried: false, _ok: new Set(),
   publishAll() {
-    if (!Store.remote || !Store.isAdmin()) return;
+    if (!Store.remote || !Store.isAdmin() || this._tried) return;
+    this._tried = true; this._pending = true; this._ok = new Set();
     this.allKeys().forEach(k => Store._dirty.add(k));
-    Store.state.meta.viewerVer = this.VER;
-    Store.save('meta');
+    Store.save();   // déclenche l'envoi
+  },
+  afterFlush(sent, errs) {
+    if (!Store.isAdmin()) return;
+    const m = Store.state.meta || (Store.state.meta = {});
+    const mine = (errs || []).filter(e => this.isKey(e));
+    if (mine.length) { const msg = mine.join(' | ').slice(0, 400); if (m.viewerErr !== msg) { m.viewerErr = msg; Store.save('meta'); } return; }
+    (sent || []).forEach(k => { if (this.isKey(k)) this._ok.add(k); });
+    if (this._pending && this.allKeys().every(k => this._ok.has(k))) {
+      this._pending = false; m.viewerVer = this.VER; delete m.viewerErr; Store.save('meta');
+    }
   }
 };
