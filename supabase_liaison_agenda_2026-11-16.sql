@@ -2,3 +2,5 @@
 -- Fonction agenda_resume(secret) : renvoie par jour de vente en événement CA, espèces, coût, frais (sans aucun nom de client).
 -- Le secret est dans la table secrets_liaison (illisible de l'extérieur) ; il est copié côté Agenda dans secrets_internes.
 -- Voir la migration « liaison_agenda_resume » du projet Supabase de Gestion.
+-- Sens inverse (déjà appliqué aussi) : l'Edge Function « agenda-evenements » lit les événements d'Agenda (date, nom, partenaire)
+-- avec le secret rangé dans secrets_liaison (id « agenda_lire »). Réservée à l'administrateur. Lecture seule.

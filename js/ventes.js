@@ -1046,6 +1046,29 @@ const Ventes = {
   /* Choix d'un événement sur une journée → pré-remplit stand + déplacement depuis sa fiche
      (Paramètres → Événements). Si l'événement est déjà sur une autre journée de ce retour
      (marché sur 2 jours), on ne double pas : stand et trajet restent sur la 1re journée. */
+  /* Touffu Agenda (2026-11-16, LECTURE SEULE) : si l'agenda a un événement ce jour-là, on propose son nom.
+     Jamais appliqué tout seul ; rien n'est écrit dans Agenda. */
+  _agenda: { list: null, busy: false },
+  _loadAgenda() {
+    const a = this._agenda;
+    if (a.list !== null || a.busy || !Store.sb || !Store.session || App.isViewer || App.isTeam) return;
+    a.busy = true;
+    Store.sb.functions.invoke('agenda-evenements').then(({ data, error }) => {
+      a.busy = false; a.list = (!error && data && data.ok && Array.isArray(data.evenements)) ? data.evenements : [];
+      if (a.list.length && this.retourOpen) this.render();
+    }).catch(() => { a.busy = false; a.list = []; });
+  },
+  _agendaHint(key) {
+    this._loadAgenda();
+    const cur = ((this.retourData && this.retourData.eventNames) || {})[key] || '';
+    const l = (this._agenda.list || []).filter(e => e.date === key && e.nom && e.nom !== cur);
+    return l.map(e => `<button class="btn-ghost btn-sm fit" title="Événement trouvé dans Touffu Agenda à cette date${e.partenaire ? ' (partenaire : ' + U.esc(e.partenaire) + ')' : ''}" onclick="Ventes.useAgendaName('${key}','${encodeURIComponent(e.nom)}')">📅 Agenda : ${U.esc(e.nom)} — utiliser</button>`).join('');
+  },
+  useAgendaName(key, enc) {
+    const name = decodeURIComponent(enc);
+    if (!(Store.state.settings.events || []).includes(name)) Params.addEvent(name);
+    this.setDayEventName(key, name);
+  },
   setDayEventName(key, val) {
     const d = this.retourData; if (!d) return;
     const name = String(val || '').trim();
@@ -2351,7 +2374,7 @@ const Ventes = {
       </label>
       ${allDup ? '' : `<div class="frow" style="margin-top:7px;gap:8px;align-items:center;">
         <label style="margin:0;text-transform:none;font-size:.85rem;">🎪 Événement</label>
-        ${this.eventSelect((this.retourData.eventNames || {})[g.key] || '', `Ventes.setDayEventName('${g.key}',v)`, 'width:240px;')}
+        ${this.eventSelect((this.retourData.eventNames || {})[g.key] || '', `Ventes.setDayEventName('${g.key}',v)`, 'width:240px;')}${this._agendaHint(g.key)}
         <label style="margin:0;text-transform:none;font-size:.85rem;">🏪 Frais de stand (€)</label>
         <input type="number" step="0.01" min="0" placeholder="0" style="width:110px;" value="${U.num((this.retourData.standFees || {})[g.key]) || ''}" onchange="Ventes.setStandFee('${g.key}',this.value)">
         <label style="margin:0;text-transform:none;font-size:.85rem;">🍽️ Repas (€)</label>
