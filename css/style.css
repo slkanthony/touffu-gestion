@@ -1856,3 +1856,10 @@ button svg.ico, .btn svg.ico { margin-top: -0.15em; margin-bottom: -0.15em; }
 }
 /* 4. Un lien habillé en bouton a la même hauteur qu'un vrai bouton. */
 a.btn { line-height: normal; }
+
+/* ---------- Téléphone / écran tactile : zones cliquables assez grandes pour le doigt (design D9) ---------- */
+@media (pointer: coarse), (max-width: 700px) {
+  .btn-sm { min-height: 36px; }
+  .btn-icon { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; }
+  .seg.sm > button, .seg.sm > a { min-height: 34px; }
+}
