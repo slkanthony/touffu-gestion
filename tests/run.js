@@ -31,6 +31,7 @@ const ctx = vm.createContext(sandbox);
 const FILES = ['config', 'utils', 'store', 'pricing', 'visite', 'catalogue', 'accessoires', 'stock', 'ventes', 'paniers', 'b2b', 'woo', 'params', 'achats', 'compta', 'ship', 'devis', 'facture', 'clients', 'partners', 'stats', 'calc', 'backup'];
 FILES.forEach(f => { const p = path.join(root, 'js', f + '.js'); vm.runInContext(fs.readFileSync(p, 'utf8'), ctx, { filename: 'js/' + f + '.js' }); });
 const run = code => vm.runInContext(code, ctx);
+run(`Store.__save = Store.save;`);   // le vrai enregistrement, remis en place pour les cas « deux appareils »
 
 /* ---------- outils de test ---------- */
 let ok = 0, ko = 0; const fails = [];
@@ -208,7 +209,115 @@ const copy = JSON.stringify(run(`Visite.allKeys().map(k => Visite.wire(k))`));
 eq('5 copie visite : aucune valeur sensible', ['IBANTEST', 'NOMSECRET', 'NOTESECRETE', 'REFSECRETE', 'CLIENTSECRET', 'exemple.test', '3.21'].filter(x => copy.includes(x)), []);
 eq('5 copie visite : prix de vente figé identique', run(`Visite.catalogM()[0].variants[0].priceTTCManual`), 2.8);
 
-/* ---------- bilan ---------- */
-fails.forEach(f => console.log(f));
-console.log(`\n${ko ? '✗' : '✓'} ${ok} test(s) réussi(s), ${ko} en échec`);
-process.exit(ko ? 1 : 0);
+/* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
+/* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
+function fakeDb() {
+  const rows = {}, log = { selects: [], puts: [] };
+  const put = (k, data) => { rows[k] = { data: JSON.parse(JSON.stringify(data)), rev: rows[k] ? rows[k].rev + 1 : 1 }; return rows[k].rev; };
+  const sb = {
+    from() {
+      return {
+        async upsert(row) { log.puts.push('direct:' + row.key); put(row.key, row.data); return { error: null }; },
+        select(cols) {
+          const q = { cols, keys: null, in(col, list) { this.keys = list; return this; },
+            then(res) {
+              const ks = Object.keys(rows).filter(k => !q.keys || q.keys.includes(k));
+              log.selects.push(cols === 'key,rev' ? 'revs' : ks.slice().sort().join(','));
+              res({ data: ks.map(k => cols === 'key,rev' ? { key: k, rev: rows[k].rev } : { key: k, data: JSON.parse(JSON.stringify(rows[k].data)), rev: rows[k].rev }), error: null });
+            } };
+          return q;
+        }
+      };
+    },
+    async rpc(name, args) {
+      if (name !== 'app_state_put_many') return { data: null, error: { message: 'fonction inconnue' } };
+      const items = args.p_items, conflicts = items.filter(it => it.rev !== null && rows[it.key] && rows[it.key].rev !== it.rev).map(it => it.key);
+      log.puts.push(items.map(it => it.key + '@' + it.rev).join(','));
+      if (conflicts.length) return { data: { ok: false, conflicts }, error: null };
+      const revs = {}; items.forEach(it => { revs[it.key] = put(it.key, it.data); });
+      return { data: { ok: true, revs, denied: [] }, error: null };
+    }
+  };
+  return { rows, log, sb, put };
+}
+async function twoDevices() {
+  reset();
+  const db = fakeDb(); sandbox.__db = db; sandbox.__alerts = [];
+  const lot = q => [{ id: 'st', name: 'Produit test', variants: [{ id: 'sv', lots: [{ id: 'l', qtyGeneral: q, qtyEvent: 0 }] }] }];
+  db.put('settings', run(`Store.state.settings`)); db.put('stockM', lot(10)); db.put('sales', []); db.put('journal', []); db.put('meta', {});
+  run(`Store.state = null; Store._rev = {}; Store._dirty = new Set(); Store.sb = __db.sb; Store.remote = true; Store.session = { user: { email: 't@exemple.test', app_metadata: { role: 'admin' } } };
+       Store.save = Store.__save; U.alert = (m, t) => { __alerts.push(t); }; U.toast = () => {}; window.App = { isViewer: false, isTeam: false, role: 'admin', rerender() {} };
+       Visite.VER = 0; Visite._tried = true;`);   // copie « visite » neutralisée ici (testée au point 5)
+  await run(`Store.loadRemote()`);
+  eq('6a premier chargement : tout est lu', run(`Store.state.stockM[0].variants[0].lots[0].qtyGeneral`), 10);
+  eq('6a numéros de version mémorisés', run(`Store._rev.stockM`), 1);
+
+  /* Rien n'a changé ailleurs : le rechargement ne télécharge que les numéros. */
+  db.log.selects.length = 0;
+  eq('6b rechargement sans changement : rien de téléchargé', await run(`Store.loadRemote()`), false);
+  eq('6b … une seule petite requête', db.log.selects, ['revs']);
+
+  /* Un autre appareil modifie le stock : seul le stock est retéléchargé. */
+  db.put('stockM', lot(7)); db.log.selects.length = 0;
+  await run(`Store.loadRemote()`);
+  eq('6c rechargement partiel : seulement la clé modifiée', db.log.selects, ['revs', 'stockM']);
+  eq('6c … et sa nouvelle valeur est là', run(`Store.state.stockM[0].variants[0].lots[0].qtyGeneral`), 7);
+
+  /* Enregistrement normal : la vente et le stock partent ensemble, les numéros avancent. */
+  run(`Store.state.stockM[0].variants[0].lots[0].qtyGeneral = 6; Store.state.sales.push({ id: 'v1', ts: 1, items: [] }); Store.save('stockM', 'sales');`);
+  await run(`Store.flush()`);
+  eq('6d enregistrement normal : stock écrit', db.rows.stockM.data[0].variants[0].lots[0].qtyGeneral, 6);
+  eq('6d … vente écrite', db.rows.sales.data.length, 1);
+  eq('6d … numéro du stock avancé', run(`Store._rev.stockM`), 3);
+  eq('6d … rien en attente', run(`Store._dirty.size`), 0);
+
+  /* CONFLIT : pendant ce temps, l'autre appareil a enregistré une vente (v2). Ici on vend aussi (v3, stock 6 → 5) sans avoir rechargé.
+     Avant : la liste des ventes d'ici écrasait v2. Maintenant : RIEN n'est écrit (ni la vente, ni le stock), l'écran reprend la version à jour. */
+  db.put('sales', [{ id: 'v1', ts: 1, items: [] }, { id: 'v2', ts: 2, items: [] }]);
+  run(`Store.state.stockM[0].variants[0].lots[0].qtyGeneral = 5; Store.state.sales.push({ id: 'v3', ts: 3, items: [] }); Store.save('stockM', 'sales');`);
+  await run(`Store.flush()`);
+  eq('6e conflit : la vente de l\'autre appareil est toujours en base', db.rows.sales.data.map(x => x.id), ['v1', 'v2']);
+  eq('6e conflit : le stock n\'a PAS été écrit seul', db.rows.stockM.data[0].variants[0].lots[0].qtyGeneral, 6);
+  eq('6e conflit : l\'écran reprend les ventes à jour', run(`Store.state.sales.map(x => x.id)`), ['v1', 'v2']);
+  eq('6e conflit : l\'écran reprend le stock à jour', run(`Store.state.stockM[0].variants[0].lots[0].qtyGeneral`), 6);
+  eq('6e conflit : message affiché', sandbox.__alerts.length, 1);
+  eq('6e conflit : rien en attente', run(`Store._dirty.size`), 0);
+
+  /* Après le rechargement, refaire l'action fonctionne. */
+  run(`Store.state.stockM[0].variants[0].lots[0].qtyGeneral = 5; Store.state.sales.push({ id: 'v3', ts: 3, items: [] }); Store.save('stockM', 'sales');`);
+  await run(`Store.flush()`);
+  eq('6f action refaite : les 3 ventes sont en base', db.rows.sales.data.map(x => x.id), ['v1', 'v2', 'v3']);
+  eq('6f action refaite : stock à 5', db.rows.stockM.data[0].variants[0].lots[0].qtyGeneral, 5);
+
+  /* Coupure réseau : rien n'est perdu, tout reste en attente. */
+  const rpc = db.sb.rpc; db.sb.rpc = async () => ({ data: null, error: { message: 'réseau' } });
+  run(`Store.state.sales.push({ id: 'v4', ts: 4, items: [] }); Store.save('sales');`);
+  const errLog = console.error; console.error = () => {};
+  await run(`Store.flush()`);
+  console.error = errLog;
+  eq('6g coupure réseau : la vente reste en attente', run(`Store._dirty.has('sales')`), true);
+  db.sb.rpc = rpc; await run(`Store.flush()`);
+  eq('6g réseau revenu : la vente part', db.rows.sales.data.map(x => x.id), ['v1', 'v2', 'v3', 'v4']);
+
+  /* Filet de sécurité : si la base refuse l'appel lui-même (fonction absente…), l'enregistrement repasse par l'ancien envoi et la cause est notée. */
+  db.sb.rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'fonction introuvable' } });
+  run(`Store.state.sales.push({ id: 'v5', ts: 5, items: [] }); Store.save('sales');`);
+  console.error = () => {}; await run(`Store.flush()`); console.error = errLog;
+  eq('6i filet de sécurité : la vente est quand même enregistrée', db.rows.sales.data.map(x => x.id).includes('v5'), true);
+  eq('6i filet de sécurité : la cause est notée', run(`Store.state.meta.putErr`), 'PGRST202 fonction introuvable');
+  db.sb.rpc = rpc; await run(`Store.loadRemote()`); await run(`Store.flush()`);
+
+  /* Le coffre du journal (copie calculée) part sans contrôle de version, avec le journal. */
+  db.log.puts.length = 0;
+  run(`Store.log('achat', 'Facture test', { type: 'restoreItem', data: { domain: 'purchases', id: 'f', before: { total: 1 } } });`);
+  await run(`Store.flush()`);
+  eq('6h coffre du journal envoyé sans contrôle', db.log.puts[0].split(',')[0], 'journalAdmin@null');
+  eq('6h journal en base sans la copie d\'achat', db.rows.journal.data[0].undo.type, 'vault');
+}
+
+twoDevices().catch(e => { ko++; fails.push('✗ 6 deux appareils : ' + (e && e.stack || e)); }).then(() => {
+  /* ---------- bilan ---------- */
+  fails.forEach(f => console.log(f));
+  console.log(`\n${ko ? '✗' : '✓'} ${ok} test(s) réussi(s), ${ko} en échec`);
+  process.exit(ko ? 1 : 0);
+});

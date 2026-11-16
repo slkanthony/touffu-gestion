@@ -164,29 +164,54 @@ const Store = {
   },
 
   _saveSeq: 0,
+  DOMAIN_NAMES: { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', purchases: 'achats', journalAdmin: 'copies d’annulation des achats', receptions: 'réception des commandes', journal: 'journal', meta: 'infos techniques' },
+  /* VERSIONS (audit A1, 2026-11-16) : chaque clé de `app_state` porte un numéro `rev` qui avance à chaque écriture (voir supabase_versions_2026-11-16.sql).
+     · Au chargement on lit d'abord seulement les numéros (quelques octets) et on ne télécharge que les clés qui ont changé ;
+     · à l'enregistrement on renvoie le numéro qu'on avait chargé : si un autre appareil a écrit entre-temps, la base refuse TOUT (voir flush / _onConflict). */
+  _rev: {},
+  _vault: null,   // dernier coffre du journal chargé (admin)
   async loadRemote() {
     const seq = this._saveSeq;
-    // Profil visite : la base refuse la lecture directe (données personnelles des clients) ; il passe par une fonction
-    // SQL qui renvoie les données SANS clients, journal ni noms de clients sur les ventes (voir supabase_schema.sql).
+    // Profil visite : la base refuse la lecture directe ; il passe par une fonction SQL qui ne rend que la copie nettoyée (clés v_…, voir visite.js).
     const isViewer = (this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role) === 'viewer';
-    const { data, error } = isViewer ? await this.sb.rpc('app_state_safe') : await this.sb.from('app_state').select('key,data').not('key', 'like', 'v_%');   // les copies « visite » (clés v_…) ne sont jamais rechargées par l'admin ni l'équipe
-    if (error) throw error;
+    const full = isViewer || !this.state;
+    let rows = [], heads = null;
+    if (isViewer) {
+      const { data, error } = await this.sb.rpc('app_state_safe');
+      if (error) throw error;
+      rows = data || [];
+    } else {
+      const h = await this.sb.from('app_state').select('key,rev');
+      if (h.error) throw h.error;
+      heads = (h.data || []).filter(x => !(typeof Visite !== 'undefined' && Visite.isKey(x.key)));   // les copies « visite » (clés v_…) ne sont jamais rechargées par l'admin ni l'équipe
+      const want = heads.filter(x => full || this._rev[x.key] !== x.rev).map(x => x.key);
+      if (!full && !want.length) return false;   // rien n'a changé ailleurs : on garde l'état en mémoire tel quel
+      if (want.length) {
+        const d = await this.sb.from('app_state').select('key,data,rev').in('key', want);
+        if (d.error) throw d.error;
+        rows = d.data || [];
+      }
+    }
     // ⚠️ Course corrigée (2026-09-30, « je dois enregistrer plusieurs fois ») : la réponse arrive APRÈS coup. Si pendant
     // l'attente une fenêtre d'édition s'est ouverte (elle garde des références vers l'ANCIENS objets) ou si on a modifié /
     // enregistré quelque chose, appliquer cette réponse écraserait le travail en cours → on l'abandonne.
-    if (this._saveSeq !== seq || this._dirty.size || this._flushing || this._modalOpen()) { if (this._modalOpen()) this._pendingReload = true; return; }
+    if (this._saveSeq !== seq || this._dirty.size || this._flushing || this._modalOpen()) { if (this._modalOpen()) this._pendingReload = true; return false; }
     const obj = {};
-    (data || []).forEach(r => obj[r.key] = r.data);
+    if (!full) this.DOMAINS.forEach(d => { obj[d] = this.state[d]; });   // rechargement partiel : les clés inchangées gardent leur valeur en mémoire
+    rows.forEach(r => { obj[r.key] = r.data; if (r.rev !== undefined && r.rev !== null) this._rev[r.key] = r.rev; });
+    const gotJournal = rows.some(r => r.key === 'journal'), gotVault = rows.find(r => r.key === 'journalAdmin');
+    if (gotVault) this._vault = gotVault.data;
     const role = this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role;
     if (role === 'team') delete obj.bank;   // soldes bancaires : admin seulement (la base ne bloque la lecture qu'après le SQL de supabase_schema.sql)
     if (isViewer) { delete obj.baskets; delete obj.purchases; delete obj.receptions; delete obj.bank; }   // paniers en attente = noms de clientes ; achats = comptabilité : jamais pour un visiteur
     this.state = this.merge(obj);
-    if (this._unvault(this.state.journal, obj.journalAdmin) && !this._vaultMig) { this._vaultMig = true; setTimeout(() => this.save('journal'), 0); }   // une fois : sort du journal les copies d'achats / de banque déjà enregistrées
+    if ((full || gotJournal) && this._unvault(this.state.journal, this._vault) && !this._vaultMig) { this._vaultMig = true; setTimeout(() => this.save('journal'), 0); }   // une fois : sort du journal les copies d'achats / de banque déjà enregistrées
     if (this.isAdmin() && typeof Visite !== 'undefined' && this.state.meta.viewerVer !== Visite.VER) setTimeout(() => { try { Visite.publishAll(); } catch (e) { console.error(e); } }, 1500);   // copie nettoyée du compte visite : première publication (ou règles changées)
     if (!isViewer && role !== 'team') setTimeout(() => { try { if (typeof Achats !== 'undefined') Achats.syncReceptions(); } catch (e) { console.error(e); } }, 0);   // admin : reprend ce que l'équipe a coché / saisi et met la copie sans prix à jour
     if (!isViewer && role !== 'team') setTimeout(() => { try { this.autoPriceBase(); this.normSingleCoeff(); } catch (e) { console.error(e); } }, 50);   // admin : passage automatique (une seule fois) à la base de prix HT
     // première utilisation : pousser les valeurs par défaut
-    if (!data || !data.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
+    if (heads && !heads.length) { this.DOMAINS.forEach(d => this._dirty.add(d)); await this.flush(); }
+    return true;
   },
 
   /* Base de prix HT universelle (Antho 2026-11-08) : appliquée AUTOMATIQUEMENT une seule fois, à la première ouverture après la mise à jour (admin). Les prix TTC ne bougent pas (coefficients recalculés,
@@ -531,42 +556,72 @@ const Store = {
 
   async flush() {
     if (!this._dirty.size) return;
-    const rank = k => k === 'journalAdmin' ? 0 : (typeof Visite !== 'undefined' && Visite.isKey(k)) ? 2 : 1;   // le coffre d'abord (jamais de journal envoyé sans ses copies), les vraies données ensuite, les copies « visite » en dernier
+    const rank = k => k === 'journalAdmin' ? 0 : (typeof Visite !== 'undefined' && Visite.isKey(k)) ? 2 : 1;   // 1 = vraie donnée ; 0 et 2 = copies calculées (coffre du journal, copie « visite »)
     const dirty = [...this._dirty].sort((a, b) => rank(a) - rank(b)); this._dirty.clear();
     if (this.remote) {
       this._flushing = true;
-      /* Un envoi PAR domaine (2026-09-29) : avant, tout partait en un seul paquet, donc un domaine
-         refusé par le serveur (règle de sécurité Supabase d'un profil) faisait échouer TOUT
-         l'enregistrement, et le paquet était renvoyé en boucle. Désormais : un domaine refusé
-         (permission) est signalé clairement et abandonné ; les autres s'enregistrent normalement ;
-         seule une vraie coupure réseau garde les domaines en attente pour un nouvel essai. */
-      const denied = [], retry = [], sent = [], wireErr = [];
+      /* UN SEUL envoi pour toutes les clés, « tout ou rien » (2026-11-16, fonction SQL app_state_put_many) : chaque vraie donnée part avec le numéro de
+         version chargé. Si une seule a été modifiée ailleurs entre-temps, la base n'écrit RIEN (jamais une vente sans son stock) et on passe par _onConflict.
+         Une clé refusée par les droits du profil est signalée et abandonnée, les autres s'enregistrent ; une coupure réseau garde tout en attente. */
+      const denied = [], retry = [], sent = [], wireErr = [], items = [];
+      let conflicts = null;
       try {
         for (const k of dirty) {
           let data;
           try { data = this._wire(k); }
-          catch (e) { console.error('préparation de', k, e); wireErr.push(k + ' : ' + ((e && e.message) || e)); if (rank(k) === 1) retry.push(k); continue; }   // une copie dérivée qui plante est ABANDONNÉE (jamais renvoyée en boucle, jamais bloquante pour les vraies données)
-          const { error } = await this.sb.from('app_state').upsert({ key: k, data, updated_at: new Date().toISOString() });
-          if (!error) { sent.push(k); continue; }
-          console.error(k, error);
-          if (error.code === '42501' || /row-level security|permission|policy/i.test(error.message || '')) denied.push(k); else retry.push(k);
+          catch (e) { console.error('préparation de', k, e); wireErr.push(k + ' : ' + ((e && e.message) || e)); if (rank(k) === 1) retry.push(k); continue; }   // une copie dérivée qui plante est ABANDONNÉE (jamais bloquante pour les vraies données)
+          items.push({ key: k, data, rev: rank(k) === 1 ? (this._rev[k] || 0) : null });
+        }
+        if (items.length) {
+          const { data: res, error } = await this.sb.rpc('app_state_put_many', { p_items: items });
+          if (error && error.code) {
+            /* Filet de sécurité : la base a REFUSÉ l'appel lui-même (fonction absente, erreur inattendue…), ce n'est pas une coupure réseau.
+               On ne bloque jamais l'enregistrement : retour à l'ancien envoi clé par clé (sans contrôle de version), et la cause est notée dans `meta.putErr`. */
+            console.error('app_state_put_many', error);
+            for (const it of items) {
+              const r = await this.sb.from('app_state').upsert({ key: it.key, data: it.data, updated_at: new Date().toISOString() });
+              if (!r.error) { sent.push(it.key); delete this._rev[it.key]; }
+              else if (r.error.code === '42501' || /row-level security|permission|policy/i.test(r.error.message || '')) denied.push(it.key);
+              else retry.push(it.key);
+            }
+            const msg = String(error.code + ' ' + (error.message || '')).slice(0, 300), m = this.state.meta || (this.state.meta = {});
+            if (m.putErr !== msg) { m.putErr = msg; this._dirty.add('meta'); }
+          }
+          else if (error) { console.error(error); items.forEach(it => retry.push(it.key)); }
+          else if (!res || res.ok === false) conflicts = (res && res.conflicts) || [];
+          else {
+            Object.keys(res.revs || {}).forEach(k => { this._rev[k] = res.revs[k]; sent.push(k); });
+            (res.denied || []).forEach(k => denied.push(k));
+          }
         }
       } catch (e) {
         console.error(e);
-        dirty.forEach(d => { if (!denied.includes(d) && !sent.includes(d) && !retry.includes(d) && !wireErr.some(w => w.startsWith(d + ' : '))) retry.push(d); });
+        items.forEach(it => { if (!retry.includes(it.key)) retry.push(it.key); });
       } finally { this._flushing = false; }
+      if (conflicts) { await this._onConflict(conflicts, items.map(it => it.key)); return; }
       try { if (typeof Visite !== 'undefined') Visite.afterFlush(sent, wireErr); } catch (e) { console.error(e); }
       retry.forEach(d => this._dirty.add(d));
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
-        const names = { stockM: 'stock mastication', catalogM: 'fiches Prix mastication', catalogA: 'accessoires', materials: 'matières premières', consumables: 'consommables', settings: 'réglages', sales: 'ventes', clients: 'clients', baskets: 'paniers en attente', purchases: 'achats', journalAdmin: 'copies d’annulation des achats', receptions: 'réception des commandes', journal: 'journal', meta: 'infos techniques' };
-        U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => names[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
+        U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => this.DOMAIN_NAMES[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
       }
     } else {
       localStorage.setItem('touffu_state', JSON.stringify(this.state));
       this.updateSyncBadge('✓ enregistré (local)');
     }
+  },
+  /* Un autre appareil a enregistré entre-temps : RIEN n'a été écrit. On recharge la version à jour de tout ce que cet enregistrement touchait
+     (les changements locaux de cette action sont abandonnés, pour ne laisser aucun état à moitié enregistré) et on le dit clairement. */
+  async _onConflict(conflicts, keys) {
+    (keys || []).forEach(k => { delete this._rev[k]; });
+    this.updateSyncBadge('⚠ non enregistré');
+    const list = (conflicts || []).filter(k => !(typeof Visite !== 'undefined' && Visite.isKey(k)) && k !== 'journalAdmin').map(k => this.DOMAIN_NAMES[k] || k).join(', ');
+    try {
+      if (this._modalOpen()) this._pendingReload = true;
+      else { await this.loadRemote(); window.App?.rerender?.(); }
+    } catch (e) { console.error(e); }
+    if (typeof U !== 'undefined' && U.alert) U.alert('Ces données ont été modifiées sur un autre appareil pendant que tu travaillais : ' + (list || 'données') + '.\n\nTa dernière action n’a PAS été enregistrée, et rien n’a été écrasé. L’écran affiche maintenant la version à jour : refais ta dernière action.', '⚠ Enregistrement refusé');
   },
 
   updateSyncBadge(txt) {
