@@ -315,7 +315,7 @@ const Catalogue = {
   _loadXlsx() {
     return new Promise((ok, ko) => {
       if (window.XLSX) return ok();
-      const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      const s = document.createElement('script'); s.src = 'js/vendor/xlsx-0.18.5.js';   // copie locale, version figée (plus de chargement depuis Internet)
       s.onload = () => (window.XLSX ? ok() : ko(new Error('xlsx'))); s.onerror = () => ko(new Error('xlsx')); document.head.appendChild(s);
     });
   },
