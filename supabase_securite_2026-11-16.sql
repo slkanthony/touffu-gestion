@@ -82,5 +82,5 @@ end $fn$;
 revoke all on function public.app_state_safe() from public, anon;
 grant execute on function public.app_state_safe() to authenticated;
 
--- Rôle admin explicite posé sur le compte sans rôle (2026-11-16) :
+-- ÉTAPE 2, PAS ENCORE FAITE (à lancer avec l'accord d'Antho) : poser le rôle admin explicite sur le compte sans rôle :
 -- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb where (raw_app_meta_data->>'role') is null;
