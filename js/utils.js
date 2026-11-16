@@ -1041,3 +1041,51 @@ document.addEventListener('keydown', (e) => {
   const b = document.getElementById('modalCancel');
   if (b) { e.preventDefault(); b.click(); }
 });
+
+/* ============ Icônes uniformes (audit 2026-11-16, design D1 — dessins dans js/icons.js) ============
+   · `U.icon('nom', { tone, size, label })` : à utiliser dans tout NOUVEAU code à la place d'un emoji.
+   · `U.iconize(élément)` : remplace à l'affichage les emojis historiques par leur icône (table `EMOJI_ICON`). Branché une fois pour toute la page par un
+     observateur : aucun écran n'a à l'appeler. Ne touche qu'au TEXTE affiché (jamais aux attributs `title` / `placeholder`, ni aux <option>, <textarea>,
+     graphiques, textes copiés ou exportés). Un emoji sans icône dans la table reste tel quel. Pour garder un emoji tel quel : attribut `data-noico` sur un parent. */
+U.icon = (name, o = {}) => {
+  const d = (typeof ICONS !== 'undefined' && ICONS[name]) || '';
+  if (!d) return '';
+  const cls = 'ico' + (o.size ? ' ico-' + o.size : '') + (o.tone ? ' ' + String(o.tone).split(' ').map(t => 'ico-' + t).join(' ') : '');
+  return `<svg class="${cls}" viewBox="0 0 24 24" ${o.label ? `role="img" aria-label="${U.esc(o.label)}"` : 'aria-hidden="true"'}>${d}</svg>`;
+};
+U._emoRe = /\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*/gu;
+U._icoSkip = { OPTION: 1, SELECT: 1, TEXTAREA: 1, SCRIPT: 1, STYLE: 1, TITLE: 1 };
+U.iconize = (root) => {
+  if (typeof EMOJI_ICON === 'undefined' || !root) return;
+  const texts = [];
+  if (root.nodeType === 3) texts.push(root);
+  else if (root.nodeType === 1) { const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) texts.push(n); }
+  texts.forEach(t => {
+    const s = t.data, p = t.parentNode;
+    if (!s || !p || p.nodeType !== 1) return;
+    U._emoRe.lastIndex = 0; if (!U._emoRe.test(s)) return;
+    if (U._icoSkip[p.tagName] || (p.closest && p.closest('svg, [data-noico], [contenteditable]'))) return;
+    let html = '', last = 0, hit = false, m; U._emoRe.lastIndex = 0;
+    while ((m = U._emoRe.exec(s))) {
+      const def = EMOJI_ICON[m[0].replace(/\uFE0F/g, '')];
+      if (!def) continue;
+      html += U.esc(s.slice(last, m.index)) + U.icon(def[0], { tone: def[1] }); last = m.index + m[0].length; hit = true;
+    }
+    if (!hit) return;
+    const tpl = document.createElement('template'); tpl.innerHTML = html + U.esc(s.slice(last));
+    p.replaceChild(tpl.content, t);
+  });
+};
+(() => {
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined' || !document.documentElement || !document.createTreeWalker) return;
+  const start = () => {
+    U.iconize(document.body);
+    new MutationObserver(muts => {
+      for (const m of muts) {
+        if (m.type === 'characterData') U.iconize(m.target);
+        else for (const n of m.addedNodes) if (n.nodeType === 1 || n.nodeType === 3) U.iconize(n);
+      }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();

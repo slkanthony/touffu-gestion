@@ -1818,3 +1818,11 @@ tr.wgrp td[colspan] { text-align: left; }
 .bk-title { margin: 0 0 8px; }
 .bk-row { gap: 8px; }
 .bk-row .btn-cta, .bk-alert .btn-cta { border: 2px solid transparent; }   /* meme hauteur que le bouton contour voisin */
+
+/* Icônes uniformes (js/icons.js, U.icon / U.iconize) : trait fin, couleur du texte autour, taille liée à la taille du texte */
+.ico { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.2em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ico-sm { width: 16px; height: 16px; } .ico-md { width: 20px; height: 20px; } .ico-lg { width: 24px; height: 24px; }
+.ico-ok { color: var(--ok); } .ico-warn { color: var(--warn); } .ico-bad { color: var(--alerte); }
+.ico-fill { fill: currentColor; }
+/* dans un bouton, un badge, une tuile ou une notification, l'icône prend la couleur du texte (lisible sur fond coloré) */
+button .ico, .btn .ico, .badge .ico:not(.ico-fill), .tag .ico, #toast .ico, .kpi .ico, .topnav .ico, .seg .ico { color: inherit; }
