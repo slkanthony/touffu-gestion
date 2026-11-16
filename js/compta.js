@@ -92,7 +92,7 @@ const Compta = {
       if (ok) { this.f.period = 'lastyear'; location.hash = '#/compta'; } else { const d = new Date(Date.now() + 7 * 86400000); m.comptaNext = d.toISOString().slice(0, 10); Store.save('meta'); }
     });
   },
-  mk(ts) { return new Date(ts).toISOString().slice(0, 7); },
+  mk(ts) { return U.monthKey(ts); },
   monthLabel(k) { const [y, m] = k.split('-'); return ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][+m - 1] + ' ' + y; },
   _months() {
     const now = new Date(), cur = now.getFullYear() * 12 + now.getMonth(), key = i => Math.floor(i / 12) + '-' + String(i % 12 + 1).padStart(2, '0');
@@ -361,7 +361,7 @@ const Compta = {
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', n = v => String(Math.round(U.num(v) * 100) / 100).replace('.', ',');
     const pay = { sumup: 'SumUp', stripe: 'Stripe', virement: 'Virement', cash: 'Especes' };
     const out = ['Date;Reference;Client;Nature;Moyen_de_paiement;Montant_marchandises;Port_encaisse;Total_encaisse'];
-    rows.forEach(s => { const sp = Pricing.saleProfit(s); const x = this._split(s), d = new Date(s.ts).toISOString().slice(0, 10); out.push([q(d), q('V' + d.replace(/-/g, '') + '-' + String(s.id).slice(-4).toUpperCase()), q(s.customerName || ''), q(x.m && x.a ? 'Vente marchandises + fait main' : x.a ? 'Fait main' : 'Vente marchandises'), q(pay[s.payment] || ''), n(sp.ca), n(sp.shipFee), n(sp.ca + sp.shipFee)].join(';')); });
+    rows.forEach(s => { const sp = Pricing.saleProfit(s); const x = this._split(s), d = U.dayKey(s.ts); out.push([q(d), q('V' + d.replace(/-/g, '') + '-' + String(s.id).slice(-4).toUpperCase()), q(s.customerName || ''), q(x.m && x.a ? 'Vente marchandises + fait main' : x.a ? 'Fait main' : 'Vente marchandises'), q(pay[s.payment] || ''), n(sp.ca), n(sp.shipFee), n(sp.ca + sp.shipFee)].join(';')); });
     const blob = new Blob(['﻿' + out.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'recettes-' + U.today() + '.csv';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); this._markExport('recettes');

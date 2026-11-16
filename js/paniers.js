@@ -904,7 +904,7 @@ const Paniers = {
     all.forEach(r => { last[fam(r)] = Math.max(last[fam(r)] || 0, r.updated || r.ts || 0); });
     const list = all.sort((a, b) => (last[fam(b)] - last[fam(a)]) || U.sortFr(fam(a), fam(b)) || (a.dv && a.dv.v ? 1 : 0) - (b.dv && b.dv.v ? 1 : 0) || U.sortFr((a.dv && a.dv.par) || '', (b.dv && b.dv.par) || '') || ((a.dv && a.dv.v) || 0) - ((b.dv && b.dv.v) || 0));
     if (!list.length) return '';
-    const today = new Date().toISOString().slice(0, 10);
+    const today = U.today();
     const rows = list.map(r => {
       const tot = (r.items || []).reduce((a, b) => a + U.num(b.price) * U.num(b.qty), 0) * (1 - Math.min(99, U.num(r.reduction)) / 100) + (U.num(r.livraison) > 0 ? U.num(r.livraison) : 0);
       const nb = (r.items || []).reduce((a, b) => a + U.num(b.qty), 0);

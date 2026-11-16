@@ -91,7 +91,7 @@ const Stats = {
     const add = (t, c, day) => { Object.keys(c).forEach(k => { t[k] += c[k]; }); t.days.add(day); };
     const byName = {};
     Store.state.sales.filter(s => !s.cancelled && s.eventName).forEach(s => {
-      const d = new Date(s.ts), day = d.toISOString().slice(0, 10), y = d.getFullYear();
+      const d = new Date(s.ts), day = U.dayKey(d), y = d.getFullYear();
       const e = byName[s.eventName] || (byName[s.eventName] = { name: s.eventName, tot: zero(), years: {} });
       const c = saleCalc(s);
       add(e.tot, c, day);
@@ -279,7 +279,7 @@ const Stats = {
       items.filter(i => i.kind === 'C' && cart[i.pId]).forEach(i => {
         const r = cart[i.pId];
         r.uses++; r.qty += U.num(i.qty); r.cost += U.num(i.cost);
-        const d = new Date(s.ts).toISOString().slice(0, 10);
+        const d = U.dayKey(s.ts);
         if (!r.last || d > r.last) r.last = d;
         items.filter(x => x.kind !== 'C').forEach(x => { r.prods[x.name] = (r.prods[x.name] || 0) + 1; });
       });
@@ -1001,7 +1001,7 @@ const Stats = {
       ca += U.num(s.total);
       const ch = this._saleChannelLabel(s);
       const mo = new Date(s.ts).getMonth();
-      const mk = new Date(s.ts).toISOString().slice(0, 7);
+      const mk = U.monthKey(s.ts);
       const my = monthMap[mk] || (monthMap[mk] = { key: mk, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0, partner: 0 });
       my.ca += U.num(s.total); my.nSales++;
       my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += Pricing.eventCost(s); my.partner += Pricing.partnerCost(s);
@@ -1207,7 +1207,7 @@ const Stats = {
         <p class="muted help">Produits du catalogue jamais vendus sur cette période — candidats au déstockage / à ne pas racheter.</p>
         ${agg.dormant.length ? `<button class="btn-ghost btn-sm" onclick="Stats.toggleDormant()">${this._dormantOpen ? 'Masquer' : 'Afficher la liste'}</button>
         ${this._dormantOpen ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>Catégorie</th><th>Dernière vente</th></tr></thead>
-          <tbody>${agg.dormant.map(d => `<tr><td class="col-name">${U.esc(d.name)}</td><td>${U.esc(d.cat)}</td><td>${d.last ? U.frDate(new Date(d.last).toISOString().slice(0, 10)) : '<span class="muted">jamais</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}` : '<p class="muted">Aucun — tous tes produits se sont vendus au moins une fois. 🎉</p>'}
+          <tbody>${agg.dormant.map(d => `<tr><td class="col-name">${U.esc(d.name)}</td><td>${U.esc(d.cat)}</td><td>${d.last ? U.frDate(U.dayKey(d.last)) : '<span class="muted">jamais</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}` : '<p class="muted">Aucun — tous tes produits se sont vendus au moins une fois. 🎉</p>'}
       </div>`}
       `}`);
 

@@ -540,7 +540,7 @@ const App = {
 
     const byMonth = {};
     st.sales.filter(s => !s.cancelled).forEach(s => {
-      const k = new Date(s.ts).toISOString().slice(0, 7);
+      const k = U.monthKey(s.ts);
       byMonth[k] = byMonth[k] || { ca: 0, caAcc: 0, cogs: 0, cb: 0, fee: 0, n: 0, shipping: 0, shipFee: 0, boxCost: 0, eventFee: 0 };
       byMonth[k].ca += U.num(s.total); byMonth[k].caAcc += saleAccCA(s); byMonth[k].n++;
       byMonth[k].cogs += saleCogs(s);
@@ -631,7 +631,7 @@ const App = {
     // Tableau CA : par mois (tous les mois) ou par an, + Total
     const caView = this._caView === 'year' ? 'year' : 'month';
     const groups = {};
-    activeSales.forEach(x => { const d = new Date(x.ts); const k = caView === 'year' ? String(d.getFullYear()) : d.toISOString().slice(0, 7); (groups[k] = groups[k] || []).push(x); });
+    activeSales.forEach(x => { const d = new Date(x.ts); const k = caView === 'year' ? String(d.getFullYear()) : U.monthKey(d); (groups[k] = groups[k] || []).push(x); });
     // un mois / une année sans vente mais avec une facture reste listé (sinon le total ne serait pas celui de la Compta)
     Object.keys(Compta.chargesPeriod('0000-01-01', '9999-12-31').byMonth).forEach(mk => { const k = caView === 'year' ? mk.slice(0, 4) : mk; if (!groups[k]) groups[k] = []; });
     const monthsOf = k => {
@@ -736,7 +736,7 @@ const App = {
         <summary><span>📊 Rentabilité par activité (tout l'historique)</span></summary>
         <div class="fold-body">
         <p class="muted help">Mastication (achat-revente) vs accessoires (fait main). Chaque article compte dans son activité ; frais et charges fixes communs répartis au prorata du CA (entretien/amortissement UV → accessoires). La somme des deux = le bénéfice net global.</p>
-        ${(() => { const as = st.sales.filter(x => !x.cancelled); const chg = Compta.chargesPeriod('0000-01-01', '9999-12-31'); const mc = new Set(as.map(x => new Date(x.ts).toISOString().slice(0, 7)).concat(Object.keys(chg.byMonth))).size || 1; return Stats._activityTable(Pricing.activityPnL(as, mc, chg)); })()}
+        ${(() => { const as = st.sales.filter(x => !x.cancelled); const chg = Compta.chargesPeriod('0000-01-01', '9999-12-31'); const mc = new Set(as.map(x => U.monthKey(x.ts)).concat(Object.keys(chg.byMonth))).size || 1; return Stats._activityTable(Pricing.activityPnL(as, mc, chg)); })()}
         </div>
       </details>
 

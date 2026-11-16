@@ -604,7 +604,7 @@ const Ventes = {
     if (pct > 0) { const gross = this.cart.reduce((a, c) => a + c.price * c.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = pct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; if (String(this.discCode || '').trim()) sale.discountCode = String(this.discCode).trim(); }
     Partners.stamp(sale);   // code partenaire reconnu → lien et % de reversement figés sur la vente
     const ba = this._balApplied(sale.total);
-    if (ba) { sale.balanceApplied = ba; Clients.adjustBalance(sale.customerName, -ba, (ba > 0 ? 'Avoir utilisé' : 'Solde réglé') + ' — vente du ' + U.frDate(new Date().toISOString().slice(0, 10))); }
+    if (ba) { sale.balanceApplied = ba; Clients.adjustBalance(sale.customerName, -ba, (ba > 0 ? 'Avoir utilisé' : 'Solde réglé') + ' — vente du ' + U.frDate(U.today())); }
     if (delivery === 'livraison') {
       const S = Store.state.settings;
       sale.shippingChargedToCustomer = sale.total < U.num(S.freeShippingThreshold ?? 69);
@@ -1720,7 +1720,7 @@ const Ventes = {
     }
     const days = Object.values(dayMap).sort((a, b) => b.ts - a.ts);
     if (!days.length) { U.toast('Aucune vente exploitable dans ce fichier.', true); return; }
-    const latest = days[0] && days[0].key !== 'date-inconnue' ? days[0].key : new Date().toISOString().slice(0, 10);
+    const latest = days[0] && days[0].key !== 'date-inconnue' ? days[0].key : U.today();
     this._rv = null;
     this.retourData = { days, mergeOne: false, cashLines: [], cashDate: latest, standFees: {}, cashStandFee: '', mealFees: {}, cashMealFee: '', consoLines: [], cardsGiven: '' };
     this.render();
