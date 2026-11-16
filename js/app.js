@@ -250,6 +250,20 @@ const App = {
     sync.className = 'sync-state';
     sync.textContent = Store.remote ? '☁ Supabase' : '💾 mode local';
     inner.appendChild(sync);
+    this.fitNav();
+    if (!this._navFitOn) {   // une seule fois : le menu se réajuste quand la fenêtre change de largeur et quand les polices sont chargées
+      this._navFitOn = true;
+      window.addEventListener('resize', () => { clearTimeout(this._navFitT); this._navFitT = setTimeout(() => this.fitNav(), 120); });
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => this.fitNav());
+    }
+  },
+  /* Menu sur ordinateur : si les entrées débordent, passage en « icône au-dessus du libellé » (classe nav-compact, voir style.css). Téléphone : rien (barre qui coulisse). */
+  fitNav() {
+    const nav = document.getElementById('sideNav'); if (!nav) return;
+    nav.classList.remove('nav-compact', 'nav-tight');
+    if (window.innerWidth <= 860) return;
+    if (nav.scrollWidth > nav.clientWidth + 1) nav.classList.add('nav-compact');
+    if (nav.scrollWidth > nav.clientWidth + 1) nav.classList.add('nav-tight');   // toujours trop large : marges resserrées
   },
 
   /* Navigation en <a href> plutôt qu'en <button onclick> : permet le

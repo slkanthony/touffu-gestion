@@ -1820,9 +1820,23 @@ tr.wgrp td[colspan] { text-align: left; }
 .bk-row .btn-cta, .bk-alert .btn-cta { border: 2px solid transparent; }   /* meme hauteur que le bouton contour voisin */
 
 /* Icônes uniformes (js/icons.js, U.icon / U.iconize) : trait fin, couleur du texte autour, taille liée à la taille du texte */
-.ico { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.2em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.ico { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.2em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ico-sm { width: 16px; height: 16px; } .ico-md { width: 20px; height: 20px; } .ico-lg { width: 24px; height: 24px; }
 .ico-ok { color: var(--ok); } .ico-warn { color: var(--warn); } .ico-bad { color: var(--alerte); }
 .ico-fill { fill: currentColor; }
 /* dans un bouton, un badge, une tuile ou une notification, l'icône prend la couleur du texte (lisible sur fond coloré) */
 button .ico, .btn .ico, .badge .ico:not(.ico-fill), .tag .ico, #toast .ico, .kpi .ico, .topnav .ico, .seg .ico { color: inherit; }
+
+/* Menu sur ORDINATEUR (design D2, Antho 2026-11-16) : quand les entrées ne tiennent pas sur une ligne, elles passent en « icône au-dessus du libellé »
+   (classe `nav-compact` posée par App.fitNav) : tout reste visible, sans barre de défilement et sans clic en plus. Téléphone : inchangé (barre qui coulisse). */
+@media (min-width: 861px) {
+  .topnav.nav-compact .nav-items { gap: 0; }
+  .topnav.nav-compact .nav-item { flex-direction: column; gap: 3px; padding: 7px 8px; font-size: 0.74rem; }
+  .topnav.nav-compact .nav-item .ico { width: auto; font-size: 1.1rem; }
+  .topnav.nav-compact .topnav-brand small { display: none; }
+  /* encore trop juste (petit portable) : marges resserrées */
+  .topnav.nav-tight .nav-item { padding: 7px 4px; font-size: 0.7rem; }
+  .topnav.nav-tight .topnav-brand { padding-right: 8px; }
+  .topnav.nav-tight .topnav-inner { padding: 0 10px; }
+  .topnav.nav-tight .topnav-inner .sync-state { padding: 10px 4px; }
+}
