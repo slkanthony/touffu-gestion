@@ -125,9 +125,15 @@ const Stock = {
   /* Pastilles pas encore renseignées (Antho 2026-11-17 : « retrouver les produits qui n'ont pas toutes leurs pastilles »). Poil, espèce et type ont
      toujours une valeur par défaut ; hypo seulement pour certaines viandes. Âge / gabarit : renseignés sur le produit OU sur au moins une taille réglée à part. */
   PAST_REQ: ['hypo', 'resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit'],
+  /* Friandises d'éducation (Antho 2026-11-17) : résistance, odeur, se ramollit, âge et gabarit n'ont pas de sens → masqués, jamais « incomplets »,
+     et ignorés par le générateur (= conviennent à tous). Les valeurs déjà saisies restent enregistrées : repasser en « Occupation » les retrouve. */
+  TREAT_HIDE: ['resistance', 'odeur', 'ramollit', 'age', 'gabarit'],
+  isTreat(p) { return ((p && p.tags) || {}).type === 'education'; },
+  treatHides(p, k) { return this.isTreat(p) && this.TREAT_HIDE.includes(k); },
   pastMissing(p) {
     const t = p.tags || {}, vs = this.sameTags(p) ? [] : this._ownVariants(p);
     return this.PAST_REQ.filter(k => {
+      if (this.treatHides(p, k)) return false;
       if (k === 'hypo') return !this.hypoOf(p);
       if ((k === 'age' || k === 'gabarit') && this.perSize(p)) return this._ownVariants(p).some(v => !this._pastVCur(p, v, k).length);
       if (k === 'age' || k === 'gabarit') return !(t[k] || []).length && !vs.some(v => ((v.tags || {})[k] || []).length);
@@ -336,11 +342,11 @@ const Stock = {
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
         ${(tw => tw ? `<div class="pt-twin">${U.icon('link')} Lié à <b>${U.esc(tw.name)}</b> : mêmes pastilles (sauf le poil)${ro ? '' : ` <button type="button" class="btn-ghost btn-sm fit" onclick="Stock.unlinkTwin('${p.id}')">Délier</button>`}</div>` : '')(this.twinOf(p))}
-        <div class="pt-grps">${(miss => groups.map(g => this.perSize(p) && this.PER_SIZE_KEYS.includes(g.k)
+        <div class="pt-grps">${(miss => groups.filter(g => !this.treatHides(p, g.k)).map(g => this.perSize(p) && this.PER_SIZE_KEYS.includes(g.k)
           ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ici = toutes les tailles réunies. Double-clic sur une valeur : l'applique (ou la retire) à TOUTES les tailles d'un coup."${ro ? '' : ` ondblclick="Stock._pastDbl(event,'${p.id}','${g.k}')"`}><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}">${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
           : grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
         ${vars.length ? `<div class="pt-vars${same ? ' pt-same' : ''}"><div class="pt-vhead">Par taille ${same ? '— suivent le produit' : ''} <span class="muted help">« Comme le produit » coché : toutes les tailles prennent l'espèce, l'âge et le gabarit du produit (coché d'office pour les formats au gramme). Décoché : chaque taille se règle ici (S/M/L, longueurs…) ; âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
-          ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
+          ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.filter(g => !this.treatHides(p, g.k)).map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
       </div>`;
     };
     const sug = ro ? [] : this.twinSuggestions();
@@ -489,7 +495,8 @@ const Stock = {
   hypoOf(p) { const h = (p.tags || {}).hypo; return h === true ? 'oui' : (h || this.hypoDefault(p.meatType)); },
   effTags(p) {
     const t = Object.assign({}, p.tags || {}, { hypo: this.hypoOf(p), poil: this.poilOf(p) });
-    if (this.perSize(p)) { t.species = []; t.age = []; t.gabarit = []; }   // tailles réglées à part : seules leurs pastilles comptent (variantTags)
+    if (this.perSize(p)) { t.species = []; t.age = []; t.gabarit = []; }
+    if (this.isTreat(p)) this.TREAT_HIDE.forEach(k => { t[k] = (k === 'age' || k === 'gabarit') ? [] : ''; });   // friandise : convient à tous   // tailles réglées à part : seules leurs pastilles comptent (variantTags)
     return t;
   },
   /* Pastilles à cocher arrondies (âge, espèce, gabarit) : mêmes cases à cocher qu'avant (lues par `input:checked`), seule la présentation change. */
@@ -1004,6 +1011,7 @@ const Stock = {
   defaultGabarit(p, v) { return (!this.perSize(p) && ((p.tags || {}).gabarit || []).length) ? [] : this.sizeGabarit(v); },
   variantTags(p, v) {
     if (this.sameTags(p)) return null;   // toutes les tailles = pastilles du produit
+    if (this.isTreat(p)) { const sp = ((this.parentOf(p, v) || v).tags || {}).species; return sp && sp.length ? { species: sp } : null; }   // friandise : seule l'espèce d'une taille compte
     const src = this.parentOf(p, v) || v; const t = src.tags || null;
     if (t && (t.gabarit || []).length) return t;
     const d = this.defaultGabarit(p, src);

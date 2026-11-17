@@ -503,6 +503,12 @@ paniers([sp('a', 'Museaux', { days: 200, price: 4, meat: 'Boeuf' }), sp('b', 'Mu
 run(`Stock.render = Stock.renderM = function () {}; U.toast = function () {}; Store.save = function () {}; Stock.linkTwin('a', 'b');`);
 eq('21a quantités et CA par version', run(`(r => [r.name, r.sans.qty, r.avec.qty, r.avec.ca, Math.round(r.pctAvec)])(Stats._twinStats([{ items: [{ kind: 'M', pId: 'a', qty: 3, price: 4 }, { kind: 'M', pId: 'b', qty: 1, price: 5 }] }, { items: [{ kind: 'M', name: 'Museaux avec poils', qty: 1, price: 5 }] }])[0])`), ['Museaux', 3, 2, 10, 40]);
 
+/* ══════════ 22. FRIANDISES D'ÉDUCATION : 5 pastilles masquées (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Saucisse', { days: 200, price: 4, meat: 'Boeuf', tags: { type: 'education', resistance: 'forte', age: ['11+'], gras: 'peu', hypo: 'non' } })], { resistanceInclude: ['faible'], ageInclude: ['0-3'] });
+eq('22a jamais « incomplète » pour résistance / odeur / ramollit / âge / gabarit', run(`Stock.pastMissing(Store.state.stockM[0])`), []);
+eq('22b la résistance et l\'âge saisis avant sont ignorés : proposée à un chiot', run(`Paniers.candidates().map(c => c.name)`), ['Saucisse']);
+eq('22c valeurs gardées en réserve', run(`Store.state.stockM[0].tags.resistance`), 'forte');
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
