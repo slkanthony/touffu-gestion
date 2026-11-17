@@ -521,6 +521,16 @@ paniers([sp('a', 'Bâtonnet', { days: 200, price: 4, meat: 'Bois Naturel', tags:
 eq('24a chat seul : rien à compléter sauf l\'hypo (déjà « non » d\'office)', run(`Stock.pastMissing(Store.state.stockM[0])`), []);
 eq('24b chien + chat : pastilles toujours demandées', run(`Stock.pastMissing(Store.state.stockM[1]).length`), 6);
 
+/* ══════════ 25. JUMEAUX de structures différentes : l'âge suit taille par taille (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Oreille de cerf', { days: 200, price: 4, meat: 'Cerf', tags: { age: ['11+'] } }),
+  { id: 'b', name: 'Oreille de cerf avec poils', meatType: 'Cerf', tags: { poil: 'avec' }, variants: ['S', 'M'].map(z => ({ id: 'b' + z, mode: 'size', value: z, label: z, priceTTC: 4, costUnit: 1, lots: [], tags: { gabarit: [z === 'S' ? 'petit' : 'moyen'] } })) }]);
+run(`Stock.render = Stock.renderM = function () {}; U.toast = function () {}; Store.save = function () {}; Store.state.stockM[0].twinId = 'b'; Store.state.stockM[1].twinId = 'a';`);
+run(`Stock.setPast('a', 'age', '6-10');`);
+eq('25a l\'âge du produit simple arrive sur chaque taille de l\'autre', run(`Store.state.stockM[1].variants.map(v => v.tags.age.join())`), ['11+,6-10', '11+,6-10']);
+eq('25a le gabarit des tailles ne bouge pas', run(`Store.state.stockM[1].variants.map(v => v.tags.gabarit.join())`), ['petit', 'moyen']);
+run(`Stock.setPastAllV('b', 'age', 'senior');`);
+eq('25b dans l\'autre sens : toutes les tailles réunies sur le produit simple', run(`Store.state.stockM[0].tags.age.slice().sort()`), ['0-3', '11+', '3-5', '6-10', 'senior']);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

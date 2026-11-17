@@ -249,11 +249,31 @@ const Stock = {
     if (!src || !dst) return;
     const st = src.tags || {}, dt = dst.tags = Object.assign({}, dst.tags || {});
     const empty = v => v === undefined || v === '' || (Array.isArray(v) && !v.length);
-    ['hypo', 'species', 'type', 'resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit', 'sameAll'].forEach(k => {
+    /* Structures différentes (Antho 2026-11-17, « Oreille de cerf » à une taille ↔ « avec poils » réglée taille par taille) : l'âge et l'espèce
+       ne dépendent pas de la taille → écrits sur CHAQUE taille de l'autre (ou, dans l'autre sens, toutes ses tailles réunies sur le produit).
+       Le gabarit, lui, dépend de la taille : jamais recopié entre un produit simple et un produit à tailles. « Comme le produit » n'est jamais recopié. */
+    const sPer = this.perSize(src), dPer = this.perSize(dst), mixed = sPer !== dPer;
+    ['hypo', 'species', 'type', 'resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit'].forEach(k => {
+      if (mixed && this.PER_SIZE_KEYS.includes(k)) return;
       if (st[k] === undefined) return;
       if (onlyEmpty && !empty(dt[k])) return;
       dt[k] = Array.isArray(st[k]) ? st[k].slice() : st[k];
     });
+    if (mixed && !sPer) {
+      this._ownVariants(dst).forEach(dv => ['age', 'species'].forEach(k => {
+        if (onlyEmpty && ((dv.tags || {})[k] || []).length) return;
+        let val = k === 'species' ? this.speciesOf(src).slice() : (st.age || []).slice();
+        if (k === 'species' && val.join() === 'chien') val = [];   // chien = valeur par défaut d'une taille
+        const t = dv.tags = Object.assign({}, dv.tags || {});
+        if (val.length) t[k] = val; else delete t[k];
+        if (!Object.keys(t).length) delete dv.tags;
+      }));
+      return;
+    }
+    if (mixed && sPer) {
+      ['age', 'species'].forEach(k => { if (!(onlyEmpty && !empty(dt[k]))) dt[k] = this._pastUnion(src, k); });
+      return;
+    }
     const lab = v => String(Pricing.labelVariant(v) || '').toUpperCase().trim();
     (dst.variants || []).forEach(dv => {
       const sv = (src.variants || []).find(v => lab(v) === lab(dv)); if (!sv) return;
