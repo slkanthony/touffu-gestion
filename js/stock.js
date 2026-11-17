@@ -14,7 +14,7 @@ const Stock = {
   focusId: null,  // id produit à ouvrir/scroller automatiquement (lien profond depuis un autre onglet)
   SIZE_ORDER: ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'],
 
-  filters: { q: '', meat: 'all', variants: [], dluo: 'all', tags: {}, tagsOpen: false, variantsOpen: false, sort: 'meat', sortDir: 'asc' },
+  filters: { q: '', meat: 'all', variants: [], dluo: 'all', tags: {}, tagsOpen: false, variantsOpen: false, sort: 'meat', sortDir: 'asc', pastMode: false },
   _allVariantsCache: [],
   _lotsOpen: {},   // vId -> true/false, remplace le défaut auto (ouvert si alerte DLUO)
   _prodOpen: {},   // pId -> true/false, mémorise les fiches produit dépliées entre deux re-rendus
@@ -47,8 +47,7 @@ const Stock = {
           ['accessoires', '🐕', 'Accessoires (' + Store.state.catalogA.length + ')'],
           ['conso', '📦', 'Consommables (' + Store.state.consumables.length + ')'],
           ['peremptions', '⏳', 'Péremptions'],
-          ['faible', '📉', 'Faible stock'],
-          ['pastilles', '🏷️', 'Pastilles']
+          ['faible', '📉', 'Faible stock']
         ].map(([id, ico, label]) => ({ l: `${ico} ${label}`, on: this.tab === id, href: `#/stock/${id}`, js: `if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&event.button!==1){event.preventDefault();Stock.tab='${id}';Stock.render();}` })), { full: true, scroll: true, label: 'Stock' })}
       </div>
       <div id="stockBody"></div>`);
@@ -57,7 +56,7 @@ const Stock = {
     else if (this.tab === 'matieres') this.renderMatieres();
     else if (this.tab === 'accessoires') this.renderAccessoires();
     else if (this.tab === 'peremptions') this.renderPeremptions();
-    else if (this.tab === 'pastilles') this.renderPastilles();
+    else if (this.tab === 'pastilles') { this.tab = 'mastication'; this.filters.pastMode = true; this.renderM(); }   // ancien onglet → mode pastilles
     else this.renderFaible();
   },
 
@@ -102,65 +101,98 @@ const Stock = {
       </div>
     </details>`;
   },
-  /* ═══════════ Onglet « Pastilles » (Antho 2026-11-17) : saisie rapide, sans ouvrir les fiches ═══════════
-     Une ligne par produit de mastication ; chaque pastille se règle d'un clic (re-clic = on retire). Mêmes valeurs que la fiche produit
-     (p.tags) et que le générateur de paniers. Annulation : une entrée de journal par produit, regroupée tant qu'on clique sur le même produit. */
-  pastF: { q: '', only: true, meat: 'all' },
-  _pastKeep: new Set(),   // produits réglés depuis l'ouverture de l'onglet : restent affichés avec le filtre « Sans pastilles » (sinon la ligne disparaît au 1er clic)
+  /* ═══════════ Mode pastilles de Stock → Mastication (Antho 2026-11-17, remplace l'onglet « Pastilles ») ═══════════
+     Bouton dans le panneau Filtres : la page garde TOUS ses filtres (recherche, viande, variantes, pastilles…) mais n'affiche plus
+     que le produit, ses variantes et leurs pastilles, réglées d'un clic (re-clic = on retire), enregistrées tout de suite avec « Annuler ».
+     Mêmes valeurs que les fiches (p.tags ; v.tags pour espèce / âge / gabarit d'une taille) et que le générateur de paniers. */
+  _pastKeep: new Set(),   // produits réglés depuis le dernier changement de filtre : restent affichés même s'ils ne passent plus le filtre
+  _pastSig: '',
   PAST_GROUPS: [
+    { k: 'poil', l: 'Poil', o: [['avec', 'Avec poil'], ['sans', 'Sans poil']] },
+    { k: 'hypo', l: 'Hypoallergénique', o: [['oui', 'Oui'], ['non', 'Non']] },
+    { k: 'species', l: 'Espèce', multi: true, o: [['chien', '🐕 Chien'], ['chat', '🐈 Chat']] },
+    { k: 'type', l: 'Type', o: null },
     { k: 'resistance', l: 'Résistance', o: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte'], ['tres-forte', 'Très forte'], ['longue', 'Mast. longue']] },
     { k: 'odeur', l: 'Odeur', o: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte']] },
     { k: 'gras', l: 'Gras', o: [['non', 'Non'], ['peu', 'Peu'], ['moyen', 'Moyen'], ['gras', 'Gras']] },
-    { k: 'hypo', l: 'Hypoallergénique', o: [['oui', 'Oui'], ['non', 'Non']] },
-    { k: 'ramollit', l: 'Se ramollit (salive)', o: [['oui', 'Oui'], ['non', 'Non']] },
-    { k: 'age', l: 'Âge', multi: true, o: [['0-3', '0-3 mois'], ['3-5', '3-5 mois'], ['6-10', '6-10 mois'], ['11+', 'Adulte'], ['senior', 'Sénior']] },
+    { k: 'ramollit', l: 'Se ramollit', o: [['oui', 'Oui'], ['non', 'Non']] },
+    { k: 'age', l: 'Âge', multi: true, o: [['0-3', '0-3 mois'], ['3-5', '3-5 mois'], ['6-10', '6-10 mois'], ['11+', '11 mois +'], ['senior', 'Sénior']] },
     { k: 'gabarit', l: 'Gabarit', multi: true, o: [['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']] }
   ],
+  _pastGroups() { return this.PAST_GROUPS.map(g => g.k === 'type' ? Object.assign({}, g, { o: Store.productTypes().map(t => [t.value, t.label]) }) : g); },
   /* « Sans pastilles » = aucune des pastilles de profil (résistance, odeur, gras, âge, gabarit) : même règle que l'alerte du panier */
   untagged(p) { const t = p.tags || {}; return !t.resistance && !t.odeur && !t.gras && !(t.age || []).length && !(t.gabarit || []).length; },
-  setPast(id, k, val) {
-    const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
-    const g = this.PAST_GROUPS.find(x => x.k === k); if (!g) return;
-    const j = Store.state.journal[0], merge = j && j.action === 'pastilles' && j.undo && j.undo.type === 'restoreItem' && j.undo.data && j.undo.data.id === id && Date.now() - j.ts < 120000;
+  /* Valeur affichée d'une pastille du produit (valeurs par défaut comprises : poil lu dans le nom, hypo selon la viande, chien, occupation). */
+  _pastCur(p, k) {
+    if (k === 'poil') return this.poilOf(p);
+    if (k === 'hypo') return this.hypoOf(p);
+    if (k === 'species') return this.speciesOf(p);
+    if (k === 'type') return (p.tags || {}).type || 'occupation';
+    return (p.tags || {})[k];
+  },
+  /* Pastille d'une taille : la sienne, sinon espèce du produit / gabarit déduit de la taille ; âge vide = comme le produit. */
+  _pastVCur(p, v, k) {
+    const own = (v.tags || {})[k] || [];
+    if (own.length) return own;
+    if (k === 'species') return this.speciesOf(p);
+    if (k === 'gabarit') return this.defaultGabarit(p, v);
+    return [];
+  },
+  _pastCommit(p, fn) {
+    const j = Store.state.journal[0], merge = j && j.action === 'pastilles' && j.undo && j.undo.type === 'restoreItem' && j.undo.data && j.undo.data.id === p.id && Date.now() - j.ts < 120000;
     const snap = merge ? null : Store.snapshot('stockM', p);
-    const t = p.tags = Object.assign({}, p.tags || {});
-    if (g.multi) { const a = (t[k] || []).slice(), i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val); t[k] = a; }
-    else { const cur = k === 'hypo' ? this.hypoOf(p) : t[k]; t[k] = cur === val ? '' : val; }
-    let entry = merge ? j : Store.commitSnapshot(snap, 'pastilles', 'Pastilles modifiées — ' + p.name);
+    fn();
+    const entry = merge ? j : Store.commitSnapshot(snap, 'pastilles', 'Pastilles modifiées — ' + p.name);
     if (merge) { j.ts = Date.now(); Store.save('journal'); }
     Store.save('stockM');
-    this._pastKeep.add(id);
-    this.renderPastilles();
+    this._pastKeep.add(p.id);
+    this.renderM();
     U.toast('Pastilles de « ' + p.name + ' » enregistrées.', false, entry.id);
   },
-  setPastF(k, v) { this.pastF[k] = v; this._pastKeep = new Set(); this.renderPastilles(); if (k === 'q') U.refocus('pt_q'); },
-  renderPastilles() {
-    U.syncFilters('stock_past', this.pastF);
-    const f = this.pastF, all = (Store.state.stockM || []).slice().sort((a, b) => U.sortFr(a.name, b.name));
-    const nUn = all.filter(p => this.untagged(p)).length;
-    const meats = [...new Set(all.map(p => p.meatType).filter(Boolean))].sort(U.sortFr);
-    const list = all.filter(p => (!f.only || this.untagged(p) || this._pastKeep.has(p.id)) && (f.meat === 'all' || p.meatType === f.meat) && (!f.q || U.has(p.name + ' ' + (p.meatType || ''), f.q)));
-    const ro = !!(window.App && App.isViewer);
+  setPast(id, k, val) {
+    const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
+    const g = this._pastGroups().find(x => x.k === k); if (!g) return;
+    this._pastCommit(p, () => {
+      const t = p.tags = Object.assign({}, p.tags || {});
+      if (g.multi) { const a = (k === 'species' ? this.speciesOf(p) : (t[k] || [])).slice(); this._toggleIn(a, val); t[k] = a; }
+      else t[k] = this._pastCur(p, k) === val ? '' : val;
+    });
+  },
+  setPastV(id, vid, k, val) {
+    const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
+    const v = p.variants.find(x => x.id === vid); if (!v) return;
+    const same = (a, b) => a.slice().sort().join() === b.slice().sort().join();
+    this._pastCommit(p, () => {
+      let a = this._pastVCur(p, v, k).slice(); this._toggleIn(a, val);
+      if ((k === 'gabarit' && same(a, this.defaultGabarit(p, v))) || (k === 'species' && same(a, this.speciesOf(p)))) a = [];
+      const t = v.tags = Object.assign({}, v.tags || {});
+      if (a.length) t[k] = a; else delete t[k];
+      if (!Object.keys(t).length) delete v.tags;
+    });
+  },
+  togglePastMode() { this.filters.pastMode = !this.filters.pastMode; this.renderM(); },
+  /* Lien « Compléter » du générateur de paniers : mode pastilles, seulement les produits sans pastilles. */
+  openPastTodo() {
+    U.syncFilters('stock_mastication', this.filters);
+    Object.assign(this.filters, { q: '', meat: 'all', variants: [], dluo: 'all', tags: { todo: ['sans'] }, pastMode: true });
+    this.tab = 'mastication';
+  },
+  _pastListHTML(list) {
+    const ro = !!(window.App && App.isViewer), f = this.filters, groups = this._pastGroups();
+    const seg = (g, cur, js) => U.seg(g.o.map(([v, l]) => ({ l, on: g.multi ? (cur || []).includes(v) : cur === v, js: ro ? '' : js(v) })), { sm: true, scroll: true, label: g.l });
+    const grp = (g, html) => `<div class="pt-grp"><span class="pt-lbl">${g.l}</span>${html}</div>`;
     const row = p => {
-      const t = p.tags || {};
-      const grp = g => {
-        const cur = g.k === 'hypo' ? this.hypoOf(p) : t[g.k];
-        const items = g.o.map(([v, l]) => ({ l, on: g.multi ? (cur || []).includes(v) : cur === v, js: ro ? '' : `Stock.setPast('${p.id}','${g.k}','${v}')` }));
-        return `<div class="pt-grp"><span class="pt-lbl">${g.l}</span>${U.seg(items, { sm: true, scroll: true, label: g.l })}</div>`;
-      };
-      return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}"><div class="pt-name"><a href="#/stock/mastication/${p.id}">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
-        <div class="pt-grps">${this.PAST_GROUPS.map(grp).join('')}</div></div>`;
+      const own = p.variants.filter(v => !v.parentId && v.mode !== 'vrac');
+      const vars = own.length > 1 ? this.orderedVariants(p).filter(v => own.includes(v) && (!f.variants.length || f.variants.includes(Pricing.labelVariant(v)))) : [];
+      const vg = groups.filter(g => ['species', 'age', 'gabarit'].includes(g.k));
+      return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
+        <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
+        <div class="pt-grps">${groups.map(g => grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`))).join('')}</div>
+        ${vars.length ? `<div class="pt-vars"><div class="pt-vhead">Par taille <span class="muted help">Espèce, âge et gabarit propres à chaque taille. Âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
+          ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
+      </div>`;
     };
-    document.getElementById('stockBody').innerHTML = `
-      <div class="card">
-        <div class="frow pt-filters">
-          <div class="fg"><label>Recherche</label><input id="pt_q" type="text" autocomplete="off" placeholder="nom du produit…" value="${U.esc(f.q)}" oninput="Stock.setPastF('q', this.value)"></div>
-          <div class="fg"><label>Viande</label>${U.customSelect({ value: f.meat, options: [{ v: 'all', l: 'Toutes' }].concat(meats.map(m => ({ v: m, l: m }))), onPick: "Stock.setPastF.bind(Stock,'meat')" })}</div>
-          <div class="fg"><label>Afficher</label>${U.seg([{ l: 'Sans pastilles (' + nUn + ')', on: f.only, js: "Stock.setPastF('only', true)" }, { l: 'Tous (' + all.length + ')', on: !f.only, js: "Stock.setPastF('only', false)" }], { sm: true })}</div>
-        </div>
-        <p class="muted help">Un clic règle la pastille, un nouveau clic la retire. C'est enregistré tout de suite (avec « Annuler » dans la notification). Les produits sans pastilles passent tous les filtres du générateur de paniers : les remplir rend les paniers plus justes. Âge et gabarit : plusieurs choix possibles.</p>
-      </div>
-      ${list.length ? `<div class="pt-list">${list.map(row).join('')}</div>` : `<div class="empty">${f.only ? 'Tous les produits ont leurs pastilles.' : 'Aucun produit.'}</div>`}`;
+    return list.length ? `<div class="pt-list">${list.map(row).join('')}</div>` : `<div class="card empty">${(f.tags.todo || []).length ? 'Tous les produits ont leurs pastilles.' : 'Aucun produit avec ces filtres.'}</div>`;
   },
   _dluoFilterOpen: false,
   _meatFilterOpen: false,
@@ -213,7 +245,8 @@ const Stock = {
       { k: 'odeur', l: 'Odeur', o: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte']] },
       { k: 'gras', l: 'Gras', o: [['non', 'Non gras'], ['peu', 'Peu gras'], ['moyen', 'Moyennement gras']] },
       { k: 'age', l: 'Âge', o: [['0-3', '0-3 mois'], ['3-5', '3-5 mois'], ['6-10', '6-10 mois'], ['11+', '11 mois +'], ['senior', 'Sénior']] },
-      { k: 'gabarit', l: 'Gabarit', o: [['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']] }
+      { k: 'gabarit', l: 'Gabarit', o: [['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']] },
+      { k: 'todo', l: 'À compléter', o: [['sans', 'Sans pastilles (' + Store.state.stockM.filter(p => this.untagged(p)).length + ')']] }
     ];
   },
   tagFilterCount() { return Object.values(this.filters.tags || {}).reduce((a, x) => a + (x ? x.length : 0), 0); },
@@ -230,6 +263,7 @@ const Stock = {
     return Object.keys(t).every(k => {
       const sel = t[k]; if (!sel || !sel.length) return true;
       const pt = p.tags || {};
+      if (k === 'todo') return this.untagged(p);
       if (k === 'poil') return sel.includes(this.poilOf(p) === 'avec' ? 'avec' : 'sans');
       if (k === 'hypo') return sel.includes(this.hypoOf(p) === 'oui' ? 'oui' : 'non');
       if (k === 'species') return this.speciesOf(p).some(x => sel.includes(x))
@@ -248,15 +282,13 @@ const Stock = {
     const f = this.filters, n = this.tagFilterCount();
     const btn = `<button class="btn-ghost btn-sm" style="flex:none;width:auto;" onclick="Stock.toggleTagsPanel()">🎚️ Filtres${n ? ' (' + n + ')' : ''} ${f.tagsOpen ? '▲' : '▼'}</button>`;
     if (!f.tagsOpen) return btn;
-    const panel = `<div class="tagfilter-panel">${this.tagGroups().map(g => `<div class="tagfilter-grp"><label>${g.l}</label><div class="chk-chips">${g.o.map(([val, lb]) => `<label class="chk-chip"><input type="checkbox" ${((f.tags || {})[g.k] || []).includes(val) ? 'checked' : ''} onchange="Stock.toggleTagFilter('${g.k}','${val}')"><span>${lb}</span></label>`).join('')}</div></div>`).join('')}
+    const panel = `<div class="tagfilter-panel"><div class="tagfilter-grp"><label>Affichage</label><div class="chk-chips"><button class="btn-sm fit ${f.pastMode ? 'btn-cta' : 'btn-ghost'}" onclick="Stock.togglePastMode()" title="Garde les filtres mais n'affiche que les produits, leurs variantes et leurs pastilles, à régler d'un clic">🏷️ Mode pastilles${f.pastMode ? ' ✓' : ''}</button></div></div>${this.tagGroups().map(g => `<div class="tagfilter-grp"><label>${g.l}</label><div class="chk-chips">${g.o.map(([val, lb]) => `<label class="chk-chip"><input type="checkbox" ${((f.tags || {})[g.k] || []).includes(val) ? 'checked' : ''} onchange="Stock.toggleTagFilter('${g.k}','${val}')"><span>${lb}</span></label>`).join('')}</div></div>`).join('')}
       ${n ? `<div class="tagfilter-grp"><button class="btn-ghost btn-sm" onclick="Stock.clearTagFilters()">✖ Tout effacer</button></div>` : ''}</div>`;
     return { btn, panel };
   },
   _tagsOpen: {},
-  _tagsAll() { try { return localStorage.getItem('touffu_tagpills') === '1'; } catch (e) { return false; } },
-  tagPillsShown(p) { return p.id in this._tagsOpen ? this._tagsOpen[p.id] : this._tagsAll(); },
+  tagPillsShown(p) { return !!this._tagsOpen[p.id]; },
   toggleTagPills(id) { const p = Store.state.stockM.find(x => x.id === id); if (!p) return; this._tagsOpen[id] = !this.tagPillsShown(p); this.renderM(); },
-  toggleAllTagPills() { try { localStorage.setItem('touffu_tagpills', this._tagsAll() ? '0' : '1'); } catch (e) {} this._tagsOpen = {}; this.renderM(); },
   /* Petites pastilles lisibles sur la ligne du produit : ce qui est coché (y compris les valeurs par défaut). */
   tagPills(p) {
     const pt = p.tags || {}, out = [];
@@ -378,7 +410,9 @@ const Stock = {
         if (cid && Store.state.catalogM.some(c => c.id === cid)) { p.catalogId = cid; fixed = true; }
       });
       if (fixed) Store.save('stockM'); }
+    { const sig = JSON.stringify([f.q, f.meat, f.variants, f.dluo, f.tags, f.pastMode]); if (sig !== this._pastSig) { this._pastSig = sig; this._pastKeep = new Set(); } }
     const list = Store.state.stockM.filter(p => {
+      if (f.pastMode && this._pastKeep.has(p.id)) return true;   // un produit qu'on vient de régler ne disparaît pas sous le doigt
       if (f.q && !U.has(p.name, f.q)) return false;
       if (!this.matchTags(p)) return false;
       if (f.meat !== 'all' && (p.meatType || '').toLowerCase() !== f.meat.toLowerCase()) return false;
@@ -421,20 +455,19 @@ const Stock = {
         <div class="frow mt" style="gap:6px;align-items:center;">
           <button class="btn-cta btn-sm" onclick="Stock.editProduct()">＋ Nouveau produit</button>
           ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? t : t.btn; })()}
-          <button class="btn-ghost btn-sm" style="flex:none;width:auto;" title="Afficher / masquer les pastilles sur toutes les lignes" onclick="Stock.toggleAllTagPills()">🏷️ Pastilles ${this._tagsAll() ? '✓' : ''}</button>
-          ${U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAll(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAll(true)' }], { sm: true })}
+          ${f.pastMode ? `<button class="btn-cta btn-sm fit" onclick="Stock.togglePastMode()" title="Revenir à l'affichage du stock">🏷️ Mode pastilles ✖</button>` : U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAll(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAll(true)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${list.length} produit(s) · ${list.reduce((a,p)=>a+p.variants.reduce((b,v)=>b+v.lots.reduce((c,l)=>c+U.num(l.qtyGeneral)+U.num(l.qtyEvent),0),0),0).toFixed(0)} unités en stock</span>
         </div>
       </div>
       ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? '' : `<div class="card" style="padding:12px 16px;">${t.panel}</div>`; })()}
-      <div class="prod-list-header">
+      ${f.pastMode ? this._pastListHTML(list) : `<div class="prod-list-header">
         <span>${sortHead('name', 'Nom du produit')}</span>
         <span>Alertes</span>
         <span>${sortHead('meat', 'Catégorie')}</span>
         <span class="meta">Stock</span>
         <span class="prod-actions">Actions</span>
       </div>
-      ${list.map(p => this.productCard(p)).join('') || '<div class="card empty"><span class="big">📦</span>Aucun résultat. Importe ton inventaire depuis Paramètres ou ajuste tes filtres.</div>'}`;
+      ${list.map(p => this.productCard(p)).join('') || '<div class="card empty"><span class="big">📦</span>Aucun résultat. Importe ton inventaire depuis Paramètres ou ajuste tes filtres.</div>'}`}`;
     if (focusId) {
       setTimeout(() => {
         const ve = focusVid && document.getElementById('var-' + focusVid);

@@ -268,7 +268,7 @@ const Paniers = {
   },
   _untaggedHTML(list) {
     const u = this._untagged(list); if (!u.length) return '';
-    return `<p class="pan-untagged">${u.length} produit${u.length > 1 ? 's' : ''} sans pastilles (les filtres n’ont pas pu les trier) : ${U.esc(u.join(', '))} <a class="btn btn-ghost btn-sm fit" href="#/stock/pastilles" style="text-decoration:none">Compléter</a></p>`;
+    return `<p class="pan-untagged">${u.length} produit${u.length > 1 ? 's' : ''} sans pastilles (les filtres n’ont pas pu les trier) : ${U.esc(u.join(', '))} <a class="btn btn-ghost btn-sm fit" href="#/stock/mastication" onclick="Stock.openPastTodo()" style="text-decoration:none">Compléter</a></p>`;
   },
   /* ---------- Particularités d'un chien : sa fiche d'abord, sinon sa race (js/races.js) ---------- */
   _traits(d) {

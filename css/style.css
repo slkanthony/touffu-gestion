@@ -1915,3 +1915,10 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .kpi.pan-kpi-ok .kpi-val { color: var(--ok); }
 .kpi.pan-kpi-bad { border-left-color: var(--alerte); }
 .kpi.pan-kpi-bad .kpi-val { color: var(--alerte); }
+/* Mode pastilles (Stock → Mastication) : lignes des tailles sous le produit */
+.pt-vars { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; flex-direction: column; gap: 8px; }
+.pt-vhead { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
+.pt-var { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: flex-end; }
+.pt-vname { flex: 0 0 110px; min-width: 0; font-weight: 700; padding-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) { .pt-vname { flex-basis: 100%; padding-bottom: 0; } }
+@media (min-width: 601px) { .pt-var + .pt-var .pt-lbl { display: none; } }
