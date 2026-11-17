@@ -215,7 +215,7 @@ const dayIso = n => { const d = new Date(Date.now() + n * 86400000); return d.ge
 const sp = (id, name, o) => ({ id, name, meatType: o.meat || 'Boeuf', tags: o.tags || {}, variants: [{ id: id + 'v', mode: o.mode || 'piece', value: o.value || 1, label: o.label || '', priceTTC: o.price || 5, costUnit: 2, lots: [{ id: id + 'l', lotNumber: 'L', dluo: o.days === undefined ? '' : dayIso(o.days), qtyGeneral: 10, qtyEvent: 0 }] }] });
 function paniers(stock, cfg, clients) {
   reset();
-  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte', 'longue'], risks: { glouton: false, choke: false, teeth: false, surpoids: false, energique: false }, kind: 'vente', typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
+  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte', 'longue'], risks: { glouton: false, choke: false, teeth: false, surpoids: false, energique: false, tendre: false }, races: [], kind: 'vente', typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
   sandbox.__clients = clients || [];
   run(`Store.state.stockM = __stock; Store.state.clients = __clients; window.App.visitMode = false; Object.assign(Paniers, __cfg);`);
 }
@@ -390,6 +390,19 @@ paniers(lotSt(), { budget: 4, kind: 'lot' });
 run(`Pricing._calcAllM = Pricing._calcAllM; Paniers.candidates = (orig => function () { const out = orig.call(this); out.forEach(c => { c.coeff = c.name === 'Fort coeff' ? 3 : c.name === 'Faible coeff' ? 1.2 : 2; }); return out; })(Paniers.candidates);`);
 eq('12f lot : une date dépassée passe en premier', build(4), ['Dépassé']);
 eq('12f lot : puis le plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
+
+/* ══════════ 13. PANIERS : « préfère le tendre », race sans fiche (Antho 2026-11-17) ══════════ */
+const st13 = () => [sp('a', 'Dur', { days: 200, meat: 'Boeuf', tags: { resistance: 'forte' } }), sp('b', 'Tendre', { days: 200, meat: 'Lapin', tags: { resistance: 'faible' } }), sp('c', 'Moyen', { days: 200, meat: 'Dinde', tags: { resistance: 'moyenne' } })];
+paniers(st13()); run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.toggleRisk('energique'); Paniers.toggleRisk('tendre');`);
+eq('13a « préfère le tendre » décoche « très énergique »', run(`Paniers.risks.energique`), false);
+eq('13a « préfère le tendre » : rien de dur', names11().includes('Dur'), false);
+eq('13a « préfère le tendre » : le tendre mieux noté que le moyen', run(`(() => { const c = Paniers.candidates(); return Paniers._gabaritResistScore(c.find(k => k.name === 'Tendre')) > Paniers._gabaritResistScore(c.find(k => k.name === 'Moyen')); })()`), true);
+paniers(st13()); run(`Paniers.render = function () {}; U.toast = function () {}; Store.state.settings.breeds = JSON.parse(JSON.stringify(RACES_DEFAULT)); Store.state.settings.breeds.find(r => r.id === 'border-collie').avoidMeats = ['Dinde']; Paniers.resistanceInclude = ['faible', 'moyenne']; Paniers.addRace('border-collie');`);
+eq('13b race choisie sans fiche : très énergique coché', run(`Paniers.risks.energique`), true);
+eq('13b race : gabarit pré-rempli', run(`Paniers.gabaritInclude`), ['moyen']);
+eq('13b race : résistance de gros mâcheur, sans mastication longue', run(`Paniers.resistanceInclude`), ['moyenne', 'forte', 'tres-forte']);
+eq('13b race : viande à éviter ajoutée aux exclusions', run(`Paniers.excludeMeats`), ['Dinde']);
+run(`Store.state.settings.breeds = null;`);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
