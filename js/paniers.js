@@ -18,7 +18,7 @@ const Paniers = {
   _redAuto: false,   // la réduction vient de la fiche du client (retirée si on change de client) et non d'une saisie à la main
   nbChiens: 1,
   /* Type de panier (Antho 2026-11-17) : 'vente' = deux propositions (au plus près, et jusqu'à +10 %) ; 'site' = commande du site à prix fixe :
-     jamais au-dessus du budget (le client ne paiera pas la différence) ; 'lot' = lot à gagner / offert : jamais au-dessus, dates courtes d'abord
+     jamais au-dessus du budget (le client ne paiera pas la différence), dates courtes puis plus fort coefficient (comme le lot) ; 'lot' = lot à gagner / offert : jamais au-dessus, dates courtes d'abord
      (elles seraient perdues de toute façon) puis les produits au plus fort coefficient (valeur affichée élevée pour un coût réel faible). */
   kind: 'vente',
   KINDS: [['vente', 'Vente'], ['site', 'Commande site'], ['lot', 'Lot à gagner']],
@@ -362,7 +362,7 @@ const Paniers = {
   },
   /* Poids de chaque critère dans la note d'un produit (somme = 1). Une seule définition pour générer, exclure et remplacer. */
   _weights() {
-    if (this.kind === 'lot') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
+    if (this.kind === 'lot' || this.kind === 'site') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
     return this.priority === 'dluo' ? { dluo: 0.36, coeff: 0.04, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : this.priority === 'coeff' ? { dluo: 0.08, coeff: 0.32, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : { dluo: 0.26, coeff: 0.08, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.06, like: 0.08 };
@@ -1931,7 +1931,7 @@ const Paniers = {
           <input type="text" data-clcombo autocomplete="off" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente ou du chien…" onchange="Paniers.setClient(this.value)">
           <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div>${this._lastHTML()}</div>
 
-        <div class="fg" style="margin-bottom:12px;"><label>Type de panier <span class="muted help">Vente : deux propositions, au plus près du budget et jusqu'à 10 % au-dessus. Commande site : jamais au-dessus du budget (le client ne paiera pas la différence). Lot à gagner : jamais au-dessus, les dates courtes d'abord puis les produits au plus fort coefficient (valeur affichée élevée pour un coût réel faible).</span></label>
+        <div class="fg" style="margin-bottom:12px;"><label>Type de panier <span class="muted help">Vente : deux propositions, au plus près du budget et jusqu'à 10 % au-dessus. Commande site et Lot à gagner : jamais au-dessus du budget (le client ne paiera pas la différence), les dates courtes d'abord puis les produits au plus fort coefficient : si tu ajoutes ensuite un produit pour améliorer le panier, la marge reste bonne.</span></label>
           ${U.seg(this.KINDS.map(([v, l]) => ({ l, on: this.kind === v, js: `Paniers.setKind('${v}')` })), { sm: true })}</div>
 
         <div class="frow" style="gap:12px;">

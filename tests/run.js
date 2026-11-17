@@ -390,6 +390,10 @@ paniers(lotSt(), { budget: 4, kind: 'lot' });
 run(`Pricing._calcAllM = Pricing._calcAllM; Paniers.candidates = (orig => function () { const out = orig.call(this); out.forEach(c => { c.coeff = c.name === 'Fort coeff' ? 3 : c.name === 'Faible coeff' ? 1.2 : 2; }); return out; })(Paniers.candidates);`);
 eq('12f lot : une date dépassée passe en premier', build(4), ['Dépassé']);
 eq('12f lot : puis le plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
+run(`Paniers.kind = 'site';`);
+eq('12g commande site : dates courtes puis plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
+run(`Paniers.kind = 'vente';`);
+eq('12g vente (mix) : deux produits pour 8 €', build(8).sort().length, 2);
 
 /* ══════════ 13. PANIERS : « préfère le tendre », race sans fiche (Antho 2026-11-17) ══════════ */
 const st13 = () => [sp('a', 'Dur', { days: 200, meat: 'Boeuf', tags: { resistance: 'forte' } }), sp('b', 'Tendre', { days: 200, meat: 'Lapin', tags: { resistance: 'faible' } }), sp('c', 'Moyen', { days: 200, meat: 'Dinde', tags: { resistance: 'moyenne' } })];
