@@ -154,7 +154,7 @@ const Stock = {
     const g = this._pastGroups().find(x => x.k === k); if (!g) return;
     this._pastCommit(p, () => {
       const t = p.tags = Object.assign({}, p.tags || {});
-      if (g.multi) { const a = (k === 'species' ? this.speciesOf(p) : (t[k] || [])).slice(); this._toggleIn(a, val); t[k] = a; }
+      if (g.multi) { const a = (k === 'species' ? this.speciesOf(p) : (t[k] || [])).slice(); t[k] = this._pastToggle(g, a, val); }
       else t[k] = this._pastCur(p, k) === val ? '' : val;
     });
   },
@@ -163,12 +163,19 @@ const Stock = {
     const v = p.variants.find(x => x.id === vid); if (!v) return;
     const same = (a, b) => a.slice().sort().join() === b.slice().sort().join();
     this._pastCommit(p, () => {
-      let a = this._pastVCur(p, v, k).slice(); this._toggleIn(a, val);
+      const g = this._pastGroups().find(x => x.k === k); let a = this._pastToggle(g, this._pastVCur(p, v, k).slice(), val);
       if ((k === 'gabarit' && same(a, this.defaultGabarit(p, v))) || (k === 'species' && same(a, this.speciesOf(p)))) a = [];
       const t = v.tags = Object.assign({}, v.tags || {});
       if (a.length) t[k] = a; else delete t[k];
       if (!Object.keys(t).length) delete v.tags;
     });
+  },
+  /* Âge et gabarit : un produit peut convenir à TOUS (Antho 2026-11-17) → bouton « Tous » en fin de liste : tout coche, ou tout décoche si tout était déjà coché. */
+  PAST_ALL: ['age', 'gabarit'],
+  _pastToggle(g, a, val) {
+    if (val !== '*') { this._toggleIn(a, val); return a; }
+    const all = g.o.map(([v]) => v);
+    return all.every(v => a.includes(v)) ? [] : all;
   },
   togglePastMode() { this.filters.pastMode = !this.filters.pastMode; this.renderM(); },
   /* Lien « Compléter » du générateur de paniers : mode pastilles, seulement les produits sans pastilles. */
@@ -179,7 +186,8 @@ const Stock = {
   },
   _pastListHTML(list) {
     const ro = !!(window.App && App.isViewer), f = this.filters, groups = this._pastGroups();
-    const seg = (g, cur, js) => U.seg(g.o.map(([v, l]) => ({ l, on: g.multi ? (cur || []).includes(v) : cur === v, js: ro ? '' : js(v) })), { sm: true, scroll: true, label: g.l });
+    const seg = (g, cur, js) => U.seg(g.o.map(([v, l]) => ({ l, on: g.multi ? (cur || []).includes(v) : cur === v, js: ro ? '' : js(v) }))
+      .concat(this.PAST_ALL.includes(g.k) ? [{ l: 'Tous', on: g.o.every(([v]) => (cur || []).includes(v)), js: ro ? '' : js('*') }] : []), { sm: true, scroll: true, label: g.l });
     const grp = (g, html) => `<div class="pt-grp"><span class="pt-lbl">${g.l}</span>${html}</div>`;
     const row = p => {
       const own = p.variants.filter(v => !v.parentId && v.mode !== 'vrac');
