@@ -28,7 +28,7 @@ const sandbox = {
 sandbox.document.readyState = 'complete';
 sandbox.window = sandbox; sandbox.globalThis = sandbox;
 const ctx = vm.createContext(sandbox);
-const FILES = ['config', 'icons', 'utils', 'store', 'pricing', 'visite', 'catalogue', 'accessoires', 'stock', 'ventes', 'paniers', 'b2b', 'woo', 'params', 'achats', 'compta', 'ship', 'devis', 'facture', 'clients', 'partners', 'stats', 'calc', 'backup'];
+const FILES = ['config', 'icons', 'utils', 'store', 'pricing', 'visite', 'catalogue', 'accessoires', 'stock', 'ventes', 'paniers', 'b2b', 'woo', 'params', 'achats', 'compta', 'ship', 'devis', 'facture', 'races', 'clients', 'partners', 'stats', 'calc', 'backup'];
 FILES.forEach(f => { const p = path.join(root, 'js', f + '.js'); vm.runInContext(fs.readFileSync(p, 'utf8'), ctx, { filename: 'js/' + f + '.js' }); });
 const run = code => vm.runInContext(code, ctx);
 run(`Store.__save = Store.save;`);   // le vrai enregistrement, remis en place pour les cas « deux appareils »

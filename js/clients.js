@@ -262,7 +262,7 @@ const Clients = {
   addDog(cid) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); if (!c) return;
-    c.dogs.push({ id: U.uid(), name: '', breed: '', birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', hair: '', odor: '', fat: '', liked: '', note: '' });
+    c.dogs.push({ id: U.uid(), name: '', breed: '', breeds: [], birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', hair: '', odor: '', fat: '', energy: '', glouton: '', choke: '', teeth: '', body: '', liked: '', note: '' });
     this._dogOpen[c.dogs[c.dogs.length - 1].id] = true; Store.save('clients'); Stats.render();
   },
   async delDog(cid, did) {
@@ -271,6 +271,45 @@ const Clients = {
     const d = c.dogs.find(x => x.id === did); if (!d) return;
     if (!await U.confirm(`Supprimer la fiche de ${d.name || 'ce chien'} ?`)) return;
     c.dogs = c.dogs.filter(x => x.id !== did); Store.save('clients'); Stats.render();
+  },
+  /* ---------- Race(s) du chien : base Paramètres → Races (js/races.js), plusieurs pour un croisé ---------- */
+  _brQ: {}, _brOpen: '',
+  setBrQ(did, v) { this._brQ[did] = v; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
+  openBr(did) { if (this._brOpen === did) return; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
+  closeBr() { if (!this._brOpen) return; this._brOpen = ''; Stats.render(); },
+  addBreed(cid, did, rid) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did); if (!d) return;
+    d.breeds = Array.isArray(d.breeds) ? d.breeds : Races.ofDog(d).map(r => r.id);
+    if (!d.breeds.includes(rid)) d.breeds.push(rid);
+    const pf = Races.profile(d); d.breed = pf ? pf.names.join(' × ') : d.breed;
+    if (pf && !d.gabarit) d.gabarit = pf.gabarit;   // gabarit déduit du poids de la race, seulement s'il n'est pas déjà renseigné
+    this._brQ[did] = ''; this._brOpen = ''; Store.save('clients'); Stats.render();
+  },
+  delBreed(cid, did, rid) {
+    if (this.ro()) return;
+    const d = this._dogOf(cid, did); if (!d) return;
+    d.breeds = (Array.isArray(d.breeds) ? d.breeds : Races.ofDog(d).map(r => r.id)).filter(x => x !== rid);
+    const pf = Races.profile(d); d.breed = pf ? pf.names.join(' × ') : '';
+    Store.save('clients'); Stats.render();
+  },
+  _breedUI(c, d) {
+    const ro = this.ro(), rs = Races.ofDog(d), q = this._brQ[d.id] || '', open = this._brOpen === d.id;
+    const res = open ? Races.list().filter(r => !rs.some(x => x.id === r.id) && (!q || U.has(r.name, q))).slice(0, 12) : [];
+    const chips = rs.map(r => `<span class="chip">${U.esc(r.name)}${ro ? '' : ` <button class="btn-icon" title="Retirer" onclick="Clients.delBreed('${c.id}','${d.id}','${r.id}')">×</button>`}</span>`).join('');
+    const legacy = !rs.length && d.breed ? `<span class="muted" title="Race écrite à la main avant la base des races : choisis-la dans la liste">${U.esc(d.breed)} (à choisir dans la liste)</span>` : '';
+    return `<div class="fg cl-breed"><label>Race${rs.length > 1 ? 's (croisé)' : ''}</label>
+      ${chips || legacy ? `<div class="chips">${chips}${legacy}</div>` : ''}
+      ${ro ? '' : `<div class="autocomplete" data-onclose="Clients.closeBr"><input id="cl_br_${d.id}" type="text" autocomplete="off" placeholder="${rs.length ? '+ autre race (croisé)…' : 'chercher une race…'}" value="${U.esc(q)}" oninput="Clients.setBrQ('${d.id}',this.value)" onfocus="Clients.openBr('${d.id}')">
+        ${open && res.length ? `<div class="ac-list">${res.map(r => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Clients.addBreed('${c.id}','${d.id}','${r.id}')"><span class="pp-a">${U.esc(r.name)}</span><span class="pp-b">${r.wMin || '?'}–${r.wMax || '?'} kg</span></div>`).join('')}</div>` : ''}</div>`}
+    </div>`;
+  },
+  /* Ligne « estimé d'après la race » + alertes de race, sous les champs */
+  _breedInfo(d) {
+    const pf = Races.profile(d); if (!pf) return '';
+    const E = { calme: 'calme', actif: 'actif', 'tres-actif': 'très actif' };
+    const t = [pf.wMin || pf.wMax ? `${pf.wMin}–${pf.wMax} kg` : '', E[pf.energy] || '', pf.glouton ? 'souvent glouton' : '', pf.choke ? 'risque d’étouffement' : '', pf.sens ? 'souvent sensible' : '', pf.avoidMeats.length ? 'éviter : ' + pf.avoidMeats.join(', ') : ''].filter(Boolean);
+    return `<div class="cl-breed-info">D'après la race : ${U.esc(t.join(' · '))}${pf.alerts.map(a => `<div class="warn-txt">${U.esc(a)}</div>`).join('')}</div>`;
   },
   setDog(cid, did, f, v) {
     if (this.ro()) return;
@@ -401,15 +440,22 @@ const Clients = {
       <div class="cl-dog-b">
       ${ro ? '' : `<div style="text-align:right;margin-bottom:6px;"><button class="btn-danger btn-sm" onclick="Clients.delDog('${c.id}','${d.id}')">🗑 Retirer ce chien</button></div>`}
       <div class="grid c4">
-        ${inp('name', 'Nom', 'Rex')}${inp('breed', 'Race', 'Berger allemand')}
+        ${inp('name', 'Nom', 'Rex')}${this._breedUI(c, d)}
         <div class="fg"><label>Date de naissance</label><input ${ro} type="date" value="${U.esc(d.birth || '')}" onchange="Clients.setDog('${c.id}','${d.id}','birth',this.value)"></div>
         <div class="fg"><label>Gabarit</label>${this._sel(c.id, d.id, 'gabarit', d.gabarit, [['', '—'], ['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']])}</div>
         <div class="fg"><label>Mâcheur</label>${this._sel(c.id, d.id, 'chew', d.chew, [['', '—'], ['doux', 'Doux'], ['moyen', 'Moyen'], ['gros', 'Gros destructeur']])}</div>
-        <div class="fg"><label>Aime les produits avec poils</label>${this._sel(c.id, d.id, 'hair', d.hair, yn)}</div>
-        <div class="fg"><label>Supporte les odeurs fortes</label>${this._sel(c.id, d.id, 'odor', d.odor, yn)}</div>
-        <div class="fg"><label>Supporte les produits gras</label>${this._sel(c.id, d.id, 'fat', d.fat, yn)}</div>
+        <div class="fg"><label>Produits avec poils</label>${this._sel(c.id, d.id, 'hair', d.hair, yn)}</div>
+        <div class="fg"><label>Odeurs fortes</label>${this._sel(c.id, d.id, 'odor', d.odor, yn)}</div>
+        <div class="fg"><label>Produits gras</label>${this._sel(c.id, d.id, 'fat', d.fat, yn)}</div>
+        ${(() => { const pf = Races.profile(d), dft = (on, a, b) => pf ? `— (race : ${on ? a : b})` : '—', E = { calme: 'calme', actif: 'actif', 'tres-actif': 'très actif' };
+          return `<div class="fg"><label>Énergie</label>${this._sel(c.id, d.id, 'energy', d.energy, [['', pf && pf.energy ? `— (race : ${E[pf.energy]})` : '—'], ['calme', 'Calme'], ['actif', 'Actif'], ['tres-actif', 'Très actif']])}</div>
+        <div class="fg"><label>Glouton</label>${this._sel(c.id, d.id, 'glouton', d.glouton, [['', dft(pf && pf.glouton, 'oui', 'non')], ['oui', 'Oui, avale vite'], ['non', 'Non, mâche bien']])}</div>
+        <div class="fg"><label>Risque d'étouffement</label>${this._sel(c.id, d.id, 'choke', d.choke, [['', dft(pf && pf.choke, 'oui', 'non')], ['oui', 'Oui (bave, nez écrasé…)'], ['non', 'Non']])}</div>
+        <div class="fg"><label>Dents</label>${this._sel(c.id, d.id, 'teeth', d.teeth, [['', '—'], ['ok', 'En bon état'], ['fragiles', 'Fragiles / abîmées']])}</div>
+        <div class="fg"><label>Corpulence</label>${this._sel(c.id, d.id, 'body', d.body, [['', '—'], ['mince', 'Mince'], ['normale', 'Normale'], ['surpoids', 'En surpoids']])}</div>`; })()}
         <div class="fg"><label>🌿 Chien sensible</label><label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;" title="Peau / digestion fragiles : à la création d'un panier, « Hypoallergénique uniquement » est coché pour sa cliente (tu peux le décocher)."><input type="checkbox" ${ro} ${d.sensitive ? 'checked' : ''} onchange="Clients.setDog('${c.id}','${d.id}','sensitive',this.checked)"> Privilégier l'hypoallergénique</label></div>
       </div>
+      ${this._breedInfo(d)}
       <div class="fg mt"><label>Viandes <span class="muted" style="font-weight:400;">(clique : ❤ aime · ⛔ évite / n'aime pas)</span></label><div class="cl-chips">${chips}</div></div>
       <div class="grid c2 mt">
         ${inp('allergies', '⚠️ Allergies / intolérances', 'ex : poulet, céréales')}${inp('health', 'Maladie / santé', 'ex : pancréatite')}

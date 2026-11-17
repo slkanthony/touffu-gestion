@@ -238,6 +238,7 @@ const Params = {
       </details>
 
 
+      ${Races.paramsHTML()}
       <details class="fold card params-fold" ${this._linksOpen ? 'open' : ''} ontoggle="Params._linksOpen=this.open">
         <summary><h2 style="display:inline;">🔗 Mes liens</h2> <span class="muted">(Caisse, réseaux sociaux, Linktree…)</span></summary>
         <div class="fold-body">${this.linksCard()}</div>

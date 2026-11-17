@@ -112,6 +112,7 @@ const Stock = {
     { k: 'odeur', l: 'Odeur', o: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte']] },
     { k: 'gras', l: 'Gras', o: [['non', 'Non'], ['peu', 'Peu'], ['moyen', 'Moyen'], ['gras', 'Gras']] },
     { k: 'hypo', l: 'Hypoallergénique', o: [['oui', 'Oui'], ['non', 'Non']] },
+    { k: 'ramollit', l: 'Se ramollit (salive)', o: [['oui', 'Oui'], ['non', 'Non']] },
     { k: 'age', l: 'Âge', multi: true, o: [['0-3', '0-3 mois'], ['3-5', '3-5 mois'], ['6-10', '6-10 mois'], ['11+', 'Adulte'], ['senior', 'Sénior']] },
     { k: 'gabarit', l: 'Gabarit', multi: true, o: [['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']] }
   ],
@@ -265,6 +266,7 @@ const Stock = {
     out.push([sp.includes('chat') ? (sp.includes('chien') ? '🐕🐈' : '🐈 seul') : '🐕', 'Espèce : ' + sp.join(' + ')]);
     if ((pt.type || 'occupation') !== 'occupation') out.push([Store.productTypeLabel(pt.type).split(' ')[0] || pt.type, 'Type : ' + Store.productTypeLabel(pt.type)]);
     const L = { faible: 'faible', moyenne: 'moy.', forte: 'forte', 'tres-forte': 'très forte' };
+    if (pt.ramollit === 'oui') out.push(['Se ramollit', 'Se ramollit avec la salive : risque d’étouffement pour les chiens qui bavent ou avalent vite']);
     if (pt.resistance === 'longue') out.push(['Mastication longue', 'Mastication longue durée : à laisser à disposition du chien']);
     else if (pt.resistance) out.push(['Rés. ' + L[pt.resistance], 'Résistance : ' + pt.resistance]);
     if (pt.odeur) out.push(['Odeur ' + L[pt.odeur], 'Odeur : ' + pt.odeur]);
@@ -1318,7 +1320,7 @@ const Stock = {
         const gabaritEl = document.getElementById('sp_gabarit');
         const gabaritVal = gabaritEl ? [...gabaritEl.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value) : [];
         let speciesVal = [...document.querySelectorAll('#sp_species input:checked')].map(c => c.value); if (!speciesVal.length) speciesVal = ['chien'];
-        p.tags = { poil: poilVal, hypo: hypoVal, resistance: resistanceVal, type: typeVal, odeur: odeurVal, gras: grasVal, age: ageVal, gabarit: gabaritVal, species: speciesVal };
+        p.tags = Object.assign({}, p.tags || {}, { poil: poilVal, hypo: hypoVal, resistance: resistanceVal, type: typeVal, odeur: odeurVal, gras: grasVal, age: ageVal, gabarit: gabaritVal, species: speciesVal });
         if(!id) Store.state.stockM.push(p);
         if(cat) this.syncPricesFromCatalog(cat.id);
         const entry = Store.log('stock',(id?'Produit modifié':'Produit créé')+' — '+p.name,

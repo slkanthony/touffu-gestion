@@ -62,6 +62,7 @@ const Paniers = {
       type: pt.type || '',
       odeur: pt.odeur || '',
       gras: pt.gras || '',
+      ramollit: pt.ramollit === 'oui',
       age: (vt.age && vt.age.length) ? vt.age : (pt.age || []),
       gabarit: (vt.gabarit && vt.gabarit.length) ? vt.gabarit : (pt.gabarit || []),
       species: (vt.species && vt.species.length) ? vt.species : (pt.species || [])

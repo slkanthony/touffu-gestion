@@ -1893,3 +1893,13 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .pt-grps { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .pt-grp { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 100%; }
 .pt-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
+/* Races : fiche chien et Paramètres */
+.cl-breed .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.cl-breed-info { margin-top: 8px; font-size: .85rem; color: var(--gris); }
+.race-wrap { text-align: left; }
+.race-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.race-row { border: 1px solid var(--card-border); border-radius: 10px; }
+.race-row.open { border-color: var(--caramel); }
+.race-h { padding: 8px 12px; cursor: pointer; display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.race-b { padding: 0 12px 12px; }
+.race-kg { flex: 0 0 120px; }
