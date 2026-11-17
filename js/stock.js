@@ -316,7 +316,8 @@ const Stock = {
   hypoDefault(meat) { const m = String(meat || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /(?:^|[^a-z])(lapin|agneau|cheval|cerf)(?![a-z])/.test(m) ? 'oui' : ''; },
   /* Poil : celui de la fiche ; tant qu'elle n'a rien d'enregistré, « avec poil(s) » dans le nom suffit. */
   nameHasHair(name) { return /avec\s+poils?/i.test(String(name || '')); },
-  poilOf(p) { const h = (p.tags || {}).poil; return h || (this.nameHasHair(p.name) ? 'avec' : ''); },
+  /* Sans rien d'enregistré : « avec poil(s) » dans le nom → avec poil, sinon SANS poil (Antho 2026-11-17 : un produit est l'un ou l'autre). */
+  poilOf(p) { const h = (p.tags || {}).poil; return h || (this.nameHasHair(p.name) ? 'avec' : 'sans'); },
   /* Espèce : par défaut « chien » seul ; coche Chat en plus (produit mixte) ou décoche Chien (chat seul). */
   speciesOf(p) { const sp = (p.tags || {}).species; return sp && sp.length ? sp : ['chien']; },
   hypoOf(p) { const h = (p.tags || {}).hypo; return h === true ? 'oui' : (h || this.hypoDefault(p.meatType)); },
