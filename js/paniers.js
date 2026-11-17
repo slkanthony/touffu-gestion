@@ -417,6 +417,7 @@ const Paniers = {
       if (this.excludeMeats.includes(p.meatType)) return;
       if (ago[p.id] !== undefined && ago[p.id] < this.RECENT_DAYS) return;   // acheté récemment : jamais reproposé (doublon), même à date courte
       if (this.excludeProducts.includes(p.id)) return;
+      if (this._dropped.includes(p.id)) return;   // retiré / remplacé dans ce panier
 
       const pTags = Stock.effTags(p);
       if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return;
@@ -918,15 +919,27 @@ const Paniers = {
     U.toast(`Panier complété : ${added} article${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}.`);
   },
   /* ---------- Actions manuelles sur le panier ---------- */
+  /* Produits RETIRÉS (🗑, quantité à 0) ou REMPLACÉS (🔄) par Antho (2026-11-18) : jamais reproposés par « Générer », « Compléter » ni « Remplacer »
+     tant qu'on travaille sur ce panier (oublié à « Vider » / nouveau panier ; l'ajouter à la main le réautorise). « Exclure » (⊘) reste la liste durable. */
+  _dropped: [],
+  _drop(pId) { if (pId && !this._dropped.includes(pId)) this._dropped.push(pId); },
   removeItem(idx) {
+    const it = this.basket[idx]; if (it && (it.kind || 'M') === 'M') this._drop(it.pId);
     this.basket.splice(idx, 1);
     this.render();
+  },
+  /* Remplaçant possible pour la ligne idx : pas déjà dans le panier, pas trop proche d'un autre produit (même morceau, même dureté), sauf s'il n'y a rien d'autre */
+  _varietyPick(eligible, idx) {
+    const others = this.basket.filter((b, i) => i !== idx);
+    const notDup = eligible.filter(c => !others.some(b => b.pId === c.pId));
+    const fresh = notDup.filter(c => !this._tooClose(c, others));
+    return fresh.length ? fresh : notDup;
   },
   changeQty(idx, delta) {
     const item = this.basket[idx];
     if (!item) return;
     item.qty = Math.max(0, item.qty + delta);
-    if (item.qty <= 0) this.basket.splice(idx, 1);
+    if (item.qty <= 0) { if ((item.kind || 'M') === 'M') this._drop(item.pId); this.basket.splice(idx, 1); }
     this.render();
     if (delta > 0) this._stockWarn(item.pId, item.vId);
   },
@@ -935,7 +948,7 @@ const Paniers = {
     const n = Math.max(0, Math.round(U.num(v)));
     const up = n > item.qty;
     item.qty = n;
-    if (n <= 0) this.basket.splice(idx, 1);
+    if (n <= 0) { if ((item.kind || 'M') === 'M') this._drop(item.pId); this.basket.splice(idx, 1); }
     this.render();
     if (up) this._stockWarn(item.pId, item.vId);
   },
@@ -966,6 +979,7 @@ const Paniers = {
     });
 
     let eligible = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !this._famTaken(c, this.basket, idx));
+    eligible = this._varietyPick(eligible, idx);
     const otherHard = this.basket.some((b, j) => {
       if (j === idx) return false;
       const sp = Store.state.stockM.find(x => x.id === b.pId);
@@ -1031,6 +1045,7 @@ const Paniers = {
     // toujours du NOUVEAU, ne revient jamais à un produit déjà écarté (demande d'Antho).
     const rejected = Array.isArray(item._swapRejected) ? item._swapRejected.slice() : [];
     if (!rejected.includes(item.pId)) rejected.push(item.pId);
+    this._drop(item.pId);   // remplacé = écarté : ni « Compléter » ni « Générer » ne le remettront dans ce panier
 
     const otherHard = this.basket.some((b, j) => {
       if (j === idx) return false;
@@ -1043,7 +1058,9 @@ const Paniers = {
     const eligibleFor = rej => {
       let e = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !rej.includes(c.pId) && !this._famTaken(c, this.basket, idx));
       if (otherHard) e = e.filter(c => !this.HARD.includes(c.tags.resistance));
-      return e;
+      e = this._varietyPick(e, idx);   // jamais un produit déjà dans le panier (2 lignes « Cou d'oie »), ni trop proche s'il y a mieux
+      const other = e.filter(c => !this._tooClose(c, [item]));   // « Remplacer » = autre chose : pas un cou d'oie à la place d'un cou de dinde, s'il y a mieux
+      return other.length ? other : e;
     };
     let eligible = eligibleFor(rejected);
     // Toutes les autres options ont déjà été refusées dans cette série : on repart d'une
@@ -1590,7 +1607,7 @@ const Paniers = {
   /* Vide le panier composé SANS redessiner (aussi appelé par Ventes à la validation d'une vente : on n'est pas sur la page Paniers) */
   resetWork() {
     this.resetConfig();
-    this.basket = [];
+    this.basket = []; this._dropped = [];
     this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true; this._dv = Devis.blank();
     this.proposals = null;
   },
@@ -1712,6 +1729,7 @@ const Paniers = {
     U.toast('Ligne dupliquée — change ses détails avec « ✏️ Détails ».');
   },
   pickManual(pId, vId, lotId, kind, silent) {
+    this._dropped = this._dropped.filter(x => x !== pId);   // ajouté à la main : à nouveau autorisé
     const done = () => { if (silent) this._draft(); else { this.addQ = ''; this.addOpen = false; this.render(); } };
     if (kind === 'A') {   // accessoire : pas de lot ni de DLUO
       const c = this.accCandidates().find(x => x.pId === pId); if (!c) { U.toast('Accessoire introuvable.', true); return; }

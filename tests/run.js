@@ -554,6 +554,18 @@ paniers([sp('a', 'Trachée d\'agneau', { days: 200, price: 2, meat: 'Agneau', ta
   eq('27b jamais deux trachées ni deux cous de même dureté', [b.filter(n => /Trach/.test(n)).length <= 1, b.filter(n => /^Cou/.test(n)).length <= 1], [true, true]); }
 eq('27c oreille d\'agneau (faible) + oreille de bœuf (moyenne) : pas trop proches', run(`Paniers._tooClose(Paniers.candidates().find(c => c.pId === 'd'), [{ pId: 'c', vId: 'cv' }])`), false);
 
+/* ══════════ 28. PANIER : retiré / remplacé jamais remis, remplacer sans doublon (Antho 2026-11-18) ══════════ */
+paniers([sp('a', 'Cou d\'oie', { days: 200, price: 2, meat: 'Oie', tags: { resistance: 'faible' } }), sp('b', 'Cou de dinde', { days: 200, price: 3, meat: 'Dinde', tags: { resistance: 'faible' } }),
+         sp('c', 'Museau de bœuf', { days: 200, price: 5, meat: 'Boeuf', tags: { resistance: 'moyenne' } }), sp('d', 'Groin de porc', { days: 200, price: 2, meat: 'Porc', tags: { resistance: 'moyenne' } }),
+         sp('e', 'Fletan', { days: 200, price: 5, meat: 'Poisson', tags: { resistance: 'faible' } })], { budget: 30 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers.basket = [
+  { pId: 'b', vId: 'bv', lotId: 'bl', name: 'Cou de dinde', meat: 'Dinde', price: 3, qty: 1 }, { pId: 'a', vId: 'av', lotId: 'al', name: "Cou d'oie", meat: 'Oie', price: 2, qty: 1 }];`);
+run(`Paniers.swapItem(0);`);
+eq('28a remplacer « Cou de dinde » : ni un 2e « Cou d\'oie » ni un autre cou', run(`Paniers.basket.map(b => b.name).filter(n => /^Cou/.test(n)).length`), 1);
+eq('28a le remplaçant est d un autre type (pas un cou)', run(`/^Cou/.test(Paniers.basket[0].name)`), false);
+run(`Paniers.removeItem(1); Paniers.complete();`);
+eq('28b retiré puis « Compléter » : pas remis', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
