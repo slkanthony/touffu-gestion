@@ -486,7 +486,7 @@ const Paniers = {
             mode: v.mode || '', value: v.value,
             ...this._famInfo(p, v),
             ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : { ages: da || undefined, gabs: dg ? [dg] : undefined }),
-            chews, liked
+            chews, liked, teeth: !!(this.risks.teeth || dogsFor.some(d => this._traits(d).teeth))
           });
         });
       });
@@ -618,7 +618,17 @@ const Paniers = {
     const meatScore = this._meatAgePrefScore(c);
     const gabScore = this._gabaritResistScore(c);
     const hypoGrasScore = this._hypoGrasScore(c);
-    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5);
+    return this._fitMult(c) * (0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5));
+  },
+  /* Règles d'Antho (2026-11-17) : le produit reste possible, il passe seulement DERRIÈRE.
+     · Grand chien (grand coché, petit non) : un produit aussi coché « Petit » (ex. oreille d'agneau) se mange trop vite pour l'occuper.
+     · Dents fragiles (réglages avancés ou fiche du chien) : priorité aux produits cochés « Sénior ». */
+  _fitMult(c) {
+    const t = c.tags || {}, g = t.gabarit || [], a = t.age || [], gabs = c.gabs || this._gabSel();
+    let m = 1;
+    if (gabs && gabs.includes('grand') && !gabs.includes('petit') && g.includes('petit')) m *= 0.6;
+    if (c.teeth && a.length && !a.includes('senior')) m *= 0.6;
+    return m;
   },
 
   _buildBasket(maxAvailable, lockedItems) {

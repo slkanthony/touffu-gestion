@@ -188,8 +188,16 @@ const Stock = {
   },
   /* Âge et gabarit : un produit peut convenir à TOUS (Antho 2026-11-17) → bouton « Tous » en fin de liste : tout coche, ou tout décoche si tout était déjà coché. */
   PAST_ALL: ['age', 'gabarit'],
+  /* Chiot ↔ sénior (Antho 2026-11-17) : ce qui convient aux chiots convient souvent aux séniors. Cocher 0-3 ou 3-5 coche aussi Sénior ;
+     cocher Sénior coche aussi 0-3 et 3-5. Seulement à l'AJOUT : une case décochée à la main reste décochée. */
+  AGE_LINK: { '0-3': ['senior'], '3-5': ['senior'], senior: ['0-3', '3-5'] },
   _pastToggle(g, a, val) {
-    if (val !== '*') { this._toggleIn(a, val); return a; }
+    if (val !== '*') {
+      const adding = !a.includes(val);
+      this._toggleIn(a, val);
+      if (adding && g.k === 'age') (this.AGE_LINK[val] || []).forEach(x => { if (!a.includes(x)) a.push(x); });
+      return a;
+    }
     const all = g.o.map(([v]) => v);
     return all.every(v => a.includes(v)) ? [] : all;
   },

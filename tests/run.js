@@ -439,6 +439,20 @@ eq('15b tailles S/L : âge propre gardé', run(`Stock.variantTags(Store.state.st
 run(`Store.state.stockM[0].tags.sameAll = false;`);
 eq('15c décoché par Antho : l\'âge de la taille revient', run(`Stock.variantTags(Store.state.stockM[0], Store.state.stockM[0].variants[0]).age`), ['0-3']);
 
+/* ══════════ 16. PANIERS : grand chien, dents fragiles ; pastilles chiot ↔ sénior (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Pour tous', { days: 200, price: 4, meat: 'Agneau', tags: { gabarit: ['petit', 'moyen', 'grand'], resistance: 'forte' } }),
+         sp('b', 'Pour les grands', { days: 200, price: 4, meat: 'Boeuf', tags: { gabarit: ['moyen', 'grand'], resistance: 'forte' } })], { gabaritInclude: ['grand'] });
+eq('16a grand chien : le produit sans « Petit » passe devant', build(4), ['Pour les grands']);
+run(`Paniers.gabaritInclude = ['moyen'];`);
+eq('16a chien moyen : aucune préférence (pénalité nulle)', run(`Paniers._fitMult(Paniers.candidates().find(c => c.name === 'Pour tous'))`), 1);
+paniers([sp('a', 'Adulte seul', { days: 200, price: 4, meat: 'Agneau', tags: { age: ['11+'], resistance: 'faible' } }),
+         sp('b', 'Sénior aussi', { days: 200, price: 4, meat: 'Boeuf', tags: { age: ['11+', 'senior'], resistance: 'faible' } })], { risks: { teeth: true } });
+eq('16b dents fragiles : le produit « Sénior » passe devant', build(4), ['Sénior aussi']);
+const ageG = `Stock._pastGroups().find(g => g.k === 'age')`;
+eq('16c cocher 3-5 mois coche aussi Sénior', run(`Stock._pastToggle(${ageG}, [], '3-5')`), ['3-5', 'senior']);
+eq('16c cocher Sénior coche aussi 0-3 et 3-5', run(`Stock._pastToggle(${ageG}, ['11+'], 'senior')`), ['11+', 'senior', '0-3', '3-5']);
+eq('16c décocher Sénior ne recoche rien', run(`Stock._pastToggle(${ageG}, ['0-3', '3-5', 'senior'], 'senior')`), ['0-3', '3-5']);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
