@@ -209,6 +209,66 @@ const copy = JSON.stringify(run(`Visite.allKeys().map(k => Visite.wire(k))`));
 eq('5 copie visite : aucune valeur sensible', ['IBANTEST', 'NOMSECRET', 'NOTESECRETE', 'REFSECRETE', 'CLIENTSECRET', 'exemple.test', '3.21'].filter(x => copy.includes(x)), []);
 eq('5 copie visite : prix de vente figé identique', run(`Visite.catalogM()[0].variants[0].priceTTCManual`), 2.8);
 
+/* ══════════ 7. GÉNÉRATEUR DE PANIERS : le raisonnement (Antho 2026-11-17) ══════════ */
+const dayIso = n => { const d = new Date(Date.now() + n * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+/* Produit de stock fictif : une variante « pièce » à 5 €, un lot de 10. `o` = { meat, days (jours avant la date ; négatif = dépassée), tags, price, mode, value } */
+const sp = (id, name, o) => ({ id, name, meatType: o.meat || 'Boeuf', tags: o.tags || {}, variants: [{ id: id + 'v', mode: o.mode || 'piece', value: o.value || 1, label: o.label || '', priceTTC: o.price || 5, costUnit: 2, lots: [{ id: id + 'l', lotNumber: 'L', dluo: o.days === undefined ? '' : dayIso(o.days), qtyGeneral: 10, qtyEvent: 0 }] }] });
+function paniers(stock, cfg, clients) {
+  reset();
+  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte'], typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
+  sandbox.__clients = clients || [];
+  run(`Store.state.stockM = __stock; Store.state.clients = __clients; window.App.visitMode = false; Object.assign(Paniers, __cfg);`);
+}
+const build = budget => run(`Paniers._buildBasket(${budget}, [])`).map(b => b.name);
+const cand = name => run(`Paniers.candidates()`).find(c => c.name === name);
+
+/* 7a. Note de date : ne dépend plus de la date la plus lointaine du stock. */
+eq('7a date dépassée = 1', run(`Paniers._dluoScore(-10)`), 1);
+eq('7a à 30 jours = 0,9', run(`Paniers._dluoScore(30)`), 0.9);
+eq('7a à 90 jours = 0,5', run(`Paniers._dluoScore(90)`), 0.5);
+eq('7a à 6 mois = 0,2', run(`Paniers._dluoScore(180)`), 0.2);
+eq('7a à 2 ans = 0,05', run(`Paniers._dluoScore(700)`), 0.05);
+eq('7a sans date = 0,05', run(`Paniers._dluoScore(9999)`), 0.05);
+
+/* 7b. Dates dépassées et courtes D'ABORD : budget 10 € = 2 produits à 5 € → les deux urgents, pas les autres. */
+paniers([sp('a', 'Loin 1', { days: 400, meat: 'Canard' }), sp('b', 'Dépassé', { days: -15, meat: 'Boeuf' }), sp('c', 'Loin 2', { days: 300, meat: 'Lapin' }), sp('d', 'Court', { days: 20, meat: 'Cerf' }), sp('e', 'Moyen', { days: 80, meat: 'Dinde' })]);
+eq('7b les 2 produits urgents passent en premier', build(10).sort(), ['Court', 'Dépassé']);
+eq('7b puis le suivant par date (80 jours) quand le budget le permet', build(15).sort(), ['Court', 'Dépassé', 'Moyen']);
+run(`Paniers.priority = 'coeff';`);
+eq('7b priorité « rentabilité » : pas de passage forcé des urgents', build(10).length, 2);
+
+/* 7c. Âge : tout coché = âge inconnu = aucune préférence (avant : tout panier noté comme pour un chiot). */
+paniers([sp('a', 'Cerf dur', { meat: 'Cerf', days: 200 }), sp('b', 'Poulet', { meat: 'Poulet', days: 200 })]);
+eq('7c adulte / âge inconnu : cerf neutre', run(`Paniers._meatAgePrefScore(Paniers.candidates().find(c => c.name === 'Cerf dur'))`), 0.5);
+eq('7c adulte / âge inconnu : poulet neutre', run(`Paniers._meatAgePrefScore(Paniers.candidates().find(c => c.name === 'Poulet'))`), 0.5);
+run(`Paniers.ageInclude = ['0-3'];`);
+eq('7c chiot choisi : poulet favorisé', run(`Paniers._meatAgePrefScore(Paniers.candidates().find(c => c.name === 'Poulet'))`), 1);
+eq('7c chiot choisi : cerf pénalisé', run(`Paniers._meatAgePrefScore(Paniers.candidates().find(c => c.name === 'Cerf dur'))`), 0.1);
+
+/* 7d. Fiche du chien : âge, mâcheur, viandes aimées, produits déjà goûtés. */
+const chiot = { id: 'c1', name: 'Cliente Test', dogs: [{ id: 'd1', name: 'Chiot Test', birth: dayIso(-60), gabarit: 'petit', chew: 'doux', meats: { Lapin: 'like' }, tried: [{ id: 't', name: 'Pas aimé', verdict: 'avoid' }, { id: 'u', name: 'Adoré', verdict: 'like' }] }] };
+paniers([sp('a', 'Bois dur', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } }), sp('c', 'Pas aimé', { meat: 'Boeuf', days: -5 }), sp('d', 'Adoré', { meat: 'Boeuf', days: 200 }), sp('e', 'Neutre', { meat: 'Dinde', days: 200, tags: { resistance: 'moyenne' } })], { client: 'Cliente Test' }, [chiot]);
+eq('7d chiot de 2 mois : âge lu sur la fiche', cand('Tendre').ages, ['0-3']);
+eq('7d chiot : produit très dur écarté', cand('Bois dur'), undefined);
+eq('7d produit noté « pas aimé » écarté, même à date dépassée', cand('Pas aimé'), undefined);
+eq('7d viande aimée repérée', cand('Tendre').liked, true);
+eq('7d produit noté « aimé » repéré', cand('Adoré').liked, true);
+eq('7d produit neutre', cand('Neutre').liked, false);
+eq('7d mâcheur doux : tendre = 1', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Tendre'))`), 1);
+eq('7d mâcheur doux : résistance moyenne = 0,6', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Neutre'))`), 0.6);
+/* Gros destructeur adulte : le dur est favorisé, et la résistance souhaitée se coche toute seule en choisissant la cliente. */
+const gros = { id: 'c2', name: 'Cliente Deux', dogs: [{ id: 'd2', name: 'Grand Test', birth: dayIso(-900), gabarit: 'grand', chew: 'gros', meats: {} }] };
+paniers([sp('a', 'Bois dur', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })], {}, [gros]);
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Deux');`);
+eq('7d gros destructeur : résistance souhaitée réglée', run(`Paniers.resistanceInclude`), ['moyenne', 'forte', 'tres-forte']);
+eq('7d gros destructeur : très dur = 1', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Bois dur'))`), 1);
+eq('7d gros destructeur : le tendre est écarté par la résistance', cand('Tendre'), undefined);
+/* Gros destructeur : plusieurs produits durs dans le même panier (la limite « un seul produit dur » ne vaut que pour les autres chiens) → le budget est utilisé. */
+paniers([sp('a', 'Dur 1', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Dur 2', { meat: 'Boeuf', days: 200, tags: { resistance: 'forte' } }), sp('c', 'Dur 3', { meat: 'Buffle', days: 200, tags: { resistance: 'forte' } })], { client: 'Cliente Deux' }, [gros]);
+eq('7e gros destructeur : 3 produits durs pour 15 €', build(15).sort(), ['Dur 1', 'Dur 2', 'Dur 3']);
+paniers([sp('a', 'Dur 1', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Dur 2', { meat: 'Boeuf', days: 200, tags: { resistance: 'forte' } }), sp('c', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })]);
+eq('7e chien inconnu : un seul produit dur par panier', build(15).filter(n => n.startsWith('Dur')).length, 1);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

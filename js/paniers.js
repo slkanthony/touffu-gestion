@@ -117,7 +117,43 @@ const Paniers = {
     const da = this._dogAges(d);
     if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return false;
     if (d.gabarit && tags.gabarit.length > 0 && !tags.gabarit.includes(d.gabarit)) return false;
+    if (this._tooHardForPuppy(da, tags)) return false;
+    if (this._triedVerdict([d], p.name) === 'avoid') return false;
     return true;
+  },
+  /* ---------- Règles de raisonnement (Antho 2026-11-17) ---------- */
+  URGENT_DAYS: 30,   // date dépassée ou à moins de 30 jours = « urgent » : proposé en premier
+  /* Tranches d'âge / gabarits choisis à la main dans les filtres : null tant que TOUT est coché (= « je ne sais pas », aucune préférence d'âge ou de gabarit) */
+  _ageSel() { const a = this.ageInclude || []; return a.length && a.length < 5 ? a : null; },
+  _gabSel() { const g = this.gabaritInclude || []; return g.length && g.length < 3 ? g : null; },
+  /* Chiot de moins de 6 mois (dents de lait) : jamais de produit à résistance forte ou très forte */
+  _tooHardForPuppy(ages, tags) { return !!(ages && ages.length && ages.every(a => a === '0-3' || a === '3-5') && ['forte', 'tres-forte'].includes(tags.resistance)); },
+  /* Produit déjà goûté par un de ces chiens (fiche cliente → « Produits déjà mastiqués ») : 'avoid' (pas aimé) l'emporte sur 'like' ; '' si jamais noté */
+  _triedVerdict(dogs, name) {
+    const n = Clients._norm(name).trim(); let out = '';
+    (dogs || []).forEach(d => (d.tried || []).forEach(t => { if (t.verdict && Clients._norm(t.name).trim() === n) { if (t.verdict === 'avoid') out = 'avoid'; else if (!out) out = t.verdict; } }));
+    return out;
+  },
+  /* Viande cochée « aime » ou produit noté « aimé » pour au moins un de ces chiens */
+  _likedBy(dogs, p) {
+    const meat = Clients._norm(p.meatType || '');
+    return (dogs || []).some(d => Object.keys(d.meats || {}).some(m => d.meats[m] === 'like' && Clients._norm(m) === meat)) || this._triedVerdict(dogs, p.name) === 'like';
+  },
+  /* Note de date (0 à 1) : dépassée = 1 ; 30 j = 0,9 ; 90 j = 0,5 ; 6 mois = 0,2 ; 1 an et plus (ou sans date) = 0,05. Ne dépend plus de la date la plus lointaine du stock. */
+  _dluoScore(d) {
+    if (d === null || d === undefined || d >= 9999) return 0.05;
+    if (d <= 0) return 1;
+    if (d <= 30) return 1 - 0.1 * d / 30;
+    if (d <= 90) return 0.9 - 0.4 * (d - 30) / 60;
+    if (d <= 180) return 0.5 - 0.3 * (d - 90) / 90;
+    if (d <= 365) return 0.2 - 0.15 * (d - 180) / 185;
+    return 0.05;
+  },
+  /* Poids de chaque critère dans la note d'un produit (somme = 1). Une seule définition pour générer, exclure et remplacer. */
+  _weights() {
+    return this.priority === 'dluo' ? { dluo: 0.36, coeff: 0.04, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
+      : this.priority === 'coeff' ? { dluo: 0.08, coeff: 0.32, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
+      : { dluo: 0.26, coeff: 0.08, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.06, like: 0.08 };
   },
   /* Étiquette « pour X » : seulement si le produit ne convient pas à tous les chiens */
   _dogTag(c) { return c && c.forDogs && c.forDogs.length < this._dogList().length ? c.forDogs.join(' et ') : ''; },
@@ -133,6 +169,11 @@ const Paniers = {
     if (c && (c.dogs || []).length) this.nbChiens = c.dogs.length;
     const sens = c && !Clients.ro() && (c.dogs || []).some(d => d.sensitive) && !this._perDog();
     if (sens) this.hypoOnly = true;
+    const chews = c && !Clients.ro() ? [...new Set((c.dogs || []).map(d => d.chew).filter(Boolean))] : [];
+    if (chews.length) {   // mâcheur de la fiche → résistance souhaitée cochée toute seule (modifiable dans les filtres)
+      const R = { doux: ['faible', 'moyenne'], moyen: ['faible', 'moyenne', 'forte'], gros: ['moyenne', 'forte', 'tres-forte'] };
+      this.resistanceInclude = ['faible', 'moyenne', 'forte', 'tres-forte'].filter(r => chews.some(k => (R[k] || []).includes(r)));
+    }
     this.render();
     if (sens) U.toast('Chien sensible : « Hypoallergénique uniquement » est coché — décoche-le dans les filtres si besoin.');
     if (dc) U.toast(`🏷️ Réduction habituelle de ${U.qty(dc.pct)} %${dc.code ? ' (code ' + dc.code + ')' : ''} appliquée.`);
@@ -143,6 +184,10 @@ const Paniers = {
     const out = [];
     const pd = this._perDog() ? this._dogList() : null;   // profils différents : on regarde, pour chaque produit, quels chiens peuvent le manger
     const cl = pd ? null : this._clientRules();
+    // Chiens au même profil (ou un seul chien) : l'âge et le gabarit de la fiche comptent aussi (avant, seulement en « chien par chien »)
+    const d0 = cl && cl.dogs.length ? cl.dogs[0] : null;
+    const da = d0 ? this._dogAges(d0) : null, dg = d0 ? (d0.gabarit || '') : '';
+    const selAges = this._ageSel();
 
     Store.state.stockM.forEach(p => {
       if (this.excludeMeats.includes(p.meatType)) return;
@@ -155,6 +200,7 @@ const Paniers = {
       if (cl) {
         if (Clients.conflictsFor(cl.dogs, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
         if (cl.hair && pTags.poil === 'avec') return;
+        if (this._triedVerdict(cl.dogs, p.name) === 'avoid') return;   // produit déjà goûté et noté « pas aimé » sur la fiche
       }
 
       p.variants.forEach(v => {
@@ -173,8 +219,12 @@ const Paniers = {
         if (this.ageInclude.length && tags.age.length > 0 && !tags.age.some(a => this.ageInclude.includes(a))) return;
         if (this.gabaritInclude.length && tags.gabarit.length > 0 && !tags.gabarit.some(g => this.gabaritInclude.includes(g))) return;
         if (tags.species && tags.species.length && !tags.species.includes('chien')) return;   // produit réservé aux chats : jamais dans un panier pour chiens
+        if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return;
+        if (dg && tags.gabarit.length > 0 && !tags.gabarit.includes(dg)) return;
+        if (!pd && this._tooHardForPuppy(da || selAges, tags)) return;
         let suits = null;
         if (pd) { suits = pd.filter(d => this._dogSuits(d, p, pTags, tags)); if (!suits.length) return; }
+        const dogsFor = suits || (cl ? cl.dogs : []), chews = [...new Set(dogsFor.map(d => d.chew).filter(Boolean))], liked = this._likedBy(dogsFor, p);
 
         const lots = v.lots.filter(l => {
           const q = U.num(l.qtyGeneral) + U.num(l.qtyEvent);
@@ -204,7 +254,8 @@ const Paniers = {
             tags,
             mode: v.mode || '', value: v.value,
             ...this._famInfo(p, v),
-            ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : {})
+            ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : { ages: da || undefined, gabs: dg ? [dg] : undefined }),
+            chews, liked
           });
         });
       });
@@ -255,8 +306,8 @@ const Paniers = {
   },
 
   _meatAgePrefScore(c) {
-    const ages = c.ages || this.ageInclude;
-    if (!ages.length || (ages.length === 1 && ages[0] === '11+')) return 0.5;
+    const ages = c.ages || this._ageSel();   // âge du chien (fiche) sinon tranches choisies ; toutes cochées = âge inconnu = aucune préférence
+    if (!ages || !ages.length || (ages.length === 1 && ages[0] === '11+')) return 0.5;
     const m = (c.meat || '').toLowerCase();
     const volaille = m === 'poulet' || m === 'canard' || m === 'dinde';
     const isChiot = ages.some(a => a === '0-3' || a === '3-5' || a === '6-10');
@@ -279,10 +330,15 @@ const Paniers = {
   },
 
   _gabaritResistScore(c) {
-    const gabs = c.gabs || this.gabaritInclude;
-    if (!gabs.length) return 0.5;
     const r = (c.tags && c.tags.resistance) || '';
     if (!r) return 0.5;
+    if (c.chews && c.chews.length) {   // « Mâcheur » de la fiche du chien : doux → produits tendres, gros destructeur → produits durs
+      const T = { doux: { faible: 1, moyenne: 0.6, forte: 0.15, 'tres-forte': 0.05 }, moyen: { faible: 0.7, moyenne: 1, forte: 0.6, 'tres-forte': 0.2 }, gros: { faible: 0.2, moyenne: 0.6, forte: 1, 'tres-forte': 1 } };
+      const sc = c.chews.map(k => (T[k] || {})[r]).filter(x => x !== undefined);
+      if (sc.length) return sc.reduce((a, b) => a + b, 0) / sc.length;
+    }
+    const gabs = c.gabs || this._gabSel();
+    if (!gabs || !gabs.length) return 0.5;
     const hasGrand = gabs.includes('grand');
     const hasMoyen = gabs.includes('moyen');
     const hasPetit = gabs.includes('petit');
@@ -319,8 +375,8 @@ const Paniers = {
     const gs = b.gram / n;
     return c.mode === 'gram' ? 1 - gs : gs;
   },
-  _itemScore(c, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult) {
-    const dluoScore = c.daysLeft >= 9999 ? 0.1 : Math.max(0, 1 - c.daysLeft / maxDays);
+  _itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) {
+    const dluoScore = this._dluoScore(c.daysLeft);
     const coeffScore = maxCoeff > 0 ? c.coeff / maxCoeff : 0;
     let divScore = 1;
     if (usedProducts.has(c.pId)) divScore = 0.15;
@@ -331,7 +387,7 @@ const Paniers = {
     const meatScore = this._meatAgePrefScore(c);
     const gabScore = this._gabaritResistScore(c);
     const hypoGrasScore = this._hypoGrasScore(c);
-    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore;
+    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5);
   },
 
   _buildBasket(maxAvailable, lockedItems) {
@@ -340,12 +396,9 @@ const Paniers = {
     let spent = basket.reduce((a, b) => a + b.price * b.qty, 0);
     if (!cands.length) return basket;
 
-    const maxDays = Math.max(...cands.map(c => c.daysLeft), 1);
     const maxCoeff = Math.max(...cands.map(c => c.coeff), 1);
 
-    const weights = this.priority === 'dluo' ? { dluo: 0.34, coeff: 0.06, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.08 }
-      : this.priority === 'coeff' ? { dluo: 0.06, coeff: 0.34, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.08 }
-      : { dluo: 0.18, coeff: 0.18, div: 0.14, size: 0.08, type: 0.14, meat: 0.10, gab: 0.10, hypoGras: 0.08 };
+    const weights = this._weights();
 
     const usedProducts = new Set();
     const usedMeats = {};
@@ -364,7 +417,7 @@ const Paniers = {
       if (c) c.avail = Math.max(0, c.avail - b.qty);
     });
 
-    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult);
+    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult);
 
     for (let i = 0; i < 500; i++) {
       const affordable = cands.filter(c => c.price <= maxAvailable - spent && c.avail > 0);
@@ -386,8 +439,12 @@ const Paniers = {
         const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
         return ['forte', 'tres-forte'].includes(mt.resistance);
       });
-      if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
+      // Un seul produit dur par panier… sauf pour un « gros destructeur » (fiche du chien), à qui il en faut plusieurs
+      if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance) || (c.chews && c.chews.includes('gros')));
       if (!eligible.length) break;
+      // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
+      // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
+      if (this.priority !== 'coeff') { const urg = eligible.filter(c => c.daysLeft <= this.URGENT_DAYS && !usedProducts.has(c.pId)); if (urg.length) eligible = urg; }
       const gramN = basket.filter(b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sv && sv.mode === 'gram'; }).length;
       this._bal = { gram: gramN, vrac: basket.length - gramN, hard: hardInBasket };
       // Alternance gramme / vrac : on prend le format le moins représenté tant qu'il en reste dans le budget
@@ -576,11 +633,8 @@ const Paniers = {
       return;
     }
 
-    const maxDays = Math.max(...cands.map(c => c.daysLeft), 1);
     const maxCoeff = Math.max(...cands.map(c => c.coeff), 1);
-    const weights = this.priority === 'dluo' ? { dluo: 0.34, coeff: 0.06, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.08 }
-      : this.priority === 'coeff' ? { dluo: 0.06, coeff: 0.34, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.08 }
-      : { dluo: 0.18, coeff: 0.18, div: 0.14, size: 0.08, type: 0.14, meat: 0.10, gab: 0.10, hypoGras: 0.08 };
+    const weights = this._weights();
     const mult = Math.max(1, this.nbChiens);
     const usedProducts = new Set();
     const usedMeats = {};
@@ -591,8 +645,8 @@ const Paniers = {
     });
 
     eligible.sort((a, b) => {
-      const sa = this._itemScore(a, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult);
-      const sb = this._itemScore(b, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult);
+      const sa = this._itemScore(a, usedProducts, usedMeats, maxCoeff, weights, mult);
+      const sb = this._itemScore(b, usedProducts, usedMeats, maxCoeff, weights, mult);
       return sb - sa;
     });
 
@@ -655,16 +709,13 @@ const Paniers = {
       usedMeats[b.meat] = (usedMeats[b.meat] || 0) + b.qty;
     });
 
-    const maxDays = Math.max(...cands.map(c => c.daysLeft), 1);
     const maxCoeff = Math.max(...cands.map(c => c.coeff), 1);
-    const weights = this.priority === 'dluo' ? { dluo: 0.34, coeff: 0.06, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.08 }
-      : this.priority === 'coeff' ? { dluo: 0.06, coeff: 0.34, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.08 }
-      : { dluo: 0.18, coeff: 0.18, div: 0.14, size: 0.08, type: 0.14, meat: 0.10, gab: 0.10, hypoGras: 0.08 };
+    const weights = this._weights();
     const mult = Math.max(1, this.nbChiens);
 
     eligible.sort((a, b) => {
-      const sa = this._itemScore(a, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult);
-      const sb = this._itemScore(b, usedProducts, usedMeats, maxDays, maxCoeff, weights, mult);
+      const sa = this._itemScore(a, usedProducts, usedMeats, maxCoeff, weights, mult);
+      const sb = this._itemScore(b, usedProducts, usedMeats, maxCoeff, weights, mult);
       return sb - sa;
     });
 
