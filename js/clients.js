@@ -273,10 +273,12 @@ const Clients = {
     c.dogs = c.dogs.filter(x => x.id !== did); Store.save('clients'); Stats.render();
   },
   /* ---------- Race(s) du chien : base Paramètres → Races (js/races.js), plusieurs pour un croisé ---------- */
-  _brQ: {}, _brOpen: '',
+  _brQ: {}, _brOpen: '', _brAdd: '',
+  /* « + » du titre Race : affiche la case de recherche à la place des races déjà choisies */
+  showBrAdd(did) { this._brAdd = did; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
   setBrQ(did, v) { this._brQ[did] = v; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
   openBr(did) { if (this._brOpen === did) return; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
-  closeBr() { if (!this._brOpen) return; this._brOpen = ''; Stats.render(); },
+  closeBr() { if (!this._brOpen && !this._brAdd) return; this._brOpen = ''; this._brAdd = ''; Stats.render(); },
   addBreed(cid, did, rid) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did); if (!d) return;
@@ -284,7 +286,7 @@ const Clients = {
     if (!d.breeds.includes(rid)) d.breeds.push(rid);
     const pf = Races.profile(d); d.breed = pf ? pf.names.join(' × ') : d.breed;
     if (pf && !d.gabarit) d.gabarit = pf.gabarit;   // gabarit déduit du poids de la race, seulement s'il n'est pas déjà renseigné
-    this._brQ[did] = ''; this._brOpen = ''; Store.save('clients'); Stats.render();
+    this._brQ[did] = ''; this._brOpen = ''; this._brAdd = ''; Store.save('clients'); Stats.render();
   },
   delBreed(cid, did, rid) {
     if (this.ro()) return;
@@ -296,13 +298,15 @@ const Clients = {
   _breedUI(c, d) {
     const ro = this.ro(), rs = Races.ofDog(d), q = this._brQ[d.id] || '', open = this._brOpen === d.id;
     const res = open ? Races.list().filter(r => !rs.some(x => x.id === r.id) && (!q || U.has(r.name, q))).slice(0, 12) : [];
-    const chips = rs.map(r => `<span class="chip">${U.esc(r.name)}${ro ? '' : ` <button class="btn-icon" title="Retirer" onclick="Clients.delBreed('${c.id}','${d.id}','${r.id}')">×</button>`}</span>`).join('');
-    const legacy = !rs.length && d.breed ? `<span class="muted" title="Race écrite à la main avant la base des races : choisis-la dans la liste">${U.esc(d.breed)} (à choisir dans la liste)</span>` : '';
-    return `<div class="fg cl-breed"><label>Race${rs.length > 1 ? 's (croisé)' : ''}</label>
-      ${chips || legacy ? `<div class="chips">${chips}${legacy}</div>` : ''}
-      ${ro ? '' : `<div class="autocomplete" data-onclose="Clients.closeBr"><input id="cl_br_${d.id}" type="text" autocomplete="off" placeholder="${rs.length ? '+ autre race (croisé)…' : 'chercher une race…'}" value="${U.esc(q)}" oninput="Clients.setBrQ('${d.id}',this.value)" onfocus="Clients.openBr('${d.id}')">
-        ${open && res.length ? `<div class="ac-list">${res.map(r => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Clients.addBreed('${c.id}','${d.id}','${r.id}')"><span class="pp-a">${U.esc(r.name)}</span><span class="pp-b">${r.wMin || '?'}–${r.wMax || '?'} kg</span></div>`).join('')}</div>` : ''}</div>`}
-    </div>`;
+    /* Une seule case, de la même hauteur que les autres : les races choisies dedans (en ligne), et le « + » du titre ouvre la recherche (croisé) */
+    const chips = rs.map(r => `<span class="cl-br-chip">${U.esc(r.name)}${ro ? '' : `<button type="button" class="cl-br-x" title="Retirer ${U.esc(r.name)}" onclick="Clients.delBreed('${c.id}','${d.id}','${r.id}')">×</button>`}</span>`).join('');
+    const legacy = !rs.length && d.breed ? `<span class="muted" title="Race écrite à la main avant la base des races : choisis-la dans la liste">${U.esc(d.breed)} (à choisir)</span>` : '';
+    const adding = !ro && (!rs.length || this._brAdd === d.id);
+    const box = `<div class="cl-breed-box" title="${U.esc(rs.map(r => r.name).join(' × '))}">${chips || legacy || '<span class="muted">—</span>'}</div>`;
+    const search = `<div class="autocomplete" data-onclose="Clients.closeBr"><input id="cl_br_${d.id}" type="text" autocomplete="off" placeholder="${rs.length ? 'autre race (croisé)…' : (legacy ? 'choisir la race…' : 'chercher une race…')}" value="${U.esc(q)}" oninput="Clients.setBrQ('${d.id}',this.value)" onfocus="Clients.openBr('${d.id}')">
+        ${open && res.length ? `<div class="ac-list">${res.map(r => `<div class="ac-item pp-row" onmousedown="event.preventDefault();Clients.addBreed('${c.id}','${d.id}','${r.id}')"><span class="pp-a">${U.esc(r.name)}</span><span class="pp-b">${r.wMin || '?'}–${r.wMax || '?'} kg</span></div>`).join('')}</div>` : ''}</div>`;
+    const plus = !ro && rs.length && !adding ? ` <button type="button" class="cl-br-add" title="Ajouter une race (croisé)" onclick="Clients.showBrAdd('${d.id}')">+</button>` : '';
+    return `<div class="fg cl-breed"><label>Race${rs.length > 1 ? 's' : ''}${plus}</label>${adding ? search : box}</div>`;
   },
   /* Ligne « estimé d'après la race » + alertes de race, sous les champs */
   _breedInfo(d) {
