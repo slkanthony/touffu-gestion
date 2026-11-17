@@ -424,6 +424,21 @@ run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.basket =
 eq('14b compléter : le produit déjà là reste (non verrouillé)', run(`Paniers.basket[0].name + ' ' + Paniers.basket[0].locked`), 'A false');
 eq('14b compléter : tout ce qui rentre est ajouté (5 + 3 + 1), jamais au-dessus', run(`Paniers.basket.reduce((a, b) => a + b.price * b.qty, 0)`), 9);
 
+/* ══════════ 15. PASTILLES : tailles « comme le produit » (Antho 2026-11-17) ══════════ */
+/* Formats au gramme = même produit : les pastilles propres à une taille sont ignorées (d'office), sauf si Antho décoche. Tailles S/M/L : chacune garde les siennes. */
+paniers([{ id: 'g', name: 'Poumon', meatType: 'Agneau', tags: { age: ['11+'] }, variants: [
+  { id: 'g1', mode: 'gram', value: 50, priceTTC: 2, costUnit: 1, lots: [], tags: { age: ['0-3'] } },
+  { id: 'g2', mode: 'gram', value: 100, priceTTC: 4, costUnit: 1, lots: [] }] },
+  { id: 's', name: 'Bâton', meatType: 'Boeuf', tags: {}, variants: [
+  { id: 's1', mode: 'size', value: 'S', label: 'S', priceTTC: 2, costUnit: 1, lots: [], tags: { age: ['0-3'] } },
+  { id: 's2', mode: 'size', value: 'L', label: 'L', priceTTC: 4, costUnit: 1, lots: [] }] }]);
+eq('15a au gramme : comme le produit d\'office', run(`Stock.sameTags(Store.state.stockM[0])`), true);
+eq('15a au gramme : l\'âge propre à la taille est ignoré', run(`Stock.variantTags(Store.state.stockM[0], Store.state.stockM[0].variants[0])`), null);
+eq('15b tailles S/L : chacune garde ses pastilles', run(`Stock.sameTags(Store.state.stockM[1])`), false);
+eq('15b tailles S/L : âge propre gardé', run(`Stock.variantTags(Store.state.stockM[1], Store.state.stockM[1].variants[0]).age`), ['0-3']);
+run(`Store.state.stockM[0].tags.sameAll = false;`);
+eq('15c décoché par Antho : l\'âge de la taille revient', run(`Stock.variantTags(Store.state.stockM[0], Store.state.stockM[0].variants[0]).age`), ['0-3']);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

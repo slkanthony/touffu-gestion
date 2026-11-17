@@ -1928,3 +1928,5 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .pt-name a { color: var(--caramel); }
 .pt-name .badge { font-size: .8rem; }
 @media (max-width: 600px) { .pt-name { font-size: 1.2rem; } }
+/* Tailles qui suivent le produit : affichées pour contrôle, grisées et non cliquables */
+.pt-same .pt-var { opacity: .45; pointer-events: none; }

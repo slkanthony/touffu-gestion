@@ -130,8 +130,24 @@ const Stock = {
     if (k === 'type') return (p.tags || {}).type || 'occupation';
     return (p.tags || {})[k];
   },
+  /* « Toutes les tailles comme le produit » (Antho 2026-11-17) : les formats au gramme (50G, 100G…) sont le MÊME produit conditionné
+     autrement → leurs pastilles = celles du produit. Choix d'Antho mémorisé dans p.tags.sameAll ; sans choix : oui si toutes les tailles
+     sont au gramme, non sinon (tailles S/M/L, longueurs : chacune peut convenir à des chiens différents). Les réglages propres aux tailles
+     restent enregistrés mais sont ignorés tant que c'est coché (variantTags) : décocher les retrouve. */
+  _ownVariants(p) { return (p.variants || []).filter(v => !v.parentId && v.mode !== 'vrac'); },
+  sameTags(p) {
+    const f = (p.tags || {}).sameAll;
+    if (f === true || f === false) return f;
+    const own = this._ownVariants(p);
+    return own.length > 1 && own.every(v => v.mode === 'gram');
+  },
+  setSameTags(id) {
+    const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
+    this._pastCommit(p, () => { p.tags = Object.assign({}, p.tags || {}, { sameAll: !this.sameTags(p) }); });
+  },
   /* Pastille d'une taille : la sienne, sinon espèce du produit / gabarit déduit de la taille ; âge vide = comme le produit. */
   _pastVCur(p, v, k) {
+    if (this.sameTags(p)) return k === 'species' ? this.speciesOf(p) : ((p.tags || {})[k] || []);
     const own = (v.tags || {})[k] || [];
     if (own.length) return own;
     if (k === 'species') return this.speciesOf(p);
@@ -192,12 +208,12 @@ const Stock = {
     const row = p => {
       const own = p.variants.filter(v => !v.parentId && v.mode !== 'vrac');
       const vars = own.length > 1 ? this.orderedVariants(p).filter(v => own.includes(v) && (!f.variants.length || f.variants.includes(Pricing.labelVariant(v)))) : [];
-      const vg = groups.filter(g => ['species', 'age', 'gabarit'].includes(g.k));
+      const vg = groups.filter(g => ['species', 'age', 'gabarit'].includes(g.k)), same = vars.length && this.sameTags(p);
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
-        <div class="pt-grps">${groups.map(g => grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`))).join('')}</div>
-        ${vars.length ? `<div class="pt-vars"><div class="pt-vhead">Par taille <span class="muted help">Espèce, âge et gabarit propres à chaque taille. Âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
-          ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
+        <div class="pt-grps">${groups.map(g => grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`))).join('')}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
+        ${vars.length ? `<div class="pt-vars${same ? ' pt-same' : ''}"><div class="pt-vhead">Par taille ${same ? '— suivent le produit' : ''} <span class="muted help">« Comme le produit » coché : toutes les tailles prennent l'espèce, l'âge et le gabarit du produit (coché d'office pour les formats au gramme). Décoché : chaque taille se règle ici (S/M/L, longueurs…) ; âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
+          ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
       </div>`;
     };
     return list.length ? `<div class="pt-list">${list.map(row).join('')}</div>` : `<div class="card empty">${(f.tags.todo || []).length ? 'Tous les produits ont leurs pastilles.' : 'Aucun produit avec ces filtres.'}</div>`;
@@ -275,7 +291,7 @@ const Stock = {
       if (k === 'poil') return sel.includes(this.poilOf(p) === 'avec' ? 'avec' : 'sans');
       if (k === 'hypo') return sel.includes(this.hypoOf(p) === 'oui' ? 'oui' : 'non');
       if (k === 'species') return this.speciesOf(p).some(x => sel.includes(x))
-        || p.variants.some(v => ((v.tags || {}).species || []).some(x => sel.includes(x)));
+        || (!this.sameTags(p) && p.variants.some(v => ((v.tags || {}).species || []).some(x => sel.includes(x))));
       if (k === 'type') return sel.includes(pt.type || 'occupation');
       if (k === 'age' || k === 'gabarit') {
         const own = pt[k] || [];
@@ -841,6 +857,7 @@ const Stock = {
   /* Gabarit par défaut d'une variante : celui du produit s'il en a un, sinon celui de la taille. */
   defaultGabarit(p, v) { return ((p.tags || {}).gabarit || []).length ? [] : this.sizeGabarit(v); },
   variantTags(p, v) {
+    if (this.sameTags(p)) return null;   // toutes les tailles = pastilles du produit
     const src = this.parentOf(p, v) || v; const t = src.tags || null;
     if (t && (t.gabarit || []).length) return t;
     const d = this.defaultGabarit(p, src);
