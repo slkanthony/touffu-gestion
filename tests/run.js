@@ -453,6 +453,14 @@ eq('16c cocher 3-5 mois coche aussi Sénior', run(`Stock._pastToggle(${ageG}, []
 eq('16c cocher Sénior coche aussi 0-3 et 3-5', run(`Stock._pastToggle(${ageG}, ['11+'], 'senior')`), ['11+', 'senior', '0-3', '3-5']);
 eq('16c décocher Sénior ne recoche rien', run(`Stock._pastToggle(${ageG}, ['0-3', '3-5', 'senior'], 'senior')`), ['0-3', '3-5']);
 
+/* ══════════ 17. PASTILLES : produits incomplets (Antho 2026-11-17) ══════════ */
+paniers([{ id: 'n', name: 'Nerf', meatType: 'Agneau', tags: { resistance: 'moyenne', age: ['0-3'], gabarit: ['petit'] }, variants: [{ id: 'n1', mode: 'piece', value: 1, priceTTC: 3, costUnit: 1, lots: [] }] },
+  { id: 'b', name: 'Bâton', meatType: 'Boeuf', tags: { hypo: 'non', resistance: 'forte', odeur: 'faible', gras: 'non', ramollit: 'non' }, variants: [
+    { id: 's', mode: 'size', value: 'S', label: 'S', priceTTC: 3, costUnit: 1, lots: [], tags: { age: ['11+'], gabarit: ['petit'] } },
+    { id: 'l', mode: 'size', value: 'L', label: 'L', priceTTC: 5, costUnit: 1, lots: [] }] }]);
+eq('17a il manque odeur, gras, se ramollit (hypo = agneau par défaut)', run(`Stock.pastMissing(Store.state.stockM[0])`), ['odeur', 'gras', 'ramollit']);
+eq('17b âge et gabarit réglés sur une taille : complet', run(`Stock.pastMissing(Store.state.stockM[1])`), []);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

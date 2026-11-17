@@ -122,6 +122,17 @@ const Stock = {
   _pastGroups() { return this.PAST_GROUPS.map(g => g.k === 'type' ? Object.assign({}, g, { o: Store.productTypes().map(t => [t.value, t.label]) }) : g); },
   /* « Sans pastilles » = aucune des pastilles de profil (résistance, odeur, gras, âge, gabarit) : même règle que l'alerte du panier */
   untagged(p) { const t = p.tags || {}; return !t.resistance && !t.odeur && !t.gras && !(t.age || []).length && !(t.gabarit || []).length; },
+  /* Pastilles pas encore renseignées (Antho 2026-11-17 : « retrouver les produits qui n'ont pas toutes leurs pastilles »). Poil, espèce et type ont
+     toujours une valeur par défaut ; hypo seulement pour certaines viandes. Âge / gabarit : renseignés sur le produit OU sur au moins une taille réglée à part. */
+  PAST_REQ: ['hypo', 'resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit'],
+  pastMissing(p) {
+    const t = p.tags || {}, vs = this.sameTags(p) ? [] : this._ownVariants(p);
+    return this.PAST_REQ.filter(k => {
+      if (k === 'hypo') return !this.hypoOf(p);
+      if (k === 'age' || k === 'gabarit') return !(t[k] || []).length && !vs.some(v => ((v.tags || {})[k] || []).length);
+      return !t[k];
+    });
+  },
   /* Valeur affichée d'une pastille du produit (valeurs par défaut comprises : poil lu dans le nom, hypo selon la viande, chien, occupation). */
   _pastCur(p, k) {
     if (k === 'poil') return this.poilOf(p);
@@ -212,14 +223,14 @@ const Stock = {
     const ro = !!(window.App && App.isViewer), f = this.filters, groups = this._pastGroups();
     const seg = (g, cur, js) => U.seg(g.o.map(([v, l]) => ({ l, on: g.multi ? (cur || []).includes(v) : cur === v, js: ro ? '' : js(v) }))
       .concat(this.PAST_ALL.includes(g.k) ? [{ l: 'Tous', on: g.o.every(([v]) => (cur || []).includes(v)), js: ro ? '' : js('*') }] : []), { sm: true, scroll: true, label: g.l });
-    const grp = (g, html) => `<div class="pt-grp"><span class="pt-lbl">${g.l}</span>${html}</div>`;
+    const grp = (g, html, miss) => `<div class="pt-grp"><span class="pt-lbl${miss ? ' pt-miss' : ''}"${miss ? ' title="Pas encore renseigné"' : ''}>${g.l}${miss ? ' ⚠' : ''}</span>${html}</div>`;
     const row = p => {
       const own = p.variants.filter(v => !v.parentId && v.mode !== 'vrac');
       const vars = own.length > 1 ? this.orderedVariants(p).filter(v => own.includes(v) && (!f.variants.length || f.variants.includes(Pricing.labelVariant(v)))) : [];
       const vg = groups.filter(g => ['species', 'age', 'gabarit'].includes(g.k)), same = vars.length && this.sameTags(p);
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
-        <div class="pt-grps">${groups.map(g => grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`))).join('')}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
+        <div class="pt-grps">${(miss => groups.map(g => grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
         ${vars.length ? `<div class="pt-vars${same ? ' pt-same' : ''}"><div class="pt-vhead">Par taille ${same ? '— suivent le produit' : ''} <span class="muted help">« Comme le produit » coché : toutes les tailles prennent l'espèce, l'âge et le gabarit du produit (coché d'office pour les formats au gramme). Décoché : chaque taille se règle ici (S/M/L, longueurs…) ; âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
           ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
       </div>`;
@@ -278,7 +289,7 @@ const Stock = {
       { k: 'gras', l: 'Gras', o: [['non', 'Non gras'], ['peu', 'Peu gras'], ['moyen', 'Moyennement gras']] },
       { k: 'age', l: 'Âge', o: [['0-3', '0-3 mois'], ['3-5', '3-5 mois'], ['6-10', '6-10 mois'], ['11+', '11 mois +'], ['senior', 'Sénior']] },
       { k: 'gabarit', l: 'Gabarit', o: [['petit', 'Petit'], ['moyen', 'Moyen'], ['grand', 'Grand']] },
-      { k: 'todo', l: 'À compléter', o: [['sans', 'Sans pastilles (' + Store.state.stockM.filter(p => this.untagged(p)).length + ')']] }
+      { k: 'todo', l: 'À compléter', o: [['sans', 'Sans pastilles (' + Store.state.stockM.filter(p => this.untagged(p)).length + ')'], ['partial', 'Incomplètes (' + Store.state.stockM.filter(p => this.pastMissing(p).length).length + ')']] }
     ];
   },
   tagFilterCount() { return Object.values(this.filters.tags || {}).reduce((a, x) => a + (x ? x.length : 0), 0); },
@@ -295,7 +306,7 @@ const Stock = {
     return Object.keys(t).every(k => {
       const sel = t[k]; if (!sel || !sel.length) return true;
       const pt = p.tags || {};
-      if (k === 'todo') return this.untagged(p);
+      if (k === 'todo') return (sel.includes('sans') && this.untagged(p)) || (sel.includes('partial') && this.pastMissing(p).length > 0);
       if (k === 'poil') return sel.includes(this.poilOf(p) === 'avec' ? 'avec' : 'sans');
       if (k === 'hypo') return sel.includes(this.hypoOf(p) === 'oui' ? 'oui' : 'non');
       if (k === 'species') return this.speciesOf(p).some(x => sel.includes(x))
