@@ -459,7 +459,13 @@ paniers([{ id: 'n', name: 'Nerf', meatType: 'Agneau', tags: { resistance: 'moyen
     { id: 's', mode: 'size', value: 'S', label: 'S', priceTTC: 3, costUnit: 1, lots: [], tags: { age: ['11+'], gabarit: ['petit'] } },
     { id: 'l', mode: 'size', value: 'L', label: 'L', priceTTC: 5, costUnit: 1, lots: [] }] }]);
 eq('17a il manque odeur, gras, se ramollit (hypo = agneau par défaut)', run(`Stock.pastMissing(Store.state.stockM[0])`), ['odeur', 'gras', 'ramollit']);
-eq('17b âge et gabarit réglés sur une taille : complet', run(`Stock.pastMissing(Store.state.stockM[1])`), []);
+eq('17b tailles réglées à part : la taille L sans âge est signalée', run(`Stock.pastMissing(Store.state.stockM[1])`), ['age']);
+run(`Store.state.stockM[1].variants[1].tags = { age: ['11+'] };`);
+eq('17b chaque taille a son âge (gabarit L déduit de la taille) : complet', run(`Stock.pastMissing(Store.state.stockM[1])`), []);
+/* Tailles réglées à part : l'âge / le gabarit du PRODUIT ne comptent plus (Antho : « qui est prioritaire ? » → les tailles). */
+run(`Store.state.stockM[1].tags.gabarit = ['petit', 'moyen', 'grand']; Store.state.stockM[1].tags.age = ['0-3'];`);
+eq('17c gabarit du produit ignoré : la taille L garde le sien (L = moyen + grand)', run(`Paniers._mergeTags(Stock.effTags(Store.state.stockM[1]), Stock.variantTags(Store.state.stockM[1], Store.state.stockM[1].variants[1])).gabarit`), ['moyen', 'grand']);
+eq('17c âge du produit ignoré', run(`Stock.effTags(Store.state.stockM[1]).age`), []);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

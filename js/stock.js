@@ -129,6 +129,7 @@ const Stock = {
     const t = p.tags || {}, vs = this.sameTags(p) ? [] : this._ownVariants(p);
     return this.PAST_REQ.filter(k => {
       if (k === 'hypo') return !this.hypoOf(p);
+      if ((k === 'age' || k === 'gabarit') && this.perSize(p)) return this._ownVariants(p).some(v => !this._pastVCur(p, v, k).length);
       if (k === 'age' || k === 'gabarit') return !(t[k] || []).length && !vs.some(v => ((v.tags || {})[k] || []).length);
       return !t[k];
     });
@@ -152,6 +153,14 @@ const Stock = {
     const own = this._ownVariants(p);
     return own.length > 1 && own.every(v => v.mode === 'gram');
   },
+  /* Tailles réglées À PART (« Comme le produit » décoché, au moins 2 tailles) — Antho 2026-11-17, « qui est prioritaire ? » :
+     ce sont les TAILLES qui décident de l'espèce, de l'âge et du gabarit ; ceux du produit sont ignorés (grisés à l'écran, gardés en réserve
+     si on recoche « Comme le produit »). Une taille sans âge = pour tous les âges ; sans gabarit = celui de sa taille (S = petit…) sinon tous. */
+  PER_SIZE_KEYS: ['species', 'age', 'gabarit'],
+  perSize(p) { return !this.sameTags(p) && this._ownVariants(p).length > 1; },
+  _baseSpecies(p) { return this.perSize(p) ? ['chien'] : this.speciesOf(p); },
+  /* Ce que le produit couvre, toutes tailles réunies (affiché grisé sur la ligne du produit) */
+  _pastUnion(p, k) { return [...new Set(this._ownVariants(p).flatMap(v => this._pastVCur(p, v, k)))]; },
   setSameTags(id) {
     const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
     this._pastCommit(p, () => { p.tags = Object.assign({}, p.tags || {}, { sameAll: !this.sameTags(p) }); });
@@ -161,7 +170,7 @@ const Stock = {
     if (this.sameTags(p)) return k === 'species' ? this.speciesOf(p) : ((p.tags || {})[k] || []);
     const own = (v.tags || {})[k] || [];
     if (own.length) return own;
-    if (k === 'species') return this.speciesOf(p);
+    if (k === 'species') return this._baseSpecies(p);
     if (k === 'gabarit') return this.defaultGabarit(p, v);
     return [];
   },
@@ -191,7 +200,7 @@ const Stock = {
     const same = (a, b) => a.slice().sort().join() === b.slice().sort().join();
     this._pastCommit(p, () => {
       const g = this._pastGroups().find(x => x.k === k); let a = this._pastToggle(g, this._pastVCur(p, v, k).slice(), val);
-      if ((k === 'gabarit' && same(a, this.defaultGabarit(p, v))) || (k === 'species' && same(a, this.speciesOf(p)))) a = [];
+      if ((k === 'gabarit' && same(a, this.defaultGabarit(p, v))) || (k === 'species' && same(a, this._baseSpecies(p)))) a = [];
       const t = v.tags = Object.assign({}, v.tags || {});
       if (a.length) t[k] = a; else delete t[k];
       if (!Object.keys(t).length) delete v.tags;
@@ -227,10 +236,12 @@ const Stock = {
     const row = p => {
       const own = p.variants.filter(v => !v.parentId && v.mode !== 'vrac');
       const vars = own.length > 1 ? this.orderedVariants(p).filter(v => own.includes(v) && (!f.variants.length || f.variants.includes(Pricing.labelVariant(v)))) : [];
-      const vg = groups.filter(g => ['species', 'age', 'gabarit'].includes(g.k)), same = vars.length && this.sameTags(p);
+      const vg = groups.filter(g => this.PER_SIZE_KEYS.includes(g.k)), same = vars.length && this.sameTags(p);
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
-        <div class="pt-grps">${(miss => groups.map(g => grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
+        <div class="pt-grps">${(miss => groups.map(g => this.perSize(p) && this.PER_SIZE_KEYS.includes(g.k)
+          ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ce qui est affiché ici = toutes les tailles réunies"><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}">${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
+          : grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
         ${vars.length ? `<div class="pt-vars${same ? ' pt-same' : ''}"><div class="pt-vhead">Par taille ${same ? '— suivent le produit' : ''} <span class="muted help">« Comme le produit » coché : toutes les tailles prennent l'espèce, l'âge et le gabarit du produit (coché d'office pour les formats au gramme). Décoché : chaque taille se règle ici (S/M/L, longueurs…) ; âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
           ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
       </div>`;
@@ -309,11 +320,12 @@ const Stock = {
       if (k === 'todo') return (sel.includes('sans') && this.untagged(p)) || (sel.includes('partial') && this.pastMissing(p).length > 0);
       if (k === 'poil') return sel.includes(this.poilOf(p) === 'avec' ? 'avec' : 'sans');
       if (k === 'hypo') return sel.includes(this.hypoOf(p) === 'oui' ? 'oui' : 'non');
+      if (k === 'species' && this.perSize(p)) return this._pastUnion(p, 'species').some(x => sel.includes(x));
       if (k === 'species') return this.speciesOf(p).some(x => sel.includes(x))
         || (!this.sameTags(p) && p.variants.some(v => ((v.tags || {}).species || []).some(x => sel.includes(x))));
       if (k === 'type') return sel.includes(pt.type || 'occupation');
       if (k === 'age' || k === 'gabarit') {
-        const own = pt[k] || [];
+        const own = this.perSize(p) ? [] : (pt[k] || []);
         const vs = p.variants.map(v => (this.variantTags(p, v) || {})[k] || []);
         if (!own.length && !vs.some(a => a.length)) return true;   // rien de précisé = pour tous
         return own.some(x => sel.includes(x)) || vs.some(a => a.some(x => sel.includes(x)));
@@ -346,7 +358,7 @@ const Stock = {
     else if (pt.resistance) out.push(['Rés. ' + L[pt.resistance], 'Résistance : ' + pt.resistance]);
     if (pt.odeur) out.push(['Odeur ' + L[pt.odeur], 'Odeur : ' + pt.odeur]);
     if (pt.gras && pt.gras !== 'non') out.push(['Gras ' + ({ peu: 'peu', moyen: 'moy.', gras: '+' }[pt.gras] || ''), 'Gras : ' + pt.gras]);
-    const uni = k => { const set = new Set(pt[k] || []); p.variants.forEach(v => ((this.variantTags(p, v) || {})[k] || []).forEach(x => set.add(x))); return [...set]; };
+    const uni = k => { const set = new Set(this.perSize(p) ? [] : (pt[k] || [])); p.variants.forEach(v => ((this.variantTags(p, v) || {})[k] || []).forEach(x => set.add(x))); return [...set]; };
     const gOrder = ['petit', 'moyen', 'grand'], gl = { petit: 'Petit', moyen: 'Moyen', grand: 'Grand' };
     const g = uni('gabarit').sort((a, b) => gOrder.indexOf(a) - gOrder.indexOf(b));
     if (g.length) out.push([g.map(x => gl[x]).join('·'), 'Gabarit : ' + g.join(', ')]);
@@ -364,7 +376,11 @@ const Stock = {
   /* Espèce : par défaut « chien » seul ; coche Chat en plus (produit mixte) ou décoche Chien (chat seul). */
   speciesOf(p) { const sp = (p.tags || {}).species; return sp && sp.length ? sp : ['chien']; },
   hypoOf(p) { const h = (p.tags || {}).hypo; return h === true ? 'oui' : (h || this.hypoDefault(p.meatType)); },
-  effTags(p) { return Object.assign({}, p.tags || {}, { hypo: this.hypoOf(p), poil: this.poilOf(p) }); },
+  effTags(p) {
+    const t = Object.assign({}, p.tags || {}, { hypo: this.hypoOf(p), poil: this.poilOf(p) });
+    if (this.perSize(p)) { t.species = []; t.age = []; t.gabarit = []; }   // tailles réglées à part : seules leurs pastilles comptent (variantTags)
+    return t;
+  },
   /* Pastilles à cocher arrondies (âge, espèce, gabarit) : mêmes cases à cocher qu'avant (lues par `input:checked`), seule la présentation change. */
   chipsHTML(id, items, selected) {
     const sel = selected || [];
@@ -874,7 +890,7 @@ const Stock = {
   SIZE_GABARIT: { XS: ['petit'], S: ['petit'], M: ['moyen'], L: ['moyen', 'grand'], XL: ['grand'], XXL: ['grand'] },
   sizeGabarit(v) { if (!v || v.mode !== 'size') return []; const k = x => this.SIZE_GABARIT[String(x || '').toUpperCase().trim()]; return k(v.label) || k(v.value) || []; },
   /* Gabarit par défaut d'une variante : celui du produit s'il en a un, sinon celui de la taille. */
-  defaultGabarit(p, v) { return ((p.tags || {}).gabarit || []).length ? [] : this.sizeGabarit(v); },
+  defaultGabarit(p, v) { return (!this.perSize(p) && ((p.tags || {}).gabarit || []).length) ? [] : this.sizeGabarit(v); },
   variantTags(p, v) {
     if (this.sameTags(p)) return null;   // toutes les tailles = pastilles du produit
     const src = this.parentOf(p, v) || v; const t = src.tags || null;
