@@ -125,12 +125,10 @@ const Paniers = {
      Dernière vente NON annulée de la cliente contenant de la mastication (lien par le nom, comme la fiche cliente). À la génération, ses produits sont
      évités pour varier (pénalité dans la note), sauf ceux que le chien aime (viande « aime » ou produit noté « aimé ») ; un produit noté « pas aimé »
      est de toute façon exclu. `redoLast()` recompose ce même panier avec le stock et les prix d'aujourd'hui. */
-  /* Règle d'Antho (2026-11-17) : un produit acheté par la cliente il y a moins de RECENT_DAYS jours n'est PLUS proposé, même à date dépassée ou courte
-     (« ça fait doublon ») — sauf s'il est ajouté à la main au panier avant de générer. Acheté entre RECENT_DAYS et OLD_DAYS jours : seulement évité
-     (pénalité), sauf si le chien l'aime. Au-delà : traité comme un produit nouveau. Toutes les ventes de la cliente comptent, pas seulement la dernière. */
-  RECENT_DAYS: 60,
-  OLD_DAYS: 180,
-  PREV_PENALTY: 0.2,
+  /* Règle d'Antho (2026-11-17, revue le même jour) : un produit acheté par la cliente il y a MOINS D'UN MOIS n'est plus proposé, même à date dépassée ou
+     courte (« ça fait doublon ») — sauf s'il est ajouté à la main au panier avant de générer. Au-delà d'un mois : aucune différence, la commande
+     précédente est ignorée. Toutes les ventes de la cliente comptent, pas seulement la dernière. */
+  RECENT_DAYS: 31,
   _lastSale() {
     if (Clients.ro()) return null;
     const keys = new Set([Clients.key(this.client)]), c = Clients.find(this.client);
@@ -181,13 +179,13 @@ const Paniers = {
       title: 'Dernier panier du ' + U.frDate(U.dayKey(x.ts)), hideOk: true, wide: true,
       body: `<div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Qté</th><th class="num">Total</th><th>Stock</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><td class="col-name"><b>Total payé</b></td><td class="num"><b>${U.qty(it.reduce((a, i) => a + U.num(i.qty), 0))}</b></td><td class="num"><b>${U.eur(tot)}</b></td><td></td></tr></tfoot></table></div>
-        <p class="muted" style="margin:10px 0 0;font-size:.85rem;">Ces produits ne sont pas proposés à la génération pendant ${this.RECENT_DAYS} jours après l'achat. Pour en remettre un, ajoute-le au panier avant de générer.</p>`
+        <p class="muted" style="margin:10px 0 0;font-size:.85rem;">Les produits achetés il y a moins d'un mois ne sont pas proposés à la génération. Pour en remettre un, ajoute-le au panier avant de générer.</p>`
     });
   },
   _lastHTML() {
     const x = this._lastSale(); if (!x) return '';
     const it = this._lastItems(), n = it.reduce((a, i) => a + U.num(i.qty), 0), tot = it.reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0);
-    return `<div class="pan-last"><span>Dernier panier : <b>${U.frDate(U.dayKey(x.ts))}</b> · ${n} article${n > 1 ? 's' : ''} · ${U.eur(tot)} <span class="muted help">Un produit acheté par la cliente il y a moins de 2 mois n'est jamais reproposé, même à date courte (ajoute-le au panier avant de générer si tu le veux). Acheté il y a 2 à 6 mois : évité, sauf si le chien l'aime. « Refaire » remet les mêmes produits, avec le stock et les prix d'aujourd'hui.</span></span>
+    return `<div class="pan-last"><span>Dernier panier : <b>${U.frDate(U.dayKey(x.ts))}</b> · ${n} article${n > 1 ? 's' : ''} · ${U.eur(tot)} <span class="muted help">Un produit acheté par la cliente il y a moins d'un mois n'est pas reproposé, même à date courte (ajoute-le au panier avant de générer si tu le veux). Au-delà d'un mois, tout peut revenir. « Voir » ouvre le contenu de ce panier ; « Refaire » remet les mêmes produits, avec le stock et les prix d'aujourd'hui.</span></span>
       <span class="pan-last-btns"><button class="btn-ghost btn-sm" onclick="Paniers.showLast()">Voir</button><button class="btn-ghost btn-sm" onclick="Paniers.redoLast()" title="${U.esc(it.map(i => i.name + (i.label ? ' ' + i.label : '') + ' ×' + U.qty(i.qty)).join(' · '))}">Refaire</button></span></div>`;
   },
   async redoLast() {
@@ -215,13 +213,50 @@ const Paniers = {
     const tot = out.reduce((a, b) => a + b.price * b.qty, 0);
     U.toast('Dernier panier recomposé : ' + U.eur(tot) + ' aux prix d’aujourd’hui' + (miss.length ? '. Manque : ' + miss.join(', ') : '.'), !!miss.length);
   },
+  /* ---------- Réglages avancés (repliés par défaut) : résumé affiché sur la ligne de titre ---------- */
+  _advOpen: false,
+  _advSummary() {
+    const out = [], P = { mix: 'Mix', dluo: 'Dates courtes d’abord', coeff: 'Rentabilité d’abord' };
+    out.push(P[this.priority] || 'Mix');
+    if (this.typeFilter !== 'all') out.push(Store.productTypeLabel(this.typeFilter).split(' (')[0] || this.typeFilter);
+    const R = this.RESISTANCES.filter(x => this.resistanceInclude.includes(x[0])).map(x => x[1].toLowerCase());
+    if (R.length && R.length < this.RESISTANCES.length) out.push('résistance : ' + R.join(', '));
+    if (this.hypoOnly) out.push('hypoallergénique');
+    if (this.poilFilter !== 'all') out.push(this.poilFilter === 'avec' ? 'avec poil' : 'sans poil');
+    if (this._ageSel()) out.push('âge choisi');
+    if (this._gabSel()) out.push('gabarit choisi');
+    if ((this.odeurInclude || []).length && this.odeurInclude.length < 3) out.push('odeur limitée');
+    if ((this.grasInclude || []).length && this.grasInclude.length < 4) out.push('gras limité');
+    const ex = (this.excludeMeats || []).length + (this.excludeProducts || []).length;
+    if (ex) out.push(ex + ' exclusion' + (ex > 1 ? 's' : ''));
+    return out.join(' · ');
+  },
+  /* Produits du panier dont la fiche de stock n'a aucune pastille de profil (résistance, odeur, gras, âge, gabarit) : les filtres n'ont pas pu jouer sur eux */
+  _untagged(list) {
+    const seen = new Set(), out = [];
+    (list || []).forEach(b => {
+      if (seen.has(b.pId)) return; seen.add(b.pId);
+      const sp = Store.state.stockM.find(x => x.id === b.pId); if (!sp) return;
+      const sv = sp.variants.find(x => x.id === b.vId), t = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
+      if (!t.resistance && !t.odeur && !t.gras && !t.age.length && !t.gabarit.length) out.push(sp.name);
+    });
+    return out;
+  },
+  _untaggedHTML(list) {
+    const u = this._untagged(list); if (!u.length) return '';
+    return `<p class="pan-untagged">${u.length} produit${u.length > 1 ? 's' : ''} sans pastilles (les filtres n’ont pas pu les trier) : ${U.esc(u.join(', '))} <a class="btn btn-ghost btn-sm fit" href="#/stock/pastilles" style="text-decoration:none">Compléter</a></p>`;
+  },
   /* ---------- Règles de raisonnement (Antho 2026-11-17) ---------- */
-  URGENT_DAYS: 30,   // date dépassée ou à moins de 30 jours = « urgent » : proposé en premier
+  URGENT_DAYS: 30,
+  /* Résistances « dures » : un seul produit dur par panier (sauf gros destructeur), jamais pour un chiot de moins de 6 mois.
+     « longue » = mastication longue durée (cornes, bois naturels) : à laisser à disposition du chien, dure très longtemps. */
+  HARD: ['forte', 'tres-forte', 'longue'],
+  RESISTANCES: [['faible', 'Faible'], ['moyenne', 'Moyenne'], ['forte', 'Forte'], ['tres-forte', 'Très forte'], ['longue', 'Mastication longue']],   // date dépassée ou à moins de 30 jours = « urgent » : proposé en premier
   /* Tranches d'âge / gabarits choisis à la main dans les filtres : null tant que TOUT est coché (= « je ne sais pas », aucune préférence d'âge ou de gabarit) */
   _ageSel() { const a = this.ageInclude || []; return a.length && a.length < 5 ? a : null; },
   _gabSel() { const g = this.gabaritInclude || []; return g.length && g.length < 3 ? g : null; },
-  /* Chiot de moins de 6 mois (dents de lait) : jamais de produit à résistance forte ou très forte */
-  _tooHardForPuppy(ages, tags) { return !!(ages && ages.length && ages.every(a => a === '0-3' || a === '3-5') && ['forte', 'tres-forte'].includes(tags.resistance)); },
+  /* Chiot de moins de 6 mois (dents de lait) : jamais de produit dur (forte, très forte, mastication longue) */
+  _tooHardForPuppy(ages, tags) { return !!(ages && ages.length && ages.every(a => a === '0-3' || a === '3-5') && this.HARD.includes(tags.resistance)); },
   /* Produit déjà goûté par un de ces chiens (fiche cliente → « Produits déjà mastiqués ») : 'avoid' (pas aimé) l'emporte sur 'like' ; '' si jamais noté */
   _triedVerdict(dogs, name) {
     const n = Clients._norm(name).trim(); let out = '';
@@ -265,8 +300,8 @@ const Paniers = {
     if (sens) this.hypoOnly = true;
     const chews = c && !Clients.ro() ? [...new Set((c.dogs || []).map(d => d.chew).filter(Boolean))] : [];
     if (chews.length) {   // mâcheur de la fiche → résistance souhaitée cochée toute seule (modifiable dans les filtres)
-      const R = { doux: ['faible', 'moyenne'], moyen: ['faible', 'moyenne', 'forte'], gros: ['moyenne', 'forte', 'tres-forte'] };
-      this.resistanceInclude = ['faible', 'moyenne', 'forte', 'tres-forte'].filter(r => chews.some(k => (R[k] || []).includes(r)));
+      const R = { doux: ['faible', 'moyenne'], moyen: ['faible', 'moyenne', 'forte'], gros: ['moyenne', 'forte', 'tres-forte', 'longue'] };
+      this.resistanceInclude = this.RESISTANCES.map(x => x[0]).filter(r => chews.some(k => (R[k] || []).includes(r)));
     }
     this.render();
     if (sens) U.toast('Chien sensible : « Hypoallergénique uniquement » est coché — décoche-le dans les filtres si besoin.');
@@ -351,7 +386,7 @@ const Paniers = {
             mode: v.mode || '', value: v.value,
             ...this._famInfo(p, v),
             ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : { ages: da || undefined, gabs: dg ? [dg] : undefined }),
-            chews, liked, prev: ago[p.id] !== undefined && ago[p.id] < this.OLD_DAYS
+            chews, liked
           });
         });
       });
@@ -429,7 +464,7 @@ const Paniers = {
     const r = (c.tags && c.tags.resistance) || '';
     if (!r) return 0.5;
     if (c.chews && c.chews.length) {   // « Mâcheur » de la fiche du chien : doux → produits tendres, gros destructeur → produits durs
-      const T = { doux: { faible: 1, moyenne: 0.6, forte: 0.15, 'tres-forte': 0.05 }, moyen: { faible: 0.7, moyenne: 1, forte: 0.6, 'tres-forte': 0.2 }, gros: { faible: 0.2, moyenne: 0.6, forte: 1, 'tres-forte': 1 } };
+      const T = { doux: { faible: 1, moyenne: 0.6, forte: 0.15, 'tres-forte': 0.05, longue: 0.05 }, moyen: { faible: 0.7, moyenne: 1, forte: 0.6, 'tres-forte': 0.2, longue: 0.3 }, gros: { faible: 0.2, moyenne: 0.6, forte: 1, 'tres-forte': 1, longue: 1 } };
       const sc = c.chews.map(k => (T[k] || {})[r]).filter(x => x !== undefined);
       if (sc.length) return sc.reduce((a, b) => a + b, 0) / sc.length;
     }
@@ -439,7 +474,7 @@ const Paniers = {
     const hasMoyen = gabs.includes('moyen');
     const hasPetit = gabs.includes('petit');
     if (hasGrand && !hasPetit) {
-      if (r === 'forte' || r === 'tres-forte') return 1.0;
+      if (this.HARD.includes(r)) return 1.0;
       if (r === 'moyenne') return 0.6;
       return 0.2;
     }
@@ -465,7 +500,7 @@ const Paniers = {
   _bal: null,
   _balScore(c) {
     const b = this._bal; if (!b) return 0.5;
-    const n = b.gram + b.vrac, hard = ['forte', 'tres-forte'].includes((c.tags && c.tags.resistance) || '');
+    const n = b.gram + b.vrac, hard = this.HARD.includes((c.tags && c.tags.resistance) || '');
     if (hard && !b.hard && n >= 2) return 1;
     if (!n) return 0.5;
     const gs = b.gram / n;
@@ -483,7 +518,7 @@ const Paniers = {
     const meatScore = this._meatAgePrefScore(c);
     const gabScore = this._gabaritResistScore(c);
     const hypoGrasScore = this._hypoGrasScore(c);
-    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5) - (c.prev && !c.liked ? this.PREV_PENALTY : 0);
+    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5);
   },
 
   _buildBasket(maxAvailable, lockedItems) {
@@ -533,10 +568,10 @@ const Paniers = {
         if (!sp) return false;
         const sv = sp.variants.find(x => x.id === b.vId);
         const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
-        return ['forte', 'tres-forte'].includes(mt.resistance);
+        return this.HARD.includes(mt.resistance);
       });
       // Un seul produit dur par panier… sauf pour un « gros destructeur » (fiche du chien), à qui il en faut plusieurs
-      if (hardInBasket) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance) || (c.chews && c.chews.includes('gros')));
+      if (hardInBasket) eligible = eligible.filter(c => !this.HARD.includes(c.tags.resistance) || (c.chews && c.chews.includes('gros')));
       if (!eligible.length) break;
       // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
       // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
@@ -577,7 +612,7 @@ const Paniers = {
        par un produit un peu plus cher qui convient (mêmes règles : quantité max, famille, un seul produit dur), en prenant l'échange qui laisse le moins de reste.
        Jamais un produit à date dépassée / courte remplacé par un produit à date longue. Pas en « chien par chien » (budget partagé entre les chiens). */
     if (!nd) {
-      const hard = t => ['forte', 'tres-forte'].includes((t || {}).resistance);
+      const hard = t => this.HARD.includes((t || {}).resistance);
       const tagsOf = b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sp ? this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null) : {}; };
       const canAdd = (c, bk) => {
         if (c.avail <= 0) return false;
@@ -608,7 +643,6 @@ const Paniers = {
             if (delta < 0.005 || delta > gap + 0.005) return;
             if (c.pId === b.pId && c.vId === b.vId) return;
             if (bUrgent && c.daysLeft > this.URGENT_DAYS) return;
-            if (c.prev && !c.liked && !(b.prev && !b.liked)) return;   // ne pas remplacer un produit nouveau par un produit du dernier panier (variété d'abord)
             if (!canAdd(c, rest)) return;
             const sc = score(c);
             if (!best || delta > best.delta + 0.005 || (Math.abs(delta - best.delta) <= 0.005 && sc > best.sc)) best = { bi, c, delta, sc };
@@ -769,9 +803,9 @@ const Paniers = {
       if (!sp) return false;
       const sv = sp.variants.find(x => x.id === b.vId);
       const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
-      return ['forte', 'tres-forte'].includes(mt.resistance);
+      return this.HARD.includes(mt.resistance);
     });
-    if (otherHard) eligible = eligible.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
+    if (otherHard) eligible = eligible.filter(c => !this.HARD.includes(c.tags.resistance));
 
     if (!eligible.length) {
       this.basket.splice(idx, 1);
@@ -835,11 +869,11 @@ const Paniers = {
       if (!sp) return false;
       const sv = sp.variants.find(x => x.id === b.vId);
       const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
-      return ['forte', 'tres-forte'].includes(mt.resistance);
+      return this.HARD.includes(mt.resistance);
     });
     const eligibleFor = rej => {
       let e = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !rej.includes(c.pId) && !this._famTaken(c, this.basket, idx));
-      if (otherHard) e = e.filter(c => !['forte', 'tres-forte'].includes(c.tags.resistance));
+      if (otherHard) e = e.filter(c => !this.HARD.includes(c.tags.resistance));
       return e;
     };
     let eligible = eligibleFor(rejected);
@@ -1827,6 +1861,9 @@ const Paniers = {
           </div>
         </div>
 
+        <details class="fold pan-adv" ${this._advOpen ? 'open' : ''} ontoggle="Paniers._advOpen=this.open">
+          <summary><span class="pan-adv-t">Réglages avancés</span> <span class="muted pan-adv-sum">${U.esc(this._advSummary())}</span></summary>
+          <div class="fold-body">
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>🎯 Priorité</label>
             ${U.customSelect({ value: this.priority, options: [{v:'mix',l:'Mix (DLUO + rentabilité)'},{v:'dluo',l:"DLUO courte d'abord"},{v:'coeff',l:"Meilleur coeff d'abord"}], onPick: 'Paniers.setPriority' })}
@@ -1870,7 +1907,7 @@ const Paniers = {
         <div class="fg" style="margin-top:8px;">
           <label>💪 Résistance souhaitée</label>
           <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
-            ${[['faible','Faible'],['moyenne','Moyenne'],['forte','Forte'],['tres-forte','Très Forte']].map(([v,l]) =>
+            ${this.RESISTANCES.map(([v,l]) =>
               `<label class="chip-opt"><input type="checkbox" ${this.resistanceInclude.includes(v)?'checked':''} onchange="Paniers.toggleResistance('${v}')"> ${l}</label>`
             ).join('')}
           </div>
@@ -1894,6 +1931,8 @@ const Paniers = {
             `<span class="chip">${U.esc(exclNames[i])} <button class="btn-icon" onclick="Paniers.removeExcludeProduct('${id}')" title="Retirer">×</button></span>`
           ).join('')}</div>` : ''}
         </div>
+          </div>
+        </details>
 
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-cta" onclick="Paniers.generate()">🎲 Générer le panier</button>
@@ -2051,6 +2090,7 @@ const Paniers = {
       ${this.nbChiens > 1 ? ` · × ${this.nbChiens} chiens` : ''}
       ${hasLocked ? ` · 🔒 ${this.basket.filter(b => b.locked).length} verrouillé(s)` : ''}
       ${this.basket.some(b => b.dluo && U.daysTo(b.dluo) <= 30) ? ` · <span class="badge warn">contient des DLUO proches</span>` : ''}
+      ${this._untaggedHTML(this.basket)}
     </div>
     <details style="margin-top:12px;" ontoggle="this.open&&this.scrollIntoView({behavior:'smooth',block:'nearest'})">
       <summary style="cursor:pointer;font-weight:600;">📊 Détail financier du panier</summary>
