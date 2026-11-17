@@ -215,7 +215,7 @@ const dayIso = n => { const d = new Date(Date.now() + n * 86400000); return d.ge
 const sp = (id, name, o) => ({ id, name, meatType: o.meat || 'Boeuf', tags: o.tags || {}, variants: [{ id: id + 'v', mode: o.mode || 'piece', value: o.value || 1, label: o.label || '', priceTTC: o.price || 5, costUnit: 2, lots: [{ id: id + 'l', lotNumber: 'L', dluo: o.days === undefined ? '' : dayIso(o.days), qtyGeneral: 10, qtyEvent: 0 }] }] });
 function paniers(stock, cfg, clients) {
   reset();
-  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte', 'longue'], typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
+  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte', 'longue'], risks: { glouton: false, choke: false, teeth: false, surpoids: false, energique: false }, typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
   sandbox.__clients = clients || [];
   run(`Store.state.stockM = __stock; Store.state.clients = __clients; window.App.visitMode = false; Object.assign(Paniers, __cfg);`);
 }
@@ -340,6 +340,36 @@ paniers([sp('a', 'Corne test', { meat: 'Cornes', days: 200, tags: { resistance: 
 run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Deux');`);
 eq('10c gros destructeur : mastication longue cochée toute seule', run(`Paniers.resistanceInclude.includes('longue')`), true);
 eq('10c gros destructeur : mastication longue très bien notée', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Corne test'))`), 1);
+
+/* ══════════ 11. PANIERS : particularités du chien et races (Antho 2026-11-17) ══════════ */
+const sz = (id, name, label, o) => { const x = sp(id, name, o); x.variants[0].mode = 'size'; x.variants[0].label = label; x.variants[0].value = label; return x; };
+const st11 = () => [sp('a', 'Peau', { days: 200, meat: 'Boeuf', tags: { ramollit: 'oui', resistance: 'moyenne' } }), sz('b', 'Bois', 'S', { days: 200, meat: 'Cerf', tags: { resistance: 'longue' } }),
+  sz('c', 'Bois L', 'L', { days: 200, meat: 'Buffle', tags: { resistance: 'longue' } }), sp('d', 'Oreille grasse', { days: 200, meat: 'Porc', tags: { gras: 'gras', resistance: 'faible' } }),
+  sp('e', 'Tendon', { days: 200, meat: 'Lapin', tags: { resistance: 'faible', gras: 'peu' } }), sp('f', 'Poisson', { days: 200, meat: 'Poisson', tags: { resistance: 'faible' } })];
+const names11 = () => run(`Paniers.candidates().map(c => c.name).sort()`);
+paniers(st11());
+eq('11a sans particularité : tout est proposé', names11(), ['Bois', 'Bois L', 'Oreille grasse', 'Peau', 'Poisson', 'Tendon']);
+run(`Paniers.risks.glouton = true;`);
+eq('11b glouton : ni « se ramollit » ni petite taille', names11(), ['Bois L', 'Oreille grasse', 'Poisson', 'Tendon']);
+run(`Paniers.gabaritInclude = ['petit'];`);
+eq('11b glouton mais petit chien : la petite taille revient (la taille L est pour moyen / grand)', names11(), ['Bois', 'Oreille grasse', 'Poisson', 'Tendon']);
+paniers(st11()); run(`Paniers.risks.teeth = true;`);
+eq('11c dents fragiles : rien de dur', names11(), ['Oreille grasse', 'Peau', 'Poisson', 'Tendon']);
+paniers(st11()); run(`Paniers.risks.surpoids = true;`);
+eq('11d surpoids : rien de gras', names11(), ['Bois', 'Bois L', 'Peau', 'Poisson', 'Tendon']);
+paniers(st11()); run(`Paniers.risks.energique = true;`);
+eq('11e très énergique sans fiche : mastication longue très bien notée', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Bois L'))`), 1);
+/* Fiche chien avec une race : particularités et viandes à éviter de la race, cochées toutes seules. */
+const racee = { id: 'c11', name: 'Cliente Race', dogs: [{ id: 'd11', name: 'Molosse Test', birth: dayIso(-1500), breeds: ['dogue-de-bordeaux'], meats: {}, tried: [] }] };
+paniers(st11(), {}, [racee]);
+run(`Store.state.settings.breeds = JSON.parse(JSON.stringify(RACES_DEFAULT)); Store.state.settings.breeds.find(r => r.id === 'dogue-de-bordeaux').avoidMeats = ['Poisson'];
+     Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Race');`);
+eq('11f race molosse : glouton et risque d\'étouffement cochés', run(`Paniers.risks.glouton && Paniers.risks.choke`), true);
+eq('11f race : viande à éviter écartée, « se ramollit » écarté', names11().includes('Poisson') || names11().includes('Peau'), false);
+/* La fiche du chien l'emporte sur la race. */
+const corr = JSON.parse(JSON.stringify(racee)); corr.dogs[0].glouton = 'non'; corr.dogs[0].choke = 'non';
+paniers(st11(), {}, [corr]); run(`Store.state.settings.breeds = null; Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Race');`);
+eq('11g fiche « non glouton, pas de risque » : rien de coché', run(`Paniers.risks.glouton || Paniers.risks.choke`), false);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
