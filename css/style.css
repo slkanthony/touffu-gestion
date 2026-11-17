@@ -1945,3 +1945,5 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .tw-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--card-border); }
 .tw-bar .tw-sans { background: var(--gris); }
 .tw-bar .tw-avec { background: var(--caramel); }
+/* Pastille séparée du produit lié */
+.pt-lbl .pt-sep { color: var(--caramel); text-transform: none; letter-spacing: 0; font-weight: 700; }

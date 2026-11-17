@@ -245,8 +245,24 @@ const Stock = {
     U.toast('Liaison retirée.');
   },
   /* Recopie les pastilles de src sur dst (sauf le poil). onlyEmpty : ne remplit que ce qui est vide chez dst (au moment de lier). */
+  /* Pastille SÉPARÉE entre deux produits liés (Antho 2026-11-17 : « la version avec poils peut être un peu plus grasse ou plus dure ») :
+     double-clic sur le titre de la pastille → elle n'est plus recopiée d'un produit à l'autre ; nouveau double-clic → reliée (l'autre reprend la valeur de celui-ci).
+     Liste mémorisée sur les DEUX produits (p.tags.twinFree), lue comme leur réunion. */
+  twinFree(p) { const q = this.twinOf(p); return [...new Set([].concat(((p && p.tags) || {}).twinFree || [], q ? ((q.tags || {}).twinFree || []) : []))]; },
+  toggleTwinFree(id, k) {
+    const p = Store.state.stockM.find(x => x.id === id), q = this.twinOf(p); if (!p || !q || k === 'poil') return;
+    const free = this.twinFree(p), on = free.includes(k), next = on ? free.filter(x => x !== k) : free.concat(k);
+    const snaps = [Store.snapshot('stockM', p), Store.snapshot('stockM', q)];
+    [p, q].forEach(x => { x.tags = Object.assign({}, x.tags || {}); if (next.length) x.tags.twinFree = next.slice(); else delete x.tags.twinFree; });
+    if (on) this._twinSync(p, q);   // reliée : l'autre reprend la valeur de celui-ci
+    const g = this._pastGroups().find(x => x.k === k), lb = g ? g.l : k;
+    const entry = Store.log('pastilles', (on ? 'Pastille reliée' : 'Pastille séparée') + ' — ' + lb + ' : ' + p.name + ' / ' + q.name, { type: 'restoreBatch', data: snaps });
+    Store.save('stockM'); this.renderM();
+    U.toast(on ? '« ' + lb + ' » à nouveau commun aux deux produits (valeur de « ' + p.name + ' »).' : '« ' + lb + ' » se règle maintenant séparément sur chaque produit.', false, entry.id);
+  },
   _twinSync(src, dst, onlyEmpty) {
     if (!src || !dst) return;
+    const free = new Set(this.twinFree(src));
     const st = src.tags || {}, dt = dst.tags = Object.assign({}, dst.tags || {});
     const empty = v => v === undefined || v === '' || (Array.isArray(v) && !v.length);
     /* Structures différentes (Antho 2026-11-17, « Oreille de cerf » à une taille ↔ « avec poils » réglée taille par taille) : l'âge et l'espèce
@@ -254,13 +270,13 @@ const Stock = {
        Le gabarit, lui, dépend de la taille : jamais recopié entre un produit simple et un produit à tailles. « Comme le produit » n'est jamais recopié. */
     const sPer = this.perSize(src), dPer = this.perSize(dst), mixed = sPer !== dPer;
     ['hypo', 'species', 'type', 'resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit'].forEach(k => {
-      if (mixed && this.PER_SIZE_KEYS.includes(k)) return;
+      if (free.has(k) || (mixed && this.PER_SIZE_KEYS.includes(k))) return;
       if (st[k] === undefined) return;
       if (onlyEmpty && !empty(dt[k])) return;
       dt[k] = Array.isArray(st[k]) ? st[k].slice() : st[k];
     });
     if (mixed && !sPer) {
-      this._ownVariants(dst).forEach(dv => ['age', 'species'].forEach(k => {
+      this._ownVariants(dst).forEach(dv => ['age', 'species'].filter(k => !free.has(k)).forEach(k => {
         if (onlyEmpty && ((dv.tags || {})[k] || []).length) return;
         let val = k === 'species' ? this.speciesOf(src).slice() : (st.age || []).slice();
         if (k === 'species' && val.join() === 'chien') val = [];   // chien = valeur par défaut d'une taille
@@ -271,13 +287,13 @@ const Stock = {
       return;
     }
     if (mixed && sPer) {
-      ['age', 'species'].forEach(k => { if (!(onlyEmpty && !empty(dt[k]))) dt[k] = this._pastUnion(src, k); });
+      ['age', 'species'].filter(k => !free.has(k)).forEach(k => { if (!(onlyEmpty && !empty(dt[k]))) dt[k] = this._pastUnion(src, k); });
       return;
     }
     const lab = v => String(Pricing.labelVariant(v) || '').toUpperCase().trim();
     (dst.variants || []).forEach(dv => {
       const sv = (src.variants || []).find(v => lab(v) === lab(dv)); if (!sv) return;
-      ['species', 'age', 'gabarit'].forEach(k => {
+      ['species', 'age', 'gabarit'].filter(k => !free.has(k)).forEach(k => {
         const val = (sv.tags || {})[k];
         if (onlyEmpty && ((dv.tags || {})[k] || []).length) return;
         const t = dv.tags = Object.assign({}, dv.tags || {});
@@ -358,17 +374,23 @@ const Stock = {
     const ro = !!(window.App && App.isViewer), f = this.filters, groups = this._pastGroups();
     const seg = (g, cur, js) => U.seg(g.o.map(([v, l]) => ({ l, on: g.multi ? (cur || []).includes(v) : cur === v, js: ro ? '' : js(v) }))
       .concat(this.PAST_ALL.includes(g.k) ? [{ l: 'Tous', on: g.o.every(([v]) => (cur || []).includes(v)), js: ro ? '' : js('*') }] : []), { sm: true, scroll: true, label: g.l });
-    const grp = (g, html, miss) => `<div class="pt-grp"><span class="pt-lbl${miss ? ' pt-miss' : ''}"${miss ? ' title="Pas encore renseigné"' : ''}>${g.l}${miss ? ' ⚠' : ''}</span>${html}</div>`;
+    /* Titre d'une pastille d'un produit LIÉ : double-clic = séparer / relier (sauf le poil, jamais commun) */
+    const twl = (p, k) => {
+      if (!p || ro || k === 'poil' || !this.twinOf(p)) return { a: '', t: '' };
+      const sep = this.twinFree(p).includes(k);
+      return { a: ` ondblclick="event.stopPropagation();Stock.toggleTwinFree('${p.id}','${k}')" title="${sep ? 'Séparée du produit lié : double-clic pour la rendre à nouveau commune' : 'Commune au produit lié : double-clic pour la régler séparément'}" style="cursor:pointer;user-select:none;"`, t: sep ? ' <span class="pt-sep">· séparée</span>' : '' };
+    };
+    const grp = (g, html, miss, p) => { const tw = twl(p, g.k); return `<div class="pt-grp"><span class="pt-lbl${miss ? ' pt-miss' : ''}"${!tw.a && miss ? ' title="Pas encore renseigné"' : ''}${tw.a}>${g.l}${miss ? ' ⚠' : ''}${tw.t}</span>${html}</div>`; };
     const row = p => {
       const own = p.variants.filter(v => !v.parentId && v.mode !== 'vrac');
       const vars = own.length > 1 ? this.orderedVariants(p).filter(v => own.includes(v) && (!f.variants.length || f.variants.includes(Pricing.labelVariant(v)))) : [];
       const vg = groups.filter(g => this.PER_SIZE_KEYS.includes(g.k)), same = vars.length && this.sameTags(p);
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
-        ${(tw => tw ? `<div class="pt-twin">${U.icon('link')} Lié à <b>${U.esc(tw.name)}</b> : mêmes pastilles (sauf le poil)${ro ? '' : ` <button type="button" class="btn-ghost btn-sm fit" onclick="Stock.unlinkTwin('${p.id}')">Délier</button>`}</div>` : '')(this.twinOf(p))}
+        ${(tw => tw ? `<div class="pt-twin">${U.icon('link')} Lié à <b>${U.esc(tw.name)}</b> : mêmes pastilles (sauf le poil${(n => n ? ' et ' + n + ' séparée' + (n > 1 ? 's' : '') : '')(this.twinFree(p).length)})<span class="muted help">Double-clic sur le TITRE d'une pastille (ex. « Résistance ») : elle se règle séparément sur chaque produit. Nouveau double-clic : elle redevient commune.</span>${ro ? '' : ` <button type="button" class="btn-ghost btn-sm fit" onclick="Stock.unlinkTwin('${p.id}')">Délier</button>`}</div>` : '')(this.twinOf(p))}
         <div class="pt-grps">${(miss => groups.filter(g => !this.treatHides(p, g.k)).map(g => this.perSize(p) && this.PER_SIZE_KEYS.includes(g.k)
-          ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ici = toutes les tailles réunies. Double-clic sur une valeur : l'applique (ou la retire) à TOUTES les tailles d'un coup."${ro ? '' : ` ondblclick="Stock._pastDbl(event,'${p.id}','${g.k}')"`}><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}">${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
-          : grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
+          ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ici = toutes les tailles réunies. Double-clic sur une valeur : l'applique (ou la retire) à TOUTES les tailles d'un coup."${ro ? '' : ` ondblclick="Stock._pastDbl(event,'${p.id}','${g.k}')"`}><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}"${twl(p, g.k).a}>${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}${twl(p, g.k).t}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
+          : grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k), p)).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
         ${vars.length ? `<div class="pt-vars${same ? ' pt-same' : ''}"><div class="pt-vhead">Par taille ${same ? '— suivent le produit' : ''} <span class="muted help">« Comme le produit » coché : toutes les tailles prennent l'espèce, l'âge et le gabarit du produit (coché d'office pour les formats au gramme). Décoché : chaque taille se règle ici (S/M/L, longueurs…) ; âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
           ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.filter(g => !this.treatHides(p, g.k)).map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
       </div>`;

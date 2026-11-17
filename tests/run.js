@@ -531,6 +531,15 @@ eq('25a le gabarit des tailles ne bouge pas', run(`Store.state.stockM[1].variant
 run(`Stock.setPastAllV('b', 'age', 'senior');`);
 eq('25b dans l\'autre sens : toutes les tailles réunies sur le produit simple', run(`Store.state.stockM[0].tags.age.slice().sort()`), ['0-3', '11+', '3-5', '6-10', 'senior']);
 
+/* ══════════ 26. PRODUITS LIÉS : pastille séparée (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Museau de chèvre', { days: 200, price: 4, meat: 'Chevre', tags: { resistance: 'moyenne', gras: 'peu' } }), sp('b', 'Museau de chèvre avec poils', { days: 200, price: 4, meat: 'Chevre', tags: { poil: 'avec', resistance: 'moyenne', gras: 'peu' } })]);
+run(`Stock.render = Stock.renderM = function () {}; U.toast = function () {}; Store.save = function () {}; Store.state.stockM[0].twinId = 'b'; Store.state.stockM[1].twinId = 'a';`);
+run(`Stock.toggleTwinFree('b', 'resistance'); Stock.setPast('b', 'resistance', 'forte'); Stock.setPast('b', 'gras', 'moyen');`);
+eq('26a résistance séparée : l\'autre garde la sienne', run(`Store.state.stockM[0].tags.resistance`), 'moyenne');
+eq('26a gras toujours commun', run(`Store.state.stockM[0].tags.gras`), 'moyen');
+run(`Stock.toggleTwinFree('a', 'resistance');`);
+eq('26b reliée depuis l\'autre : sa valeur est reprise', run(`[Store.state.stockM[1].tags.resistance, Stock.twinFree(Store.state.stockM[1]).length]`), ['moyenne', 0]);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
