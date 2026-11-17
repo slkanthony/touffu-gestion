@@ -129,7 +129,11 @@ const Stock = {
      et ignorés par le générateur (= conviennent à tous). Les valeurs déjà saisies restent enregistrées : repasser en « Occupation » les retrouve. */
   TREAT_HIDE: ['resistance', 'odeur', 'ramollit', 'age', 'gabarit'],
   isTreat(p) { return ((p && p.tags) || {}).type === 'education'; },
-  treatHides(p, k) { return this.isTreat(p) && this.TREAT_HIDE.includes(k); },
+  /* Produit pour CHAT SEUL (Antho 2026-11-17 : « je ne fais jamais de panier pour les chats ») : résistance, odeur, gras, se ramollit, âge, gabarit masqués
+     (le générateur exclut déjà ces produits). Tailles réglées à part : chat seul si toutes les tailles le sont. */
+  CAT_HIDE: ['resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit'],
+  catOnly(p) { const sp = this.perSize(p) ? this._pastUnion(p, 'species') : this.speciesOf(p); return sp.length > 0 && sp.every(x => x === 'chat'); },
+  treatHides(p, k) { return (this.isTreat(p) && this.TREAT_HIDE.includes(k)) || (this.CAT_HIDE.includes(k) && this.catOnly(p)); },
   pastMissing(p) {
     const t = p.tags || {}, vs = this.sameTags(p) ? [] : this._ownVariants(p);
     return this.PAST_REQ.filter(k => {

@@ -516,6 +516,11 @@ eq('22c valeurs gardées en réserve', run(`Store.state.stockM[0].tags.resistanc
   eq('23 10 mois révolus = 11 mois +', run(`Paniers._dogAges({ birth: '${born(10)}' })`), ['11+']);
   eq('23 2 mois = 0-3 mois', run(`Paniers._dogAges({ birth: '${born(2)}' })`), ['0-3']); }
 
+/* ══════════ 24. PRODUITS CHAT SEUL : 6 pastilles masquées (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Bâtonnet', { days: 200, price: 4, meat: 'Bois Naturel', tags: { species: ['chat'] } }), sp('b', 'Mixte', { days: 200, price: 4, meat: 'Bois Naturel', tags: { species: ['chien', 'chat'] } })]);
+eq('24a chat seul : rien à compléter sauf l\'hypo (déjà « non » d\'office)', run(`Stock.pastMissing(Store.state.stockM[0])`), []);
+eq('24b chien + chat : pastilles toujours demandées', run(`Stock.pastMissing(Store.state.stockM[1]).length`), 6);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
