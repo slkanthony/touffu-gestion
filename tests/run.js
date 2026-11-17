@@ -563,8 +563,18 @@ run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped
 run(`Paniers.swapItem(0);`);
 eq('28a remplacer « Cou de dinde » : ni un 2e « Cou d\'oie » ni un autre cou', run(`Paniers.basket.map(b => b.name).filter(n => /^Cou/.test(n)).length`), 1);
 eq('28a le remplaçant est d un autre type (pas un cou)', run(`/^Cou/.test(Paniers.basket[0].name)`), false);
-run(`Paniers.removeItem(1); Paniers.complete();`);
+run(`Paniers.removeItem(Paniers.basket.findIndex(b => b.pId === 'a')); Paniers.complete();`);
 eq('28b retiré puis « Compléter » : pas remis', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+
+/* ══════════ 29. REMPLACER = un ou plusieurs produits pour le même budget (Antho 2026-11-18) ══════════ */
+paniers([sp('a', 'Museau de bœuf', { days: 200, price: 6, meat: 'Boeuf', tags: { resistance: 'moyenne' } }), sp('b', 'Groin de porc', { days: 200, price: 3, meat: 'Porc', tags: { resistance: 'moyenne' } }),
+         sp('c', 'Fletan', { days: 200, price: 3, meat: 'Poisson', tags: { resistance: 'faible' } }), sp('d', 'Queue de bœuf', { days: 200, price: 4, meat: 'Boeuf', tags: { resistance: 'moyenne' } })], { budget: 10 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers.basket = [
+  { pId: 'a', vId: 'av', lotId: 'al', name: 'Museau de bœuf', meat: 'Boeuf', price: 6, qty: 1 }, { pId: 'd', vId: 'dv', lotId: 'dl', name: 'Queue de bœuf', meat: 'Boeuf', price: 4, qty: 1 }];`);
+run(`Paniers.swapItem(0);`);
+eq('29a museau (6 €) remplacé par deux produits à 3 €', run(`Paniers.basket.map(b => b.name).slice(0, 2).sort()`), ['Fletan', 'Groin de porc']);
+eq('29a la queue de bœuf reste en dernier, le museau est parti', run(`[Paniers.basket[Paniers.basket.length - 1].name, Paniers.basket.some(b => b.pId === 'a')]`), ['Queue de bœuf', false]);
+eq('29a total inchangé', run(`Paniers.basket.reduce((a, b) => a + b.price * b.qty, 0)`), 10);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

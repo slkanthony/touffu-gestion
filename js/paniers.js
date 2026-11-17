@@ -653,7 +653,8 @@ const Paniers = {
     const res = sp ? (this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null).resistance || '') : '';
     return { cut: this._cutKey(sp ? sp.name : x.name), res };
   },
-  _isFresh(c, basket) { return !basket.some(b => b.pId === c.pId) && !this._tooClose(c, basket); },
+  _isFresh(c, basket) { return !basket.some(b => b.pId === c.pId) && !this._tooClose(c, basket) && !(this._avoidLike && this._tooClose(c, this._avoidLike)); },
+  _avoidLike: null,   // produit qu'on est en train de remplacer : ses « jumeaux de morceau » passent derrière
   _tooClose(c, basket) {
     const a = this._simOf(c);
     if (!a.cut) return false;
@@ -714,7 +715,7 @@ const Paniers = {
       if (!eligible.length) break;
       // VARIÉTÉ d'abord (Antho 2026-11-17) : produits pas encore dans le panier et pas trop proches d'un produit déjà choisi, tant qu'il y en a
       // Plus aucun produit « nouveau » qui rentre : un seul chien → on s'arrête là (la finition / la commande site complètent) ; plusieurs chiens → un 2e exemplaire reste possible
-      { const fresh = eligible.filter(c => !usedProducts.has(c.pId) && !this._tooClose(c, basket)); if (fresh.length) eligible = fresh; else if (!(mult > 1 || nd)) break; }
+      { const fresh = eligible.filter(c => !usedProducts.has(c.pId) && this._isFresh(c, basket)); if (fresh.length) eligible = fresh; else if (!(mult > 1 || nd)) break; }
       // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
       // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
       // (commande site : pas de passage forcé, les dates courtes comptent autant que le coefficient dans la note — seules les dates DÉPASSÉES passent d'office)
@@ -1024,79 +1025,31 @@ const Paniers = {
     this.render();
     U.toast(`${oldName} exclu → ${pick.name}`);
   },
+  /* « Remplacer » (🔄, Antho 2026-11-18) : le produit part, et son budget (+ le reste éventuel) est recomposé — UN OU PLUSIEURS produits,
+     mêmes règles que la génération (variété, dates, dureté…), en évitant le même type de produit. Le produit remplacé n'est plus repris dans ce panier.
+     Les autres lignes ne bougent pas. Rien qui convienne → le panier reste tel quel. */
   swapItem(idx) {
     const item = this.basket[idx];
     if (!item) return;
-
-    const otherTotal = this.basket.reduce((a, b, i) => i === idx ? a : a + b.price * b.qty, 0);
-    const maxPrice = this._avail() - otherTotal;
-
-    const cands = this.candidates();
-    if (!cands.length) { U.toast('Aucun produit disponible.', true); return; }
-
-    this.basket.forEach((b, i) => {
-      if (i === idx) return;
-      const c = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId);
-      if (c) c.avail = Math.max(0, c.avail - b.qty);
-    });
-
-    // Historique des produits déjà refusés pour CE créneau : chaque clic sur 🔄 ajoute
-    // le produit courant à la liste et l'exclut des candidats → « remplacer » propose
-    // toujours du NOUVEAU, ne revient jamais à un produit déjà écarté (demande d'Antho).
-    const rejected = Array.isArray(item._swapRejected) ? item._swapRejected.slice() : [];
-    if (!rejected.includes(item.pId)) rejected.push(item.pId);
-    this._drop(item.pId);   // remplacé = écarté : ni « Compléter » ni « Générer » ne le remettront dans ce panier
-
-    const otherHard = this.basket.some((b, j) => {
-      if (j === idx) return false;
-      const sp = Store.state.stockM.find(x => x.id === b.pId);
-      if (!sp) return false;
-      const sv = sp.variants.find(x => x.id === b.vId);
-      const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
-      return this.HARD.includes(mt.resistance);
-    });
-    const eligibleFor = rej => {
-      let e = cands.filter(c => c.price <= maxPrice && c.avail > 0 && !rej.includes(c.pId) && !this._famTaken(c, this.basket, idx));
-      if (otherHard) e = e.filter(c => !this.HARD.includes(c.tags.resistance));
-      e = this._varietyPick(e, idx);   // jamais un produit déjà dans le panier (2 lignes « Cou d'oie »), ni trop proche s'il y a mieux
-      const other = e.filter(c => !this._tooClose(c, [item]));   // « Remplacer » = autre chose : pas un cou d'oie à la place d'un cou de dinde, s'il y a mieux
-      return other.length ? other : e;
-    };
-    let eligible = eligibleFor(rejected);
-    // Toutes les autres options ont déjà été refusées dans cette série : on repart d'une
-    // liste neuve (n'exclut que le produit courant) plutôt que de rester bloqué.
-    if (!eligible.length) { rejected.length = 0; rejected.push(item.pId); eligible = eligibleFor(rejected); }
-    if (!eligible.length) { U.toast('Aucun remplacement trouvé dans le budget restant.', true); return; }
-
-    const usedProducts = new Set();
-    const usedMeats = {};
-    this.basket.forEach((b, i) => {
-      if (i === idx) return;
-      usedProducts.add(b.pId);
-      usedMeats[b.meat] = (usedMeats[b.meat] || 0) + b.qty;
-    });
-
-    const maxCoeff = Math.max(...cands.map(c => c.coeff), 1);
-    const weights = this._weights();
-    const mult = Math.max(1, this.nbChiens);
-
-    eligible.sort((a, b) => {
-      const sa = this._itemScore(a, usedProducts, usedMeats, maxCoeff, weights, mult);
-      const sb = this._itemScore(b, usedProducts, usedMeats, maxCoeff, weights, mult);
-      return sb - sa;
-    });
-
-    const pick = eligible[0];
-    const oldName = item.name;
-    this.basket[idx] = {
-      pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
-      name: pick.name, meat: pick.meat, variant: pick.variant,
-      price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick),
-      _swapRejected: rejected // mémorise la série de refus pour les prochains 🔄 sur ce créneau
-    };
+    const before = this.basket.map(b => ({ ...b }));
+    const others = this.basket.filter((b, i) => i !== idx);
+    const was = others.map(b => !!b.locked);
+    this._drop(item.pId);
+    this._avoidLike = [item];
+    let out;
+    try { out = this._compose(this._avail(), others.map(b => ({ ...b, locked: true }))); } finally { this._avoidLike = null; }
+    const fresh = out.slice(others.length);   // lignes nouvelles (les autres lignes gardent leur place)
+    if (!fresh.length) {
+      this._dropped = this._dropped.filter(x => x !== item.pId);
+      this.basket = before; this.render();
+      U.toast('Aucun remplacement trouvé avec ces réglages : le produit reste.', true);
+      return;
+    }
+    out.slice(0, others.length).forEach((b, i) => { b.locked = was[i]; });
+    this.basket = out.slice(0, idx).concat(fresh, out.slice(idx, others.length));
+    this.proposals = null;
     this.render();
-    U.toast(`${oldName} → ${pick.name}`);
+    U.toast(`${item.name} → ${fresh.map(b => b.name + (b.qty > 1 ? ' ×' + b.qty : '')).join(' + ')}`);
   },
   /* Fenêtre « client » : produit, variante, prix TTC seulement (pas de coeff, DLUO, viande…) — pour capture d'écran ou copie du texte */
   _shareData() {
