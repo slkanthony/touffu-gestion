@@ -391,7 +391,7 @@ run(`Pricing._calcAllM = Pricing._calcAllM; Paniers.candidates = (orig => functi
 eq('12f lot : une date dépassée passe en premier', build(4), ['Dépassé']);
 eq('12f lot : puis le plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
 run(`Paniers.kind = 'site';`);
-eq('12g commande site : dates courtes puis plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
+eq('12g commande site : la date dépassée passe toujours, puis le plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
 run(`Paniers.kind = 'vente';`);
 eq('12g vente (mix) : deux produits pour 8 €', build(8).sort().length, 2);
 
@@ -407,6 +407,22 @@ eq('13b race : gabarit pré-rempli', run(`Paniers.gabaritInclude`), ['moyen']);
 eq('13b race : résistance de gros mâcheur, sans mastication longue', run(`Paniers.resistanceInclude`), ['moyenne', 'forte', 'tres-forte']);
 eq('13b race : viande à éviter ajoutée aux exclusions', run(`Paniers.excludeMeats`), ['Dinde']);
 run(`Store.state.settings.breeds = null;`);
+
+/* ══════════ 14. PANIERS : commande site = juste milieu ; compléter le panier (Antho 2026-11-17) ══════════ */
+/* Date courte (20 j) à faible coefficient contre date lointaine à très fort coefficient : le lot prend la date courte d'office, la commande site pèse les deux. */
+const mid = () => [sp('a', 'Court faible', { days: 20, price: 4, meat: 'Boeuf' }), sp('b', 'Loin fort', { days: 300, price: 4, meat: 'Canard' })];
+const coefPatch = `Paniers.candidates = (orig => function () { const out = orig.call(this); out.forEach(c => { c.coeff = c.name === 'Loin fort' ? 4 : 1.1; }); return out; })(Paniers.candidates);`;
+paniers(mid(), { kind: 'lot' }); run(coefPatch);
+eq('14a lot : la date courte d\'office', build(4), ['Court faible']);
+paniers(mid(), { kind: 'site' }); run(coefPatch);
+eq('14a commande site : une date très courte (20 j) passe encore devant', build(4), ['Court faible']);
+paniers([sp('a', 'Court faible', { days: 60, price: 4, meat: 'Boeuf' }), sp('b', 'Loin fort', { days: 300, price: 4, meat: 'Canard' })], { kind: 'site' }); run(coefPatch);
+eq('14a commande site : à 2 mois, le gros coefficient passe devant (juste milieu)', build(4), ['Loin fort']);
+/* Compléter : les produits déjà là restent, on ajoute jusqu'au budget, jamais au-dessus. */
+paniers([sp('a', 'A', { days: 200, price: 5, meat: 'Boeuf' }), sp('b', 'B', { days: 200, price: 3, meat: 'Canard' }), sp('c', 'C', { days: 200, price: 1, meat: 'Lapin' })], { budget: 10 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.basket = [{ pId: 'a', vId: 'av', lotId: 'al', name: 'A', meat: 'Boeuf', price: 5, qty: 1, locked: false }]; Paniers.complete();`);
+eq('14b compléter : le produit déjà là reste (non verrouillé)', run(`Paniers.basket[0].name + ' ' + Paniers.basket[0].locked`), 'A false');
+eq('14b compléter : tout ce qui rentre est ajouté (5 + 3 + 1), jamais au-dessus', run(`Paniers.basket.reduce((a, b) => a + b.price * b.qty, 0)`), 9);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

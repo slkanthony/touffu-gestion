@@ -362,7 +362,9 @@ const Paniers = {
   },
   /* Poids de chaque critère dans la note d'un produit (somme = 1). Une seule définition pour générer, exclure et remplacer. */
   _weights() {
-    if (this.kind === 'lot' || this.kind === 'site') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
+    if (this.kind === 'lot') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
+    // Commande site (Antho 2026-11-17) : le juste milieu entre dates courtes et bon coefficient (sans passage forcé des dates courtes, voir _buildBasket)
+    if (this.kind === 'site') return { dluo: 0.25, coeff: 0.25, div: 0.12, size: 0.07, type: 0.07, meat: 0.07, gab: 0.07, hypoGras: 0.05, like: 0.05 };
     return this.priority === 'dluo' ? { dluo: 0.36, coeff: 0.04, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : this.priority === 'coeff' ? { dluo: 0.08, coeff: 0.32, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : { dluo: 0.26, coeff: 0.08, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.06, like: 0.08 };
@@ -674,7 +676,8 @@ const Paniers = {
       if (!eligible.length) break;
       // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
       // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
-      if (this.priority !== 'coeff') { const urg = eligible.filter(c => c.daysLeft <= this.URGENT_DAYS && !usedProducts.has(c.pId)); if (urg.length) eligible = urg; }
+      // (commande site : pas de passage forcé, les dates courtes comptent autant que le coefficient dans la note — seules les dates DÉPASSÉES passent d'office)
+      if (this.priority !== 'coeff') { const urg = eligible.filter(c => (this.kind === 'site' ? c.daysLeft < 0 : c.daysLeft <= this.URGENT_DAYS) && !usedProducts.has(c.pId)); if (urg.length) eligible = urg; }
       const gramN = basket.filter(b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sv && sv.mode === 'gram'; }).length;
       this._bal = { gram: gramN, vrac: basket.length - gramN, hard: hardInBasket };
       // Alternance gramme / vrac : on prend le format le moins représenté tant qu'il en reste dans le budget
@@ -816,6 +819,22 @@ const Paniers = {
       const n = this.basket.reduce((a, b) => a + b.qty, 0);
       U.toast(`Panier généré : ${n} article(s)`);
     }
+  },
+  /* « Compléter le panier » (Antho 2026-11-17) : garde TOUS les produits déjà dans le panier tels quels et ajoute de quoi arriver au budget
+     (mêmes règles que la génération). Une seule proposition, jamais au-dessus du budget. */
+  complete() {
+    const available = this._avail();
+    const spent = this.basket.reduce((a, b) => a + b.price * b.qty, 0);
+    if (available - spent < 0.05) { U.toast('Le panier est déjà au budget.', true); return; }
+    const was = this.basket.map(b => !!b.locked);
+    const base = this.basket.map(b => ({ ...b, locked: true }));
+    const out = this._compose(available, base);
+    out.forEach((b, i) => { if (i < was.length) b.locked = was[i]; });   // les produits d'avant gardent leur verrou d'origine
+    const added = out.reduce((a, b) => a + b.qty, 0) - this.basket.reduce((a, b) => a + b.qty, 0);
+    if (added <= 0) { U.toast(`Aucun produit ne rentre dans le reste (${U.eur((available - spent) * (1 - this._disc()))}) avec ces réglages.`, true); return; }
+    this.basket = out; this.proposals = null;
+    this.render();
+    U.toast(`Panier complété : ${added} article${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}.`);
   },
   regenerate() {
     const available = this._avail();
@@ -2043,6 +2062,7 @@ const Paniers = {
 
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-cta" onclick="Paniers.generate()">🎲 Générer le panier</button>
+          ${this.basket.length && this._avail() - this.basket.reduce((a, b) => a + b.price * b.qty, 0) >= 0.05 ? `<button class="btn-ghost" onclick="Paniers.complete()" title="Garde tous les produits du panier et ajoute de quoi arriver au budget">＋ Compléter le panier</button>` : ''}
           ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.regenerate()" title="Garde les produits verrouillés 🔒 et recompose le reste du panier">🔄 Recomposer le reste</button>` : ''}
           ${this.basket.length || this.proposals ? `<button class="btn-ghost" onclick="Paniers.clearBasket()">🧹 Vider</button>` : ''}
         </div>
