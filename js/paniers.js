@@ -121,6 +121,62 @@ const Paniers = {
     if (this._triedVerdict([d], p.name) === 'avoid') return false;
     return true;
   },
+  /* ---------- Cliente déjà connue : son dernier panier (Antho 2026-11-17) ----------
+     Dernière vente NON annulée de la cliente contenant de la mastication (lien par le nom, comme la fiche cliente). À la génération, ses produits sont
+     évités pour varier (pénalité dans la note), sauf ceux que le chien aime (viande « aime » ou produit noté « aimé ») ; un produit noté « pas aimé »
+     est de toute façon exclu. `redoLast()` recompose ce même panier avec le stock et les prix d'aujourd'hui. */
+  PREV_PENALTY: 0.2,
+  _lastSale() {
+    if (Clients.ro()) return null;
+    const keys = new Set([Clients.key(this.client)]), c = Clients.find(this.client);
+    if (c) keys.add(Clients.key(c.name));
+    keys.delete('');
+    if (!keys.size) return null;
+    return (Store.state.sales || []).filter(x => !x.cancelled && keys.has(Clients.key(x.customerName)) && (x.items || []).some(i => (i.kind || 'M') === 'M'))
+      .sort((a, b) => U.num(b.ts) - U.num(a.ts))[0] || null;
+  },
+  _lastItems() { const x = this._lastSale(); return x ? x.items.filter(i => (i.kind || 'M') === 'M') : []; },
+  /* Produit / variante du stock d'une ligne de vente : par identifiant, sinon par nom (anciennes ventes importées sans identifiant) */
+  _stockOf(i) {
+    const sm = Store.state.stockM || [], nm = t => Clients._norm(t).replace(/\s+/g, ' ').trim();
+    const p = (i.pId && sm.find(x => x.id === i.pId)) || sm.find(x => nm(x.name) === nm(i.name));
+    if (!p) return null;
+    const lab = nm(i.label || i.variant || '').replace(/ /g, '');
+    const v = (p.variants || []).find(x => x.id === i.vId) || (p.variants || []).find(x => lab && nm(Pricing.labelVariant(x)).replace(/ /g, '') === lab) || ((p.variants || []).length === 1 ? p.variants[0] : null);
+    return { p, v };
+  },
+  _lastIds() { return new Set(this._lastItems().map(i => (this._stockOf(i) || {}).p).filter(Boolean).map(p => p.id)); },
+  _lastHTML() {
+    const x = this._lastSale(); if (!x) return '';
+    const it = this._lastItems(), n = it.reduce((a, i) => a + U.num(i.qty), 0), tot = it.reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0);
+    return `<div class="pan-last"><span>Dernier panier : <b>${U.frDate(U.dayKey(x.ts))}</b> · ${n} article${n > 1 ? 's' : ''} · ${U.eur(tot)} <span class="muted help">À la génération, les produits de ce panier sont évités pour varier, sauf ceux que le chien aime (viande « aime » ou produit noté « aimé » sur sa fiche). « Refaire » remet les mêmes produits, avec le stock et les prix d'aujourd'hui.</span></span>
+      <button class="btn-ghost btn-sm" onclick="Paniers.redoLast()" title="${U.esc(it.map(i => i.name + (i.label ? ' ' + i.label : '') + ' ×' + U.qty(i.qty)).join(' · '))}">Refaire ce panier</button></div>`;
+  },
+  async redoLast() {
+    const sale = this._lastSale(); if (!sale) return;
+    if ((this.basket || []).length && !await U.confirm('Remplacer le panier actuel par le dernier panier de ' + Clients.show(this.client) + ' ?', { okLabel: 'Remplacer' })) return;
+    const out = [], miss = [], r = this._clientRules(), dogs = r ? r.dogs : [];
+    this._lastItems().forEach(i => {
+      const f = this._stockOf(i);
+      if (!f || !f.v) { miss.push(i.name + ' (plus en stock)'); return; }
+      const { p, v } = f;
+      if (this._triedVerdict(dogs, p.name) === 'avoid') { miss.push(p.name + ' (noté « pas aimé »)'); return; }
+      const rc = Stock.refCalc(p, v), price = rc ? rc.calc.priceTTC : U.num(v.priceTTC), coeff = rc ? (rc.calc.effCoeff || 0) : 0, fam = this._famInfo(p, v).family;
+      let need = Math.max(1, Math.round(U.num(i.qty)));
+      (v.lots || []).filter(l => U.num(l.qtyGeneral) + U.num(l.qtyEvent) > 0).sort((a, b) => String(a.dluo || '9999').localeCompare(String(b.dluo || '9999'))).forEach(l => {
+        if (need <= 0) return;
+        const q = Math.min(need, U.num(l.qtyGeneral) + U.num(l.qtyEvent)), d = U.daysTo(l.dluo);
+        need -= q;
+        out.push({ pId: p.id, vId: v.id, lotId: l.id, name: p.name, meat: p.meatType || '', variant: Pricing.labelVariant(v), price, qty: q, dluo: l.dluo || '', daysLeft: d === null ? 9999 : d, coeff, lotNumber: l.lotNumber || '', locked: false, family: fam, dog: '' });
+      });
+      if (need > 0) miss.push(p.name + ' (' + need + ' manquant' + (need > 1 ? 's' : '') + ')');
+    });
+    if (!out.length) { U.toast('Aucun produit du dernier panier n’est disponible aujourd’hui.', true); return; }
+    this.basket = out; this.proposals = null;
+    this.render();
+    const tot = out.reduce((a, b) => a + b.price * b.qty, 0);
+    U.toast('Dernier panier recomposé : ' + U.eur(tot) + ' aux prix d’aujourd’hui' + (miss.length ? '. Manque : ' + miss.join(', ') : '.'), !!miss.length);
+  },
   /* ---------- Règles de raisonnement (Antho 2026-11-17) ---------- */
   URGENT_DAYS: 30,   // date dépassée ou à moins de 30 jours = « urgent » : proposé en premier
   /* Tranches d'âge / gabarits choisis à la main dans les filtres : null tant que TOUT est coché (= « je ne sais pas », aucune préférence d'âge ou de gabarit) */
@@ -188,6 +244,7 @@ const Paniers = {
     const d0 = cl && cl.dogs.length ? cl.dogs[0] : null;
     const da = d0 ? this._dogAges(d0) : null, dg = d0 ? (d0.gabarit || '') : '';
     const selAges = this._ageSel();
+    const lastIds = this._lastIds();   // produits du dernier panier de la cliente : évités pour varier (sauf aimés)
 
     Store.state.stockM.forEach(p => {
       if (this.excludeMeats.includes(p.meatType)) return;
@@ -255,7 +312,7 @@ const Paniers = {
             mode: v.mode || '', value: v.value,
             ...this._famInfo(p, v),
             ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : { ages: da || undefined, gabs: dg ? [dg] : undefined }),
-            chews, liked
+            chews, liked, prev: lastIds.has(p.id)
           });
         });
       });
@@ -387,7 +444,7 @@ const Paniers = {
     const meatScore = this._meatAgePrefScore(c);
     const gabScore = this._gabaritResistScore(c);
     const hypoGrasScore = this._hypoGrasScore(c);
-    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5);
+    return 0.12 * this._balScore(c) + weights.dluo * dluoScore + weights.coeff * coeffScore + weights.div * divScore + weights.size * sizeScore + weights.type * typeScore + weights.meat * meatScore + weights.gab * gabScore + weights.hypoGras * hypoGrasScore + (weights.like || 0) * (c.liked ? 1 : 0.5) - (c.prev && !c.liked ? this.PREV_PENALTY : 0);
   },
 
   _buildBasket(maxAvailable, lockedItems) {
@@ -512,6 +569,7 @@ const Paniers = {
             if (delta < 0.005 || delta > gap + 0.005) return;
             if (c.pId === b.pId && c.vId === b.vId) return;
             if (bUrgent && c.daysLeft > this.URGENT_DAYS) return;
+            if (c.prev && !c.liked && !(b.prev && !b.liked)) return;   // ne pas remplacer un produit nouveau par un produit du dernier panier (variété d'abord)
             if (!canAdd(c, rest)) return;
             const sc = score(c);
             if (!best || delta > best.delta + 0.005 || (Math.abs(delta - best.delta) <= 0.005 && sc > best.sc)) best = { bi, c, delta, sc };
@@ -1698,7 +1756,7 @@ const Paniers = {
 
         <div class="fg" style="margin-bottom:12px;"><label>🐕 Cliente (option)</label>
           <input type="text" data-clcombo autocomplete="off" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente ou du chien…" onchange="Paniers.setClient(this.value)">
-          <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div></div>
+          <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div>${this._lastHTML()}</div>
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💰 Budget TTC</label>
