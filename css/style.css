@@ -1933,4 +1933,6 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 /* Mode pastilles : pastille pas encore renseignée */
 .pt-lbl.pt-miss { color: var(--warn); font-weight: 700; }
 /* Mode pastilles : espèce / âge / gabarit du produit quand les tailles décident (grisé, non cliquable) */
-.pt-grp.pt-locked > :not(.pt-lbl) { opacity: .45; pointer-events: none; }
+.pt-grp.pt-locked > :not(.pt-lbl) { opacity: .5; user-select: none; }
+.pt-grp.pt-locked > :not(.pt-lbl):hover { opacity: .8; }
+.pt-grp.pt-locked button { cursor: pointer; }

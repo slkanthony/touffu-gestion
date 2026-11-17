@@ -467,6 +467,17 @@ run(`Store.state.stockM[1].tags.gabarit = ['petit', 'moyen', 'grand']; Store.sta
 eq('17c gabarit du produit ignoré : la taille L garde le sien (L = moyen + grand)', run(`Paniers._mergeTags(Stock.effTags(Store.state.stockM[1]), Stock.variantTags(Store.state.stockM[1], Store.state.stockM[1].variants[1])).gabarit`), ['moyen', 'grand']);
 eq('17c âge du produit ignoré', run(`Stock.effTags(Store.state.stockM[1]).age`), []);
 
+/* ══════════ 18. PASTILLES : double-clic sur la partie grisée = toutes les tailles (Antho 2026-11-17) ══════════ */
+paniers([{ id: 'm', name: 'Museau', meatType: 'Boeuf', tags: {}, variants: ['S', 'M', 'L'].map(z => ({ id: 'm' + z, mode: 'size', value: z, label: z, priceTTC: 3, costUnit: 1, lots: [] })) }]);
+run(`Stock.render = Stock.renderM = function () {}; U.toast = function () {}; Store.save = function () {};`);
+run(`Stock.setPastAllV('m', 'age', '11+');`);
+eq('18a 11 mois + écrit sur les 3 tailles', run(`Store.state.stockM[0].variants.map(v => (v.tags.age || []).join())`), ['11+', '11+', '11+']);
+run(`Stock.setPastAllV('m', 'age', '11+');`);
+eq('18a re-double-clic : retiré partout', run(`Store.state.stockM[0].variants.map(v => !!(v.tags && v.tags.age))`), [false, false, false]);
+run(`Stock.setPastAllV('m', 'age', '*');`);
+eq('18b « Tous » : tous les âges sur chaque taille', run(`Store.state.stockM[0].variants.every(v => v.tags.age.length === 5)`), true);
+eq('18c le gabarit déduit de chaque taille ne bouge pas', run(`Store.state.stockM[0].variants.map(v => Stock.variantTags(Store.state.stockM[0], v).gabarit.join())`), ['petit', 'moyen', 'moyen,grand']);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

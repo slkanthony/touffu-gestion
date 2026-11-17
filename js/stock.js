@@ -161,6 +161,34 @@ const Stock = {
   _baseSpecies(p) { return this.perSize(p) ? ['chien'] : this.speciesOf(p); },
   /* Ce que le produit couvre, toutes tailles réunies (affiché grisé sur la ligne du produit) */
   _pastUnion(p, k) { return [...new Set(this._ownVariants(p).flatMap(v => this._pastVCur(p, v, k)))]; },
+  /* Double-clic sur la partie grisée du produit (Antho 2026-11-17 : « l'âge ne varie pas avec la taille, je ne veux pas remplir chaque ligne ») :
+     la valeur est écrite sur TOUTES les tailles d'un coup. Déjà présente partout → retirée partout ; sinon ajoutée partout (« Tous » idem pour toute la liste).
+     Les tailles restent la seule référence : pas de conflit avec le produit. */
+  setPastAllV(id, k, val) {
+    const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
+    const g = this._pastGroups().find(x => x.k === k); if (!g) return;
+    const vs = this._ownVariants(p), all = g.o.map(([x]) => x), same = (a, b) => a.slice().sort().join() === b.slice().sort().join();
+    const cur = v => this._pastVCur(p, v, k).slice();
+    let fn;
+    if (val === '*') { const full = vs.every(v => all.every(x => cur(v).includes(x))); fn = () => full ? [] : all.slice(); }
+    else {
+      const every = vs.every(v => cur(v).includes(val));
+      fn = v => { const a = cur(v).filter(x => x !== val); if (!every) { a.push(val); if (k === 'age') (this.AGE_LINK[val] || []).forEach(x => { if (!a.includes(x)) a.push(x); }); } return a; };
+    }
+    this._pastCommit(p, () => vs.forEach(v => {
+      let a = fn(v);
+      if ((k === 'gabarit' && same(a, this.defaultGabarit(p, v))) || (k === 'species' && same(a, this._baseSpecies(p)))) a = [];
+      const t = v.tags = Object.assign({}, v.tags || {});
+      if (a.length) t[k] = a; else delete t[k];
+      if (!Object.keys(t).length) delete v.tags;
+    }));
+  },
+  _pastDbl(ev, id, k) {
+    const b = ev.target.closest('button'); if (!b) return;
+    const g = this._pastGroups().find(x => x.k === k); if (!g) return;
+    const i = [...b.parentNode.children].indexOf(b);
+    this.setPastAllV(id, k, i < g.o.length ? g.o[i][0] : '*');
+  },
   setSameTags(id) {
     const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
     this._pastCommit(p, () => { p.tags = Object.assign({}, p.tags || {}, { sameAll: !this.sameTags(p) }); });
@@ -240,7 +268,7 @@ const Stock = {
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
         <div class="pt-grps">${(miss => groups.map(g => this.perSize(p) && this.PER_SIZE_KEYS.includes(g.k)
-          ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ce qui est affiché ici = toutes les tailles réunies"><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}">${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
+          ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ici = toutes les tailles réunies. Double-clic sur une valeur : l'applique (ou la retire) à TOUTES les tailles d'un coup."${ro ? '' : ` ondblclick="Stock._pastDbl(event,'${p.id}','${g.k}')"`}><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}">${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
           : grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
         ${vars.length ? `<div class="pt-vars${same ? ' pt-same' : ''}"><div class="pt-vhead">Par taille ${same ? '— suivent le produit' : ''} <span class="muted help">« Comme le produit » coché : toutes les tailles prennent l'espèce, l'âge et le gabarit du produit (coché d'office pour les formats au gramme). Décoché : chaque taille se règle ici (S/M/L, longueurs…) ; âge vide = celui du produit ; espèce et gabarit affichés = ceux du produit ou de la taille (S = petit, M = moyen…) tant que tu n'as rien changé.</span></div>
           ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
