@@ -280,7 +280,7 @@ const App = {
   /* Navigation par hash (#/vue ou #/stock/onglet) : le bouton retour du navigateur
      fonctionne (chaque go() pousse une entrée d'historique) et l'URL survit à un F5,
      donc pas besoin de relire localStorage pour retrouver la bonne page/le bon onglet. */
-  stockTabs: ['mastication', 'matieres', 'accessoires', 'conso', 'peremptions', 'faible', 'faible-total', 'faible-event'],
+  stockTabs: ['mastication', 'matieres', 'accessoires', 'conso', 'peremptions', 'faible', 'faible-total', 'faible-event', 'pastilles'],
 
   routeFor(id) {
     if (id === 'stock') return `stock/${Stock.tab}`;

@@ -1875,3 +1875,21 @@ a.btn { line-height: normal; }
 .pan-last { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 6px 10px; border: 1px dashed var(--input-border); border-radius: 10px; font-size: .85rem; }
 .pan-last .btn-sm { flex: 0 0 auto; }
 .pan-last .pan-last-btns { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+/* Paniers : réglages avancés repliables, alerte « sans pastilles » */
+details.fold.pan-adv { margin-top: 12px; border: 1px solid var(--card-border); border-radius: 10px; padding: 0 10px; }
+details.fold.pan-adv > summary { padding: 10px 0; flex-wrap: wrap; gap: 4px 8px; }
+.pan-adv-t { font-weight: 700; }
+.pan-adv-sum { font-size: .8rem; font-weight: 400; }
+details.fold.pan-adv .fold-body { padding-bottom: 10px; }
+.pan-untagged { margin: 8px 0 0; padding: 6px 10px; border-left: 3px solid var(--warn); font-size: .85rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Stock → Pastilles : saisie rapide */
+.pt-filters .fg { flex: 0 1 220px; }
+.pt-filters .fg:last-child { flex: 0 0 auto; }
+.pt-list { display: flex; flex-direction: column; gap: 8px; }
+.pt-row { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px 12px; }
+.pt-row.pt-todo { border-left: 4px solid var(--warn); }
+.pt-name { font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pt-name a { color: var(--texte); text-decoration: none; }
+.pt-grps { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.pt-grp { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 100%; }
+.pt-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
