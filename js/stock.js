@@ -396,7 +396,17 @@ const Stock = {
     return out;
   },
   /* Hypoallergénique par défaut (lapin, agneau, cheval, cerf) tant que la fiche produit n'a rien de renseigné. */
-  hypoDefault(meat) { const m = String(meat || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /(?:^|[^a-z])(lapin|agneau|cheval|cerf)(?![a-z])/.test(m) ? 'oui' : ''; },
+  /* Hypoallergénique par défaut selon la viande (Antho 2026-11-17) : OUI = lapin, agneau, cheval, cerf, autruche ;
+     À VÉRIFIER (laissé « non renseigné », recherche dans CLAUDE-recherche-races.md) = chameau, chevreuil, sanglier, buffle, chèvre ;
+     toute autre viande = NON. Un choix fait sur la fiche l'emporte toujours. */
+  HYPO_YES: ['lapin', 'agneau', 'cheval', 'cerf', 'autruche'],
+  HYPO_TBD: ['chameau', 'chevreuil', 'sanglier', 'buffle', 'chevre'],
+  hypoDefault(meat) {
+    const m = String(meat || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (!m.trim()) return '';
+    const has = list => list.some(w => new RegExp('(?:^|[^a-z])' + w + '(?![a-z])').test(m));
+    return has(this.HYPO_YES) ? 'oui' : has(this.HYPO_TBD) ? '' : 'non';
+  },
   /* Poil : celui de la fiche ; tant qu'elle n'a rien d'enregistré, « avec poil(s) » dans le nom suffit. */
   nameHasHair(name) { return /avec\s+poils?/i.test(String(name || '')); },
   /* Sans rien d'enregistré : « avec poil(s) » dans le nom → avec poil, sinon SANS poil (Antho 2026-11-17 : un produit est l'un ou l'autre). */

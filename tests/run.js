@@ -478,6 +478,13 @@ run(`Stock.setPastAllV('m', 'age', '*');`);
 eq('18b « Tous » : tous les âges sur chaque taille', run(`Store.state.stockM[0].variants.every(v => v.tags.age.length === 5)`), true);
 eq('18c le gabarit déduit de chaque taille ne bouge pas', run(`Store.state.stockM[0].variants.map(v => Stock.variantTags(Store.state.stockM[0], v).gabarit.join())`), ['petit', 'moyen', 'moyen,grand']);
 
+/* ══════════ 19. HYPOALLERGÉNIQUE par défaut (Antho 2026-11-17) ══════════ */
+eq('19a autruche = oui', run(`Stock.hypoDefault('Autruche')`), 'oui');
+eq('19a bœuf = non', run(`Stock.hypoDefault('Bœuf')`), 'non');
+eq('19a chèvre = à vérifier (non renseigné)', run(`Stock.hypoDefault('Chèvre')`), '');
+paniers([sp('a', 'Bœuf non', { days: 200, price: 4, meat: 'Boeuf' }), sp('b', 'Autruche oui', { days: 200, price: 4, meat: 'Autruche' })], { hypoOnly: true });
+eq('19b « hypoallergénique uniquement » : le « non » ne passe plus', run(`Paniers.candidates().map(c => c.name)`), ['Autruche oui']);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

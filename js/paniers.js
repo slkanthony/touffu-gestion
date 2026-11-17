@@ -132,7 +132,7 @@ const Paniers = {
     if (d.hair === 'non' && pTags.poil === 'avec') return false;
     if (d.odor === 'non' && tags.odeur === 'forte') return false;
     if (d.fat === 'non' && tags.gras === 'gras') return false;
-    if (d.sensitive && !pTags.hypo) return false;
+    if (d.sensitive && pTags.hypo !== 'oui') return false;   // « non » est une valeur : seul « oui » passe
     const da = this._dogAges(d);
     if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return false;
     if (d.gabarit && tags.gabarit.length > 0 && !tags.gabarit.includes(d.gabarit)) return false;
@@ -419,7 +419,7 @@ const Paniers = {
       const pTags = Stock.effTags(p);
       if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return;
       if (this.poilFilter === 'sans' && pTags.poil === 'avec') return;
-      if (this.hypoOnly && !pTags.hypo) return;
+      if (this.hypoOnly && pTags.hypo !== 'oui') return;
       if (cl) {
         if (Clients.conflictsFor(cl.dogs, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
         if (cl.hair && pTags.poil === 'avec') return;
