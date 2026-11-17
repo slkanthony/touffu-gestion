@@ -764,26 +764,28 @@ const Paniers = {
 
   /* Générer avec des produits déjà dans le panier (Antho 2026-10-17) : on DEMANDE — les garder (ils deviennent la base verrouillée 🔒, le panier est complété autour)
      ou tout supprimer et repartir de zéro. Sans produit dans le panier, on génère directement. */
+  /* « Générer le panier » = aussi l'ancien « Recomposer le reste » (Antho 2026-11-17 : « c'est le même bouton ») :
+     les lignes verrouillées 🔒 restent, tout le reste est recomposé. S'il y a des 🔒, on demande si on les garde.
+     (Garder TOUT le panier et seulement ajouter = bouton « Compléter le panier ».) */
   generate() {
-    if (this.basket.length) { this._askGenerate(); return; }
+    if (this.basket.some(b => b.locked)) { this._askGenerate(); return; }
     this._generateNow();
   },
   _askGenerate() {
-    const lines = this.basket.length, n = this.basket.reduce((a, b) => a + U.num(b.qty), 0), lk = this.basket.filter(b => b.locked).length;
+    const lk = this.basket.filter(b => b.locked).length;
     U.modal({
-      title: '🧺 Il y a déjà des produits dans le panier', hideOk: true,
-      body: `<p style="margin-top:0;">Le panier contient <b>${n} article${n > 1 ? 's' : ''}</b> (${lines} ligne${lines > 1 ? 's' : ''}${lk ? `, dont ${lk} verrouillée${lk > 1 ? 's' : ''} 🔒` : ''}). Que veux-tu en faire avant de générer ?</p>
+      title: '🧺 Produits verrouillés dans le panier', hideOk: true,
+      body: `<p style="margin-top:0;">Le panier contient <b>${lk} ligne${lk > 1 ? 's' : ''} verrouillée${lk > 1 ? 's' : ''} 🔒</b>. Que veux-tu en faire ?</p>
         <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:center;">
-          <button class="btn-cta fit" onclick="Paniers._genGo(true)">✔ Les garder et compléter autour</button>
-          <button class="btn-ghost fit" onclick="Paniers._genGo(false)">🗑️ Les supprimer et repartir de zéro</button>
+          <button class="btn-cta fit" onclick="Paniers._genGo(true)">🔒 Les garder et refaire le reste</button>
+          <button class="btn-ghost fit" onclick="Paniers._genGo(false)">🔄 Tout refaire</button>
         </div>
-        <p class="muted help" style="margin-bottom:0;">« Garder » : tous les articles actuels restent (verrouillés) et la génération complète le panier avec le budget restant. « Supprimer » : le panier est vidé puis recomposé entièrement. « Fermer » ne change rien.</p>`
+        <p class="muted help" style="margin-bottom:0;">« Garder » : les lignes 🔒 restent, tout le reste du panier est recomposé. « Tout refaire » : un panier entièrement nouveau. « Fermer » ne change rien.</p>`
     });
   },
   _genGo(keep) {
     U.closeModal();
-    if (keep) this.basket.forEach(b => { b.locked = true; });
-    else this.basket = [];
+    if (!keep) this.basket.forEach(b => { b.locked = false; });   // pas vidé : si la génération échoue, le panier actuel reste
     this._generateNow();
   },
   _generateNow() {
@@ -836,37 +838,6 @@ const Paniers = {
     this.render();
     U.toast(`Panier complété : ${added} article${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}.`);
   },
-  regenerate() {
-    const available = this._avail();
-    if (available <= 0) { U.toast('Le budget disponible (après livraison) est nul ou négatif.', true); return; }
-
-    const locked = this.basket.filter(b => b.locked).map(b => ({...b}));
-    const b1 = this._compose(available, locked);
-    const b2 = this.kind === 'vente' ? this._compose(available * (1 + this.OVER_PCT / 100), locked) : b1;
-    const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
-    const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
-
-    const n1 = b1.reduce((a, b) => a + b.qty, 0);
-    const n2 = b2.reduce((a, b) => a + b.qty, 0);
-
-    if (!n1 && !n2) {
-      this.proposals = null;   // le panier actuel est GARDÉ (avant, un échec de génération le vidait et faisait « disparaître » les produits ajoutés à la main)
-      this.render();
-      U.toast('Impossible de composer un panier avec ces contraintes : le panier actuel est conservé.', true);
-    } else if (n1 > 0 && t2 > t1 + 0.005) {
-      this.proposals = [b1, b2];
-      this.basket = [];
-      this.render();
-      U.toast('2 propositions régénérées — choisis celle qui convient');
-    } else {
-      this.proposals = null;
-      this.basket = n1 > 0 ? b1 : b2;
-      this.render();
-      const n = this.basket.reduce((a, b) => a + b.qty, 0);
-      U.toast(`Panier régénéré : ${n} article(s)`);
-    }
-  },
-
   /* ---------- Actions manuelles sur le panier ---------- */
   removeItem(idx) {
     this.basket.splice(idx, 1);
@@ -2063,7 +2034,6 @@ const Paniers = {
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-cta" onclick="Paniers.generate()">🎲 Générer le panier</button>
           ${this.basket.length && this._avail() - this.basket.reduce((a, b) => a + b.price * b.qty, 0) >= 0.05 ? `<button class="btn-ghost" onclick="Paniers.complete()" title="Garde tous les produits du panier et ajoute de quoi arriver au budget">＋ Compléter le panier</button>` : ''}
-          ${this.basket.length ? `<button class="btn-ghost" onclick="Paniers.regenerate()" title="Garde les produits verrouillés 🔒 et recompose le reste du panier">🔄 Recomposer le reste</button>` : ''}
           ${this.basket.length || this.proposals ? `<button class="btn-ghost" onclick="Paniers.clearBasket()">🧹 Vider</button>` : ''}
         </div>
       </div>
