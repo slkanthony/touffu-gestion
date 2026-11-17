@@ -1874,3 +1874,4 @@ a.btn { line-height: normal; }
 /* Paniers : dernier panier de la cliente (étape 3) */
 .pan-last { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 6px 10px; border: 1px dashed var(--input-border); border-radius: 10px; font-size: .85rem; }
 .pan-last .btn-sm { flex: 0 0 auto; }
+.pan-last .pan-last-btns { display: inline-flex; gap: 6px; flex: 0 0 auto; }

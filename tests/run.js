@@ -297,35 +297,42 @@ if (props) {
   eq('8d proposition 2 : au plus 33 € (+10 %)', t2 <= 33.005, true);
 }
 
-/* ══════════ 9. PANIERS : dernier panier de la cliente (Antho 2026-11-17) ══════════ */
+/* ══════════ 9. PANIERS : produits déjà achetés par la cliente (Antho 2026-11-17) ══════════ */
 const habituee = { id: 'c9', name: 'Cliente Habituée', dogs: [{ id: 'd9', name: 'Chien Neuf', birth: dayIso(-900), meats: {}, tried: [] }] };
-const st9 = () => [sp('a', 'Produit A', { days: 200, meat: 'Boeuf' }), sp('b', 'Produit B', { days: 200, meat: 'Canard' }), sp('c', 'Produit C', { days: 200, meat: 'Lapin' }), sp('d', 'Produit D', { days: 200, meat: 'Dinde' })];
+const st9 = () => [sp('a', 'Produit A', { days: 200, meat: 'Boeuf' }), sp('b', 'Produit B', { days: 200, meat: 'Canard' }), sp('c', 'Produit C', { days: 200, meat: 'Lapin' }), sp('d', 'Produit D', { days: 200, meat: 'Dinde' }), sp('e', 'Produit E', { days: 200, meat: 'Cerf' })];
+/* A (avec identifiant) et B (ancienne vente, SANS identifiant) achetés il y a 30 jours ; C acheté il y a 90 jours ; E il y a 400 jours ; D jamais ; une vente annulée ne compte pas. */
 const vente9 = [{ id: 'old', ts: Date.now() - 90 * 86400000, payment: 'cash', customerName: 'cliente habituée', items: [{ kind: 'M', pId: 'c', vId: 'cv', name: 'Produit C', price: 4, qty: 1, cost: 1 }] },
+  { id: 'tres', ts: Date.now() - 400 * 86400000, payment: 'cash', customerName: 'Cliente Habituée', items: [{ kind: 'M', pId: 'e', vId: 'ev', name: 'Produit E', price: 4, qty: 1, cost: 1 }] },
   { id: 'last', ts: Date.now() - 30 * 86400000, payment: 'cash', customerName: 'Cliente Habituée', items: [{ kind: 'M', pId: 'a', vId: 'av', name: 'Produit A', label: '', price: 4, qty: 2, cost: 1 }, { kind: 'M', name: 'Produit B', price: 4, qty: 1, cost: 1 }] },
   { id: 'ann', ts: Date.now() - 5 * 86400000, cancelled: true, payment: 'cash', customerName: 'Cliente Habituée', items: [{ kind: 'M', pId: 'd', vId: 'dv', name: 'Produit D', price: 5, qty: 1 }] }];
-paniers(st9(), { client: 'Cliente Habituée' }, [habituee]);
-sandbox.__v9 = vente9; run(`Store.state.sales = __v9;`);
+sandbox.__v9 = vente9;
+paniers(st9(), { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
 eq('9a dernier panier = la dernière vente non annulée', run(`Paniers._lastSale().id`), 'last');
-eq('9a produits reconnus, même sans identifiant (par le nom)', run(`[...Paniers._lastIds()].sort()`), ['a', 'b']);
-eq('9b produits du dernier panier repérés', cand('Produit A').prev && cand('Produit B').prev && !cand('Produit C').prev, true);
-eq('9b budget pour 2 produits : on varie (C et D)', build(10).sort(), ['Produit C', 'Produit D']);
-/* La finition au plus près du budget ne remplace pas un produit nouveau par un produit du dernier panier. */
-paniers([sp('a', 'Produit A', { days: 200, meat: 'Boeuf', price: 4.2 }), sp('c', 'Produit C', { days: 200, meat: 'Lapin', price: 3.9 }), sp('d', 'Produit D', { days: 200, meat: 'Dinde', price: 4.8 })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
-eq('9b finition : pas de retour au dernier panier pour 30 centimes', build(9).sort(), ['Produit C', 'Produit D']);
-/* Produit aimé : il peut revenir (pas de pénalité). */
-const aime = JSON.parse(JSON.stringify(habituee)); aime.dogs[0].tried = [{ id: 't', name: 'Produit A', verdict: 'like' }];
+eq('9a jours depuis le dernier achat de chaque produit', run(`Paniers._boughtAgo()`), { c: 90, e: 400, a: 30, b: 30 });
+eq('9b acheté il y a moins de 2 mois : plus proposé (A, et B retrouvé par le nom)', !cand('Produit A') && !cand('Produit B'), true);
+eq('9b acheté il y a 3 mois : proposé mais évité', cand('Produit C').prev, true);
+eq('9b acheté il y a plus de 6 mois ou jamais : produit « nouveau »', !cand('Produit E').prev && !cand('Produit D').prev, true);
+eq('9b budget pour 2 produits : les nouveaux d\'abord (D et E)', build(10).sort(), ['Produit D', 'Produit E']);
+/* Même à date DÉPASSÉE, un produit acheté le mois dernier n'est pas reproposé (doublon). */
+paniers([sp('a', 'Produit A', { days: -5, meat: 'Boeuf' }), sp('d', 'Produit D', { days: 200, meat: 'Dinde' })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
+eq('9c date dépassée mais achetée le mois dernier : écartée', build(5), ['Produit D']);
+/* … sauf s'il est ajouté à la main avant de générer (ligne verrouillée = base du panier). */
+eq('9c ajouté à la main : il reste dans le panier', run(`Paniers._buildBasket(10, [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Produit A', meat: 'Boeuf', price: 5, qty: 1, locked: true }]).map(b => b.name).sort()`), ['Produit A', 'Produit D']);
+/* Produit aimé acheté il y a 3 mois : pas de pénalité. */
+const aime = JSON.parse(JSON.stringify(habituee)); aime.dogs[0].tried = [{ id: 't', name: 'Produit C', verdict: 'like' }];
 paniers(st9(), { client: 'Cliente Habituée' }, [aime]); run(`Store.state.sales = __v9;`);
-eq('9c produit aimé du dernier panier : pas de pénalité', run(`(() => { const c = Paniers.candidates(); const s = x => Paniers._itemScore(c.find(k => k.name === x), new Set(), {}, 1, Paniers._weights(), 1); return Math.abs(s('Produit A') - s('Produit C')) < 0.2; })()`), true);
-/* Date dépassée : passe en premier même s'il était dans le dernier panier. */
-paniers([sp('a', 'Produit A', { days: -5, meat: 'Boeuf' }), sp('c', 'Produit C', { days: 200, meat: 'Lapin' }), sp('d', 'Produit D', { days: 200, meat: 'Dinde' })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
-eq('9d date dépassée prioritaire même déjà achetée', build(5), ['Produit A']);
+eq('9d produit aimé acheté il y a 3 mois : pas de pénalité', run(`(() => { const c = Paniers.candidates(); const s = x => Paniers._itemScore(c.find(k => k.name === x), new Set(), {}, 1, Paniers._weights(), 1); return Math.abs(s('Produit C') - s('Produit D')) < 0.2; })()`), true);
 /* Refaire le dernier panier : mêmes produits et quantités, prix d'aujourd'hui, produit manquant signalé. */
-paniers([sp('a', 'Produit A', { days: 200, price: 6 }), sp('c', 'Produit C', { days: 200 })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9; Paniers.render = function () {}; __msg = []; U.toast = (m, e) => __msg.push(m);`);
+paniers([sp('a', 'Produit A', { days: 200, price: 6 }), sp('c', 'Produit C', { days: 200 })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9; Paniers.render = function () {}; U.toast = (m, e) => __msg.push(m);`);
 sandbox.__msg = [];
 run(`Paniers.redoLast()`);
 eq('9e refaire : produit A ×2', run(`Paniers.basket.map(b => b.name + ' x' + b.qty)`), ['Produit A x2']);
 eq('9e refaire : prix d\'aujourd\'hui', run(`Paniers.basket[0].price`), 6);
 eq('9e refaire : produit B manquant signalé', /Produit B/.test(sandbox.__msg.join(' ')), true);
+/* Voir le dernier panier : une fenêtre, sans toucher au panier en cours. */
+sandbox.__modal = null; run(`U.modal = o => { __modal = o; }; Paniers.showLast();`);
+eq('9f voir : fenêtre avec le contenu du dernier panier', !!sandbox.__modal && /Produit A/.test(sandbox.__modal.body) && /Produit B/.test(sandbox.__modal.body), true);
+eq('9f voir : le panier en cours ne change pas', run(`Paniers.basket.length`), 1);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

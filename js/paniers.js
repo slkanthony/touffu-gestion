@@ -125,6 +125,11 @@ const Paniers = {
      Dernière vente NON annulée de la cliente contenant de la mastication (lien par le nom, comme la fiche cliente). À la génération, ses produits sont
      évités pour varier (pénalité dans la note), sauf ceux que le chien aime (viande « aime » ou produit noté « aimé ») ; un produit noté « pas aimé »
      est de toute façon exclu. `redoLast()` recompose ce même panier avec le stock et les prix d'aujourd'hui. */
+  /* Règle d'Antho (2026-11-17) : un produit acheté par la cliente il y a moins de RECENT_DAYS jours n'est PLUS proposé, même à date dépassée ou courte
+     (« ça fait doublon ») — sauf s'il est ajouté à la main au panier avant de générer. Acheté entre RECENT_DAYS et OLD_DAYS jours : seulement évité
+     (pénalité), sauf si le chien l'aime. Au-delà : traité comme un produit nouveau. Toutes les ventes de la cliente comptent, pas seulement la dernière. */
+  RECENT_DAYS: 60,
+  OLD_DAYS: 180,
   PREV_PENALTY: 0.2,
   _lastSale() {
     if (Clients.ro()) return null;
@@ -145,12 +150,45 @@ const Paniers = {
     const v = (p.variants || []).find(x => x.id === i.vId) || (p.variants || []).find(x => lab && nm(Pricing.labelVariant(x)).replace(/ /g, '') === lab) || ((p.variants || []).length === 1 ? p.variants[0] : null);
     return { p, v };
   },
-  _lastIds() { return new Set(this._lastItems().map(i => (this._stockOf(i) || {}).p).filter(Boolean).map(p => p.id)); },
+  /* { idProduit : jours depuis le dernier achat par la cliente } — toutes ses ventes non annulées, mastication seulement */
+  _boughtAgo() {
+    if (Clients.ro()) return {};
+    const keys = new Set([Clients.key(this.client)]), c = Clients.find(this.client);
+    if (c) keys.add(Clients.key(c.name));
+    keys.delete('');
+    const out = {};
+    if (!keys.size) return out;
+    (Store.state.sales || []).forEach(x => {
+      if (x.cancelled || !keys.has(Clients.key(x.customerName))) return;
+      const d = Math.max(0, Math.floor((Date.now() - U.num(x.ts)) / 86400000));
+      (x.items || []).forEach(i => {
+        if ((i.kind || 'M') !== 'M') return;
+        const f = this._stockOf(i); if (!f) return;
+        if (out[f.p.id] === undefined || d < out[f.p.id]) out[f.p.id] = d;
+      });
+    });
+    return out;
+  },
+  /* Fenêtre « Voir » : contenu du dernier panier (ne prend aucune place sur la page ; se ferme et se rouvre à volonté) */
+  showLast() {
+    const x = this._lastSale(); if (!x) return;
+    const it = this._lastItems(), tot = it.reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0);
+    const rows = it.map(i => {
+      const f = this._stockOf(i), dispo = f && f.v ? (f.v.lots || []).reduce((a, l) => a + U.num(l.qtyGeneral) + U.num(l.qtyEvent), 0) : 0;
+      return `<tr><td class="col-name">${U.esc(i.name)}${i.label ? ` <span class="tag">${U.esc(i.label)}</span>` : ''}</td><td class="num">${U.qty(i.qty)}</td><td class="num">${U.eur(U.num(i.price) * U.num(i.qty))}</td><td>${dispo > 0 ? `<span class="muted" style="white-space:nowrap;">${U.qty(dispo)} en stock</span>` : '<span class="badge warn" style="white-space:nowrap;">épuisé</span>'}</td></tr>`;
+    }).join('');
+    U.modal({
+      title: 'Dernier panier du ' + U.frDate(U.dayKey(x.ts)), hideOk: true, wide: true,
+      body: `<div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Qté</th><th class="num">Total</th><th>Stock</th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><td class="col-name"><b>Total payé</b></td><td class="num"><b>${U.qty(it.reduce((a, i) => a + U.num(i.qty), 0))}</b></td><td class="num"><b>${U.eur(tot)}</b></td><td></td></tr></tfoot></table></div>
+        <p class="muted" style="margin:10px 0 0;font-size:.85rem;">Ces produits ne sont pas proposés à la génération pendant ${this.RECENT_DAYS} jours après l'achat. Pour en remettre un, ajoute-le au panier avant de générer.</p>`
+    });
+  },
   _lastHTML() {
     const x = this._lastSale(); if (!x) return '';
     const it = this._lastItems(), n = it.reduce((a, i) => a + U.num(i.qty), 0), tot = it.reduce((a, i) => a + U.num(i.price) * U.num(i.qty), 0);
-    return `<div class="pan-last"><span>Dernier panier : <b>${U.frDate(U.dayKey(x.ts))}</b> · ${n} article${n > 1 ? 's' : ''} · ${U.eur(tot)} <span class="muted help">À la génération, les produits de ce panier sont évités pour varier, sauf ceux que le chien aime (viande « aime » ou produit noté « aimé » sur sa fiche). « Refaire » remet les mêmes produits, avec le stock et les prix d'aujourd'hui.</span></span>
-      <button class="btn-ghost btn-sm" onclick="Paniers.redoLast()" title="${U.esc(it.map(i => i.name + (i.label ? ' ' + i.label : '') + ' ×' + U.qty(i.qty)).join(' · '))}">Refaire ce panier</button></div>`;
+    return `<div class="pan-last"><span>Dernier panier : <b>${U.frDate(U.dayKey(x.ts))}</b> · ${n} article${n > 1 ? 's' : ''} · ${U.eur(tot)} <span class="muted help">Un produit acheté par la cliente il y a moins de 2 mois n'est jamais reproposé, même à date courte (ajoute-le au panier avant de générer si tu le veux). Acheté il y a 2 à 6 mois : évité, sauf si le chien l'aime. « Refaire » remet les mêmes produits, avec le stock et les prix d'aujourd'hui.</span></span>
+      <span class="pan-last-btns"><button class="btn-ghost btn-sm" onclick="Paniers.showLast()">Voir</button><button class="btn-ghost btn-sm" onclick="Paniers.redoLast()" title="${U.esc(it.map(i => i.name + (i.label ? ' ' + i.label : '') + ' ×' + U.qty(i.qty)).join(' · '))}">Refaire</button></span></div>`;
   },
   async redoLast() {
     const sale = this._lastSale(); if (!sale) return;
@@ -244,10 +282,11 @@ const Paniers = {
     const d0 = cl && cl.dogs.length ? cl.dogs[0] : null;
     const da = d0 ? this._dogAges(d0) : null, dg = d0 ? (d0.gabarit || '') : '';
     const selAges = this._ageSel();
-    const lastIds = this._lastIds();   // produits du dernier panier de la cliente : évités pour varier (sauf aimés)
+    const ago = this._boughtAgo();   // produits déjà achetés par la cliente : exclus s'ils sont récents, évités sinon
 
     Store.state.stockM.forEach(p => {
       if (this.excludeMeats.includes(p.meatType)) return;
+      if (ago[p.id] !== undefined && ago[p.id] < this.RECENT_DAYS) return;   // acheté récemment : jamais reproposé (doublon), même à date courte
       if (this.excludeProducts.includes(p.id)) return;
 
       const pTags = Stock.effTags(p);
@@ -312,7 +351,7 @@ const Paniers = {
             mode: v.mode || '', value: v.value,
             ...this._famInfo(p, v),
             ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : { ages: da || undefined, gabs: dg ? [dg] : undefined }),
-            chews, liked, prev: lastIds.has(p.id)
+            chews, liked, prev: ago[p.id] !== undefined && ago[p.id] < this.OLD_DAYS
           });
         });
       });
