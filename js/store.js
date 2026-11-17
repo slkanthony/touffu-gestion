@@ -556,6 +556,10 @@ const Store = {
 
   async flush() {
     if (!this._dirty.size) return;
+    /* ⚠️ Piège corrigé (Antho 2026-11-17, « Enregistrement refusé » en cliquant vite des pastilles) : un 2e envoi parti PENDANT le 1er
+       repartait avec l'ancien numéro de version (le 1er n'avait pas encore rendu le nouveau) → la base le prenait pour un autre appareil.
+       On attend donc la fin de l'envoi en cours avant d'envoyer la suite. */
+    if (this._flushing) { clearTimeout(this._saveT); this._saveT = setTimeout(() => this.flush(), 300); return; }
     const rank = k => k === 'journalAdmin' ? 0 : (typeof Visite !== 'undefined' && Visite.isKey(k)) ? 2 : 1;   // 1 = vraie donnée ; 0 et 2 = copies calculées (coffre du journal, copie « visite »)
     const dirty = [...this._dirty].sort((a, b) => rank(a) - rank(b)); this._dirty.clear();
     if (this.remote) {
