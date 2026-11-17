@@ -264,8 +264,8 @@ eq('7d gros destructeur : résistance souhaitée réglée (mastication longue ja
 eq('7d gros destructeur : très dur = 1', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Bois dur'))`), 1);
 eq('7d gros destructeur : le tendre est écarté par la résistance', cand('Tendre'), undefined);
 /* Gros destructeur : plusieurs produits durs dans le même panier (la limite « un seul produit dur » ne vaut que pour les autres chiens) → le budget est utilisé. */
-paniers([sp('a', 'Dur 1', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Dur 2', { meat: 'Boeuf', days: 200, tags: { resistance: 'forte' } }), sp('c', 'Dur 3', { meat: 'Buffle', days: 200, tags: { resistance: 'forte' } })], { client: 'Cliente Deux' }, [gros]);
-eq('7e gros destructeur : 3 produits durs pour 15 €', build(15).sort(), ['Dur 1', 'Dur 2', 'Dur 3']);
+paniers([sp('a', 'Bois dur', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Corne dure', { meat: 'Boeuf', days: 200, tags: { resistance: 'forte' } }), sp('c', 'Sabot dur', { meat: 'Buffle', days: 200, tags: { resistance: 'forte' } })], { client: 'Cliente Deux' }, [gros]);
+eq('7e gros destructeur : 3 produits durs pour 15 €', build(15).sort(), ['Bois dur', 'Corne dure', 'Sabot dur']);
 paniers([sp('a', 'Dur 1', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Dur 2', { meat: 'Boeuf', days: 200, tags: { resistance: 'forte' } }), sp('c', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })]);
 eq('7e chien inconnu : un seul produit dur par panier', build(15).filter(n => n.startsWith('Dur')).length, 1);
 
@@ -314,10 +314,10 @@ eq('9b acheté il y a plus d\'un mois : proposé comme un produit nouveau', !!ca
 eq('9b même note qu\'un produit jamais acheté', run(`(() => { const c = Paniers.candidates(); const s = x => Paniers._itemScore(c.find(k => k.name === x), new Set(), {}, 1, Paniers._weights(), 1); return Math.abs(s('Produit C') - s('Produit D')) < 0.001; })()`), true);
 eq('9b budget pour 3 produits : ni A ni B', build(15).filter(n => n === 'Produit A' || n === 'Produit B').length, 0);
 /* Même à date DÉPASSÉE, un produit acheté le mois dernier n'est pas reproposé (doublon). */
-paniers([sp('a', 'Produit A', { days: -5, meat: 'Boeuf' }), sp('d', 'Produit D', { days: 200, meat: 'Dinde' })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
-eq('9c date dépassée mais achetée le mois dernier : écartée', build(5), ['Produit D']);
+paniers([sp('a', 'Agneau A', { days: -5, meat: 'Boeuf' }), sp('d', 'Dinde D', { days: 200, meat: 'Dinde' })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
+eq('9c date dépassée mais achetée le mois dernier : écartée', build(5), ['Dinde D']);
 /* … sauf s'il est ajouté à la main avant de générer (ligne verrouillée = base du panier). */
-eq('9c ajouté à la main : il reste dans le panier', run(`Paniers._buildBasket(10, [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Produit A', meat: 'Boeuf', price: 5, qty: 1, locked: true }]).map(b => b.name).sort()`), ['Produit A', 'Produit D']);
+eq('9c ajouté à la main : il reste dans le panier', run(`Paniers._buildBasket(10, [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Agneau A', meat: 'Boeuf', price: 5, qty: 1, locked: true }]).map(b => b.name).sort()`), ['Agneau A', 'Dinde D']);
 /* Refaire le dernier panier : mêmes produits et quantités, prix d'aujourd'hui, produit manquant signalé. */
 paniers([sp('a', 'Produit A', { days: 200, price: 6 }), sp('c', 'Produit C', { days: 200 })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9; Paniers.render = function () {}; U.toast = (m, e) => __msg.push(m);`);
 sandbox.__msg = [];
@@ -382,7 +382,8 @@ eq('12b mastication longue décochée : aucune, même pour un chien très énerg
 const kinds = () => [sp('a', 'A', { days: 200, price: 4, meat: 'Boeuf' }), sp('b', 'B', { days: 200, price: 4, meat: 'Canard' }), sp('c', 'C', { days: 200, price: 3, meat: 'Lapin' }), sp('d', 'D', { days: 200, price: 2.5, meat: 'Dinde' })];
 const gen = k => { paniers(kinds(), { budget: 10, kind: k }); run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._generateNow();`); const ps = run(`Paniers.proposals`) || [run(`Paniers.basket`)]; return ps.map(b => Math.round(b.reduce((a, x) => a + x.price * x.qty, 0) * 100) / 100); };
 eq('12c vente : deux propositions (au plus près, puis au-dessus)', gen('vente').length, 2);
-eq('12d commande site : une seule proposition, jamais au-dessus', gen('site').every(t => t <= 10.005) && gen('site').length === 1, true);
+eq('12d commande site : une seule proposition, JAMAIS sous le montant payé (Antho 2026-11-17)', gen('site').length === 1 && gen('site')[0] >= 9.995, true);
+eq('12d commande site : le plus petit dépassement possible sans répéter un produit (4 + 4 + 2,5 = 10,50 €)', gen('site')[0], 10.5);
 eq('12e lot à gagner : une seule proposition, jamais au-dessus', gen('lot').every(t => t <= 10.005) && gen('lot').length === 1, true);
 /* Lot à gagner : à date égale, le plus fort coefficient d'abord ; une date dépassée passe quand même en premier. */
 const lotSt = () => { const a = sp('a', 'Faible coeff', { days: 200, price: 4, meat: 'Boeuf' }), b = sp('b', 'Fort coeff', { days: 200, price: 4, meat: 'Canard' }), c = sp('c', 'Dépassé', { days: -3, price: 4, meat: 'Lapin' }); return [a, b, c]; };
@@ -539,6 +540,19 @@ eq('26a résistance séparée : l\'autre garde la sienne', run(`Store.state.stoc
 eq('26a gras toujours commun', run(`Store.state.stockM[0].tags.gras`), 'moyen');
 run(`Stock.toggleTwinFree('a', 'resistance');`);
 eq('26b reliée depuis l\'autre : sa valeur est reprise', run(`[Store.state.stockM[1].tags.resistance, Stock.twinFree(Store.state.stockM[1]).length]`), ['moyenne', 0]);
+
+/* ══════════ 27. VARIÉTÉ DU PANIER (Antho 2026-11-17) ══════════ */
+eq('27a morceau : 1er mot, singulier, hareng = sprat', run(`[Paniers._cutKey("Oreilles d'agneaux"), Paniers._cutKey("Cou d'oie"), Paniers._cutKey('Sprat'), Paniers._cutKey('Trachée de bœuf')]`), ['oreille', 'cou', 'hareng', 'trachee']);
+paniers([sp('a', 'Trachée d\'agneau', { days: 200, price: 2, meat: 'Agneau', tags: { resistance: 'faible' } }),
+         sp('b', 'Trachée d\'autruche', { days: 200, price: 2, meat: 'Autruche', tags: { resistance: 'faible' } }),
+         sp('c', 'Oreille d\'agneau', { days: 200, price: 2, meat: 'Agneau', tags: { resistance: 'faible' } }),
+         sp('d', 'Oreille de bœuf', { days: 200, price: 2, meat: 'Boeuf', tags: { resistance: 'moyenne' } }),
+         sp('e', 'Cou d\'oie', { days: 200, price: 2, meat: 'Oie', tags: { resistance: 'faible' } }),
+         sp('f', 'Cou de dinde', { days: 200, price: 2, meat: 'Dinde', tags: { resistance: 'faible' } })], { maxPerProduct: 2 });
+{ const b = build(8); 
+  eq('27b 4 produits différents, jamais deux fois le même', new Set(b).size, 4);
+  eq('27b jamais deux trachées ni deux cous de même dureté', [b.filter(n => /Trach/.test(n)).length <= 1, b.filter(n => /^Cou/.test(n)).length <= 1], [true, true]); }
+eq('27c oreille d\'agneau (faible) + oreille de bœuf (moyenne) : pas trop proches', run(`Paniers._tooClose(Paniers.candidates().find(c => c.pId === 'd'), [{ pId: 'c', vId: 'cv' }])`), false);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

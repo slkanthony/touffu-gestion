@@ -634,6 +634,30 @@ const Paniers = {
     return m;
   },
 
+  /* ═══ VARIÉTÉ (Antho 2026-11-17) ═══
+     · « Morceau » = 1er mot du nom (Cou, Filet, Patte, Trachée, Oreille, Peau…), singulier, sans accent ; hareng et sprat = même morceau.
+     · Deux produits sont TROP PROCHES s'ils sont le même morceau ET de même résistance (ou résistance inconnue) : trachée d'agneau + trachée
+       d'autruche, cou d'oie + cou de dinde, patte de poulet + patte de canard. Oreille d'agneau (faible) + oreille de bœuf (forte) : accepté.
+     · Tant qu'il reste d'autres choix : chaque produit une seule fois, et jamais deux produits trop proches. */
+  CUT_ALIAS: { sprat: 'hareng', sprats: 'hareng', pavillion: 'pavillon' },
+  _cutKey(name) {
+    let w = String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().split(/[^a-z0-9]+/)[0] || '';
+    if (this.CUT_ALIAS[w]) return this.CUT_ALIAS[w];
+    if (w.length > 3 && /[sx]$/.test(w)) w = w.slice(0, -1);
+    return this.CUT_ALIAS[w] || w;
+  },
+  _simOf(x) {
+    if (x.cut !== undefined && x.res !== undefined) return { cut: x.cut, res: x.res };
+    const sp = Store.state.stockM.find(p => p.id === x.pId), sv = sp && sp.variants.find(v => v.id === x.vId);
+    const res = sp ? (this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null).resistance || '') : '';
+    return { cut: this._cutKey(sp ? sp.name : x.name), res };
+  },
+  _isFresh(c, basket) { return !basket.some(b => b.pId === c.pId) && !this._tooClose(c, basket); },
+  _tooClose(c, basket) {
+    const a = this._simOf(c);
+    if (!a.cut) return false;
+    return basket.some(b => { if (b.pId === c.pId) return false; const o = this._simOf(b); return o.cut === a.cut && (!a.res || !o.res || a.res === o.res); });
+  },
   _buildBasket(maxAvailable, lockedItems) {
     const cands = this.candidates();
     const basket = lockedItems.map(b => ({...b}));
@@ -687,6 +711,9 @@ const Paniers = {
       if (hardInBasket) eligible = eligible.filter(c => !this.HARD.includes(c.tags.resistance) || (c.chews && c.chews.includes('gros')));
       if (basket.some(b => this._resOf(b) === 'longue')) eligible = eligible.filter(c => c.tags.resistance !== 'longue');
       if (!eligible.length) break;
+      // VARIÉTÉ d'abord (Antho 2026-11-17) : produits pas encore dans le panier et pas trop proches d'un produit déjà choisi, tant qu'il y en a
+      // Plus aucun produit « nouveau » qui rentre : un seul chien → on s'arrête là (la finition / la commande site complètent) ; plusieurs chiens → un 2e exemplaire reste possible
+      { const fresh = eligible.filter(c => !usedProducts.has(c.pId) && !this._tooClose(c, basket)); if (fresh.length) eligible = fresh; else if (!(mult > 1 || nd)) break; }
       // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
       // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
       // (commande site : pas de passage forcé, les dates courtes comptent autant que le coefficient dans la note — seules les dates DÉPASSÉES passent d'office)
@@ -696,10 +723,10 @@ const Paniers = {
       // Alternance gramme / vrac : on prend le format le moins représenté tant qu'il en reste dans le budget
       { const vracN = basket.length - gramN, want = gramN > vracN ? 'vrac' : gramN < vracN ? 'gram' : '', f = want ? eligible.filter(c => (c.mode === 'gram') === (want === 'gram')) : []; if (f.length) eligible = f; }
 
-      // Plusieurs chiens : on élargit d'abord la gamme (produits pas encore dans le panier) avant de remettre un produit déjà choisi
-      if (mult > 1 || nd) { const fresh = eligible.filter(c => !usedProducts.has(c.pId)); if (fresh.length) eligible = fresh; }
       eligible.sort((a, b) => score(b) - score(a));
-      const pick = eligible[0];
+      let pick = eligible[0];
+      // Même produit et même taille déjà dans le panier : on reste sur SA ligne (même lot) tant qu'il en reste — jamais deux lignes pour le même produit
+      { const same = basket.find(b => b.pId === pick.pId && b.vId === pick.vId && b.lotId !== pick.lotId), sc = same && cands.find(c => c.pId === same.pId && c.vId === same.vId && c.lotId === same.lotId && c.avail > 0); if (sc) pick = sc; }
 
       const existing = basket.find(b => b.pId === pick.pId && b.vId === pick.vId && b.lotId === pick.lotId);
       if (existing) {
@@ -709,7 +736,7 @@ const Paniers = {
           pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
           name: pick.name, meat: pick.meat, variant: pick.variant,
           price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick)
+          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick), ...this._simOf(pick)
         });
       }
       if (pick.forDogs && pick.forDogs.length === 1) spentBy[pick.forDogs[0]] = (spentBy[pick.forDogs[0]] || 0) + pick.price;
@@ -741,13 +768,14 @@ const Paniers = {
       const put = c => {
         const ex = basket.find(x => x.pId === c.pId && x.vId === c.vId && x.lotId === c.lotId);
         if (ex) ex.qty++;
-        else basket.push({ pId: c.pId, vId: c.vId, lotId: c.lotId, name: c.name, meat: c.meat, variant: c.variant, price: c.price, qty: 1, dluo: c.dluo, daysLeft: c.daysLeft, coeff: c.coeff, lotNumber: c.lotNumber, locked: false, family: c.family, dog: this._dogTag(c) });
+        else basket.push({ pId: c.pId, vId: c.vId, lotId: c.lotId, name: c.name, meat: c.meat, variant: c.variant, price: c.price, qty: 1, dluo: c.dluo, daysLeft: c.daysLeft, coeff: c.coeff, lotNumber: c.lotNumber, locked: false, family: c.family, dog: this._dogTag(c), ...this._simOf(c) });
         c.avail--; usedProducts.add(c.pId); usedMeats[c.meat] = (usedMeats[c.meat] || 0) + 1;
       };
       for (let k = 0; k < 40; k++) {
         const gap = maxAvailable - spent;
         if (gap < 0.05) break;
-        const adds = cands.filter(c => c.price <= gap + 0.005 && canAdd(c, basket)).sort((a, b) => score(b) - score(a));
+        // La variété passe avant le budget au centime près : la finition n'ajoute jamais un 2e exemplaire ni un produit trop proche (Antho 2026-11-17)
+        const adds = cands.filter(c => c.price <= gap + 0.005 && canAdd(c, basket) && this._isFresh(c, basket)).sort((a, b) => score(b) - score(a));
         if (adds.length) { put(adds[0]); spent += adds[0].price; continue; }
         let best = null;
         basket.forEach((b, bi) => {
@@ -759,7 +787,7 @@ const Paniers = {
             if (delta < 0.005 || delta > gap + 0.005) return;
             if (c.pId === b.pId && c.vId === b.vId) return;
             if (bUrgent && c.daysLeft > this.URGENT_DAYS) return;
-            if (!canAdd(c, rest)) return;
+            if (!canAdd(c, rest) || !this._isFresh(c, rest)) return;
             const sc = score(c);
             if (!best || delta > best.delta + 0.005 || (Math.abs(delta - best.delta) <= 0.005 && sc > best.sc)) best = { bi, c, delta, sc };
           });
@@ -769,6 +797,44 @@ const Paniers = {
         if (old) old.avail++;
         b.qty--; if (b.qty <= 0) basket.splice(best.bi, 1);
         put(best.c); spent += best.delta;
+      }
+      /* COMMANDE SITE (Antho 2026-11-17) : la commande est DÉJÀ PAYÉE, impossible de rembourser → le panier ne doit JAMAIS être sous le montant.
+         S'il manque quelque chose : on ajoute un produit, ou on remplace une unité par un produit plus cher, en prenant ce qui dépasse le MOINS.
+         (Même ordre de préférence : variété, puis note ; jamais un produit urgent remplacé par un produit à date longue.) */
+      for (let k = 0; k < 60 && this.kind === 'site' && maxAvailable - spent > 0.005; k++) {
+        const gap = maxAvailable - spent;
+        let best = null;
+        // 1er passage : seulement des produits qui gardent la variété ; s'il n'y en a aucun, n'importe lequel (jamais sous le montant payé)
+        for (const strict of [true, false]) {
+        if (best) break;
+        const consider = (o) => { if (!best || o.over < best.over - 0.005 || (Math.abs(o.over - best.over) <= 0.005 && o.sc > best.sc)) best = o; };
+        cands.forEach(c => { if (c.price + 0.005 >= gap && canAdd(c, basket) && (!strict || this._isFresh(c, basket))) consider({ c, over: c.price - gap, sc: score(c) }); });
+        basket.forEach((b, bi) => {
+          if (b.locked) return;
+          const rest = basket.map((x, i) => i === bi ? { ...x, qty: x.qty - 1 } : x).filter(x => x.qty > 0);
+          const bUrgent = (b.daysLeft === undefined || b.daysLeft === null ? 9999 : b.daysLeft) <= this.URGENT_DAYS;
+          cands.forEach(c => {
+            const delta = c.price - b.price;
+            if (delta + 0.005 < gap || (c.pId === b.pId && c.vId === b.vId)) return;
+            if (bUrgent && c.daysLeft > this.URGENT_DAYS) return;
+            if (!canAdd(c, rest) || (strict && !this._isFresh(c, rest))) return;
+            consider({ c, bi, over: delta - gap, sc: score(c) });
+          });
+        });
+        }
+        if (best) {
+          if (best.bi !== undefined) {
+            const b = basket[best.bi], old = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId);
+            if (old) old.avail++;
+            spent -= b.price; b.qty--; if (b.qty <= 0) basket.splice(best.bi, 1);
+          }
+          put(best.c); spent += best.c.price;
+          break;   // montant atteint (au plus juste)
+        }
+        // Aucun produit seul ne suffit à atteindre le montant : on en ajoute un (le mieux noté, variété d'abord) et on recommence
+        const more = cands.filter(c => c.avail > 0 && canAdd(c, basket)).sort((a, b) => (this._isFresh(b, basket) ? 1 : 0) - (this._isFresh(a, basket) ? 1 : 0) || score(b) - score(a));
+        if (!more.length) break;   // plus rien en stock qui convienne : on ne peut pas faire mieux
+        put(more[0]); spent += more[0].price;
       }
     }
     return basket;
