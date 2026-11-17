@@ -2078,6 +2078,8 @@ const Paniers = {
           <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
         ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
           <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
+          ${this.basket.length ? (() => { const f = this._finData(), thr = U.num(Store.state.settings.b2bCoeffThreshold) || 1, bad = f.totProfit < 0 || (f.avgCoeff > 0 && f.avgCoeff < thr);
+            return `<div class="kpi sensitive ${bad ? 'pan-kpi-bad' : 'pan-kpi-ok'}" title="Coefficient moyen = prix de vente HT ÷ coût de revient, pondéré par les quantités. Bénéfice net = marge − cotisations (détail plus bas)."><span class="kpi-val">${f.avgCoeff > 0 ? f.avgCoeff.toFixed(2).replace('.', ',') : '—'}</span><span class="kpi-label">Coeff moyen · ${f.totProfit >= 0 ? '+' : ''}${U.eur(f.totProfit)}</span></div>`; })() : ''}
         </div>
 
         ${this.basket.length ? `
@@ -2147,10 +2149,10 @@ const Paniers = {
     `);
   },
 
-  _renderFinanceSummary() {
+  /* Chiffres du panier (coût, marge, cotisations, bénéfice, coefficient moyen) : une seule définition pour le récapitulatif et la tuile du haut */
+  _finData() {
     const S = Store.state.settings;
     const nbArticles = this.basket.reduce((a, b) => a + b.qty, 0);
-    const hasLocked = this.basket.some(b => b.locked);
     const fd = 1 - this._disc();   // réduction client : le prix encaissé baisse
     const rows = this.basket.map(b => {
       const acc = b.kind === 'A' ? Store.state.catalogA.find(x => x.id === b.pId) : null;   // accessoire : coût de la fiche, cotisations au taux « fait main »
@@ -2166,6 +2168,7 @@ const Paniers = {
         priceTTC = b.price;
         priceHT = b.price / (1 + vat);
         cost = acc ? U.num(Pricing.accCalc(acc).cost) : U.num(sv ? sv.costUnit : 0);
+        if (!(coeff > 0) && cost > 0) coeff = priceHT / cost;   // produit sans fiche Prix mastication liée : coefficient calculé sur le coût du stock
       }
       if (fd < 1) { priceHT *= fd; priceTTC *= fd; }   // réduction client : le prix encaissé baisse, pas le coût
       // Même règle que les autres écrans : bénéfice « assujetti » (hors TVA) pour les totaux ; le gain réel non assujetti vient en plus.
@@ -2184,6 +2187,12 @@ const Paniers = {
     const totProfit = rows.reduce((a, r) => a + r.profit * r.qty, 0);
     const totActuel = rows.reduce((a, r) => a + r.profitActuel * r.qty, 0);
     const avgCoeff = nbArticles > 0 ? rows.reduce((a, r) => a + r.coeff * r.qty, 0) / nbArticles : 0;
+    return { rows, nbArticles, fd, valeur, totVente, totCost, totMargin, totSocial, totProfit, totActuel, avgCoeff };
+  },
+  _renderFinanceSummary() {
+    const S = Store.state.settings;
+    const hasLocked = this.basket.some(b => b.locked);
+    const { rows, nbArticles, fd, valeur, totVente, totCost, totMargin, totSocial, totProfit, totActuel, avgCoeff } = this._finData();
     const nViandes = [...new Set(this.basket.map(b => b.meat))].filter(Boolean).length;
     const nProduits = [...new Set(this.basket.map(b => b.pId))].length;
     const feeRate = this.paymentMode === 'sumup' ? U.num(S.cardFeeRate) : this.paymentMode === 'stripe' ? U.num(S.stripeFeeRate) : 0;

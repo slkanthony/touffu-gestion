@@ -1910,3 +1910,8 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .cl-br-x { background: none; border: 0; color: var(--gris); padding: 0 4px; font-size: .95rem; line-height: 1; cursor: pointer; }
 .cl-br-x:hover { color: var(--alerte); filter: none; }
 .cl-br-add { background: none; border: 1px solid var(--caramel); color: var(--caramel); border-radius: 999px; width: 18px; height: 18px; padding: 0; line-height: 14px; font-size: .85rem; margin-left: 4px; vertical-align: 1px; cursor: pointer; }
+/* Paniers : tuile « Coeff moyen » (vert = bénéfice, rouge = perte ou coefficient sous le seuil) */
+.kpi.pan-kpi-ok { border-left-color: var(--ok); }
+.kpi.pan-kpi-ok .kpi-val { color: var(--ok); }
+.kpi.pan-kpi-bad { border-left-color: var(--alerte); }
+.kpi.pan-kpi-bad .kpi-val { color: var(--alerte); }
