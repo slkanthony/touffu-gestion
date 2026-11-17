@@ -498,6 +498,11 @@ run(`Stock.setPast('b', 'gras', 'peu');`);
 eq('20c une pastille réglée sur l\'un suit sur l\'autre', run(`Store.state.stockM[0].tags.gras`), 'peu');
 eq('20d jamais les deux dans le même panier', build(12).sort(), ['Museaux de bœuf', 'Oreille de lapin']);
 
+/* ══════════ 21. STATS : avec ou sans poils (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Museaux', { days: 200, price: 4, meat: 'Boeuf' }), sp('b', 'Museaux avec poils', { days: 200, price: 5, meat: 'Boeuf', tags: { poil: 'avec' } })]);
+run(`Stock.render = Stock.renderM = function () {}; U.toast = function () {}; Store.save = function () {}; Stock.linkTwin('a', 'b');`);
+eq('21a quantités et CA par version', run(`(r => [r.name, r.sans.qty, r.avec.qty, r.avec.ca, Math.round(r.pctAvec)])(Stats._twinStats([{ items: [{ kind: 'M', pId: 'a', qty: 3, price: 4 }, { kind: 'M', pId: 'b', qty: 1, price: 5 }] }, { items: [{ kind: 'M', name: 'Museaux avec poils', qty: 1, price: 5 }] }])[0])`), ['Museaux', 3, 2, 10, 40]);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

@@ -1096,6 +1096,50 @@ const Stats = {
     <p class="muted help" style="margin-top:6px;font-size:.8rem;">« Charges fixes matériel » = entretien imprimante UV (→ accessoires) + amortissement du matériel réparti sur la période (tagué mastication/accessoires directement, « commun » au prorata du CA). ${va ? '' : 'TVA non déduite (non assujetti) — affichée pour info seulement si tu coches « assujetti ».'}</p>`;
   },
 
+  /* « Avec ou sans poils ? » (Antho 2026-11-17, étape 2 des produits jumeaux) : pour chaque paire liée (Stock → mode pastilles),
+     ce qui se vend le plus sur la période choisie. Une ligne de vente est rattachée à son produit du stock (id, sinon fiche prix liée, sinon nom). */
+  _stockProdOf(i) {
+    const sm = Store.state.stockM || [];
+    if (i.pId) {
+      const p = sm.find(x => x.id === i.pId) || sm.find(x => x.catalogId === i.pId || (x.variants || []).some(v => v.catalogId === i.pId));
+      if (p) return p;
+    }
+    const f = typeof Paniers !== 'undefined' ? Paniers._stockOf(i) : null;
+    return f ? f.p : null;
+  },
+  _twinStats(sales) {
+    const by = {};
+    (sales || []).forEach(sl => (sl.items || []).forEach(i => {
+      if ((i.kind || 'M') !== 'M') return;
+      const p = this._stockProdOf(i); if (!p || !Stock.twinOf(p)) return;
+      const r = by[p.id] || (by[p.id] = { qty: 0, ca: 0 });
+      r.qty += U.num(i.qty); r.ca += U.num(i.price) * U.num(i.qty);
+    }));
+    const seen = new Set(), rows = [];
+    (Store.state.stockM || []).forEach(p => {
+      const q = Stock.twinOf(p); if (!q || seen.has(p.id)) return;
+      seen.add(p.id); seen.add(q.id);
+      const [sans, avec] = Stock.poilOf(p) === 'avec' ? [q, p] : [p, q];
+      const a = by[avec.id] || { qty: 0, ca: 0 }, b = by[sans.id] || { qty: 0, ca: 0 };
+      rows.push({ name: sans.name, sans: b, avec: a, tot: a.qty + b.qty, pctAvec: a.qty + b.qty ? a.qty / (a.qty + b.qty) * 100 : 0 });
+    });
+    return rows.sort((x, y) => y.tot - x.tot || U.sortFr(x.name, y.name));
+  },
+  _twinCard(agg) {
+    const rows = this._twinStats(agg.sales);
+    if (!rows.length) return `<div class="card mt"><h2>${U.icon('link')} Avec ou sans poils ?</h2><p class="muted">Aucune paire liée pour l'instant : lie tes produits « avec / sans poils » dans Stock → Mastication → Filtres → Mode pastilles.</p></div>`;
+    const sold = rows.filter(r => r.tot > 0), tA = sold.reduce((a, r) => a + r.avec.qty, 0), tS = sold.reduce((a, r) => a + r.sans.qty, 0);
+    const bar = r => `<div class="tw-bar" title="${Math.round(r.pctAvec)} % avec poils"><span class="tw-sans" style="width:${100 - r.pctAvec}%"></span><span class="tw-avec" style="width:${r.pctAvec}%"></span></div>`;
+    return `<div class="card mt"><h2>${U.icon('link')} Avec ou sans poils ?</h2>
+      <p class="muted help">Pour chaque produit lié à sa version avec poils (Stock → mode pastilles), ce qui se vend le plus sur la période choisie : quantités, et chiffre d'affaires en petit.</p>
+      ${sold.length ? `<p style="margin:4px 0 8px;"><b>${U.qty(tS)}</b> sans poils · <b>${U.qty(tA)}</b> avec poils${tA + tS ? ` <span class="muted">(${Math.round(tA / (tA + tS) * 100)} % avec poils)</span>` : ''}</p>` : '<p class="muted">Aucune vente de ces produits sur cette période.</p>'}
+      ${U.fold('twins', rows.length, `<div class="table-wrap"><table><thead><tr><th class="col-name">Produit</th><th class="num">Sans poils</th><th class="num">Avec poils</th><th style="min-width:140px;">Répartition</th></tr></thead>
+        <tbody>${rows.map(r => `<tr${r.tot ? '' : ' class="muted"'}><td class="col-name"><b>${U.esc(r.name)}</b></td>
+          <td class="num">${U.qty(r.sans.qty)}<div class="muted sensitive" style="font-size:.78rem;">${U.eur(r.sans.ca)}</div></td>
+          <td class="num">${U.qty(r.avec.qty)}<div class="muted sensitive" style="font-size:.78rem;">${U.eur(r.avec.ca)}</div></td>
+          <td>${r.tot ? bar(r) : '<span class="muted">pas de vente</span>'}</td></tr>`).join('')}</tbody></table></div>`, { unit: 'produits' })}
+    </div>`;
+  },
   renderSales() {
     const agg = this._salesAgg();
     const metric = this._metric();
@@ -1202,6 +1246,8 @@ const Stats = {
         ${U.fold('accperf', topAcc.length, `<div class="table-wrap mt"><table><thead><tr><th>#</th><th class="col-name">Accessoire</th><th class="num">Quantité</th><th class="num sensitive">CA</th><th class="num">Ventes</th></tr></thead>
         <tbody>${topAcc.map((p, i) => `<tr><td>${i + 1}</td><td class="col-name"><b>${U.esc(p.name)}</b></td><td class="num">${U.qty(p.qty)}</td><td class="num sensitive">${U.eur(p.ca)}</td><td class="num">${p.sales}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aucune vente d\'accessoire.</td></tr>'}</tbody></table></div>`)}
       </div>` : ''}
+
+      ${metric === 'ca' || this.salesKind === 'acc' ? '' : this._twinCard(agg)}
 
       ${metric === 'ca' ? '' : `<div class="card mt"><h2>💤 Produits dormants <span class="muted">(${agg.dormant.length})</span></h2>
         <p class="muted help">Produits du catalogue jamais vendus sur cette période — candidats au déstockage / à ne pas racheter.</p>

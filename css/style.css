@@ -1941,3 +1941,7 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .pt-twin-sug { padding: 12px 16px; }
 .pt-twin-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--card-border); }
 .pt-twin-row:last-child { border-bottom: 0; }
+/* Stats : avec ou sans poils (barre sans = caramel clair, avec = caramel) */
+.tw-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--card-border); }
+.tw-bar .tw-sans { background: var(--gris); }
+.tw-bar .tw-avec { background: var(--caramel); }
