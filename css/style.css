@@ -1936,3 +1936,8 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .pt-grp.pt-locked > :not(.pt-lbl) { opacity: .5; user-select: none; }
 .pt-grp.pt-locked > :not(.pt-lbl):hover { opacity: .8; }
 .pt-grp.pt-locked button { cursor: pointer; }
+/* Produits jumeaux (avec / sans poils) */
+.pt-twin { text-align: center; font-size: .82rem; color: var(--gris); margin: -4px 0 8px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.pt-twin-sug { padding: 12px 16px; }
+.pt-twin-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--card-border); }
+.pt-twin-row:last-child { border-bottom: 0; }

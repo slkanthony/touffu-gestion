@@ -189,6 +189,73 @@ const Stock = {
     const i = [...b.parentNode.children].indexOf(b);
     this.setPastAllV(id, k, i < g.o.length ? g.o[i][0] : '*');
   },
+  /* ═══ Produits JUMEAUX (Antho 2026-11-17) : le même produit avec et sans poils (museaux, plaques, peaux…). Liaison choisie par Antho
+     (fiche « Modifier le produit », ou propositions validées d'un clic en mode pastilles), jamais devinée en silence.
+     Effets : pastilles recopiées de l'un à l'autre (sauf le poil, taille par taille selon le nom de la taille) ; paniers : jamais les deux
+     ensemble, et l'achat récent de l'un compte aussi pour l'autre. Prix, stock et fiches de prix restent séparés. ═══ */
+  twinOf(p) {
+    if (!p || !p.twinId) return null;
+    const q = Store.state.stockM.find(x => x.id === p.twinId);
+    return q && q.twinId === p.id ? q : null;   // liaison valable seulement dans les deux sens
+  },
+  twinIdOf(pId) { const t = this.twinOf(Store.state.stockM.find(x => x.id === pId)); return t ? t.id : ''; },
+  _twinKey(name) {
+    return String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\b(avec|sans)\s+poils?\b/g, ' ').replace(/\s+/g, ' ').trim();
+  },
+  /* Paires évidentes à proposer : même viande, même nom une fois « avec poils » retiré, l'un avec poils et l'autre sans, aucun des deux déjà lié. */
+  twinSuggestions() {
+    const free = Store.state.stockM.filter(p => !this.twinOf(p)), by = {};
+    free.forEach(p => { const k = (p.meatType || '').toLowerCase() + '|' + this._twinKey(p.name); (by[k] = by[k] || []).push(p); });
+    return Object.values(by).filter(g => g.length === 2 && (this.poilOf(g[0]) === 'avec') !== (this.poilOf(g[1]) === 'avec'))
+      .map(g => this.poilOf(g[0]) === 'avec' ? [g[1], g[0]] : g).sort((a, b) => U.sortFr(a[0].name, b[0].name));
+  },
+  _twinSet(p, q) {
+    [p, q].forEach(x => { const old = this.twinOf(x); if (old && old !== p && old !== q) delete old.twinId; });
+    p.twinId = q.id; q.twinId = p.id;
+    const [src, dst] = this.pastMissing(p).length <= this.pastMissing(q).length ? [p, q] : [q, p];
+    this._twinSync(src, dst, true);   // à la liaison : le plus complet remplit seulement les cases VIDES de l'autre
+  },
+  linkTwin(aId, bId) {
+    const a = Store.state.stockM.find(x => x.id === aId), b = Store.state.stockM.find(x => x.id === bId); if (!a || !b || a === b) return;
+    this._twinSet(a, b);
+    Store.save('stockM'); this.renderM();
+    U.toast('« ' + a.name + ' » et « ' + b.name + ' » sont liés : leurs pastilles se suivent.');
+  },
+  linkAllTwins() {
+    const s = this.twinSuggestions(); if (!s.length) return;
+    s.forEach(([a, b]) => this._twinSet(a, b));
+    Store.save('stockM'); this.renderM();
+    U.toast(s.length + ' paire' + (s.length > 1 ? 's' : '') + ' liée' + (s.length > 1 ? 's' : '') + '.');
+  },
+  unlinkTwin(id) {
+    const p = Store.state.stockM.find(x => x.id === id), q = this.twinOf(p); if (!p) return;
+    delete p.twinId; if (q) delete q.twinId;
+    Store.save('stockM'); this.renderM();
+    U.toast('Liaison retirée.');
+  },
+  /* Recopie les pastilles de src sur dst (sauf le poil). onlyEmpty : ne remplit que ce qui est vide chez dst (au moment de lier). */
+  _twinSync(src, dst, onlyEmpty) {
+    if (!src || !dst) return;
+    const st = src.tags || {}, dt = dst.tags = Object.assign({}, dst.tags || {});
+    const empty = v => v === undefined || v === '' || (Array.isArray(v) && !v.length);
+    ['hypo', 'species', 'type', 'resistance', 'odeur', 'gras', 'ramollit', 'age', 'gabarit', 'sameAll'].forEach(k => {
+      if (st[k] === undefined) return;
+      if (onlyEmpty && !empty(dt[k])) return;
+      dt[k] = Array.isArray(st[k]) ? st[k].slice() : st[k];
+    });
+    const lab = v => String(Pricing.labelVariant(v) || '').toUpperCase().trim();
+    (dst.variants || []).forEach(dv => {
+      const sv = (src.variants || []).find(v => lab(v) === lab(dv)); if (!sv) return;
+      ['species', 'age', 'gabarit'].forEach(k => {
+        const val = (sv.tags || {})[k];
+        if (onlyEmpty && ((dv.tags || {})[k] || []).length) return;
+        const t = dv.tags = Object.assign({}, dv.tags || {});
+        if (val && val.length) t[k] = val.slice(); else delete t[k];
+        if (!Object.keys(t).length) delete dv.tags;
+      });
+    });
+  },
   setSameTags(id) {
     const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
     this._pastCommit(p, () => { p.tags = Object.assign({}, p.tags || {}, { sameAll: !this.sameTags(p) }); });
@@ -206,6 +273,7 @@ const Stock = {
     const j = Store.state.journal[0], merge = j && j.action === 'pastilles' && j.undo && j.undo.type === 'restoreItem' && j.undo.data && j.undo.data.id === p.id && Date.now() - j.ts < 120000;
     const snap = merge ? null : Store.snapshot('stockM', p);
     fn();
+    this._twinSync(p, this.twinOf(p));   // le jumeau (avec / sans poils) suit
     const entry = merge ? j : Store.commitSnapshot(snap, 'pastilles', 'Pastilles modifiées — ' + p.name);
     if (merge) { j.ts = Date.now(); Store.save('journal'); }
     Store.save('stockM');
@@ -267,6 +335,7 @@ const Stock = {
       const vg = groups.filter(g => this.PER_SIZE_KEYS.includes(g.k)), same = vars.length && this.sameTags(p);
       return `<div class="pt-row${this.untagged(p) ? ' pt-todo' : ''}">
         <div class="pt-name"><a href="#/stock/mastication/${p.id}" onclick="Stock.filters.pastMode=false" title="Ouvrir le produit dans le stock">${U.esc(p.name)}</a> <span class="badge info">${U.esc(p.meatType || '—')}</span></div>
+        ${(tw => tw ? `<div class="pt-twin">${U.icon('link')} Lié à <b>${U.esc(tw.name)}</b> : mêmes pastilles (sauf le poil)${ro ? '' : ` <button type="button" class="btn-ghost btn-sm fit" onclick="Stock.unlinkTwin('${p.id}')">Délier</button>`}</div>` : '')(this.twinOf(p))}
         <div class="pt-grps">${(miss => groups.map(g => this.perSize(p) && this.PER_SIZE_KEYS.includes(g.k)
           ? `<div class="pt-grp pt-locked" title="Réglé taille par taille (plus bas) : ici = toutes les tailles réunies. Double-clic sur une valeur : l'applique (ou la retire) à TOUTES les tailles d'un coup."${ro ? '' : ` ondblclick="Stock._pastDbl(event,'${p.id}','${g.k}')"`}><span class="pt-lbl${miss.includes(g.k) ? ' pt-miss' : ''}">${g.l} ↓ par taille${miss.includes(g.k) ? ' ⚠' : ''}</span>${seg(g, this._pastUnion(p, g.k), () => '')}</div>`
           : grp(g, seg(g, this._pastCur(p, g.k), v => `Stock.setPast('${p.id}','${g.k}','${v}')`), miss.includes(g.k))).join(''))(this.pastMissing(p))}${vars.length ? `<div class="pt-grp"><span class="pt-lbl">Tailles</span>${U.seg([{ l: 'Comme le produit', on: same, js: ro ? '' : `Stock.setSameTags('${p.id}')` }], { sm: true, label: 'Tailles' })}</div>` : ''}</div>
@@ -274,7 +343,11 @@ const Stock = {
           ${vars.map(v => `<div class="pt-var"><span class="pt-vname">${U.esc(Pricing.labelVariant(v))}</span>${vg.map(g => grp(g, seg(g, this._pastVCur(p, v, g.k), x => same ? '' : `Stock.setPastV('${p.id}','${v.id}','${g.k}','${x}')`))).join('')}</div>`).join('')}</div>` : ''}
       </div>`;
     };
-    return list.length ? `<div class="pt-list">${list.map(row).join('')}</div>` : `<div class="card empty">${(f.tags.todo || []).length ? 'Tous les produits ont leurs pastilles.' : 'Aucun produit avec ces filtres.'}</div>`;
+    const sug = ro ? [] : this.twinSuggestions();
+    const sugHTML = sug.length ? `<div class="card pt-twin-sug"><div class="pt-vhead">${U.icon('link')} Même produit avec / sans poils : ${sug.length} paire${sug.length > 1 ? 's' : ''} à lier ? <span class="muted help">Une fois liés, les deux produits partagent leurs pastilles (sauf le poil) et ne sont jamais proposés ensemble dans un panier. Prix et stock restent séparés. Délier reste possible.</span></div>
+      ${sug.map(([a, b]) => `<div class="pt-twin-row"><span>${U.esc(a.name)} ⇄ ${U.esc(b.name)}</span><button type="button" class="btn-ghost btn-sm fit" onclick="Stock.linkTwin('${a.id}','${b.id}')">Lier</button></div>`).join('')}
+      ${sug.length > 1 ? `<div class="pt-twin-row"><span></span><button type="button" class="btn-cta btn-sm fit" onclick="Stock.linkAllTwins()">Tout lier (${sug.length})</button></div>` : ''}</div>` : '';
+    return sugHTML + (list.length ? `<div class="pt-list">${list.map(row).join('')}</div>` : `<div class="card empty">${(f.tags.todo || []).length ? 'Tous les produits ont leurs pastilles.' : 'Aucun produit avec ces filtres.'}</div>`);
   },
   _dluoFilterOpen: false,
   _meatFilterOpen: false,
@@ -1351,6 +1424,10 @@ const Stock = {
         <div class="fg"><label>Viande</label><select id="sp_meat" onchange="Stock.refreshCatPick()">${(p.meatType && !S.meatTypes.some(m=>m.toLowerCase()===p.meatType.toLowerCase()) ? `<option value="${U.esc(p.meatType)}" selected>${U.esc(p.meatType)} (hors liste)</option>` : '')}${S.meatTypes.slice().sort(U.sortFr).map(m=>`<option ${(p.meatType||'').toLowerCase()===m.toLowerCase()?'selected':''}>${U.esc(m)}</option>`).join('')}</select></div>
       </div>
       <div class="fg"${Store.hideSupplierInfo() ? ' style="display:none;"' : ''}><label>Lien site Touffu (optionnel)</label><div style="display:flex;gap:6px;align-items:center;"><input id="sp_url" value="${U.esc(p.url||'')}" placeholder="https://…" style="flex:1;"><button type="button" class="btn btn-sm" style="white-space:nowrap;" title="Ouvrir dans le navigateur" onclick="var u=document.getElementById('sp_url').value.trim();if(u)window.open(u,'_blank','noopener');else U.toast('Aucun lien renseigné.',true);">🔗 Ouvrir</button></div></div>
+      <div class="fg"><label>Même produit avec / sans poils <span class="muted help">Ex. « Museaux de bœuf » et « Museaux de bœuf avec poils ». Liés, ils partagent leurs pastilles (sauf le poil) et ne vont jamais ensemble dans un panier. Prix et stock restent séparés.</span></label><select id="sp_twin">
+        <option value="">— aucun —</option>
+        ${Store.state.stockM.filter(x => x.id !== p.id).sort((a, b) => U.sortFr(a.name, b.name)).map(x => `<option value="${x.id}" ${Stock.twinIdOf(p.id) === x.id ? 'selected' : ''}>${U.esc(x.name)}</option>`).join('')}
+      </select></div>
       <div class="frow" style="gap:12px;">
         <div class="fg"><label>Hypoallergénique</label><select id="sp_hypo">
           <option value="" ${!Stock.hypoOf(p)?'selected':''}>— non renseigné —</option>
@@ -1454,6 +1531,10 @@ const Stock = {
         let speciesVal = [...document.querySelectorAll('#sp_species input:checked')].map(c => c.value); if (!speciesVal.length) speciesVal = ['chien'];
         p.tags = Object.assign({}, p.tags || {}, { poil: poilVal, hypo: hypoVal, resistance: resistanceVal, type: typeVal, odeur: odeurVal, gras: grasVal, age: ageVal, gabarit: gabaritVal, species: speciesVal });
         if(!id) Store.state.stockM.push(p);
+        { const tw = U.val('sp_twin'), cur = Stock.twinOf(p), q = tw && Store.state.stockM.find(x => x.id === tw);
+          if (!tw) { if (cur) { delete cur.twinId; delete p.twinId; } }
+          else if (q && (!cur || cur.id !== tw)) Stock._twinSet(p, q);
+          Stock._twinSync(p, Stock.twinOf(p)); }   // le jumeau prend les pastilles qu'on vient d'enregistrer
         if(cat) this.syncPricesFromCatalog(cat.id);
         const entry = Store.log('stock',(id?'Produit modifié':'Produit créé')+' — '+p.name,
           id ? { type:'editStockProduct', data:{ pId:p.id, before } } : { type:'createStockProduct', data:{ pId:p.id } });

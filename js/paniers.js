@@ -187,6 +187,7 @@ const Paniers = {
         if (out[f.p.id] === undefined || d < out[f.p.id]) out[f.p.id] = d;
       });
     });
+    Object.keys(out).forEach(id => { const tw = Stock.twinIdOf(id); if (tw && (out[tw] === undefined || out[id] < out[tw])) out[tw] = out[id]; });   // acheté avec poils = déjà eu sans poils
     return out;
   },
   /* Fenêtre « Voir » : contenu du dernier panier (ne prend aucune place sur la page ; se ferme et se rouvre à volonté) */
@@ -507,7 +508,8 @@ const Paniers = {
   },
   /* true si une AUTRE variante de la même famille est déjà dans le panier (hors créneau `skipIdx`). */
   _famTaken(c, basket, skipIdx = -1) {
-    return basket.some((b, i) => i !== skipIdx && this._famOf(b) === c.family && b.vId !== c.vId);
+    const tw = Stock.twinIdOf(c.pId);   // jumeau avec / sans poils : jamais les deux dans le même panier (Antho 2026-11-17)
+    return basket.some((b, i) => i !== skipIdx && ((this._famOf(b) === c.family && b.vId !== c.vId) || (tw && b.pId === tw)));
   },
   _sizePrefScore(c) {
     // Taille déclinée en lots : plusieurs chiens → le lot, un seul chien → la pièce.

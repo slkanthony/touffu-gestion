@@ -485,6 +485,19 @@ eq('19a chèvre = à vérifier (non renseigné)', run(`Stock.hypoDefault('Chèvr
 paniers([sp('a', 'Bœuf non', { days: 200, price: 4, meat: 'Boeuf' }), sp('b', 'Autruche oui', { days: 200, price: 4, meat: 'Autruche' })], { hypoOnly: true });
 eq('19b « hypoallergénique uniquement » : le « non » ne passe plus', run(`Paniers.candidates().map(c => c.name)`), ['Autruche oui']);
 
+/* ══════════ 20. PRODUITS JUMEAUX avec / sans poils (Antho 2026-11-17) ══════════ */
+paniers([sp('a', 'Museaux de bœuf', { days: 200, price: 4, meat: 'Boeuf', tags: { resistance: 'moyenne', odeur: 'forte' } }),
+         sp('b', 'Museaux de bœuf avec poils', { days: 200, price: 4, meat: 'Boeuf', tags: { poil: 'avec' } }),
+         sp('c', 'Oreille de lapin', { days: 200, price: 4, meat: 'Lapin' })]);
+run(`Stock.render = Stock.renderM = function () {}; U.toast = function () {}; Store.save = function () {};`);
+eq('20a la paire est proposée', run(`Stock.twinSuggestions().map(g => g.map(p => p.id).join('+'))`), ['a+b']);
+run(`Stock.linkTwin('a', 'b');`);
+eq('20b liés dans les deux sens', run(`[Stock.twinIdOf('a'), Stock.twinIdOf('b')]`), ['b', 'a']);
+eq('20b à la liaison, le jumeau vide reçoit les pastilles (pas le poil)', run(`[Store.state.stockM[1].tags.resistance, Store.state.stockM[1].tags.poil]`), ['moyenne', 'avec']);
+run(`Stock.setPast('b', 'gras', 'peu');`);
+eq('20c une pastille réglée sur l\'un suit sur l\'autre', run(`Store.state.stockM[0].tags.gras`), 'peu');
+eq('20d jamais les deux dans le même panier', build(12).sort(), ['Museaux de bœuf', 'Oreille de lapin']);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
