@@ -118,7 +118,8 @@ const Paniers = {
     if (!d.birth) return null; const b = new Date(d.birth), n = new Date(); if (isNaN(b)) return null;
     let m = (n.getFullYear() - b.getFullYear()) * 12 + n.getMonth() - b.getMonth(); if (n.getDate() < b.getDate()) m--;
     if (m < 0) return null;
-    return m < 3 ? ['0-3'] : m < 6 ? ['3-5'] : m < 11 ? ['6-10'] : m >= 96 ? ['11+', 'senior'] : ['11+'];
+    // Borne atteinte = tranche suivante (Antho 2026-11-17 : « 5 mois révolus, c'est bon » — sinon un chiot de 5 mois et demi n'était nulle part)
+    return m < 3 ? ['0-3'] : m < 5 ? ['3-5'] : m < 10 ? ['6-10'] : m >= 96 ? ['11+', 'senior'] : ['11+'];
   },
   _profKey(d) {   // deux chiens avec la même clé = même profil (âge, gabarit, contraintes) ; la race ne compte pas
     const avoid = Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid').sort();

@@ -509,6 +509,13 @@ eq('22a jamais « incomplète » pour résistance / odeur / ramollit / âge / ga
 eq('22b la résistance et l\'âge saisis avant sont ignorés : proposée à un chiot', run(`Paniers.candidates().map(c => c.name)`), ['Saucisse']);
 eq('22c valeurs gardées en réserve', run(`Store.state.stockM[0].tags.resistance`), 'forte');
 
+/* ══════════ 23. ÂGE DU CHIEN : borne atteinte = tranche suivante (Antho 2026-11-17) ══════════ */
+{ const born = m => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - m); return d.toISOString().slice(0, 10); };
+  eq('23 4 mois révolus = 3-5 mois', run(`Paniers._dogAges({ birth: '${born(4)}' })`), ['3-5']);
+  eq('23 5 mois révolus = 6-10 mois', run(`Paniers._dogAges({ birth: '${born(5)}' })`), ['6-10']);
+  eq('23 10 mois révolus = 11 mois +', run(`Paniers._dogAges({ birth: '${born(10)}' })`), ['11+']);
+  eq('23 2 mois = 0-3 mois', run(`Paniers._dogAges({ birth: '${born(2)}' })`), ['0-3']); }
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
