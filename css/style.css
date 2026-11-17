@@ -1863,3 +1863,10 @@ a.btn { line-height: normal; }
 }
 /* 5. Deux polices seulement (design D7, Antho 2026-11-16) : en Quicksand, le texte des boutons est en demi-gras pour rester bien lisible. */
 .btn-cta, .btn-ghost, .btn-ok, .btn-danger { font-weight: 600; }
+
+/* Choix « pastille » (Antho 2026-11-17) : cases à cocher des filtres de Paniers (Résistance, Hypoallergénique…) = boutons arrondis comme le reste de l'appli, remplis en caramel quand ils sont choisis */
+.chip-opt { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 6px 16px; border: 1.5px solid var(--caramel); border-radius: 12px; background: transparent; color: var(--texte); font-size: 0.86rem; font-weight: 700; text-transform: none; letter-spacing: 0; cursor: pointer; user-select: none; white-space: nowrap; transition: background .12s; }
+.chip-opt input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
+.chip-opt:hover { background: rgba(166, 113, 83, 0.16); }
+.chip-opt:has(input:checked) { background: var(--caramel); color: #fff; }
+.chip-opt:has(input:focus-visible) { outline: 2px solid var(--caramel); outline-offset: 2px; }

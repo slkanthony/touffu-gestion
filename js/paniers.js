@@ -1666,14 +1666,14 @@ const Paniers = {
         </div>
 
         <div class="frow" style="gap:12px;margin-top:8px;align-items:center;">
-          <label class="ms-opt"><input type="checkbox" ${this.hypoOnly ? 'checked' : ''} onchange="Paniers.setHypo(this.checked)"> Hypoallergénique uniquement</label>
+          <label class="chip-opt fit"><input type="checkbox" ${this.hypoOnly ? 'checked' : ''} onchange="Paniers.setHypo(this.checked)"> Hypoallergénique uniquement</label>
         </div>
 
         <div class="fg" style="margin-top:8px;">
           <label>💪 Résistance souhaitée</label>
           <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
             ${[['faible','Faible'],['moyenne','Moyenne'],['forte','Forte'],['tres-forte','Très Forte']].map(([v,l]) =>
-              `<label class="ms-opt"><input type="checkbox" ${this.resistanceInclude.includes(v)?'checked':''} onchange="Paniers.toggleResistance('${v}')"> ${l}</label>`
+              `<label class="chip-opt"><input type="checkbox" ${this.resistanceInclude.includes(v)?'checked':''} onchange="Paniers.toggleResistance('${v}')"> ${l}</label>`
             ).join('')}
           </div>
         </div>
