@@ -114,10 +114,30 @@ const Paniers = {
   },
   /* ---------- Panier chien par chien (cliente avec 2 chiens ou plus aux profils différents) ---------- */
   _dogList() { const r = this._clientRules(); return r ? r.dogs.map((d, i) => Object.assign({}, d, { _n: String(d.name || '').trim() || 'Chien ' + (i + 1) })) : []; },
-  _dogAges(d) {   // tranche d'âge de la fiche (naissance) → valeurs du filtre « Âge du chien » ; null si inconnue
-    if (!d.birth) return null; const b = new Date(d.birth), n = new Date(); if (isNaN(b)) return null;
+  _monthsOld(d, frac) {   // âge en mois (frac : avec la partie de mois entamée, ex. 5,5) ; null si date inconnue
+    if (!d || !d.birth) return null; const b = new Date(d.birth), n = new Date(); if (isNaN(b)) return null;
+    if (frac) { const m = (n - b) / (30.44 * 86400000); return m < 0 ? null : m; }
     let m = (n.getFullYear() - b.getFullYear()) * 12 + n.getMonth() - b.getMonth(); if (n.getDate() < b.getDate()) m--;
-    if (m < 0) return null;
+    return m < 0 ? null : m;
+  },
+  /* TAILLE ACTUELLE d'un chien qui grandit (Antho 2026-11-18) : un chiot de race moyenne n'a pas encore sa taille adulte.
+     Poids adulte = moyenne de sa ou ses races (sinon taille de la fiche : petit 7 kg, moyen 17 kg, grand 35 kg) ;
+     poids actuel ≈ poids adulte × âge ÷ 12 mois (÷ 10 mois pour une petite race, qui finit plus tôt) ; puis les seuils de l'appli
+     (< 10 kg petit, < 25 kg moyen, sinon grand). null : un an ou plus, date de naissance ou taille adulte inconnues. */
+  ADULT_KG: { petit: 7, moyen: 17, grand: 35 },
+  _growGab(d) {
+    const m = this._monthsOld(d, true); if (m === null || m >= 12) return null;
+    const pf = typeof Races !== 'undefined' ? Races.profile(d) : null;
+    const adultKg = pf && (U.num(pf.wMin) || U.num(pf.wMax)) ? (U.num(pf.wMin) + U.num(pf.wMax)) / 2 : (this.ADULT_KG[d.gabarit] || 0);
+    if (!adultKg) return null;
+    const adult = d.gabarit || (adultKg < 10 ? 'petit' : adultKg < 25 ? 'moyen' : 'grand');
+    const kg = adultKg * Math.min(1, m / (adult === 'petit' ? 10 : 12));
+    return { cur: kg < 10 ? 'petit' : kg < 25 ? 'moyen' : 'grand', adult, kg: Math.round(kg) };
+  },
+  /* Chien qui grandit : un produit coché « Grand » sans « Petit » est trop gros pour lui, sauf s'il est déjà grand (ex. l'églefin pour un chiot de 5 mois). */
+  _tooBigForGrowing(g, tags) { const t = tags.gabarit || []; return !!g && g.cur !== 'grand' && t.includes('grand') && !t.includes('petit'); },
+  _dogAges(d) {   // tranche d'âge de la fiche (naissance) → valeurs du filtre « Âge du chien » ; null si inconnue
+    const m = this._monthsOld(d); if (m === null) return null;
     // Borne atteinte = tranche suivante (Antho 2026-11-17 : « 5 mois révolus, c'est bon » — sinon un chiot de 5 mois et demi n'était nulle part)
     return m < 3 ? ['0-3'] : m < 5 ? ['3-5'] : m < 10 ? ['6-10'] : m >= 96 ? ['11+', 'senior'] : ['11+'];
   },
@@ -134,14 +154,15 @@ const Paniers = {
     if (d.odor === 'non' && tags.odeur === 'forte') return false;
     if (d.fat === 'non' && tags.gras === 'gras') return false;
     if (d.sensitive && pTags.hypo !== 'oui') return false;   // « non » est une valeur : seul « oui » passe
-    const da = this._dogAges(d);
+    const da = this._dogAges(d), gg = this._growGab(d), dgab = gg ? gg.cur : d.gabarit;   // chiot : sa taille d'aujourd'hui, pas sa taille adulte
     if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return false;
-    if (d.gabarit && tags.gabarit.length > 0 && !tags.gabarit.includes(d.gabarit)) return false;
+    if (dgab && tags.gabarit.length > 0 && !tags.gabarit.includes(dgab)) return false;
+    if (this._tooBigForGrowing(gg, tags)) return false;
     if (this._tooHardForPuppy(da, tags)) return false;
     if (this._triedVerdict([d], p.name) === 'avoid') return false;
     const tr = this._traits(d), nm = Clients._norm(p.meatType || '');
     if (tr.avoidMeats.some(m => Clients._norm(m) === nm)) return false;   // viande à éviter pour sa race
-    if (this._riskBlocks(tr, tags, this._curVar, d.gabarit === 'petit')) return false;
+    if (this._riskBlocks(tr, tags, this._curVar, dgab === 'petit')) return false;
     return true;
   },
   /* ---------- Cliente déjà connue : son dernier panier (Antho 2026-11-17) ----------
@@ -409,7 +430,8 @@ const Paniers = {
     const cl = pd ? null : this._clientRules();
     // Chiens au même profil (ou un seul chien) : l'âge et le gabarit de la fiche comptent aussi (avant, seulement en « chien par chien »)
     const d0 = cl && cl.dogs.length ? cl.dogs[0] : null;
-    const da = d0 ? this._dogAges(d0) : null, dg = d0 ? (d0.gabarit || '') : '';
+    const g0 = d0 ? this._growGab(d0) : null;   // chiot : taille d'aujourd'hui estimée d'après son âge et sa race
+    const da = d0 ? this._dogAges(d0) : null, dg = d0 ? (g0 ? g0.cur : (d0.gabarit || '')) : '';
     const selAges = this._ageSel();
     const ago = this._boughtAgo();   // produits déjà achetés par la cliente : exclus s'ils sont récents, évités sinon
 
@@ -449,6 +471,7 @@ const Paniers = {
         if (tags.species && tags.species.length && !tags.species.includes('chien')) return;   // produit réservé aux chats : jamais dans un panier pour chiens
         if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return;
         if (dg && tags.gabarit.length > 0 && !tags.gabarit.includes(dg)) return;
+        if (!pd && this._tooBigForGrowing(g0, tags)) return;
         if (!pd && this._tooHardForPuppy(da || selAges, tags)) return;
         const small = (dg || (this._gabSel() || []).join()) === 'petit';
         if (this._riskBlocks(this.risks, tags, v, small)) return;   // particularités cochées dans les réglages avancés
@@ -489,7 +512,7 @@ const Paniers = {
             mode: v.mode || '', value: v.value,
             ...this._famInfo(p, v),
             ...(suits ? { forDogs: suits.map(d => d._n), ages: (x => x.length ? x : undefined)([...new Set(suits.flatMap(d => this._dogAges(d) || []))]), gabs: (x => x.length ? x : undefined)([...new Set(suits.map(d => d.gabarit).filter(Boolean))]) } : { ages: da || undefined, gabs: dg ? [dg] : undefined }),
-            chews, liked, teeth: !!(this.risks.teeth || dogsFor.some(d => this._traits(d).teeth))
+            chews, liked, teeth: !!(this.risks.teeth || dogsFor.some(d => this._traits(d).teeth)), grow: !pd && g0 ? g0.cur : undefined
           });
         });
       });
@@ -632,6 +655,7 @@ const Paniers = {
     let m = 1;
     if (gabs && gabs.includes('grand') && !gabs.includes('petit') && g.includes('petit')) m *= 0.6;
     if (c.teeth && a.length && !a.includes('senior')) m *= 0.6;
+    if (c.grow === 'moyen' && g.length && !g.includes('petit')) m *= 0.7;   // chiot de taille moyenne qui grandit : ce qui convient aussi aux petits passe devant
     return m;
   },
 

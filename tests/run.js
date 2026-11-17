@@ -576,6 +576,20 @@ eq('29a museau (6 €) remplacé par deux produits à 3 €', run(`Paniers.baske
 eq('29a la queue de bœuf reste en dernier, le museau est parti', run(`[Paniers.basket[Paniers.basket.length - 1].name, Paniers.basket.some(b => b.pId === 'a')]`), ['Queue de bœuf', false]);
 eq('29a total inchangé', run(`Paniers.basket.reduce((a, b) => a + b.price * b.qty, 0)`), 10);
 
+/* ══════════ 30. CHIOT : taille actuelle estimée (Antho 2026-11-18) ══════════ */
+{ const born = m => new Date(Date.now() - m * 30.44 * 86400000).toISOString().slice(0, 10);
+  run(`Store.state.settings.breeds = [{ id: 'bc', name: 'Border collie', wMin: 14, wMax: 20 }, { id: 'lab', name: 'Labrador retriever', wMin: 25, wMax: 36 }, { id: 'chi', name: 'Chihuahua', wMin: 1, wMax: 3 }];`);
+  eq('30a croisé moyen de 5,5 mois ≈ 11 kg → moyen', run(`(g => [g.cur, g.adult, g.kg])(Paniers._growGab({ birth: '${born(5.5)}', breeds: ['bc', 'lab'] }))`), ['moyen', 'moyen', 11]);
+  eq('30a même chiot à 3 mois ≈ 6 kg → petit', run(`Paniers._growGab({ birth: '${born(3)}', breeds: ['bc', 'lab'] }).cur`), 'petit');
+  eq('30a un an ou plus : taille adulte (rien à estimer)', run(`Paniers._growGab({ birth: '${born(13)}', breeds: ['bc', 'lab'] })`), null);
+  eq('30b églefin (moyen, grand) trop gros pour un chiot qui grandit', run(`Paniers._tooBigForGrowing({ cur: 'moyen' }, { gabarit: ['moyen', 'grand'] })`), true);
+  eq('30b merlan (petit, moyen) : ok', run(`Paniers._tooBigForGrowing({ cur: 'moyen' }, { gabarit: ['petit', 'moyen'] })`), false);
+  paniers([sp('a', 'Eglefin', { days: 200, price: 5, meat: 'Poisson', tags: { gabarit: ['moyen', 'grand'], resistance: 'faible' } }),
+           sp('b', 'Merlan', { days: 200, price: 4, meat: 'Poisson', tags: { gabarit: ['petit', 'moyen'], resistance: 'faible' } })], { client: 'Cliente Chiot' },
+    [{ id: 'k1', name: 'Cliente Chiot', dogs: [{ id: 'dk', name: 'Brida', birth: born(5.5), breeds: ['bc', 'lab'] }] }]);
+  run(`Store.state.settings.breeds = [{ id: 'bc', name: 'Border collie', wMin: 14, wMax: 20 }, { id: 'lab', name: 'Labrador retriever', wMin: 25, wMax: 36 }];`);
+  eq('30c panier pour le chiot : le merlan oui, l\'églefin non', run(`Paniers.candidates().map(c => c.name)`), ['Merlan']); }
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
