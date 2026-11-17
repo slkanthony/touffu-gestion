@@ -475,8 +475,58 @@ const Paniers = {
     }
 
     this._bal = null;
+
+    /* FINITION AU PLUS PRÈS DU BUDGET (Antho 2026-11-17). La boucle ci-dessus s'arrête quand plus rien ne rentre : il peut rester quelques euros.
+       On tente alors, tant qu'il reste de la marge : (1) d'ajouter un produit qui rentre ; (2) sinon de remplacer UNE unité d'un produit non verrouillé
+       par un produit un peu plus cher qui convient (mêmes règles : quantité max, famille, un seul produit dur), en prenant l'échange qui laisse le moins de reste.
+       Jamais un produit à date dépassée / courte remplacé par un produit à date longue. Pas en « chien par chien » (budget partagé entre les chiens). */
+    if (!nd) {
+      const hard = t => ['forte', 'tres-forte'].includes((t || {}).resistance);
+      const tagsOf = b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sp ? this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null) : {}; };
+      const canAdd = (c, bk) => {
+        if (c.avail <= 0) return false;
+        if (bk.reduce((a, b) => a + (b.pId === c.pId ? b.qty : 0), 0) >= this.maxPerProduct * mult) return false;
+        if (c.mode === 'gram' && mult > 1 && bk.some(b => b.pId === c.pId)) return false;
+        if (this._famTaken(c, bk)) return false;
+        if (hard(c.tags) && !(c.chews && c.chews.includes('gros')) && bk.some(b => hard(tagsOf(b)))) return false;
+        return true;
+      };
+      const put = c => {
+        const ex = basket.find(x => x.pId === c.pId && x.vId === c.vId && x.lotId === c.lotId);
+        if (ex) ex.qty++;
+        else basket.push({ pId: c.pId, vId: c.vId, lotId: c.lotId, name: c.name, meat: c.meat, variant: c.variant, price: c.price, qty: 1, dluo: c.dluo, daysLeft: c.daysLeft, coeff: c.coeff, lotNumber: c.lotNumber, locked: false, family: c.family, dog: this._dogTag(c) });
+        c.avail--; usedProducts.add(c.pId); usedMeats[c.meat] = (usedMeats[c.meat] || 0) + 1;
+      };
+      for (let k = 0; k < 40; k++) {
+        const gap = maxAvailable - spent;
+        if (gap < 0.05) break;
+        const adds = cands.filter(c => c.price <= gap + 0.005 && canAdd(c, basket)).sort((a, b) => score(b) - score(a));
+        if (adds.length) { put(adds[0]); spent += adds[0].price; continue; }
+        let best = null;
+        basket.forEach((b, bi) => {
+          if (b.locked) return;
+          const rest = basket.map((x, i) => i === bi ? { ...x, qty: x.qty - 1 } : x).filter(x => x.qty > 0);
+          const bUrgent = (b.daysLeft === undefined || b.daysLeft === null ? 9999 : b.daysLeft) <= this.URGENT_DAYS;
+          cands.forEach(c => {
+            const delta = c.price - b.price;
+            if (delta < 0.005 || delta > gap + 0.005) return;
+            if (c.pId === b.pId && c.vId === b.vId) return;
+            if (bUrgent && c.daysLeft > this.URGENT_DAYS) return;
+            if (!canAdd(c, rest)) return;
+            const sc = score(c);
+            if (!best || delta > best.delta + 0.005 || (Math.abs(delta - best.delta) <= 0.005 && sc > best.sc)) best = { bi, c, delta, sc };
+          });
+        });
+        if (!best) break;
+        const b = basket[best.bi], old = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId);
+        if (old) old.avail++;
+        b.qty--; if (b.qty <= 0) basket.splice(best.bi, 1);
+        put(best.c); spent += best.delta;
+      }
+    }
     return basket;
   },
+  OVER_PCT: 10,   // la proposition « un peu au-dessus » peut dépasser le budget de 10 % au plus (Antho 2026-11-17 ; avant : 1 €)
 
   /* Générer avec des produits déjà dans le panier (Antho 2026-10-17) : on DEMANDE — les garder (ils deviennent la base verrouillée 🔒, le panier est complété autour)
      ou tout supprimer et repartir de zéro. Sans produit dans le panier, on génère directement. */
@@ -512,7 +562,7 @@ const Paniers = {
     // (demande d'Antho : un produit ajouté avant de générer doit rester la base du panier).
     const locked = this.basket.filter(b => b.locked).map(b => ({ ...b }));
     const b1 = this._compose(available, locked);
-    const b2 = this._compose(available + 1, locked);
+    const b2 = this._compose(available * (1 + this.OVER_PCT / 100), locked);
     const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
     const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
 
@@ -542,7 +592,7 @@ const Paniers = {
 
     const locked = this.basket.filter(b => b.locked).map(b => ({...b}));
     const b1 = this._compose(available, locked);
-    const b2 = this._compose(available + 1, locked);
+    const b2 = this._compose(available * (1 + this.OVER_PCT / 100), locked);
     const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
     const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
 

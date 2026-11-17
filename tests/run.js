@@ -269,6 +269,34 @@ eq('7e gros destructeur : 3 produits durs pour 15 €', build(15).sort(), ['Dur 
 paniers([sp('a', 'Dur 1', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Dur 2', { meat: 'Boeuf', days: 200, tags: { resistance: 'forte' } }), sp('c', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })]);
 eq('7e chien inconnu : un seul produit dur par panier', build(15).filter(n => n.startsWith('Dur')).length, 1);
 
+/* ══════════ 8. PANIERS : le budget au plus près (Antho 2026-11-17) ══════════ */
+const total = budget => run(`Paniers._buildBasket(${budget}, [])`).reduce((a, b) => a + b.price * b.qty, 0);
+/* A et B urgents à 7 €, D à 6 € (100 j), E à 8 € (300 j), C à 9 € (400 j) ; budget 22 €, 1 exemplaire par produit.
+   Choix normal : A + B (14) puis D (date plus proche que E) = 20 €, reste 2 €. Finition : D (6) remplacé par E (8) → 22 € pile. */
+const st8 = () => [sp('a', 'A', { days: -5, price: 7, meat: 'Boeuf' }), sp('b', 'B', { days: 10, price: 7, meat: 'Canard' }), sp('c', 'C', { days: 400, price: 9, meat: 'Lapin' }), sp('d', 'D', { days: 100, price: 6, meat: 'Dinde' }), sp('e', 'E', { days: 300, price: 8, meat: 'Cerf' })];
+paniers(st8());
+eq('8a budget 22 € : total pile au budget', total(22), 22);
+eq('8a … les deux urgents sont toujours là', build(22).filter(n => n === 'A' || n === 'B').length, 2);
+eq('8a … composé de A, B et E', build(22).sort(), ['A', 'B', 'E']);
+/* Jamais un produit urgent remplacé par un produit à date longue : budget 9 €, A (7 €, dépassé) reste, C (9 €, 400 j) ne le remplace pas. */
+paniers([sp('a', 'A', { days: -5, price: 7 }), sp('c', 'C', { days: 400, price: 9, meat: 'Lapin' })]);
+eq('8b un urgent n\'est jamais remplacé par une date longue', build(9), ['A']);
+/* Jamais au-dessus du plafond, quel que soit le budget. */
+paniers(st8());
+eq('8c jamais au-dessus du budget (21 €)', total(21) <= 21.005, true);
+eq('8c jamais au-dessus du budget (25 €)', total(25) <= 25.005, true);
+/* Deux propositions : « pile budget » ≤ 30 €, « un peu au-dessus » entre 30 et 33 € (10 %). */
+paniers([sp('a', 'A', { days: -5, price: 7, meat: 'Boeuf' }), sp('b', 'B', { days: 10, price: 7, meat: 'Canard' }), sp('c', 'C', { days: 400, price: 9, meat: 'Lapin' }), sp('d', 'D', { days: 100, price: 6, meat: 'Dinde' }), sp('e', 'E', { days: 300, price: 8, meat: 'Cerf' }), sp('f', 'F', { days: 200, price: 4.5, meat: 'Poulet' })], { budget: 30 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._generateNow();`);
+const props = run(`Paniers.proposals`);
+eq('8d deux propositions', !!props && props.length, 2);
+if (props) {
+  const t1 = props[0].reduce((a, b) => a + b.price * b.qty, 0), t2 = props[1].reduce((a, b) => a + b.price * b.qty, 0);
+  eq('8d proposition 1 : jamais au-dessus de 30 €', t1 <= 30.005, true);
+  eq('8d proposition 2 : au-dessus de 30 €', t2 > 30.005, true);
+  eq('8d proposition 2 : au plus 33 € (+10 %)', t2 <= 33.005, true);
+}
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
