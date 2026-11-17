@@ -1922,3 +1922,9 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .pt-vname { flex: 0 0 110px; min-width: 0; font-weight: 700; padding-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 600px) { .pt-vname { flex-basis: 100%; padding-bottom: 0; } }
 @media (min-width: 601px) { .pt-var + .pt-var .pt-lbl { display: none; } }
+/* Mode pastilles : nom du produit centré et bien visible, pour distinguer chaque fiche (Antho 2026-11-17) */
+.pt-list { gap: 14px; }
+.pt-name { justify-content: center; font-size: 1.45rem; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--card-border); }
+.pt-name a { color: var(--caramel); }
+.pt-name .badge { font-size: .8rem; }
+@media (max-width: 600px) { .pt-name { font-size: 1.2rem; } }
