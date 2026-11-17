@@ -215,7 +215,7 @@ const dayIso = n => { const d = new Date(Date.now() + n * 86400000); return d.ge
 const sp = (id, name, o) => ({ id, name, meatType: o.meat || 'Boeuf', tags: o.tags || {}, variants: [{ id: id + 'v', mode: o.mode || 'piece', value: o.value || 1, label: o.label || '', priceTTC: o.price || 5, costUnit: 2, lots: [{ id: id + 'l', lotNumber: 'L', dluo: o.days === undefined ? '' : dayIso(o.days), qtyGeneral: 10, qtyEvent: 0 }] }] });
 function paniers(stock, cfg, clients) {
   reset();
-  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte', 'longue'], risks: { glouton: false, choke: false, teeth: false, surpoids: false, energique: false }, typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
+  sandbox.__stock = stock; sandbox.__cfg = Object.assign({ budget: 10, livraison: 0, reduction: 0, nbChiens: 1, priority: 'mix', excludeMeats: [], excludeProducts: [], poilFilter: 'all', hypoOnly: false, resistanceInclude: ['faible', 'moyenne', 'forte', 'tres-forte', 'longue'], risks: { glouton: false, choke: false, teeth: false, surpoids: false, energique: false }, kind: 'vente', typeFilter: 'all', ageInclude: ['0-3', '3-5', '6-10', '11+', 'senior'], gabaritInclude: ['petit', 'moyen', 'grand'], odeurInclude: ['faible', 'moyenne', 'forte'], grasInclude: ['non', 'peu', 'moyen', 'gras'], maxPerProduct: 1, client: '', basket: [], proposals: null }, cfg || {});
   sandbox.__clients = clients || [];
   run(`Store.state.stockM = __stock; Store.state.clients = __clients; window.App.visitMode = false; Object.assign(Paniers, __cfg);`);
 }
@@ -259,8 +259,8 @@ eq('7d mâcheur doux : résistance moyenne = 0,6', run(`Paniers._gabaritResistSc
 /* Gros destructeur adulte : le dur est favorisé, et la résistance souhaitée se coche toute seule en choisissant la cliente. */
 const gros = { id: 'c2', name: 'Cliente Deux', dogs: [{ id: 'd2', name: 'Grand Test', birth: dayIso(-900), gabarit: 'grand', chew: 'gros', meats: {} }] };
 paniers([sp('a', 'Bois dur', { meat: 'Cerf', days: 200, tags: { resistance: 'tres-forte' } }), sp('b', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })], {}, [gros]);
-run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Deux');`);
-eq('7d gros destructeur : résistance souhaitée réglée', run(`Paniers.resistanceInclude`), ['moyenne', 'forte', 'tres-forte', 'longue']);
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.resistanceInclude = Paniers.resistanceInclude.filter(r => r !== 'longue'); Paniers.setClient('Cliente Deux');`);
+eq('7d gros destructeur : résistance souhaitée réglée (mastication longue jamais d\'office)', run(`Paniers.resistanceInclude`), ['moyenne', 'forte', 'tres-forte']);
 eq('7d gros destructeur : très dur = 1', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Bois dur'))`), 1);
 eq('7d gros destructeur : le tendre est écarté par la résistance', cand('Tendre'), undefined);
 /* Gros destructeur : plusieurs produits durs dans le même panier (la limite « un seul produit dur » ne vaut que pour les autres chiens) → le budget est utilisé. */
@@ -337,8 +337,9 @@ eq('10a chiot de 2 mois : pas de mastication longue', cand('Corne test'), undefi
 paniers([sp('a', 'Corne test', { meat: 'Cornes', days: 200, tags: { resistance: 'longue' } }), sp('b', 'Bois test', { meat: 'Bois Naturel', days: 200, tags: { resistance: 'longue' } }), sp('c', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })]);
 eq('10b chien inconnu : une seule mastication dure par panier', build(15).filter(n => n !== 'Tendre').length, 1);
 paniers([sp('a', 'Corne test', { meat: 'Cornes', days: 200, tags: { resistance: 'longue' } })], {}, [gros]);
-run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Deux');`);
-eq('10c gros destructeur : mastication longue cochée toute seule', run(`Paniers.resistanceInclude.includes('longue')`), true);
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.resistanceInclude = Paniers.resistanceInclude.filter(r => r !== 'longue'); Paniers.setClient('Cliente Deux');`);
+eq('10c gros destructeur : mastication longue PAS cochée d\'office', run(`Paniers.resistanceInclude.includes('longue')`), false);
+run(`Paniers.resistanceInclude.push('longue');`);
 eq('10c gros destructeur : mastication longue très bien notée', run(`Paniers._gabaritResistScore(Paniers.candidates().find(c => c.name === 'Corne test'))`), 1);
 
 /* ══════════ 11. PANIERS : particularités du chien et races (Antho 2026-11-17) ══════════ */
@@ -370,6 +371,25 @@ eq('11f race : viande à éviter écartée, « se ramollit » écarté', names11
 const corr = JSON.parse(JSON.stringify(racee)); corr.dogs[0].glouton = 'non'; corr.dogs[0].choke = 'non';
 paniers(st11(), {}, [corr]); run(`Store.state.settings.breeds = null; Paniers.render = function () {}; U.toast = function () {}; Paniers.setClient('Cliente Race');`);
 eq('11g fiche « non glouton, pas de risque » : rien de coché', run(`Paniers.risks.glouton || Paniers.risks.choke`), false);
+
+/* ══════════ 12. PANIERS : une mastication longue par panier, types de panier (Antho 2026-11-17) ══════════ */
+const longs = () => [sp('a', 'Corne 1', { meat: 'Cornes', days: 200, tags: { resistance: 'longue' } }), sp('b', 'Corne 2', { meat: 'Buffle', days: 200, tags: { resistance: 'longue' } }), sp('c', 'Bois 3', { meat: 'Cerf', days: 200, tags: { resistance: 'longue' } }), sp('d', 'Tendre', { meat: 'Lapin', days: 200, tags: { resistance: 'faible' } })];
+paniers(longs(), {}, [gros]); run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.resistanceInclude = Paniers.resistanceInclude.filter(r => r !== 'longue'); Paniers.setClient('Cliente Deux'); Paniers.resistanceInclude.push('longue');`);
+eq('12a gros destructeur : jamais deux mastications longues', build(20).filter(n => n !== 'Tendre').length, 1);
+paniers(longs(), {}, [gros]); run(`Paniers.render = function () {}; U.toast = function () {}; Paniers.resistanceInclude = Paniers.resistanceInclude.filter(r => r !== 'longue'); Paniers.setClient('Cliente Deux');`);
+eq('12b mastication longue décochée : aucune, même pour un chien très énergique', build(20).filter(n => n !== 'Tendre').length, 0);
+/* Types de panier : budget 10 €, produits à 4 € → 8 € au plus près ; la vente propose aussi 12 € (≤ 11 €… non : +10 % = 11 €, donc pas de 2e) */
+const kinds = () => [sp('a', 'A', { days: 200, price: 4, meat: 'Boeuf' }), sp('b', 'B', { days: 200, price: 4, meat: 'Canard' }), sp('c', 'C', { days: 200, price: 3, meat: 'Lapin' }), sp('d', 'D', { days: 200, price: 2.5, meat: 'Dinde' })];
+const gen = k => { paniers(kinds(), { budget: 10, kind: k }); run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._generateNow();`); const ps = run(`Paniers.proposals`) || [run(`Paniers.basket`)]; return ps.map(b => Math.round(b.reduce((a, x) => a + x.price * x.qty, 0) * 100) / 100); };
+eq('12c vente : deux propositions (au plus près, puis au-dessus)', gen('vente').length, 2);
+eq('12d commande site : une seule proposition, jamais au-dessus', gen('site').every(t => t <= 10.005) && gen('site').length === 1, true);
+eq('12e lot à gagner : une seule proposition, jamais au-dessus', gen('lot').every(t => t <= 10.005) && gen('lot').length === 1, true);
+/* Lot à gagner : à date égale, le plus fort coefficient d'abord ; une date dépassée passe quand même en premier. */
+const lotSt = () => { const a = sp('a', 'Faible coeff', { days: 200, price: 4, meat: 'Boeuf' }), b = sp('b', 'Fort coeff', { days: 200, price: 4, meat: 'Canard' }), c = sp('c', 'Dépassé', { days: -3, price: 4, meat: 'Lapin' }); return [a, b, c]; };
+paniers(lotSt(), { budget: 4, kind: 'lot' });
+run(`Pricing._calcAllM = Pricing._calcAllM; Paniers.candidates = (orig => function () { const out = orig.call(this); out.forEach(c => { c.coeff = c.name === 'Fort coeff' ? 3 : c.name === 'Faible coeff' ? 1.2 : 2; }); return out; })(Paniers.candidates);`);
+eq('12f lot : une date dépassée passe en premier', build(4), ['Dépassé']);
+eq('12f lot : puis le plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

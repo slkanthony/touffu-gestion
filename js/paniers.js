@@ -17,6 +17,12 @@ const Paniers = {
   _redLabel(d) { return 'Réduction' + (d.redCode ? ' ' + d.redCode : '') + ' (' + U.qty(d.redPct) + ' %)'; },
   _redAuto: false,   // la réduction vient de la fiche du client (retirée si on change de client) et non d'une saisie à la main
   nbChiens: 1,
+  /* Type de panier (Antho 2026-11-17) : 'vente' = deux propositions (au plus près, et jusqu'à +10 %) ; 'site' = commande du site à prix fixe :
+     jamais au-dessus du budget (le client ne paiera pas la différence) ; 'lot' = lot à gagner / offert : jamais au-dessus, dates courtes d'abord
+     (elles seraient perdues de toute façon) puis les produits au plus fort coefficient (valeur affichée élevée pour un coût réel faible). */
+  kind: 'vente',
+  KINDS: [['vente', 'Vente'], ['site', 'Commande site'], ['lot', 'Lot à gagner']],
+  setKind(v) { this.kind = v; this.proposals = null; this.render(); },
   /* Particularités du chien (Antho 2026-11-17) : utilisables SANS fiche chien (réglages avancés) ; remplies toutes seules quand on choisit une cliente
      (fiche chien, sinon valeurs de sa race). glouton / choke : pas de produit qui se ramollit ni de petite taille (XS, S) pour un chien qui n'est pas
      petit ; teeth : rien de dur ; surpoids : rien de moyennement gras ni gras ; energique : produits plus résistants et mastication longue. */
@@ -280,6 +286,8 @@ const Paniers = {
     if (r.surpoids && ['moyen', 'gras'].includes(tags.gras)) return true;
     return false;
   },
+  /* Résistance d'une ligne du panier (pastilles de sa fiche de stock) */
+  _resOf(b) { const sp = Store.state.stockM.find(x => x.id === b.pId); if (!sp) return ''; const sv = sp.variants.find(x => x.id === b.vId); return this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null).resistance; },
   toggleRisk(k) { this.risks = Object.assign({}, this.risks, { [k]: !this.risks[k] }); this.render(); },
   /* ---------- Règles de raisonnement (Antho 2026-11-17) ---------- */
   URGENT_DAYS: 30,
@@ -315,6 +323,7 @@ const Paniers = {
   },
   /* Poids de chaque critère dans la note d'un produit (somme = 1). Une seule définition pour générer, exclure et remplacer. */
   _weights() {
+    if (this.kind === 'lot') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
     return this.priority === 'dluo' ? { dluo: 0.36, coeff: 0.04, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : this.priority === 'coeff' ? { dluo: 0.08, coeff: 0.32, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : { dluo: 0.26, coeff: 0.08, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.06, like: 0.08 };
@@ -340,8 +349,10 @@ const Paniers = {
     }
     const chews = [...new Set(dogs.map(d => this._chewOf(d)).filter(Boolean))];
     if (chews.length) {   // mâcheur de la fiche → résistance souhaitée cochée toute seule (modifiable dans les filtres)
-      const R = { doux: ['faible', 'moyenne'], moyen: ['faible', 'moyenne', 'forte'], gros: ['moyenne', 'forte', 'tres-forte', 'longue'] };
-      this.resistanceInclude = this.RESISTANCES.map(x => x[0]).filter(r => chews.some(k => (R[k] || []).includes(r)));
+      // La mastication longue n'est JAMAIS cochée d'office (Antho : elle ne revient qu'une fois tous les 2-3 mois) : tu la coches toi-même si tu la veux
+      const R = { doux: ['faible', 'moyenne'], moyen: ['faible', 'moyenne', 'forte'], gros: ['moyenne', 'forte', 'tres-forte'] };
+      const keepLong = this.resistanceInclude.includes('longue');
+      this.resistanceInclude = this.RESISTANCES.map(x => x[0]).filter(r => chews.some(k => (R[k] || []).includes(r)) || (r === 'longue' && keepLong));
     }
     this.render();
     if (sens) U.toast('Chien sensible : « Hypoallergénique uniquement » est coché — décoche-le dans les filtres si besoin.');
@@ -617,8 +628,9 @@ const Paniers = {
         const mt = this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null);
         return this.HARD.includes(mt.resistance);
       });
-      // Un seul produit dur par panier… sauf pour un « gros destructeur » (fiche du chien), à qui il en faut plusieurs
+      // Un seul produit dur par panier… sauf pour un « gros destructeur » (fiche du chien), à qui il en faut plusieurs — mais JAMAIS deux mastications longues
       if (hardInBasket) eligible = eligible.filter(c => !this.HARD.includes(c.tags.resistance) || (c.chews && c.chews.includes('gros')));
+      if (basket.some(b => this._resOf(b) === 'longue')) eligible = eligible.filter(c => c.tags.resistance !== 'longue');
       if (!eligible.length) break;
       // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
       // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
@@ -667,6 +679,7 @@ const Paniers = {
         if (c.mode === 'gram' && mult > 1 && bk.some(b => b.pId === c.pId)) return false;
         if (this._famTaken(c, bk)) return false;
         if (hard(c.tags) && !(c.chews && c.chews.includes('gros')) && bk.some(b => hard(tagsOf(b)))) return false;
+        if (c.tags.resistance === 'longue' && bk.some(b => tagsOf(b).resistance === 'longue')) return false;   // une seule mastication longue par panier
         return true;
       };
       const put = c => {
@@ -740,7 +753,7 @@ const Paniers = {
     // (demande d'Antho : un produit ajouté avant de générer doit rester la base du panier).
     const locked = this.basket.filter(b => b.locked).map(b => ({ ...b }));
     const b1 = this._compose(available, locked);
-    const b2 = this._compose(available * (1 + this.OVER_PCT / 100), locked);
+    const b2 = this.kind === 'vente' ? this._compose(available * (1 + this.OVER_PCT / 100), locked) : b1;   // commande site / lot : jamais au-dessus du budget
     const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
     const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
 
@@ -770,7 +783,7 @@ const Paniers = {
 
     const locked = this.basket.filter(b => b.locked).map(b => ({...b}));
     const b1 = this._compose(available, locked);
-    const b2 = this._compose(available * (1 + this.OVER_PCT / 100), locked);
+    const b2 = this.kind === 'vente' ? this._compose(available * (1 + this.OVER_PCT / 100), locked) : b1;
     const t1 = b1.reduce((a, b) => a + b.price * b.qty, 0);
     const t2 = b2.reduce((a, b) => a + b.price * b.qty, 0);
 
@@ -1842,7 +1855,7 @@ const Paniers = {
     // réapparaître tout seul après un F5, contrairement à un simple filtre de recherche).
     U.syncFilters('paniers', this, ['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats',
       'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
-      'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct', 'risks']);
+      'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct', 'risks', 'kind']);
     this._draft();
     this._syncPend(); this._draft();
     const S = Store.state.settings;
@@ -1877,6 +1890,9 @@ const Paniers = {
         <div class="fg" style="margin-bottom:12px;"><label>🐕 Cliente (option)</label>
           <input type="text" data-clcombo autocomplete="off" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente ou du chien…" onchange="Paniers.setClient(this.value)">
           <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div>${this._lastHTML()}</div>
+
+        <div class="fg" style="margin-bottom:12px;"><label>Type de panier <span class="muted help">Vente : deux propositions, au plus près du budget et jusqu'à 10 % au-dessus. Commande site : jamais au-dessus du budget (le client ne paiera pas la différence). Lot à gagner : jamais au-dessus, les dates courtes d'abord puis les produits au plus fort coefficient (valeur affichée élevée pour un coût réel faible).</span></label>
+          ${U.seg(this.KINDS.map(([v, l]) => ({ l, on: this.kind === v, js: `Paniers.setKind('${v}')` })), { sm: true })}</div>
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💰 Budget TTC</label>
@@ -1950,7 +1966,7 @@ const Paniers = {
         <div class="frow" style="gap:12px;margin-top:8px;align-items:center;">
           <label class="chip-opt fit"><input type="checkbox" ${this.hypoOnly ? 'checked' : ''} onchange="Paniers.setHypo(this.checked)"> Hypoallergénique uniquement</label>
         </div>
-        <div class="fg" style="margin-top:8px;"><label>Particularités du chien <span class="muted help">Utilisables sans fiche chien. Remplies toutes seules quand tu choisis une cliente (fiche du chien, sinon sa race). Glouton ou risque d'étouffement : pas de produits qui se ramollissent (pastille « se ramollit ») ni de petites tailles (XS, S) sauf pour un petit chien. Dents fragiles : rien de dur. Surpoids : rien de gras. Très énergique : produits plus résistants et mastication longue.</span></label>
+        <div class="fg" style="margin-top:8px;"><label>Particularités du chien <span class="muted help">Utilisables sans fiche chien. Remplies toutes seules quand tu choisis une cliente (fiche du chien, sinon sa race). Glouton ou risque d'étouffement : pas de produits qui se ramollissent (pastille « se ramollit ») ni de petites tailles (XS, S) sauf pour un petit chien. Dents fragiles : rien de dur. Surpoids : rien de gras. Très énergique : produits plus résistants. La mastication longue n'est jamais cochée d'office et n'est proposée qu'une fois par panier.</span></label>
           <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">${this.RISKS.map(([k, l]) => `<label class="chip-opt"><input type="checkbox" ${this.risks[k] ? 'checked' : ''} onchange="Paniers.toggleRisk('${k}')"> ${l}</label>`).join('')}</div>
         </div>
 
@@ -2193,7 +2209,7 @@ const Paniers = {
 window.addEventListener('storage', e => { if (e.key === Paniers._DK) Paniers._adoptDraft(e.newValue); });
 
 /* Valeurs d'origine de la configuration (avant toute valeur mémorisée) : sert à « repartir comme pour un nouveau panier » */
-Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct', 'risks'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
+Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct', 'risks', 'kind'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
 
 /* Menus de filtre des accessoires dans « Ajouter un produit » (U.customSelect appelle une fonction globale par son nom) */
 ['addCat', 'addWidth', 'addPerso'].forEach(k => { Paniers['_setAccF_' + k] = function (v) { this.setAddFilter(k, v); }; });
