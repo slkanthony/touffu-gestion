@@ -1606,6 +1606,9 @@ const Ventes = {
     this.render();
   },
   removeCashLine(i) { if (this.retourData) { this.retourData.cashLines.splice(i, 1); this.render(); } },
+  /* Réduction % du ticket espèces (Antho 2026-11-18) : appliquée sur le prix de chaque ligne à la validation, comme sur un ticket de vente (sale.discountPct / discountAmount) */
+  setCashDisc(v) { if (!this.retourData) return; const n = Math.min(99, Math.max(0, Math.round(U.num(v) * 100) / 100)); if (n > 0) this.retourData.cashDiscPct = n; else delete this.retourData.cashDiscPct; this.render(); },
+  _cashPct(d) { return Math.min(99, Math.max(0, U.num(d && d.cashDiscPct))); },
 
   _frNum(s) { return U.num(String(s == null ? '' : s).replace(/\s/g, '').replace(',', '.')); },
 
@@ -1888,7 +1891,8 @@ const Ventes = {
     const cashSel = this.units().find(u => u.key === this.cashSelKey);
     const q = (this.cashQ || '').toLowerCase();
     const suggestions = this.cashOpen ? U.rank(this.units().filter(u => this._cashFMatch(u)), q, u => u.name + ' ' + u.label + ' ' + u.sku).slice(0, 30) : [];
-    const cashTotal = d.cashLines.reduce((a, l) => a + l.price * l.qty, 0);
+    const cashGross = d.cashLines.reduce((a, l) => a + l.price * l.qty, 0), cashPct = this._cashPct(d);
+    const cashTotal = Math.round(cashGross * (1 - cashPct / 100) * 100) / 100;
     return `<div class="card" style="border-left:3px solid var(--nuit);margin-top:12px;">
       <h3 style="margin-top:0;">💵 Ventes en liquide (non SumUp)</h3>
       <p class="muted help">Ajoute ici les ventes de l'événement encaissées en espèces (absentes de l'export SumUp). Elles créent un ticket séparé « espèces » et déduisent aussi ton stock événement. Ajouter un produit déjà présent dans la liste ajoute simplement à sa quantité (au lieu de dupliquer la ligne).</p>
@@ -1913,9 +1917,10 @@ const Ventes = {
         <div class="fg"><label>Prix unitaire TTC</label><input id="cash_price" type="number" step="0.01" value="${this.cashPrice !== '' ? this.cashPrice : Math.round(cashSel.price * 100) / 100}" onchange="Ventes.cashPrice=Math.round(U.num(this.value)*100)/100"></div>
       </div>
       <button class="btn-cta btn-sm" onclick="Ventes.addCashLine()">＋ Ajouter cette vente espèces</button>` : ''}
+      ${d.cashLines.length ? `<div class="frow mt" style="align-items:flex-end;"><div class="fg" style="flex:0 0 150px;min-width:0;"><label style="white-space:nowrap;">Réduction (%) ${U.info('Réduction faite sur ces ventes espèces : appliquée sur le prix de chaque ligne à la validation (le chiffre d\'affaires et les stats restent justes). Laisse vide s\'il n\'y en a pas eu.')}</label><input type="number" step="0.5" min="0" max="99" placeholder="0" value="${cashPct || ''}" onchange="Ventes.setCashDisc(this.value)"></div></div>` : ''}
       ${d.cashLines.length ? `<div class="table-wrap mt"><table><thead><tr><th class="col-name">Produit</th><th>SKU</th><th class="num">Qté</th><th class="num">Prix U.</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${d.cashLines.map((l, i) => `<tr><td class="col-name"><b>${U.esc(l.name)}</b> <span class="muted">${U.esc(l.label || '')}</span></td><td>${l.sku ? `<span class="tag">${U.esc(l.sku)}</span>` : '—'}</td><td class="num">${U.qty(l.qty)}</td><td class="num">${U.eur(l.price)}</td><td class="num"><b>${U.eur(l.price * l.qty)}</b></td><td><button class="btn-icon" onclick="Ventes.removeCashLine(${i})">🗑️</button></td></tr>`).join('')}</tbody>
-        <tfoot><tr><th colspan="4">Total espèces</th><th class="num">${U.eur(cashTotal)}</th><th></th></tr></tfoot></table></div>` : ''}
+        <tfoot>${cashPct > 0 ? `<tr><th colspan="4">Sous-total</th><th class="num">${U.eur(cashGross)}</th><th></th></tr><tr><th colspan="4">Réduction (${U.qty(cashPct)} %)</th><th class="num">− ${U.eur(cashGross - cashTotal)}</th><th></th></tr>` : ''}<tr><th colspan="4">Total espèces</th><th class="num">${U.eur(cashTotal)}</th><th></th></tr></tfoot></table></div>` : ''}
     </div>`;
   },
 
@@ -2407,15 +2412,18 @@ const Ventes = {
     if (d.cashLines.length) {
       const cashTs = d.cashDate ? new Date(d.cashDate + 'T12:00:00').getTime() : Date.now();
       if (!deduct) {
-        const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price }));
-        const total = items.reduce((a, i) => a + i.price * i.qty, 0);
-        const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: cashFees ? U.num(d.cashStandFee) : 0, ...(cashFees && d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: cashFees ? U.num(d.cashMealFee) : 0, eventName: d.cashEventName || '', travelCost: cashFees ? U.num(d.cashTravel) : 0, travelDet: cashFees ? (d.travelDet || {}).__cash : undefined, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
+        const cPct = this._cashPct(d);
+        const items = d.cashLines.map(l => ({ kind: l.kind || 'M', pId: l.pId || '', vId: l.vId || '', name: l.name, variant: l.label || '', sku: l.sku || '', qty: l.qty, price: l.price * (1 - cPct / 100) }));
+        const total = Math.round(items.reduce((a, i) => a + i.price * i.qty, 0) * 100) / 100;
+        const sale = { id: U.uid(), ts: cashTs, ...(cPct > 0 ? { discountPct: cPct, discountAmount: Math.round((d.cashLines.reduce((a, l) => a + l.price * l.qty, 0) - total) * 100) / 100 } : {}), source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: cashFees ? U.num(d.cashStandFee) : 0, ...(cashFees && d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: cashFees ? U.num(d.cashMealFee) : 0, eventName: d.cashEventName || '', travelCost: cashFees ? U.num(d.cashTravel) : 0, travelDet: cashFees ? (d.travelDet || {}).__cash : undefined, items, total, cancelled: false, undoOps: [], fromImport: true, historical: true };
         Store.state.sales.unshift(sale);
         Store.log('vente', `Import historique (espèces) — ${U.eur(total)} (stock non déduit)`, { type: 'sale', data: { saleId: sale.id } });
         created++; deducted += d.cashLines.reduce((a, l) => a + l.qty, 0);
       } else {
         const sale = { id: U.uid(), ts: cashTs, source: 'event', channel: 'direct', payment: 'cash', delivery: 'clickcollect', customerName: '', eventFee: cashFees ? U.num(d.cashStandFee) : 0, ...(cashFees && d.cashFeeCash ? { eventFeeCash: true } : {}), mealFee: cashFees ? U.num(d.cashMealFee) : 0, eventName: d.cashEventName || '', travelCost: cashFees ? U.num(d.cashTravel) : 0, travelDet: cashFees ? (d.travelDet || {}).__cash : undefined, items: [], total: 0, cancelled: false, undoOps: [], fromImport: true };
-        this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '' })), 'event');
+        const cPct = this._cashPct(d);
+        this._deductSale(sale, d.cashLines.map(l => ({ ...l, lotLabel: '', price: l.price * (1 - cPct / 100) })), 'event');
+        if (cPct > 0) { const gross = d.cashLines.reduce((a, l) => a + l.price * l.qty, 0); sale.total = Math.round(sale.total * 100) / 100; sale.discountPct = cPct; sale.discountAmount = Math.round((gross - sale.total) * 100) / 100; }
         this._markImported(sale.items);
         Store.state.sales.unshift(sale);
         Store.log('vente', `Retour événement (espèces) — ${U.eur(sale.total)}`, { type: 'sale', data: { saleId: sale.id } });
@@ -2686,7 +2694,7 @@ const Ventes = {
       body = `<div class="tt-body tt-done"><span>${txt}</span>${t ? ' · ' + linked(t) : ''} ${!i.deducted || i.reason === 'short' ? `<button class="tt-minor" onclick="Ventes.ttMark('${k}','open')">↩ Rouvrir</button>` : ''}</div>`;
     } else if (i.reason === 'short') {
       const t = this._targetFor(i.kind, i.pId, i.vId);
-      body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : le stock ${i.kind === 'C' ? '' : 'événement '}était insuffisant (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
+      body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : ${i.kind === 'C' ? 'le stock était insuffisant' : 'ni le stock événement ni le stock général n\'en avaient assez (le général est pris en repli)'} (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
         <div class="tt-divider"></div>
         <div class="tt-bar"><span class="tt-bar-left"></span><span class="tt-bar-right">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && Stock.stockVar(pp, i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="tt-minor" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></span></div></div>`;
     } else if (!i.pId) {
