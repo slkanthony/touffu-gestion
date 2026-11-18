@@ -766,19 +766,16 @@ const Paniers = {
       <p class="muted help">Le générateur retient ce que tu fais de ses propositions : un produit que tu retires ou remplaces passe derrière (surtout pour ce profil de chien) ; un produit que tu ajoutes ou que tu vends via un panier passe devant. Les produits qui se vendent le mieux sur 12 mois ont aussi un petit coup de pouce. « Oublier » efface ce qui a été appris sur un produit.</p>
       ${up.length ? `<div class="pan-learn-h">Mis en avant</div>${up.map(line).join('')}` : ''}
       ${down.length ? `<div class="pan-learn-h">Passés derrière</div>${down.map(line).join('')}` : ''}
-      ${!up.length && !down.length ? '<p class="muted">Rien encore : ça se remplit à mesure que tu retouches et vends des paniers.</p>' : ''}
+      ${!up.length && !down.length ? '<p class="muted">Tes retouches : rien encore pour ce profil (ça se remplit à mesure que tu modifies des paniers générés).</p>' : ''}
       ${pop.length ? `<div class="pan-learn-h">Les plus vendus (12 mois)</div><p class="muted" style="margin:2px 0;">${pop.join(' · ')}</p>` : ''}
       ${(() => { const m = this._pairsAll(), nm = id => (Store.state.stockM.find(p => p.id === id) || {}).name, top = Object.entries(m).filter(([k]) => k.split('|').every(nm)).sort((a, b) => b[1] - a[1]).slice(0, 10);
         return top.length ? `<div class="pan-learn-h">Souvent pris ensemble</div><p class="muted" style="margin:2px 0;">${top.map(([k, n]) => U.esc(k.split('|').map(nm).join(' + ')) + ` (${n})`).join(' · ')}</p>` : ''; })()}
       ${(() => { const u = Object.entries(L.unk || {}).sort((a, b) => b[1] - a[1]); return u.length ? `<p class="muted" style="font-size:.8rem;margin-top:6px;">${u.length} libellé${u.length > 1 ? 's' : ''} SumUp non reconnu${u.length > 1 ? 's' : ''} (ignoré${u.length > 1 ? 's' : ''} pour les associations) : ${u.slice(0, 8).map(([k, n]) => U.esc(k) + ' (' + n + ')').join(' · ')}${u.length > 8 ? '…' : ''}</p>` : ''; })()}
-      <div class="pan-learn-h">Apprendre d'anciens rapports</div>
-      <p class="muted" style="margin:2px 0 6px;font-size:.82rem;">Chaque retour d'événement apprend tout seul. Pour ton passé : choisis un « Rapport des ventes » SumUp (CSV). Rien n'est déduit du stock ni compté en compta ; un paiement déjà appris n'est jamais compté deux fois.</p>
-      <input type="file" accept=".csv,text/csv" onchange="Paniers.learnFromSumupFile(this)">
     </div></details>`;
   },
   /* ═══ SOUVENT PRIS ENSEMBLE (étape 3, 2026-11-19) ═══
      Sources : (1) chaque RETOUR D'ÉVÉNEMENT (rapport des ventes SumUp) — les articles d'une même « Réf. transaction » = le panier d'un client ;
-     (2) un ancien rapport importé une fois (« Apprendre d'anciens rapports ») ; (3) les ventes de l'appli hors événements (site, direct, paniers envoyés en vente).
+     (2) l'historique SumUp mai 2024 → nov. 2026, chargé une fois directement en base le 2026-11-18 ; (3) les ventes de l'appli hors événements (site, direct, paniers envoyés en vente).
      On ne garde QUE des compteurs par paire de produits du stock (panLearn.pairs) et les références déjà comptées (panLearn.tx) : aucun nom de client.
      Un libellé SumUp sans SKU est rattaché à un produit du stock seulement si son nom correspond nettement (sinon il est compté « non reconnu », visible). */
   _nameTok(s) {
@@ -820,29 +817,6 @@ const Paniers = {
     });
     if (tx) { this._pairCache = null; Store.save('panLearn'); }
     return { tx, pairs, unknown };
-  },
-  /* Ancien rapport « Rapport des ventes » SumUp importé une seule fois pour apprendre (ni stock, ni compta). */
-  learnFromSumupFile(input) {
-    const f = input && input.files && input.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => {
-      try {
-        const rows = Ventes._csvRows(rd.result), h = (rows[0] || []).map(x => x.trim().toLowerCase()), find = (...k) => h.findIndex(x => k.some(y => x.includes(y)));
-        const iRef = find('transaction'), iDesc = find('description'), iSku = h.findIndex(x => x === 'sku'), iType = find('type');
-        if (iRef < 0 || iDesc < 0) { U.toast('Ce fichier n\'est pas un « Rapport des ventes » SumUp (colonnes Réf. transaction / Description introuvables).', true); return; }
-        const { idx } = Ventes._skuIndex(), lines = [];
-        rows.slice(1).forEach(r => {
-          if (iType >= 0 && String(r[iType] || '').trim().toLowerCase() !== 'vente' && String(r[iType] || '').trim().toLowerCase() !== 'sales') return;
-          const sku = iSku >= 0 ? String(r[iSku] || '').trim().toUpperCase() : '';
-          lines.push({ ref: String(r[iRef] || '').trim(), desc: String(r[iDesc] || '').trim(), target: sku ? idx[sku] || null : null });
-        });
-        const res = this.learnFromSumup(lines);
-        input.value = '';
-        this.render();
-        U.toast(res && res.tx ? `Appris : ${res.tx} paiements, ${res.pairs} associations de produits${res.unknown ? ` (${res.unknown} libellés non reconnus)` : ''}.` : 'Rien de nouveau dans ce fichier (déjà appris ?).');
-      } catch (e) { console.error(e); U.toast('Fichier illisible : ' + e.message, true); }
-    };
-    rd.readAsText(f);
   },
   /* Paires vues dans les ventes de l'appli hors événements (site, direct, paniers envoyés en vente) : recalculées à la volée. */
   _pairCache: null,
