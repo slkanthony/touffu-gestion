@@ -621,6 +621,13 @@ paniers([sp('m', 'Merlan', { days: 200, price: 4, meat: 'Poisson' }), sp('g', 'G
 run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers._qtyCap = {}; Paniers.basket = [{ pId: 'm', vId: 'mv', lotId: 'ml', name: 'Merlan', meat: 'Poisson', price: 4, qty: 2 }]; Paniers.changeQty(0, -1); Paniers.complete();`);
 eq('34 merlan baissé à 1 : « Compléter » ne le remet pas à 2', run(`Paniers.basket.filter(b => b.pId === 'm').reduce((a, b) => a + b.qty, 0)`), 1);
 
+/* ══════════ 35. ÉCARTÉS GARDÉS AVEC LE BROUILLON / LE PANIER EN ATTENTE (Antho 2026-11-19) ══════════ */
+paniers([sp('m', 'Merlan', { days: 200, price: 4, meat: 'Poisson' }), sp('g', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' })]);
+run(`Paniers._dropped = ['g']; Paniers._qtyCap = { m: 1 };`);
+eq('35a panier en attente : écartés et plafonds rangés avec', run(`(d => [d.dropped, d.qtyCap.m])(Paniers._pendingData({}, 'Cliente', 1))`), [['g'], 1]);
+run(`Paniers._dropped = []; Paniers._qtyCap = {}; Paniers._loadRec({ items: [], dropped: ['g'], qtyCap: { m: 1 }, name: 'Cliente' });`);
+eq('35b « Reprendre » : retrouvés', run(`[Paniers._dropped, Paniers._qtyCap.m]`), [['g'], 1]);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

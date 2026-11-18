@@ -1947,3 +1947,6 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 .tw-bar .tw-avec { background: var(--caramel); }
 /* Pastille séparée du produit lié */
 .pt-lbl .pt-sep { color: var(--caramel); text-transform: none; letter-spacing: 0; font-weight: 700; }
+/* Paniers : produits écartés de ce panier */
+.pan-ecartes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; font-size: .85rem; }
+.pan-ecarte { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border: 1px dashed var(--card-border); border-radius: 999px; }

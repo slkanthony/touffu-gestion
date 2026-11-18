@@ -974,6 +974,17 @@ const Paniers = {
   /* Produits RETIRÉS (🗑, quantité à 0) ou REMPLACÉS (🔄) par Antho (2026-11-18) : jamais reproposés par « Générer », « Compléter » ni « Remplacer »
      tant qu'on travaille sur ce panier (oublié à « Vider » / nouveau panier ; l'ajouter à la main le réautorise). « Exclure » (⊘) reste la liste durable. */
   _dropped: [],
+  /* Ligne « Écartés de ce panier » (Antho 2026-11-19) : ce que Générer / Compléter / Remplacer s'interdisent pour ce panier, avec « rétablir ». */
+  _ecartesHTML() {
+    const nm = id => (Store.state.stockM.find(p => p.id === id) || {}).name || '';
+    const items = (this._dropped || []).filter(nm).map(id => ({ id, l: U.esc(nm(id)), js: `Paniers.undrop('${id}')` }))
+      .concat(Object.keys(this._qtyCap || {}).filter(nm).map(id => ({ id, l: `${U.esc(nm(id))} <span class="muted">(${this._qtyCap[id]} max)</span>`, js: `Paniers.uncap('${id}')` })));
+    if (!items.length) return '';
+    return `<div class="pan-ecartes"><span class="muted">Écartés de ce panier <span class="help">Produits retirés ou remplacés, et quantités baissées à la main : « Générer », « Compléter » et « Remplacer » ne les reprennent pas. « Rétablir » les autorise de nouveau. Tout est oublié à « Vider ».</span> :</span>
+      ${items.map(it => `<span class="pan-ecarte">${it.l} <button type="button" class="btn-ghost btn-sm fit" onclick="${it.js}">Rétablir</button></span>`).join('')}</div>`;
+  },
+  undrop(id) { const tw = Stock.twinIdOf(id); this._dropped = (this._dropped || []).filter(x => x !== id && x !== tw); this._draft(); this.render(); },
+  uncap(id) { delete this._qtyCap[id]; this._draft(); this.render(); },
   /* « Reste » en couleur (Antho 2026-11-18) : vert = c'est bon, rouge = à corriger. Vente / lot : rouge si on DÉPASSE le budget.
      Commande site (déjà payée) : rouge s'il MANQUE quelque chose (le client a payé plus que le panier), vert dès que le montant est atteint. */
   _resteCls(remaining) {
@@ -1280,7 +1291,8 @@ const Paniers = {
   /* Contenu du panier en cours tel qu'il est rangé dans « en attente » (dv = état du numéro de devis à lui donner) */
   _pendingData(dv, name, now) {
     return { dv: { ...dv }, name, label: String(this._shLabel || '').trim(), note: String(this._shNote || '').trim(), validUntil: this._shValid || '', mode: this._shMode || '', balOn: this._balOn !== false,
-      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, reductionCode: this.reductionCode || '', nbChiens: this.nbChiens, updated: now };
+      items: JSON.parse(JSON.stringify(this.basket)), budget: this.budget, livraison: this.livraison, reduction: this.reduction, reductionCode: this.reductionCode || '', nbChiens: this.nbChiens, updated: now,
+      dropped: (this._dropped || []).slice(), qtyCap: { ...(this._qtyCap || {}) } };   // écartés / plafonds : retrouvés à « Reprendre »
   },
   /* Range le panier en cours dans la liste « en attente » (le devis « sort » : numéro attribué, lettre suivante si le contenu a changé). Renvoie { rec, no } ou null. */
   _storePending() {
@@ -1401,6 +1413,7 @@ const Paniers = {
   },
   _loadRec(rec) {
     this.basket = JSON.parse(JSON.stringify(rec.items || []));
+    this._dropped = Array.isArray(rec.dropped) ? rec.dropped.slice() : []; this._qtyCap = rec.qtyCap ? { ...rec.qtyCap } : {};
     this.budget = U.num(rec.budget) || this.budget; this.livraison = U.num(rec.livraison); this.reduction = U.num(rec.reduction); this.reductionCode = rec.reductionCode || ''; this._redAuto = false; this.nbChiens = U.num(rec.nbChiens) || this.nbChiens;
     this._pendId = rec.id; this._pendUpd = rec.updated || rec.ts || 0;
     this.client = rec.name; this._shClient = rec.name; this._shLabel = rec.label || ''; this._shNote = rec.note || ''; this._shValid = rec.validUntil || ''; this._shMode = rec.mode || ''; this._balOn = rec.balOn !== false; this._dv = rec.dv ? { ...rec.dv } : Devis.blank();
@@ -1854,7 +1867,7 @@ const Paniers = {
   /* Brouillon : le panier en cours (et sa cliente) survit à un rechargement de la page, un changement de fenêtre ou une fermeture d'onglet. « Vider » l'efface. */
   _DK: 'touffu_paniers_draft',
   _draft() {
-    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'];
+    const keys = ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode', '_dropped', '_qtyCap'];   // + écartés / plafonds (Antho 2026-11-19 : gardés après F5)
     try {
       if (!this._draftLoaded) {
         this._draftLoaded = true;
@@ -1871,7 +1884,8 @@ const Paniers = {
   _adoptDraft(raw) {
     try {
       const d = JSON.parse(raw || 'null'); if (!d) return;
-      ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode'].forEach(k => { if (k in d) this[k] = d[k]; });
+      ['basket', 'proposals', 'client', '_pendId', '_pendUpd', '_dv', '_balOn', '_shClient', '_shLabel', '_shNote', '_shValid', '_shMode', '_dropped', '_qtyCap'].forEach(k => { if (k in d) this[k] = d[k]; });
+      if (!Array.isArray(this._dropped)) this._dropped = []; if (!this._qtyCap || typeof this._qtyCap !== 'object') this._qtyCap = {};
       this._draftLoaded = true;
       if (typeof App !== 'undefined' && App.current === 'paniers') App.rerender();   // garde le champ en cours de saisie (App.rerender)
     } catch (e) { console.error(e); }
@@ -2216,7 +2230,10 @@ const Paniers = {
           }).join('')}</tbody>
         </table></div>
 
-        ${remaining < 0 ? '<p class="warn-txt" style="margin-top:8px;">⚠️ Le panier dépasse le budget disponible.</p>' : ''}
+        ${this.kind === 'site'
+          ? (remaining > 0.005 ? `<p class="warn-txt" style="margin-top:8px;">⚠️ Il manque ${U.eur(remaining * (1 - this._disc()))} pour atteindre le montant payé.</p>` : '')
+          : (remaining < 0 ? '<p class="warn-txt" style="margin-top:8px;">⚠️ Le panier dépasse le budget disponible.</p>' : '')}
+        ${this._ecartesHTML()}
 
         ${this._renderFinanceSummary()}
         ` : '<div class="empty" style="text-align:center;padding:40px;"><span class="big">🧺</span><p class="muted">Clique sur "Générer le panier" pour composer automatiquement,<br>ou ajoute des produits avec « Ajouter un produit ».</p></div>'}
