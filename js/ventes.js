@@ -2622,9 +2622,11 @@ const Ventes = {
   _todoBulkBar(saleId) {
     const n = this._todoKeys(saleId).length, r = this._todoReady(saleId).length;
     const a = saleId ? `'${saleId}'` : "''";
-    const btns = `<button class="btn-ok btn-sm" ${r ? '' : 'disabled'} title="Déduit tous les articles prêts : produit associé et « Total choisi = vendu »" onclick="Ventes.ttBulkDeduct(${a})">✅ Tout déduire (${r} prêt${r > 1 ? 's' : ''})</button>
-      <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('done',${a})">✔ Tout déjà fait à la main</button>
-      <button class="btn-ghost btn-sm" onclick="Ventes.ttBulkMark('caOnly',${a})">💶 Tout en CA seulement</button>`;
+    /* Infobulles explicites (Antho 2026-11-18, « pas très clair ») : ce que fait chaque bouton, sur le stock et sur les chiffres. Le bouton « déduire » n'est plus désactivé (une infobulle n'apparaît pas sur un bouton grisé) : sans article prêt il est seulement atténué et un clic explique pourquoi. */
+    const tipDeduct = r ? `Retire du stock événement les ${r} article(s) prêts (produit associé, lot choisi). Les autres ne sont pas touchés. Annulable depuis le Journal.` : 'Aucun article prêt pour le moment : il faut d\'abord associer le produit et choisir le lot (Total choisi = vendu). Rien à retirer du stock tant que ce n\'est pas fait.';
+    const btns = `<button class="btn-ok btn-sm" ${r ? '' : 'style="opacity:.55;"'} title="${U.esc(tipDeduct)}" onclick="Ventes.ttBulkDeduct(${a})">✅ Tout déduire (${r} prêt${r > 1 ? 's' : ''})</button>
+      <button class="btn-ghost btn-sm" title="Tu as déjà retiré ces pièces du stock toi-même : le stock n'est PAS touché, la vente reste comptée (CA, marge) et les articles quittent la liste. Annulable depuis le Journal." onclick="Ventes.ttBulkMark('done',${a})">✔ Tout déjà fait à la main</button>
+      <button class="btn-ghost btn-sm" title="Seul l'argent encaissé compte (chiffre d'affaires) : le stock n'est PAS touché et les articles quittent la liste. Pour un produit que tu ne suis pas en stock. Annulable depuis le Journal." onclick="Ventes.ttBulkMark('caOnly',${a})">💶 Tout en CA seulement</button>`;
     if (saleId) return `<div class="todo-bulk small"><span class="muted">Ce ticket (${n}) :</span>${btns}</div>`;
     return `<div class="tt-bar tt-bulk-bar"><span class="tt-bar-left">Articles affichés : <b>${n}</b></span><span class="tt-bar-right">${btns}</span></div>`;
   },
@@ -2696,7 +2698,7 @@ const Ventes = {
       const t = this._targetFor(i.kind, i.pId, i.vId);
       body = `<div class="tt-body">${t ? linked(t) : ''}<p style="margin:6px 0;">Déduit : <b>${U.qty(i.qty - U.num(i.missing))}</b> · <b class="warn-txt">${U.qty(i.missing)} non déduit(s)</b> : ${i.kind === 'C' ? 'le stock était insuffisant' : 'ni le stock événement ni le stock général n\'en avaient assez (le général est pris en repli)'} (sans doute un stock pas encore saisi). Vérifie la fiche avec ↗.</p>
         <div class="tt-divider"></div>
-        <div class="tt-bar"><span class="tt-bar-left"></span><span class="tt-bar-right">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && Stock.stockVar(pp, i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="tt-minor" onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></span></div></div>`;
+        <div class="tt-bar"><span class="tt-bar-left"></span><span class="tt-bar-right">${(() => { if (i.kind !== 'M') return ''; const pp = Store.state.stockM.find(x => x.id === i.pId); const vv = pp && Stock.stockVar(pp, i.vId); const g = vv ? vv.lots.reduce((a, l) => a + U.num(l.qtyGeneral), 0) : 0; return g > 0 ? `<button class="btn-ghost btn-sm" title="Stock général : ${U.qty(g)}" onclick="Ventes.ttGeneral('${k}')">🏬 Prendre le manquant dans le stock général (${U.qty(g)} dispo)</button>` : ''; })()}<button class="tt-minor" title="Ne déduit rien de plus : tu confirmes avoir vu le manque (erreur de stock). La vente reste comptée en entier (CA, marge, stats) et l'article quitte la liste." onclick="Ventes.ttMark('${k}','done')">✔ Vu, c'est vérifié</button></span></div></div>`;
     } else if (!i.pId) {
       const sug = this._suggest(i.desc || i.name, 4, units);
       const q = st.q;
