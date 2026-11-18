@@ -41,7 +41,9 @@ const Paniers = {
   gabaritInclude: ['petit','moyen','grand'],
   odeurInclude: ['faible','moyenne','forte'],
   grasInclude: ['non','peu','moyen','gras'],
-  paymentMode: 'sumup', // 'sumup' | 'stripe' | 'virement' | 'cash' (mêmes clés que Ventes.PAYMENTS ; sert à estimer la commission)
+  /* Commission estimée dans le bénéfice du panier (Antho 2026-11-18 : plus de choix « Paiement » ici, le vrai mode se choisit dans Ventes) :
+     commande site = Stripe (payée en ligne), sinon SumUp (estimation prudente). */
+  _payMode() { return this.kind === 'site' ? 'stripe' : 'sumup'; },
   basket: [],          // [{pId, vId, lotId, name, variant, price, qty, dluo, coeff, meat, locked}]
   maxPerProduct: 2,
 
@@ -1850,7 +1852,6 @@ const Paniers = {
     if (i >= 0) this.resistanceInclude.splice(i, 1); else this.resistanceInclude.push(r);
     this.render();
   },
-  setPayment(v) { this.paymentMode = v; this.render(); },
   setType(v) { this.typeFilter = v; this.render(); },
   toggleAge(v) { const i = this.ageInclude.indexOf(v); if (i >= 0) this.ageInclude.splice(i, 1); else this.ageInclude.push(v); this.render(); },
   setAllAge(all) { this.ageInclude = all ? ['0-3','3-5','6-10','11+','senior'] : []; this.render(); },
@@ -1959,7 +1960,7 @@ const Paniers = {
     // réapparaître tout seul après un F5, contrairement à un simple filtre de recherche).
     U.syncFilters('paniers', this, ['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats',
       'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter',
-      'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct', 'risks', 'kind', 'races']);
+      'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'maxPerProduct', 'risks', 'kind', 'races']);
     this._draft();
     this._syncPend(); this._draft();
     const S = Store.state.settings;
@@ -2013,12 +2014,6 @@ const Paniers = {
           </div>
           <div class="fg"><label>🐕 Chiens</label>
             <input type="number" id="pan_chiens" min="1" max="10" value="${this.nbChiens}" oninput="Paniers.setNbChiens(this.value)">
-          </div>
-        </div>
-
-        <div class="frow" style="gap:12px;">
-          <div class="fg"><label>💳 Paiement</label>
-            ${U.seg([{ l: `SumUp (${U.pct(S.cardFeeRate)})`, on: this.paymentMode === 'sumup', js: "Paniers.setPayment('sumup')" }, { l: `Stripe (${U.pct(S.stripeFeeRate || 0)})`, on: this.paymentMode === 'stripe', js: "Paniers.setPayment('stripe')" }, { l: 'Virement (0 %)', on: this.paymentMode === 'virement', js: "Paniers.setPayment('virement')" }, { l: 'Espèces (0 %)', on: this.paymentMode === 'cash', js: "Paniers.setPayment('cash')" }], { full: true, wrap: true, cols: 2 })}
           </div>
         </div>
 
@@ -2259,8 +2254,8 @@ const Paniers = {
     const { rows, nbArticles, fd, valeur, totVente, totCost, totMargin, totSocial, totProfit, totActuel, avgCoeff } = this._finData();
     const nViandes = [...new Set(this.basket.map(b => b.meat))].filter(Boolean).length;
     const nProduits = [...new Set(this.basket.map(b => b.pId))].length;
-    const feeRate = this.paymentMode === 'sumup' ? U.num(S.cardFeeRate) : this.paymentMode === 'stripe' ? U.num(S.stripeFeeRate) : 0;
-    const feeName = this.paymentMode === 'sumup' ? 'SumUp' : this.paymentMode === 'stripe' ? 'Stripe' : this.paymentMode === 'cash' ? 'Espèces' : 'Virement';
+    const pm = this._payMode(), feeRate = pm === 'stripe' ? U.num(S.stripeFeeRate) : U.num(S.cardFeeRate);
+    const feeName = (pm === 'stripe' ? 'Stripe' : 'SumUp') + ' (estimé)';
     const cbFee = totVente * feeRate / 100;
 
     return `<div style="margin-top:12px;padding:12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--card-border);">
@@ -2323,7 +2318,7 @@ const Paniers = {
 window.addEventListener('storage', e => { if (e.key === Paniers._DK) Paniers._adoptDraft(e.newValue); });
 
 /* Valeurs d'origine de la configuration (avant toute valeur mémorisée) : sert à « repartir comme pour un nouveau panier » */
-Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'paymentMode', 'maxPerProduct', 'risks', 'kind', 'races'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
+Paniers._cfgDefaults = JSON.parse(JSON.stringify(['budget', 'livraison', 'reduction', 'reductionCode', 'nbChiens', 'priority', 'excludeMeats', 'excludeProducts', 'poilFilter', 'hypoOnly', 'resistanceInclude', 'typeFilter', 'ageInclude', 'gabaritInclude', 'odeurInclude', 'grasInclude', 'maxPerProduct', 'risks', 'kind', 'races'].reduce((o, k) => { o[k] = Paniers[k]; return o; }, {})));
 
 /* Menus de filtre des accessoires dans « Ajouter un produit » (U.customSelect appelle une fonction globale par son nom) */
 ['addCat', 'addWidth', 'addPerso'].forEach(k => { Paniers['_setAccF_' + k] = function (v) { this.setAddFilter(k, v); }; });
