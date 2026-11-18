@@ -96,6 +96,9 @@ const Paniers = {
     const base = this._clientSummary0();
     return al.length ? base + ' · Alerte race : ' + [...new Set(al)].join(' ') : base;
   },
+  /* Nom du chien + âge (calculé depuis sa date de naissance), entre marqueurs \u0001…\u0002 → mis en caramel par _clientSummaryHTML (Antho 2026-11-19). */
+  _dogLbl(d, n) { const a = Clients.ageTxt(d.birth); return '\u0001' + (n || String(d.name || '').trim() || 'chien') + (a ? ' · ' + a : '') + '\u0002'; },
+  _clientSummaryHTML() { return U.esc(this._clientSummary()).replace(/\u0001([^\u0002]*)\u0002/g, '<b class="pan-dog">$1</b>'); },
   _clientSummary0() {
     if (!String(this.client || '').trim()) return 'Sa fiche (viandes évitées, allergies, poils, odeurs fortes, gras) filtre automatiquement les produits à la génération.';
     if (Clients.ro()) return '';
@@ -105,14 +108,14 @@ const Paniers = {
     if (this._perDog()) {
       const per = this._dogList().map(d => {
         const av = Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid'), ex = [].concat(d.sensitive ? ['sensible'] : [], av.length ? ['évite : ' + av.join(', ')] : [], d.hair === 'non' ? ['pas de poils'] : [], d.odor === 'non' ? ['pas d\'odeurs fortes'] : [], d.fat === 'non' ? ['pas de gras'] : []);
-        return d._n + (ex.length ? ' (' + ex.join(', ') + ')' : '');
+        return this._dogLbl(d, d._n) + (ex.length ? ' (' + ex.join(', ') + ')' : '');
       });
       return '🐕 ' + per.join(' · ') + ' → panier composé chien par chien (budget partagé) ; un produit pensé pour un seul chien est annoté « pour … », tu peux le changer.';
     }
     const avoid = [...new Set(r.dogs.flatMap(d => Object.keys(d.meats || {}).filter(m => d.meats[m] === 'avoid')))];
     const allergies = [...new Set(r.dogs.map(d => String(d.allergies || '').trim()).filter(Boolean))];
     const parts = [].concat(r.sensitive ? ['🌿 sensible : « Hypoallergénique uniquement » coché'] : [], avoid.length ? ['évite : ' + avoid.join(', ')] : [], allergies.length ? ['allergies : ' + allergies.join(' · ')] : [], r.hair ? ['pas de produits avec poils'] : [], r.odor ? ['pas d\'odeurs fortes'] : [], r.fat ? ['pas de produits gras'] : []);
-    return '🐕 ' + r.dogs.map(d => d.name || 'chien').join(', ') + ' — ' + (parts.length ? parts.join(' · ') + ' → exclus à la génération' : 'aucune contrainte renseignée');
+    return '🐕 ' + r.dogs.map(d => this._dogLbl(d)).join(', ') + ' — ' + (parts.length ? parts.join(' · ') + ' → exclus à la génération' : 'aucune contrainte renseignée');
   },
   /* ---------- Panier chien par chien (cliente avec 2 chiens ou plus aux profils différents) ---------- */
   _dogList() { const r = this._clientRules(); return r ? r.dogs.map((d, i) => Object.assign({}, d, { _n: String(d.name || '').trim() || 'Chien ' + (i + 1) })) : []; },
@@ -2258,7 +2261,7 @@ const Paniers = {
 
         <div class="fg" style="margin-bottom:12px;"><label>🐕 Cliente (option)</label>
           <input type="text" data-clcombo autocomplete="off" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente ou du chien…" onchange="Paniers.setClient(this.value)">
-          <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div>${this._lastHTML()}</div>
+          <div class="muted" style="font-size:.82rem;margin-top:4px;">${this._clientSummaryHTML()}</div>${this._lastHTML()}</div>
 
         <div class="fg" style="margin-bottom:12px;"><label>Type de panier <span class="muted help">Vente : deux propositions, au plus près du budget et jusqu'à 10 % au-dessus. Commande site : déjà payée → jamais EN DESSOUS du montant, au plus juste au-dessus. Lot à gagner : jamais au-dessus du budget (le client ne paiera pas la différence), les dates courtes d'abord puis les produits au plus fort coefficient : si tu ajoutes ensuite un produit pour améliorer le panier, la marge reste bonne.</span></label>
           ${U.seg(this.KINDS.map(([v, l]) => ({ l, on: this.kind === v, js: `Paniers.setKind('${v}')` })), { sm: true })}</div>

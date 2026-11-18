@@ -1959,6 +1959,7 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 @media (max-width: 700px) { .pan-short-row { grid-template-columns: 1fr auto; } .pan-short-r { grid-column: 1 / -1; } }
 /* Paniers : ce que le générateur a appris */
 .pan-learn { margin-top: 12px; }
+.pan-dog { color: var(--caramel); font-weight: 700; }
 .pan-ct input { width: 80px; }
 .pan-ct-ok { color: var(--ok); font-weight: 600; }
 .pan-ct-low { color: var(--warn); font-weight: 600; }
