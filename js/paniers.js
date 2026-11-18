@@ -796,7 +796,8 @@ const Paniers = {
       const sc = inter === dt.length ? (inter === pt.size ? 1 : Math.max(0.7, 0.95 - 0.05 * (pt.size - inter))) : inter / new Set([...dt, ...pt]).size;
       if (!best || sc > best.sc) { second = best ? best.sc : 0; best = { id: p.id, sc }; } else if (sc > second) second = sc;
     });
-    return best && best.sc >= 0.6 && best.sc - second >= 0.15 ? best.id : '';
+    /* nom identique = gagne même si un cousin existe (« Corne de vache » face à « Corne de vache pleine ») */
+    return best && best.sc >= 0.6 && (best.sc - second >= 0.15 || (best.sc === 1 && second < 1)) ? best.id : '';
   },
   /* lignes = [{ ref, desc, target? }] (format du retour d'événement). Compte chaque transaction une seule fois. Renvoie { tx, pairs, unknown }. */
   learnFromSumup(lines) {
