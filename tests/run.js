@@ -616,6 +616,11 @@ run(`Store.save = function () {}; Store.state.catalogM = [{ id: 'cat', name: 'Mu
 run(`Stock.syncPricesFromCatalog('cat');`);
 eq('33b 2e passage : la fiche ne change plus', run(`Stock.syncPricesFromCatalog('cat')`), false);
 
+/* ══════════ 34. QUANTITÉ BAISSÉE À LA MAIN = PLAFOND (Antho 2026-11-18) ══════════ */
+paniers([sp('m', 'Merlan', { days: 200, price: 4, meat: 'Poisson' }), sp('g', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' })], { kind: 'site', budget: 10, maxPerProduct: 2 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers._qtyCap = {}; Paniers.basket = [{ pId: 'm', vId: 'mv', lotId: 'ml', name: 'Merlan', meat: 'Poisson', price: 4, qty: 2 }]; Paniers.changeQty(0, -1); Paniers.complete();`);
+eq('34 merlan baissé à 1 : « Compléter » ne le remet pas à 2', run(`Paniers.basket.filter(b => b.pId === 'm').reduce((a, b) => a + b.qty, 0)`), 1);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

@@ -741,6 +741,7 @@ const Paniers = {
       let eligible = affordable.filter(c => {
         const mu = c.forDogs ? c.forDogs.length : mult;   // chiens concernés par ce produit
         if ((productQties[c.pId] || 0) >= this.maxPerProduct * mu) return false;
+        if ((productQties[c.pId] || 0) >= this._capOf(c.pId)) return false;   // quantité baissée à la main : on ne la redépasse pas
         if (c.mode === 'gram' && (mu > 1 || c.forDogs) && basket.some(b => b.pId === c.pId)) return false;   // un sachet (plusieurs morceaux) suffit : pas deux fois le même produit au gramme
         if (c.forDogs && c.forDogs.length === 1 && (spentBy[c.forDogs[0]] || 0) + c.price > shareCap) return false;
         return !this._famTaken(c, basket);
@@ -804,7 +805,8 @@ const Paniers = {
       const tagsOf = b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sp ? this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null) : {}; };
       const canAdd = (c, bk) => {
         if (c.avail <= 0) return false;
-        if (bk.reduce((a, b) => a + (b.pId === c.pId ? b.qty : 0), 0) >= this.maxPerProduct * mult) return false;
+        const inBk = bk.reduce((a, b) => a + (b.pId === c.pId ? b.qty : 0), 0);
+        if (inBk >= this.maxPerProduct * mult || inBk >= this._capOf(c.pId)) return false;
         if (c.mode === 'gram' && mult > 1 && bk.some(b => b.pId === c.pId)) return false;
         if (this._famTaken(c, bk)) return false;
         if (hard(c.tags) && !(c.chews && c.chews.includes('gros')) && bk.some(b => hard(tagsOf(b)))) return false;
@@ -972,6 +974,21 @@ const Paniers = {
   /* Produits RETIRÉS (🗑, quantité à 0) ou REMPLACÉS (🔄) par Antho (2026-11-18) : jamais reproposés par « Générer », « Compléter » ni « Remplacer »
      tant qu'on travaille sur ce panier (oublié à « Vider » / nouveau panier ; l'ajouter à la main le réautorise). « Exclure » (⊘) reste la liste durable. */
   _dropped: [],
+  /* « Reste » en couleur (Antho 2026-11-18) : vert = c'est bon, rouge = à corriger. Vente / lot : rouge si on DÉPASSE le budget.
+     Commande site (déjà payée) : rouge s'il MANQUE quelque chose (le client a payé plus que le panier), vert dès que le montant est atteint. */
+  _resteCls(remaining) {
+    const bad = this.kind === 'site' ? remaining > 0.005 : remaining < -0.005;
+    return this.basket.length ? (bad ? 'pan-kpi-bad' : 'pan-kpi-ok') : '';
+  },
+  /* Quantité BAISSÉE à la main (« − » ou saisie) : c'est le maximum voulu pour ce produit dans ce panier (Antho 2026-11-18 : « je retire le 2e merlan,
+     tu le remets à chaque Compléter »). Générer / Compléter / Remplacer ne le dépassent plus ; l'augmenter à la main lève la limite. Oublié à « Vider ». */
+  _qtyCap: {},
+  _capOf(pId) { const v = this._qtyCap[pId]; return v === undefined ? Infinity : v; },
+  _setCap(item, before) {
+    if (!item || (item.kind || 'M') !== 'M') return;
+    const tot = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
+    if (tot < before) this._qtyCap[item.pId] = tot; else if (tot > before) delete this._qtyCap[item.pId];
+  },
   _drop(pId) {
     [pId, Stock.twinIdOf(pId)].forEach(id => { if (id && !this._dropped.includes(id)) this._dropped.push(id); });   // sa version avec / sans poils part aussi (Antho 2026-11-18)
   },
@@ -990,7 +1007,9 @@ const Paniers = {
   changeQty(idx, delta) {
     const item = this.basket[idx];
     if (!item) return;
+    const totBefore = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     item.qty = Math.max(0, item.qty + delta);
+    if (item.qty > 0) this._setCap(item, totBefore);
     if (item.qty <= 0) { if ((item.kind || 'M') === 'M') this._drop(item.pId); this.basket.splice(idx, 1); }
     this.render();
     if (delta > 0) this._stockWarn(item.pId, item.vId);
@@ -998,8 +1017,9 @@ const Paniers = {
   setQty(idx, v) {   // quantité tapée à la main (nombre entier ; 0 ou vide = retirer la ligne, comme le « − » arrivé à 0)
     const item = this.basket[idx]; if (!item) return;
     const n = Math.max(0, Math.round(U.num(v)));
-    const up = n > item.qty;
+    const up = n > item.qty, totBefore = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     item.qty = n;
+    if (n > 0) this._setCap(item, totBefore);
     if (n <= 0) { if ((item.kind || 'M') === 'M') this._drop(item.pId); this.basket.splice(idx, 1); }
     this.render();
     if (up) this._stockWarn(item.pId, item.vId);
@@ -1611,7 +1631,7 @@ const Paniers = {
   /* Vide le panier composé SANS redessiner (aussi appelé par Ventes à la validation d'une vente : on n'est pas sur la page Paniers) */
   resetWork() {
     this.resetConfig();
-    this.basket = []; this._dropped = [];
+    this.basket = []; this._dropped = []; this._qtyCap = {};
     this._pendId = null; this._pendUpd = 0; this._shClient = ''; this._shLabel = ''; this._shNote = ''; this._shValid = ''; this._shMode = ''; this._balOn = true; this._dv = Devis.blank();
     this.proposals = null;
   },
@@ -1903,7 +1923,7 @@ const Paniers = {
         ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
         <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
         ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
-        <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
+        <div class="kpi ${this._resteCls(remaining)}"><span class="kpi-val">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
       `;
     }
   },
@@ -2161,7 +2181,7 @@ const Paniers = {
           ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
           <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
         ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
-          <div class="kpi"><span class="kpi-val ${remaining < 0 ? 'warn-txt' : ''}">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
+          <div class="kpi ${this._resteCls(remaining)}"><span class="kpi-val">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
           ${this.basket.length ? (() => { const f = this._finData(), thr = U.num(Store.state.settings.b2bCoeffThreshold) || 1, bad = f.totProfit < 0 || (f.avgCoeff > 0 && f.avgCoeff < thr);
             return `<div class="kpi sensitive ${bad ? 'pan-kpi-bad' : 'pan-kpi-ok'}" title="Coefficient moyen = prix de vente HT ÷ coût de revient, pondéré par les quantités. Bénéfice net = marge − cotisations (détail plus bas)."><span class="kpi-val">${f.avgCoeff > 0 ? f.avgCoeff.toFixed(2).replace('.', ',') : '—'}</span><span class="kpi-label">Coeff moyen · ${f.totProfit >= 0 ? '+' : ''}${U.eur(f.totProfit)}</span></div>`; })() : ''}
         </div>
