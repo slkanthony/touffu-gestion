@@ -613,6 +613,10 @@ run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped
   Paniers.basket = [{ pId: 't', vId: 't2', lotId: 't2l', name: 'Trachée de bœuf', meat: 'Boeuf', variant: 'Lot de 2 pc', price: 6.5, qty: 1, locked: true }]; Paniers.complete();`);
 eq('31c lot de 2 dans le panier (2 chiens) : la pièce seule n est pas reproposée', run(`Paniers.basket.filter(b => b.pId === 't').map(b => b.vId)`), ['t2']);
 
+eq('31d ligne verrouillée : « Compléter » ne touche pas à sa quantité', run(`Paniers.basket.find(b => b.vId === 't2').qty`), 1);
+run(`Paniers.basket = [{ pId: 't', vId: 't2', lotId: 't2l', name: 'Trachée de bœuf', meat: 'Boeuf', variant: 'Lot de 2 pc', price: 6.5, qty: 1, locked: false }]; Paniers.complete();`);
+eq('31e ligne NON verrouillée : « Compléter » peut en remettre (2 chiens)', run(`Paniers.basket.find(b => b.vId === 't2').qty >= 1 && !('_frozen' in Paniers.basket[0])`), true);
+
 /* ══════════ 32. COMMANDE SITE : « Compléter » au plus juste (Antho 2026-11-18) ══════════ */
 paniers([sp('a', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' }), sp('b', 'Fromage a croquer', { days: 200, price: 11, meat: 'Fromages' }), sp('c', 'Museau de bœuf', { days: 200, price: 4.5, meat: 'Boeuf' })], { kind: 'site', budget: 40, maxPerProduct: 2 });
 run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers.basket = [

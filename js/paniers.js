@@ -890,10 +890,12 @@ const Paniers = {
     });
 
     const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) * this._pairMult(c, basket) * this._coeffMult(c, basket);   // « souvent pris ensemble » (étape 3) + coeff visé (étape 4)
-    // « souvent pris ensemble » avec ce qui est déjà dans le panier (étape 3)
+    // Ligne VERROUILLÉE par Antho (cadenas) : sa quantité ne bouge jamais, ni d'autre exemplaire de ce produit (Antho 2026-11-19).
+    // _frozen explicite (Compléter) ; sinon toute ligne verrouillée reçue (Générer avec cadenas, Remplacer) est figée.
+    const frozenP = new Set(lockedItems.filter(b => b._frozen === undefined ? b.locked : b._frozen).map(b => b.pId));
 
     for (let i = 0; i < 500; i++) {
-      const affordable = cands.filter(c => c.price <= maxAvailable - spent && c.avail > 0);
+      const affordable = cands.filter(c => c.price <= maxAvailable - spent && c.avail > 0 && !frozenP.has(c.pId));
       if (!affordable.length) break;
 
       const productQties = {};
@@ -965,7 +967,7 @@ const Paniers = {
       const hard = t => this.HARD.includes((t || {}).resistance);
       const tagsOf = b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sp ? this._mergeTags(Stock.effTags(sp), sv ? Stock.variantTags(sp, sv) : null) : {}; };
       const canAdd = (c, bk) => {
-        if (c.avail <= 0) return false;
+        if (c.avail <= 0 || frozenP.has(c.pId)) return false;
         const inBk = bk.reduce((a, b) => a + (b.pId === c.pId ? b.qty : 0), 0);
         if (inBk >= this.maxPerProduct * mult || inBk >= this._capOf(c.pId)) return false;
         if (c.mode === 'gram' && mult > 1 && bk.some(b => b.pId === c.pId)) return false;
@@ -1122,9 +1124,9 @@ const Paniers = {
     const spent = this.basket.reduce((a, b) => a + b.price * b.qty, 0);
     if (available - spent < 0.05) { U.toast('Le panier est déjà au budget.', true); return; }
     const was = this.basket.map(b => !!b.locked);
-    const base = this.basket.map(b => ({ ...b, locked: true }));
+    const base = this.basket.map(b => ({ ...b, locked: true, _frozen: !!b.locked }));   // cadenas d'Antho = quantité figée
     const out = this._compose(available, base);
-    out.forEach((b, i) => { if (i < was.length) b.locked = was[i]; });   // les produits d'avant gardent leur verrou d'origine
+    out.forEach((b, i) => { if (i < was.length) b.locked = was[i]; delete b._frozen; });   // les produits d'avant gardent leur verrou d'origine
     const added = out.reduce((a, b) => a + b.qty, 0) - this.basket.reduce((a, b) => a + b.qty, 0);
     if (added <= 0) { U.toast(`Aucun produit ne rentre dans le reste (${U.eur((available - spent) * (1 - this._disc()))}) avec ces réglages.`, true); return; }
     this.basket = out; this.proposals = null;
