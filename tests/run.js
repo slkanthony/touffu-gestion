@@ -567,8 +567,8 @@ run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped
 run(`Paniers.swapItem(0);`);
 eq('28a remplacer « Cou de dinde » : ni un 2e « Cou d\'oie » ni un autre cou', run(`Paniers.basket.map(b => b.name).filter(n => /^Cou/.test(n)).length`), 1);
 eq('28a le remplaçant est d un autre type (pas un cou)', run(`/^Cou/.test(Paniers.basket[0].name)`), false);
-run(`Paniers.removeItem(Paniers.basket.findIndex(b => b.pId === 'a')); Paniers.complete();`);
-eq('28b retiré puis « Compléter » : pas remis', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+run(`Paniers.excludeItem(Paniers.basket.findIndex(b => b.pId === 'a')); Paniers.complete();`);
+eq('28b écarté (🚫) puis « Compléter » : pas remis', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
 
 /* ══════════ 29. REMPLACER = un ou plusieurs produits pour le même budget (Antho 2026-11-18) ══════════ */
 paniers([sp('a', 'Museau de bœuf', { days: 200, price: 6, meat: 'Boeuf', tags: { resistance: 'moyenne' } }), sp('b', 'Groin de porc', { days: 200, price: 3, meat: 'Porc', tags: { resistance: 'moyenne' } }),
@@ -598,8 +598,12 @@ eq('29a total inchangé', run(`Paniers.basket.reduce((a, b) => a + b.price * b.q
 paniers([sp('a', 'Patte de chevreuil', { days: 200, price: 4, meat: 'Chevreuil' }), sp('b', 'Patte de chevreuil avec poils', { days: 200, price: 4, meat: 'Chevreuil', tags: { poil: 'avec' } }),
          sp('c', 'Oreille de lapin', { days: 200, price: 3, meat: 'Lapin' }), sp('d', 'Museau de bœuf', { days: 200, price: 5, meat: 'Boeuf' })], { budget: 12 });
 run(`Paniers.render = function () {}; U.toast = function () {}; Store.save = function () {}; Store.state.stockM[0].twinId = 'b'; Store.state.stockM[1].twinId = 'a'; Paniers._dropped = [];
-  Paniers.basket = [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Patte de chevreuil', meat: 'Chevreuil', price: 4, qty: 1 }]; Paniers.removeItem(0); Paniers.complete();`);
-eq('31 patte retirée puis « Compléter » : ni elle ni sa version avec poils', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+  Paniers.basket = [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Patte de chevreuil', meat: 'Chevreuil', price: 4, qty: 1 }]; Paniers.excludeItem(0); Paniers.complete();`);
+eq('31 patte écartée (🚫) puis « Compléter » : ni elle ni sa version avec poils', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+run(`Paniers.excludeProducts = []; Paniers._dropped = []; Paniers.basket = [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Patte de chevreuil', meat: 'Chevreuil', price: 4, qty: 1 }]; Paniers.removeItem(0);`);
+eq('31b corbeille (2026-11-19) : rien d écarté', run(`[Paniers._dropped.length, Paniers.excludeProducts.length, Paniers.basket.length]`), [0, 0, 0]);
+run(`Paniers.complete();`);
+eq('31b corbeille puis « Compléter » : il peut revenir', run(`Paniers.candidates().some(c => c.pId === 'a')`), true);
 
 /* ══════════ 32. COMMANDE SITE : « Compléter » au plus juste (Antho 2026-11-18) ══════════ */
 paniers([sp('a', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' }), sp('b', 'Fromage a croquer', { days: 200, price: 11, meat: 'Fromages' }), sp('c', 'Museau de bœuf', { days: 200, price: 4.5, meat: 'Boeuf' })], { kind: 'site', budget: 40, maxPerProduct: 2 });

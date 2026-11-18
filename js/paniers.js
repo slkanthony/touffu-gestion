@@ -1139,7 +1139,7 @@ const Paniers = {
     const items = (this._dropped || []).filter(nm).map(id => ({ id, l: U.esc(nm(id)), js: `Paniers.undrop('${id}')` }))
       .concat(Object.keys(this._qtyCap || {}).filter(nm).map(id => ({ id, l: `${U.esc(nm(id))} <span class="muted">(${this._qtyCap[id]} max)</span>`, js: `Paniers.uncap('${id}')` })));
     if (!items.length) return '';
-    return `<div class="pan-ecartes"><span class="muted">Écartés de ce panier <span class="help">Produits retirés ou remplacés, et quantités baissées à la main : « Générer », « Compléter » et « Remplacer » ne les reprennent pas. « Rétablir » les autorise de nouveau. Tout est oublié à « Vider ».</span> :</span>
+    return `<div class="pan-ecartes"><span class="muted">Écartés de ce panier <span class="help">Produits remplacés (🔄) et quantités baissées à la main : « Générer », « Compléter » et « Remplacer » ne les reprennent pas. « Rétablir » les autorise de nouveau. Tout est oublié à « Vider ».</span> :</span>
       ${items.map(it => `<span class="pan-ecarte">${it.l} <button type="button" class="btn-ghost btn-sm fit" onclick="${it.js}">Rétablir</button></span>`).join('')}</div>`;
   },
   undrop(id) { const tw = Stock.twinIdOf(id); this._dropped = (this._dropped || []).filter(x => x !== id && x !== tw); this._draft(); this.render(); },
@@ -1207,8 +1207,9 @@ const Paniers = {
   _drop(pId) {
     [pId, Stock.twinIdOf(pId)].forEach(id => { if (id && !this._dropped.includes(id)) this._dropped.push(id); });   // sa version avec / sans poils part aussi (Antho 2026-11-18)
   },
+  /* Corbeille = simple retrait de la LIGNE (Antho 2026-11-19 : « je veux juste le retirer pour mettre autre chose, tu peux me le reproposer ») :
+     ni « Écartés de ce panier », ni apprentissage. Pour ne plus le voir proposé : 🚫. */
   removeItem(idx) {
-    const it = this.basket[idx]; if (it && (it.kind || 'M') === 'M') { this._drop(it.pId); this._dropLearn(it); }
     this.basket.splice(idx, 1);
     this.render();
   },
@@ -1225,7 +1226,7 @@ const Paniers = {
     const totBefore = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     item.qty = Math.max(0, item.qty + delta);
     if (item.qty > 0) this._setCap(item, totBefore);
-    if (item.qty <= 0) { if ((item.kind || 'M') === 'M') { this._drop(item.pId); this._dropLearn(item); } this.basket.splice(idx, 1); }
+    if (item.qty <= 0) this.basket.splice(idx, 1);   // arrivé à 0 = comme la corbeille (simple retrait)
     this.render();
     if (delta > 0) this._stockWarn(item.pId, item.vId);
   },
@@ -1235,7 +1236,7 @@ const Paniers = {
     const up = n > item.qty, totBefore = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     item.qty = n;
     if (n > 0) this._setCap(item, totBefore);
-    if (n <= 0) { if ((item.kind || 'M') === 'M') { this._drop(item.pId); this._dropLearn(item); } this.basket.splice(idx, 1); }
+    if (n <= 0) this.basket.splice(idx, 1);   // 0 = comme la corbeille (simple retrait)
     this.render();
     if (up) this._stockWarn(item.pId, item.vId);
   },
@@ -2436,7 +2437,7 @@ const Paniers = {
               <td class="num pl-sub"><b>${U.eur(b.price * b.qty)}</b></td>
               <td class="pl-dluo${b.dluo ? '' : ' pl-none'}">${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
               <td class="num pl-coef${b.coeff > 0 ? '' : ' pl-none'}">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
-              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? `<button class="btn-icon" onclick="Paniers.dupItem(${i})" title="Dupliquer la ligne (même accessoire, autres couleurs / autre motif)">⧉</button>` : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Exclure ce produit (ne sera plus proposé)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer">🗑️</button></td>
+              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? `<button class="btn-icon" onclick="Paniers.dupItem(${i})" title="Dupliquer la ligne (même accessoire, autres couleurs / autre motif)">⧉</button>` : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Écarter : ne plus le proposer (remplacé tout de suite)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer la ligne (pourra être reproposé par « Compléter »)">🗑️</button></td>
             </tr>`;
           }).join('')}</tbody>
         </table></div>
