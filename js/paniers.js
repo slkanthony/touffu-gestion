@@ -987,6 +987,12 @@ const Paniers = {
   uncap(id) { delete this._qtyCap[id]; this._draft(); this.render(); },
   /* « Reste » en couleur (Antho 2026-11-18) : vert = c'est bon, rouge = à corriger. Vente / lot : rouge si on DÉPASSE le budget.
      Commande site (déjà payée) : rouge s'il MANQUE quelque chose (le client a payé plus que le panier), vert dès que le montant est atteint. */
+  /* Case « Reste » (Antho 2026-11-19 : « -0,10 € Reste, ce n'est pas ce qui reste, c'est ce que j'ai dépassé ») : au-dessus du budget elle devient
+     « Dépassement » avec un montant positif (+0,10 €). La couleur garde son sens : vert = bon, rouge = à corriger. */
+  _resteKPI(remaining) {
+    const v = remaining * (1 - this._disc()), over = v < -0.005;
+    return `<div class="kpi ${this._resteCls(remaining)}"><span class="kpi-val">${over ? '+' + U.eur(-v) : U.eur(v)}</span><span class="kpi-label">${over ? 'Dépassement' : (this.kind === 'site' && v > 0.005 ? 'Manque' : 'Reste')}</span></div>`;
+  },
   _resteCls(remaining) {
     const bad = this.kind === 'site' ? remaining > 0.005 : remaining < -0.005;
     return this.basket.length ? (bad ? 'pan-kpi-bad' : 'pan-kpi-ok') : '';
@@ -1937,7 +1943,7 @@ const Paniers = {
         ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
         <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
         ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
-        <div class="kpi ${this._resteCls(remaining)}"><span class="kpi-val">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
+        ${this._resteKPI(remaining)}
       `;
     }
   },
@@ -2195,7 +2201,7 @@ const Paniers = {
           ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
           <div class="kpi"><span class="kpi-val">${U.eur(totalBasket)}</span><span class="kpi-label">Panier (${nbArticles} art.)</span></div>
         ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
-          <div class="kpi ${this._resteCls(remaining)}"><span class="kpi-val">${U.eur(remaining * (1 - this._disc()))}</span><span class="kpi-label">Reste</span></div>
+          ${this._resteKPI(remaining)}
           ${this.basket.length ? (() => { const f = this._finData(), thr = U.num(Store.state.settings.b2bCoeffThreshold) || 1, bad = f.totProfit < 0 || (f.avgCoeff > 0 && f.avgCoeff < thr);
             return `<div class="kpi sensitive ${bad ? 'pan-kpi-bad' : 'pan-kpi-ok'}" title="Coefficient moyen = prix de vente HT ÷ coût de revient, pondéré par les quantités. Bénéfice net = marge − cotisations (détail plus bas)."><span class="kpi-val">${f.avgCoeff > 0 ? f.avgCoeff.toFixed(2).replace('.', ',') : '—'}</span><span class="kpi-label">Coeff moyen · ${f.totProfit >= 0 ? '+' : ''}${U.eur(f.totProfit)}</span></div>`; })() : ''}
         </div>
