@@ -581,6 +581,7 @@ const Ventes = {
         <div class="frow" style="gap:10px;">
           <button type="button" class="btn-cta" style="flex:1;padding:18px 10px;" onclick="Ventes._finalizeSale('direct','virement','${delivery}')">🏦 Virement</button>
           <button type="button" class="btn-cta" style="flex:1;padding:18px 10px;" onclick="Ventes._finalizeSale('direct','sumup','${delivery}')">💳 SumUp</button>
+          <button type="button" class="btn-cta" style="flex:1;padding:18px 10px;" onclick="Ventes._finalizeSale('direct','cash','${delivery}')">💵 Espèces</button>
         </div>
         <button type="button" class="btn-ghost btn-sm mt" onclick="Ventes._askDelivery('direct')">← Retour</button>`
     });
