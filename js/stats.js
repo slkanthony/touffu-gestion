@@ -1002,7 +1002,7 @@ const Stats = {
       const ch = this._saleChannelLabel(s);
       const mo = new Date(s.ts).getMonth();
       const mk = U.monthKey(s.ts);
-      const my = monthMap[mk] || (monthMap[mk] = { key: mk, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0, partner: 0 });
+      const my = monthMap[mk] || (monthMap[mk] = { key: mk, ca: 0, caAcc: 0, cogs: 0, articles: 0, nSales: 0, fee: 0, shipFee: 0, shipping: 0, boxCost: 0, eventFee: 0, partner: 0, cmHT: 0, cmCost: 0, cbHT: 0, cbCost: 0 });
       my.ca += U.num(s.total); my.nSales++;
       my.fee += procFee(s); my.shipFee += U.num(s.shippingFeeCollected); my.shipping += U.num(s.shippingCost); my.eventFee += Pricing.eventCost(s); my.partner += Pricing.partnerCost(s);
       (s.items || []).forEach(i => {
@@ -1010,6 +1010,8 @@ const Stats = {
         if (!keep(i)) return;
         const qty = U.num(i.qty), rev = U.num(i.price) * qty;
         articles += qty; my.articles += qty; my.cogs += Pricing.saleItemCost(i);
+        // Coeff moyen (étape 4 des paniers) : mastication seulement, prix HT ÷ coût de revient figé sur la vente — toutes les ventes / ventes venues d'un panier
+        if ((i.kind || 'M') === 'M') { const ht = rev / (1 + U.num(S.vatRate) / 100), co = Pricing.saleItemCost(i); if (co > 0 && ht > 0) { my.cmHT += ht; my.cmCost += co; if (s.fromBasket) { my.cbHT += ht; my.cbCost += co; } } }
         if (i.kind === 'A') {
           my.caAcc += rev;
           const info = this._accInfo(i.pId);
@@ -1140,6 +1142,22 @@ const Stats = {
           <td>${r.tot ? bar(r) : '<span class="muted">pas de vente</span>'}</td></tr>`).join('')}</tbody></table></div>`, { unit: 'produits' })}
     </div>`;
   },
+  /* Carte « Coeff moyen » de l'onglet Chiffre d'affaires (étape 4 des paniers) : chiffres de la période + courbe mois par mois. */
+  _coeffTrackHTML(agg) {
+    const ms = agg.months || [], sum = k => ms.reduce((a, m) => a + (m[k] || 0), 0), t = Paniers._coeffTarget();
+    const all = sum('cmCost') > 0 ? sum('cmHT') / sum('cmCost') : 0, bk = sum('cbCost') > 0 ? sum('cbHT') / sum('cbCost') : 0;
+    if (!all) return '';
+    const f = v => v > 0 ? v.toFixed(2).replace('.', ',') : '—', cls = v => !t || !(v > 0) ? '' : v >= t - 0.005 ? ' good' : ' warn';
+    return `<div class="card mt sensitive"><h2>🎯 Coefficient moyen</h2>
+      <p class="muted help">Mastication seulement : prix de vente HT ÷ coût de revient figé au moment de la vente, pondéré par les montants. « Paniers » = ventes envoyées depuis la page Paniers. Le coeff visé se règle dans Paniers (sous l'objectif). Une courbe qui baisse plusieurs mois de suite = ta marge s'érode.</p>
+      <div class="grid c3">
+        <div class="kpi${cls(bk)}"><div class="v">${f(bk)}</div><div class="l">Paniers</div></div>
+        <div class="kpi${cls(all)}"><div class="v">${f(all)}</div><div class="l">Toute la mastication</div></div>
+        <div class="kpi"><div class="v">${t ? f(t) : '—'}</div><div class="l">Coeff visé</div></div>
+      </div>
+      <div style="position:relative;height:240px;" class="mt"><canvas id="salesCoeffChart"></canvas></div>
+    </div>`;
+  },
   renderSales() {
     const agg = this._salesAgg();
     const metric = this._metric();
@@ -1193,6 +1211,8 @@ const Stats = {
         <p class="muted help">${metric === 'ca' ? 'Une courbe par poste, mois par mois (chronologique, années distinctes) : clique un nom dans la légende pour masquer / afficher sa courbe. « Frais » = paiement, envoi, stand/repas/déplacement, entretien matériel, livraison & frais généraux (sans les cartons, qui ont leur courbe).' : 'Nombre d\'articles vendus mois par mois (chronologique, années distinctes).'}</p>
         <div style="position:relative;height:${metric === 'ca' ? 300 : 190}px;"><canvas id="salesTimelineChart"></canvas></div>
       </div>
+
+      ${metric !== 'ca' ? '' : this._coeffTrackHTML(agg)}
 
       ${metric !== 'ca' ? '' : `<div class="card mt"><h2>🧾 Détail par mois — frais, marge & bénéfice</h2>
         <p class="muted help">Le même détail en chiffres, avec la même compta que le Tableau de bord.</p>
@@ -1326,6 +1346,21 @@ const Stats = {
       data: { labels: tl.map(m => this._monthKeyLabel(m.key)), datasets: [{ label: mLabel, data: tl.map(m => metric === 'ca' ? m.ca : m.articles), backgroundColor: '#5c6a78', borderRadius: 5 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ' ' + fmtV(c.parsed.y) } } }, scales: { y: { beginAtZero: true, ticks: { color: textColor } }, x: { ticks: { color: textColor, maxRotation: 60, font: { size: 10 } } } } }
     });
+
+    // Coeff moyen mois par mois (paniers / toute la mastication / cible)
+    const ctC = document.getElementById('salesCoeffChart');
+    if (ctC && metric === 'ca') {
+      const t = Paniers._coeffTarget(), C = U.CHART_COLORS, r = (h, c) => c > 0 ? Math.round(h / c * 100) / 100 : null;
+      const line = (label, color, data, o = {}) => ({ label, data, borderColor: color, backgroundColor: color, pointBackgroundColor: color, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, tension: .3, spanGaps: true, ...o });
+      const sets = [line('Paniers', C[0], tl.map(m => r(m.cbHT, m.cbCost)), { borderWidth: 4, pointRadius: 4 }), line('Toute la mastication', C[4], tl.map(m => r(m.cmHT, m.cmCost)))];
+      if (t) sets.push(line('Coeff visé', C[3], tl.map(() => t), { borderDash: [6, 5], pointRadius: 0, borderWidth: 2 }));
+      this._charts.coeff = new Chart(ctC, {
+        type: 'line', data: { labels: tl.map(m => this._monthKeyLabel(m.key)), datasets: sets },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { color: textColor, usePointStyle: true, pointStyle: 'circle', boxWidth: 9, boxHeight: 9, padding: 14, font: { family: 'Quicksand', size: 11 } } }, tooltip: { callbacks: { label: (c) => c.parsed.y == null ? '' : ` ${c.dataset.label} : ${c.parsed.y.toFixed(2).replace('.', ',')}` } } },
+          scales: { y: { ticks: { color: textColor, callback: v => Number(v).toFixed(1).replace('.', ',') } }, x: { ticks: { color: textColor, maxRotation: 60, font: { size: 10 } } } } }
+      });
+    }
 
     // Saisonnalité mensuelle
     const monthData = metric === 'ca' ? agg.byMonthCA : agg.byMonthQty;

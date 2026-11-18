@@ -864,6 +864,24 @@ const Paniers = {
     [...new Set(basket.map(b => b.pId))].forEach(id => { if (id === c.pId) return; const k = id < c.pId ? id + '|' + c.pId : c.pId + '|' + id; s += Math.min(6, m[k] || 0); });
     return Math.min(1.3, 1 + 0.03 * s);
   },
+  /* ═══ COEFF VISÉ (étape 4, 2026-11-19) : réglage settings.panCoeffTarget (2,0 par défaut, 0 = sans cible).
+     Tant que le coeff moyen du panier en cours est SOUS la cible, les produits au-dessus de la cible passent devant et ceux en dessous
+     reculent (×0,75 à ×1,3) ; cible atteinte = plus d'effet. Jamais en objectif « Écouler » (les dates courtes priment). */
+  _coeffTarget() { return Math.max(0, U.num(Store.state.settings && Store.state.settings.panCoeffTarget)); },
+  _avgCoeff(lines) { const ci = (lines || []).filter(b => b.coeff > 0), q = ci.reduce((a, b) => a + U.num(b.qty), 0); return q > 0 ? ci.reduce((a, b) => a + b.coeff * U.num(b.qty), 0) / q : 0; },
+  _coeffMult(c, basket) {
+    const t = this._coeffTarget(); if (!t || this.priority === 'dluo' || !(c.coeff > 0)) return 1;
+    const avg = this._avgCoeff(basket), strength = avg > 0 ? Math.max(0, Math.min(1, (t - avg) / 0.4)) : 0.3;
+    return strength ? Math.max(0.75, Math.min(1.3, 1 + 0.5 * strength * (c.coeff - t) / t)) : 1;
+  },
+  _coeffTag(avg) {
+    const t = this._coeffTarget(); if (!t || !(avg > 0)) return '';
+    return ` <span class="${avg >= t - 0.005 ? 'pan-ct-ok' : 'pan-ct-low'}">(visé ${t.toFixed(2).replace('.', ',')})</span>`;
+  },
+  setCoeffTarget(v) {
+    const n = U.num(String(v).replace(',', '.')); if (!(n >= 0) || n > 10) { U.toast('Coeff visé : un nombre entre 0 et 10 (0 = pas de cible).', true); this.render(); return; }
+    Store.state.settings.panCoeffTarget = Math.round(n * 100) / 100; Store.save('settings'); this.proposals = null; this.render();
+  },
   forgetLearn(id) { const L = this._L(); delete L.p[id]; Store.save('panLearn'); this.render(); U.toast('Oublié : ce produit repart de zéro.'); },
   _buildBasket(maxAvailable, lockedItems) {
     const cands = this.candidates();
@@ -892,7 +910,8 @@ const Paniers = {
       if (c) c.avail = Math.max(0, c.avail - b.qty);
     });
 
-    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) * this._pairMult(c, basket);   // « souvent pris ensemble » avec ce qui est déjà dans le panier (étape 3)
+    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) * this._pairMult(c, basket) * this._coeffMult(c, basket);   // « souvent pris ensemble » (étape 3) + coeff visé (étape 4)
+    // « souvent pris ensemble » avec ce qui est déjà dans le panier (étape 3)
 
     for (let i = 0; i < 500; i++) {
       const affordable = cands.filter(c => c.price <= maxAvailable - spent && c.avail > 0);
@@ -1301,8 +1320,9 @@ const Paniers = {
     });
 
     eligible.sort((a, b) => {
-      const sa = this._itemScore(a, usedProducts, usedMeats, maxCoeff, weights, mult);
-      const sb = this._itemScore(b, usedProducts, usedMeats, maxCoeff, weights, mult);
+      const rest = this.basket.filter((x, i) => i !== idx);
+      const sa = this._itemScore(a, usedProducts, usedMeats, maxCoeff, weights, mult) * this._coeffMult(a, rest);
+      const sb = this._itemScore(b, usedProducts, usedMeats, maxCoeff, weights, mult) * this._coeffMult(b, rest);
       return sb - sa;
     });
 
@@ -2201,7 +2221,7 @@ const Paniers = {
           <h3 style="margin:0;">${label}</h3>
           <span style="font-size:1.15em;font-weight:700;">${U.eur(total)} ${isOver ? `<span class="badge warn">+${U.eur(diff)}</span>` : remain > 0.005 ? `<span class="muted" style="font-size:0.8em;">reste ${U.eur(remain)}</span>` : ''}</span>
         </div>
-        <p class="muted" style="margin:0 0 8px;">${nb} article(s) · ${nProd} produit(s) · ${nMeat} viande(s)${(() => { const ci = prop.filter(b => b.coeff > 0); const cq = ci.reduce((a,b) => a + b.qty, 0); const cm = cq > 0 ? ci.reduce((a,b) => a + b.coeff * b.qty, 0) / cq : 0; return cm > 0 ? ` · <b>Coeff moyen : ${cm.toFixed(2)}</b>` : ''; })()}</p>
+        <p class="muted" style="margin:0 0 8px;">${nb} article(s) · ${nProd} produit(s) · ${nMeat} viande(s)${(() => { const ci = prop.filter(b => b.coeff > 0); const cq = ci.reduce((a,b) => a + b.qty, 0); const cm = cq > 0 ? ci.reduce((a,b) => a + b.coeff * b.qty, 0) / cq : 0; return cm > 0 ? ` · <span class="sensitive"><b>Coeff moyen : ${cm.toFixed(2)}</b>${this._coeffTag(cm)}</span>` : ''; })()}</p>
         ${nb ? `<div class="table-wrap"><table>
           <thead><tr><th class="col-name">Produit</th><th>Variante</th><th>Viande</th><th class="num">Qté</th><th class="num">S/total</th><th>DLUO</th></tr></thead>
           <tbody>${prop.map(b => {
@@ -2271,6 +2291,8 @@ const Paniers = {
 
         <div class="fg" style="margin-bottom:12px;"><label>Objectif <span class="muted help">Écouler : toutes les dates courtes (30 jours ou moins, et dépassées) passent en premier. Équilibré : le réglage habituel du type de panier (commande site : seules les dates dépassées d'office, puis date et coefficient). Rentable : les meilleurs coefficients d'abord.</span></label>
           ${U.seg(this.OBJECTIVES.map(([v, l]) => ({ l, on: this.priority === v, js: `Paniers.setObjective('${v}')` })), { sm: true })}</div>
+        ${Store.isAdmin() ? `<div class="fg sensitive pan-ct" style="margin-bottom:12px;"><label>Coeff visé <span class="muted help">Coefficient moyen que le générateur essaie d'atteindre (prix de vente HT ÷ coût de revient). Sous la cible, il préfère les produits mieux margés ; cible atteinte, il ne change plus rien. Sans effet en « Écouler » (les dates courtes passent avant). 0 = pas de cible. Suivi mois par mois : Statistiques → Chiffre d'affaires.</span></label>
+          <input id="pan_ctarget" type="text" inputmode="decimal" value="${this._coeffTarget() ? this._coeffTarget().toFixed(2).replace('.', ',') : '0'}" onchange="Paniers.setCoeffTarget(this.value)"></div>` : ''}
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💰 Budget TTC</label>
@@ -2409,7 +2431,7 @@ const Paniers = {
         ${this._disc() > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(totalBasket * this._disc())}</span><span class="kpi-label">${U.esc(this._redLabel({ redCode: this.reductionCode, redPct: this.reduction }))}</span></div>` : ''}
           ${this._resteKPI(remaining)}
           ${this.basket.length ? (() => { const f = this._finData(), thr = U.num(Store.state.settings.b2bCoeffThreshold) || 1, bad = f.totProfit < 0 || (f.avgCoeff > 0 && f.avgCoeff < thr);
-            return `<div class="kpi sensitive ${bad ? 'pan-kpi-bad' : 'pan-kpi-ok'}" title="Coefficient moyen = prix de vente HT ÷ coût de revient, pondéré par les quantités. Bénéfice net = marge − cotisations (détail plus bas)."><span class="kpi-val">${f.avgCoeff > 0 ? f.avgCoeff.toFixed(2).replace('.', ',') : '—'}</span><span class="kpi-label">Coeff moyen · ${f.totProfit >= 0 ? '+' : ''}${U.eur(f.totProfit)}</span></div>`; })() : ''}
+            return `<div class="kpi sensitive ${bad ? 'pan-kpi-bad' : 'pan-kpi-ok'}" title="Coefficient moyen = prix de vente HT ÷ coût de revient, pondéré par les quantités. Bénéfice net = marge − cotisations (détail plus bas)."><span class="kpi-val">${f.avgCoeff > 0 ? f.avgCoeff.toFixed(2).replace('.', ',') : '—'}</span><span class="kpi-label">Coeff moyen${(() => { const t = this._coeffTarget(); return t && f.avgCoeff > 0 ? ` (visé ${t.toFixed(2).replace('.', ',')})` : ''; })()} · ${f.totProfit >= 0 ? '+' : ''}${U.eur(f.totProfit)}</span></div>`; })() : ''}
         </div>
 
         ${this.basket.length ? `
@@ -2535,7 +2557,7 @@ const Paniers = {
 
     return `<div style="margin-top:12px;padding:12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--card-border);">
       <b>Récapitulatif :</b> ${nbArticles} article(s) · ${nViandes} viande(s) · ${nProduits} produit(s) différent(s)
-      ${avgCoeff > 0 ? ` · <span class="sensitive"><b>Coeff moyen : ${avgCoeff.toFixed(2)}</b></span>` : ''}
+      ${avgCoeff > 0 ? ` · <span class="sensitive"><b>Coeff moyen : ${avgCoeff.toFixed(2)}</b>${this._coeffTag(avgCoeff)}</span>` : ''}
       ${totCost > 0 && valeur > 0 ? ` · <span class="sensitive" title="Panier offert : la valeur affichée est celle au prix public ; le coût réel est le coût de revient des produits (fiche Prix mastication, frais de port d'achat estimés compris)">🎁 <b>Coût réel ${U.eur(totCost)}</b> pour ${U.eur(valeur)} de valeur affichée (${Math.round(totCost / valeur * 100)} %)</span>` : ''}
       ${this.nbChiens > 1 ? ` · × ${this.nbChiens} chiens` : ''}
       ${hasLocked ? ` · 🔒 ${this.basket.filter(b => b.locked).length} verrouillé(s)` : ''}

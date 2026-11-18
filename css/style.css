@@ -1959,6 +1959,10 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 @media (max-width: 700px) { .pan-short-row { grid-template-columns: 1fr auto; } .pan-short-r { grid-column: 1 / -1; } }
 /* Paniers : ce que le générateur a appris */
 .pan-learn { margin-top: 12px; }
+.pan-ct input { width: 80px; }
+.pan-ct-ok { color: var(--ok); font-weight: 600; }
+.pan-ct-low { color: var(--warn); font-weight: 600; }
+
 .pan-learn-h { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); margin: 10px 0 4px; }
 .pan-learn-row { display: grid; grid-template-columns: 1fr 60px auto; gap: 8px; align-items: center; padding: 3px 0; border-top: 1px dashed var(--card-border); font-size: .88rem; }
 .pan-learn-m { text-align: right; font-weight: 700; }

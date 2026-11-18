@@ -661,6 +661,19 @@ eq('38b paire comptée par paiement', run(`Store.state.panLearn.pairs['b|s']`), 
 run(`Paniers.learnFromSumup([{ ref: 'T1', desc: 'SPRATS 100g' }, { ref: 'T1', desc: 'Sabot de boeuf PCS' }]);`);
 eq('38c un paiement déjà appris n\'est pas recompté', run(`Store.state.panLearn.pairs['b|s']`), 2);
 eq('38d avec un sabot dans le panier, le sprat passe devant', run(`Paniers._pairMult({ pId: 's' }, [{ pId: 'b' }]) > Paniers._pairMult({ pId: 'm' }, [{ pId: 'b' }])`), true);
+/* ══════════ 39. COEFF VISÉ (étape 4, 2026-11-19) ══════════ */
+run(`Store.state.settings.panCoeffTarget = 2; Paniers.priority = 'mix';`);
+// panier à 1,5 de moyenne (écart 0,5 ≥ 0,4 → pleine force) : produit à 2,6 → 1 + 0,5 × (2,6 − 2) / 2 = 1,15 ; produit à 1,4 → 1 − 0,15 = 0,85
+eq('39a sous la cible : coeff fort favorisé', run(`Paniers._coeffMult({ coeff: 2.6 }, [{ coeff: 1.5, qty: 2 }])`), 1.15);
+eq('39b sous la cible : coeff faible reculé', run(`Paniers._coeffMult({ coeff: 1.4 }, [{ coeff: 1.5, qty: 2 }])`), 0.85);
+eq('39c cible atteinte : plus d effet', run(`Paniers._coeffMult({ coeff: 3 }, [{ coeff: 2.2, qty: 1 }])`), 1);
+eq('39d objectif Écouler : sans effet', run(`Paniers.priority = 'dluo'; const r39d = Paniers._coeffMult({ coeff: 3 }, [{ coeff: 1, qty: 1 }]); Paniers.priority = 'mix'; r39d`), 1);
+eq('39e pas de cible (0) : sans effet', run(`Store.state.settings.panCoeffTarget = 0; const r39e = Paniers._coeffMult({ coeff: 3 }, [{ coeff: 1, qty: 1 }]); Store.state.settings.panCoeffTarget = 2; r39e`), 1);
+// stats : 1 vente de panier 24 € TTC (20 € HT) coût 8 + 1 vente directe 12 € TTC (10 € HT) coût 10 → paniers 20/8 = 2,5 ; tout 30/18 = 1,667
+run(`Store.state.settings.vatRate = 20; Store.state.sales = [{ id: 'k1', ts: Date.now(), fromBasket: true, total: 24, items: [{ kind: 'M', qty: 1, price: 24, cost: 8 }] }, { id: 'k2', ts: Date.now(), total: 12, items: [{ kind: 'M', qty: 1, price: 12, cost: 10 }] }]; Stats.salesPeriod = 'all'; Stats.tab = 'ca';`);
+eq('39f stats : coeff des paniers', run(`const m39f = Stats._salesAgg().months; m39f.reduce((a, x) => a + x.cbHT, 0) / m39f.reduce((a, x) => a + x.cbCost, 0)`), 2.5);
+eq('39g stats : coeff de toute la mastication', run(`const m39g = Stats._salesAgg().months; m39g.reduce((a, x) => a + x.cmHT, 0) / m39g.reduce((a, x) => a + x.cmCost, 0)`), 30 / 18);
+run(`Store.state.sales = [];`);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
