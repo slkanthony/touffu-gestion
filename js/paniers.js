@@ -250,7 +250,7 @@ const Paniers = {
         if (need <= 0) return;
         const q = Math.min(need, U.num(l.qtyGeneral) + U.num(l.qtyEvent)), d = U.daysTo(l.dluo);
         need -= q;
-        out.push({ pId: p.id, vId: v.id, lotId: l.id, name: p.name, meat: p.meatType || '', variant: Pricing.labelVariant(v), price, qty: q, dluo: l.dluo || '', daysLeft: d === null ? 9999 : d, coeff, lotNumber: l.lotNumber || '', locked: false, family: fam, dog: '' });
+        out.push({ pId: p.id, vId: v.id, lotId: l.id, name: p.name, meat: p.meatType || '', variant: Pricing.labelVariant(v), price, qty: q, dluo: l.dluo || '', daysLeft: d === null ? 9999 : d, coeff, lotNumber: l.lotNumber || '', locked: false, gen: true, family: fam, dog: '' });
       });
       if (need > 0) miss.push(p.name + ' (' + need + ' manquant' + (need > 1 ? 's' : '') + ')');
     });
@@ -663,7 +663,8 @@ const Paniers = {
     let m = 1;
     if (gabs && gabs.includes('grand') && !gabs.includes('petit') && g.includes('petit')) m *= 0.6;
     if (c.teeth && a.length && !a.includes('senior')) m *= 0.6;
-    if (c.grow === 'moyen' && g.length && !g.includes('petit')) m *= 0.7;   // chiot de taille moyenne qui grandit : ce qui convient aussi aux petits passe devant
+    if (c.grow === 'moyen' && g.length && !g.includes('petit')) m *= 0.7;
+    m *= this._learnMult(c) * this._popMult(c);   // ce que le générateur a appris d'Antho + popularité réelle (étape 2)   // chiot de taille moyenne qui grandit : ce qui convient aussi aux petits passe devant
     return m;
   },
 
@@ -704,11 +705,72 @@ const Paniers = {
       const old = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId); if (old) old.avail += b.qty;
       delta += lot.price - b.price * b.qty;
       basket[i] = { pId: lot.pId, vId: lot.vId, lotId: lot.lotId, name: lot.name, meat: lot.meat, variant: lot.variant, price: lot.price, qty: 1, dluo: lot.dluo, daysLeft: lot.daysLeft,
-        coeff: lot.coeff, lotNumber: lot.lotNumber, locked: false, family: lot.family, dog: b.dog, ...this._simOf(lot) };
+        coeff: lot.coeff, lotNumber: lot.lotNumber, locked: false, gen: true, family: lot.family, dog: b.dog, ...this._simOf(lot) };
       lot.avail--;
     });
     return delta;
   },
+  /* ═══ APPRENDRE D'ANTHO (étape 2, 2026-11-19) ═══
+     On note, par produit et par PROFIL de chien (âge : chiot / adulte / sénior × taille d'aujourd'hui), ce qu'Antho fait des propositions :
+     r = retiré / remplacé / exclu (une proposition du générateur), a = ajouté à la main, s = vendu via un panier. Plus le compteur « tous profils » ('*').
+     Effet : note × 0,55 à 1,35 (le profil compte pour 70 %, l'ensemble pour 30 %). S'y ajoute la popularité réelle (ventes des 12 derniers mois, événements compris) :
+     × 0,92 à 1,12. Tout est visible et effaçable dans « Ce que j'ai appris ». Enregistré seulement pour l'admin (Store.state.panLearn). */
+  _L() { const s = Store.state; if (!s.panLearn || !s.panLearn.p) s.panLearn = { p: {} }; return s.panLearn; },
+  _learnKey() {
+    const cl = this._perDog() ? null : this._clientRules(), d0 = cl && cl.dogs.length ? cl.dogs[0] : null;
+    const ages = (d0 && this._dogAges(d0)) || this._ageSel();
+    const g0 = d0 ? this._growGab(d0) : null, gs = this._gabSel();
+    const gab = g0 ? g0.cur : (d0 && d0.gabarit) || (gs && gs.length === 1 ? gs[0] : '');
+    const age = !ages ? '' : ages.includes('senior') && !ages.some(x => x !== 'senior' && x !== '11+') ? 'sénior' : ages.some(x => ['0-3', '3-5', '6-10'].includes(x)) ? 'chiot' : 'adulte';
+    return (age || 'tout âge') + ' · ' + (gab || 'toute taille');
+  },
+  _learn(pId, field, n) {
+    if (!pId || Clients.ro() || !(Store.isAdmin && Store.isAdmin())) return;
+    const L = this._L(), rec = L.p[pId] || (L.p[pId] = {});
+    [this._learnKey(), '*'].forEach(k => { const r = rec[k] || (rec[k] = { r: 0, a: 0, s: 0 }); r[field] = (r[field] || 0) + (n || 1); r.t = Date.now(); });
+    Store.save('panLearn');
+  },
+  _learnScore(r) { return r ? (r.a || 0) + (r.s || 0) - 1.5 * (r.r || 0) : 0; },
+  _learnMult(c) {
+    const rec = this._L().p[c.pId]; if (!rec) return 1;
+    const k = this._learnKey(), v = 0.7 * this._learnScore(rec[k]) + 0.3 * this._learnScore(rec['*']);
+    return Math.max(0.55, Math.min(1.35, 1 + 0.06 * v));
+  },
+  /* Popularité : quantités vendues sur 12 mois par produit (toutes ventes), rang → × 0,92 (jamais vendu) à × 1,12 (le plus vendu). Calculée une fois par génération. */
+  _popCache: null,
+  _popMult(c) {
+    const sales = Store.state.sales || [], key = sales.length + ':' + (Store.state.stockM || []).length;
+    if (!this._popCache || this._popCache.key !== key) {
+      const cut = Date.now() - 365 * 86400000, q = {};
+      sales.forEach(x => { if (x.cancelled || U.num(x.ts) < cut) return; (x.items || []).forEach(i => { if ((i.kind || 'M') !== 'M') return; const f = this._stockOf(i); if (f) q[f.p.id] = (q[f.p.id] || 0) + U.num(i.qty); }); });
+      const ranked = Object.keys(q).sort((a, b) => q[b] - q[a]), rank = {};
+      ranked.forEach((id, i) => { rank[id] = ranked.length > 1 ? 1 - i / (ranked.length - 1) : 1; });
+      this._popCache = { key, rank, q };
+    }
+    const r = this._popCache.rank[c.pId];
+    return r === undefined ? 0.92 : 0.96 + 0.16 * r;
+  },
+  _learnedHTML() {
+    if (Clients.ro()) return '';
+    const L = this._L(), k = this._learnKey(), rows = [];
+    Object.keys(L.p).forEach(id => {
+      const p = Store.state.stockM.find(x => x.id === id); if (!p) return;
+      const rec = L.p[id], m = this._learnMult({ pId: id }); if (Math.abs(m - 1) < 0.005) return;
+      const pr = rec[k] || {}, gl = rec['*'] || {};
+      rows.push({ id, name: p.name, m, txt: `${gl.s || 0} vendu${(gl.s || 0) > 1 ? 's' : ''} via un panier · ${gl.a || 0} ajouté${(gl.a || 0) > 1 ? 's' : ''} à la main · ${gl.r || 0} retiré${(gl.r || 0) > 1 ? 's' : ''}${(pr.r || pr.a || pr.s) ? ` (dont ce profil : +${(pr.a || 0) + (pr.s || 0)} / −${pr.r || 0})` : ''}` });
+    });
+    const pop = this._popCache && this._popCache.q ? Object.keys(this._popCache.q).sort((a, b) => this._popCache.q[b] - this._popCache.q[a]).slice(0, 5).map(id => { const p = Store.state.stockM.find(x => x.id === id); return p ? `${U.esc(p.name)} (${U.qty(this._popCache.q[id])})` : ''; }).filter(Boolean) : [];
+    const up = rows.filter(r => r.m > 1).sort((a, b) => b.m - a.m).slice(0, 8), down = rows.filter(r => r.m < 1).sort((a, b) => a.m - b.m).slice(0, 8);
+    const line = r => `<div class="pan-learn-row"><span><b>${U.esc(r.name)}</b> <span class="muted">${r.txt}</span></span><span class="pan-learn-m ${r.m > 1 ? 'ok-txt' : 'warn-txt'}">${r.m > 1 ? '+' : '−'}${Math.round(Math.abs(r.m - 1) * 100)} %</span><button type="button" class="btn-ghost btn-sm fit" onclick="Paniers.forgetLearn('${r.id}')">Oublier</button></div>`;
+    return `<details class="fold pan-learn" ${this._learnOpen ? 'open' : ''} ontoggle="Paniers._learnOpen=this.open"><summary>🧠 Ce que j'ai appris <span class="muted">· profil : ${U.esc(k)}</span></summary><div class="fold-body">
+      <p class="muted help">Le générateur retient ce que tu fais de ses propositions : un produit que tu retires ou remplaces passe derrière (surtout pour ce profil de chien) ; un produit que tu ajoutes ou que tu vends via un panier passe devant. Les produits qui se vendent le mieux sur 12 mois ont aussi un petit coup de pouce. « Oublier » efface ce qui a été appris sur un produit.</p>
+      ${up.length ? `<div class="pan-learn-h">Mis en avant</div>${up.map(line).join('')}` : ''}
+      ${down.length ? `<div class="pan-learn-h">Passés derrière</div>${down.map(line).join('')}` : ''}
+      ${!up.length && !down.length ? '<p class="muted">Rien encore : ça se remplit à mesure que tu retouches et vends des paniers.</p>' : ''}
+      ${pop.length ? `<div class="pan-learn-h">Les plus vendus (12 mois)</div><p class="muted" style="margin:2px 0;">${pop.join(' · ')}</p>` : ''}
+    </div></details>`;
+  },
+  forgetLearn(id) { const L = this._L(); delete L.p[id]; Store.save('panLearn'); this.render(); U.toast('Oublié : ce produit repart de zéro.'); },
   _buildBasket(maxAvailable, lockedItems) {
     const cands = this.candidates();
     const basket = lockedItems.map(b => ({...b}));
@@ -789,7 +851,7 @@ const Paniers = {
           pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
           name: pick.name, meat: pick.meat, variant: pick.variant,
           price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick), ...this._simOf(pick)
+          coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, gen: true, family: pick.family, dog: this._dogTag(pick), ...this._simOf(pick)
         });
       }
       if (pick.forDogs && pick.forDogs.length === 1) spentBy[pick.forDogs[0]] = (spentBy[pick.forDogs[0]] || 0) + pick.price;
@@ -823,7 +885,7 @@ const Paniers = {
       const put = c => {
         const ex = basket.find(x => x.pId === c.pId && x.vId === c.vId && x.lotId === c.lotId);
         if (ex) ex.qty++;
-        else basket.push({ pId: c.pId, vId: c.vId, lotId: c.lotId, name: c.name, meat: c.meat, variant: c.variant, price: c.price, qty: 1, dluo: c.dluo, daysLeft: c.daysLeft, coeff: c.coeff, lotNumber: c.lotNumber, locked: false, family: c.family, dog: this._dogTag(c), ...this._simOf(c) });
+        else basket.push({ pId: c.pId, vId: c.vId, lotId: c.lotId, name: c.name, meat: c.meat, variant: c.variant, price: c.price, qty: 1, dluo: c.dluo, daysLeft: c.daysLeft, coeff: c.coeff, lotNumber: c.lotNumber, locked: false, gen: true, family: c.family, dog: this._dogTag(c), ...this._simOf(c) });
         c.avail--; usedProducts.add(c.pId); usedMeats[c.meat] = (usedMeats[c.meat] || 0) + 1;
       };
       for (let k = 0; k < 40; k++) {
@@ -1051,11 +1113,12 @@ const Paniers = {
     const tot = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     if (tot < before) this._qtyCap[item.pId] = tot; else if (tot > before) delete this._qtyCap[item.pId];
   },
+  _dropLearn(it) { if (it && (it.kind || 'M') === 'M' && it.gen) this._learn(it.pId, 'r'); },   // une PROPOSITION retirée : le générateur s'en souvient
   _drop(pId) {
     [pId, Stock.twinIdOf(pId)].forEach(id => { if (id && !this._dropped.includes(id)) this._dropped.push(id); });   // sa version avec / sans poils part aussi (Antho 2026-11-18)
   },
   removeItem(idx) {
-    const it = this.basket[idx]; if (it && (it.kind || 'M') === 'M') this._drop(it.pId);
+    const it = this.basket[idx]; if (it && (it.kind || 'M') === 'M') { this._drop(it.pId); this._dropLearn(it); }
     this.basket.splice(idx, 1);
     this.render();
   },
@@ -1072,7 +1135,7 @@ const Paniers = {
     const totBefore = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     item.qty = Math.max(0, item.qty + delta);
     if (item.qty > 0) this._setCap(item, totBefore);
-    if (item.qty <= 0) { if ((item.kind || 'M') === 'M') this._drop(item.pId); this.basket.splice(idx, 1); }
+    if (item.qty <= 0) { if ((item.kind || 'M') === 'M') { this._drop(item.pId); this._dropLearn(item); } this.basket.splice(idx, 1); }
     this.render();
     if (delta > 0) this._stockWarn(item.pId, item.vId);
   },
@@ -1082,7 +1145,7 @@ const Paniers = {
     const up = n > item.qty, totBefore = this.basket.reduce((a, b) => a + (b.pId === item.pId ? U.num(b.qty) : 0), 0);
     item.qty = n;
     if (n > 0) this._setCap(item, totBefore);
-    if (n <= 0) { if ((item.kind || 'M') === 'M') this._drop(item.pId); this.basket.splice(idx, 1); }
+    if (n <= 0) { if ((item.kind || 'M') === 'M') { this._drop(item.pId); this._dropLearn(item); } this.basket.splice(idx, 1); }
     this.render();
     if (up) this._stockWarn(item.pId, item.vId);
   },
@@ -1100,6 +1163,7 @@ const Paniers = {
     const item = this.basket[idx];
     if (!item) return;
     const oldName = item.name;
+    this._dropLearn(item);
     [item.pId, Stock.twinIdOf(item.pId)].forEach(id => { if (id && !this.excludeProducts.includes(id)) this.excludeProducts.push(id); });   // exclu = sa version avec / sans poils aussi
 
     const otherTotal = this.basket.reduce((a, b, i) => i === idx ? a : a + b.price * b.qty, 0);
@@ -1153,7 +1217,7 @@ const Paniers = {
       pId: pick.pId, vId: pick.vId, lotId: pick.lotId,
       name: pick.name, meat: pick.meat, variant: pick.variant,
       price: pick.price, qty: 1, dluo: pick.dluo, daysLeft: pick.daysLeft,
-      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, family: pick.family, dog: this._dogTag(pick)
+      coeff: pick.coeff, lotNumber: pick.lotNumber, locked: false, gen: true, family: pick.family, dog: this._dogTag(pick)
     };
     this.render();
     U.toast(`${oldName} exclu → ${pick.name}`);
@@ -1167,7 +1231,7 @@ const Paniers = {
     const before = this.basket.map(b => ({ ...b }));
     const others = this.basket.filter((b, i) => i !== idx);
     const was = others.map(b => !!b.locked);
-    this._drop(item.pId);
+    this._drop(item.pId); this._dropLearn(item);
     this._avoidLike = [item];
     let out;
     try { out = this._compose(this._avail(), others.map(b => ({ ...b, locked: true }))); } finally { this._avoidLike = null; }
@@ -1552,6 +1616,7 @@ const Paniers = {
     if (others.length && await U.ask({ title: '🗑️ Autres versions de ce devis', okLabel: 'Supprimer les autres', cancelLabel: 'Les garder', danger: true,
       html: `<p style="margin:0 0 8px;">Tu envoies en vente la version <b>${U.esc(Devis.no(rec.dv))}</b>. Ce devis a ${others.length} autre${others.length > 1 ? 's' : ''} version${others.length > 1 ? 's' : ''} en attente :</p><ul style="padding-left:18px;margin:0 0 8px;">${others.map(x => `<li><b>${U.esc(Devis.no(x.dv))}</b>${x.label ? ' — ' + U.esc(x.label) : ''}</li>`).join('')}</ul><p style="margin:0;">Les supprimer une fois la vente validée ?</p>` })) rec = { ...rec, others: others.map(x => x.id) };
     Ventes.loadFromBasket(rec, lines);
+    (rec.items || []).forEach(b => { if ((b.kind || 'M') === 'M') this._learn(b.pId, 's', U.num(b.qty) || 1); });   // vendu via un panier : il plaît
   },
 
   /* Menu « Partager ▾ » : fermé par clic extérieur (jamais par onblur) */
@@ -1818,6 +1883,7 @@ const Paniers = {
   },
   pickManual(pId, vId, lotId, kind, silent) {
     this._dropped = this._dropped.filter(x => x !== pId);   // ajouté à la main : à nouveau autorisé
+    if ((kind || 'M') !== 'A') this._learn(pId, 'a');   // le générateur retient ce qu'Antho ajoute lui-même
     const done = () => { if (silent) this._draft(); else { this.addQ = ''; this.addOpen = false; this.render(); } };
     if (kind === 'A') {   // accessoire : pas de lot ni de DLUO
       const c = this.accCandidates().find(x => x.pId === pId); if (!c) { U.toast('Accessoire introuvable.', true); return; }
@@ -2286,6 +2352,7 @@ const Paniers = {
           ? (remaining > 0.005 ? `<p class="warn-txt" style="margin-top:8px;">⚠️ Il manque ${U.eur(remaining * (1 - this._disc()))} pour atteindre le montant payé.</p>` : '')
           : (remaining < 0 ? '<p class="warn-txt" style="margin-top:8px;">⚠️ Le panier dépasse le budget disponible.</p>' : '')}
         ${this._ecartesHTML()}
+        ${this._learnedHTML()}
 
         ${this._renderFinanceSummary()}
         ` : '<div class="empty" style="text-align:center;padding:40px;"><span class="big">🧺</span><p class="muted">Clique sur "Générer le panier" pour composer automatiquement,<br>ou ajoute des produits avec « Ajouter un produit ».</p></div>'}

@@ -5,7 +5,7 @@
                  journal + instantanés quotidiens, temps réel)
    ============================================================ */
 const Store = {
-  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'purchases', 'receptions', 'bank', 'journal', 'meta'],
+  DOMAINS: ['settings', 'catalogM', 'stockM', 'materials', 'catalogA', 'consumables', 'sales', 'clients', 'baskets', 'purchases', 'receptions', 'bank', 'journal', 'meta', 'panLearn'],   // panLearn : ce que le générateur de paniers apprend d'Antho (2026-11-19)
   state: null,
   sb: null,            // client supabase
   session: null,
@@ -15,6 +15,7 @@ const Store = {
 
   defaults() {
     return {
+      panLearn: { p: {} },
       settings: {
         portRates: { mastication: 0, matiere: 0, conso: 0 },   // port à l'achat (%) ajouté au coût de revient pour fixer les prix
         vatRate: 20, vatActive: false, socialTaxRate: 12.3, socialTaxRateHandmade: 21.2, cardFeeRate: 1.75, stripeFeeRate: 1.5,

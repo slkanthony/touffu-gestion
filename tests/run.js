@@ -311,7 +311,9 @@ eq('9a dernier panier = la dernière vente non annulée', run(`Paniers._lastSale
 eq('9a jours depuis le dernier achat de chaque produit', run(`Paniers._boughtAgo()`), { c: 40, e: 400, a: 30, b: 30 });
 eq('9b acheté il y a moins d\'un mois : plus proposé (A, et B retrouvé par le nom)', !cand('Produit A') && !cand('Produit B'), true);
 eq('9b acheté il y a plus d\'un mois : proposé comme un produit nouveau', !!cand('Produit C'), true);
+run(`Paniers.__pm = Paniers._popMult; Paniers.__lm = Paniers._learnMult; Paniers._popMult = () => 1; Paniers._learnMult = () => 1;`);
 eq('9b même note qu\'un produit jamais acheté', run(`(() => { const c = Paniers.candidates(); const s = x => Paniers._itemScore(c.find(k => k.name === x), new Set(), {}, 1, Paniers._weights(), 1); return Math.abs(s('Produit C') - s('Produit D')) < 0.001; })()`), true);
+run(`Paniers._popMult = Paniers.__pm; Paniers._learnMult = Paniers.__lm;`);
 eq('9b budget pour 3 produits : ni A ni B', build(15).filter(n => n === 'Produit A' || n === 'Produit B').length, 0);
 /* Même à date DÉPASSÉE, un produit acheté le mois dernier n'est pas reproposé (doublon). */
 paniers([sp('a', 'Agneau A', { days: -5, meat: 'Boeuf' }), sp('d', 'Dinde D', { days: 200, meat: 'Dinde' })], { client: 'Cliente Habituée' }, [habituee]); run(`Store.state.sales = __v9;`);
@@ -445,7 +447,9 @@ paniers([sp('a', 'Pour tous', { days: 200, price: 4, meat: 'Agneau', tags: { gab
          sp('b', 'Pour les grands', { days: 200, price: 4, meat: 'Boeuf', tags: { gabarit: ['moyen', 'grand'], resistance: 'forte' } })], { gabaritInclude: ['grand'] });
 eq('16a grand chien : le produit sans « Petit » passe devant', build(4), ['Pour les grands']);
 run(`Paniers.gabaritInclude = ['moyen'];`);
+run(`Paniers.__pm = Paniers._popMult; Paniers.__lm = Paniers._learnMult; Paniers._popMult = () => 1; Paniers._learnMult = () => 1;`);
 eq('16a chien moyen : aucune préférence (pénalité nulle)', run(`Paniers._fitMult(Paniers.candidates().find(c => c.name === 'Pour tous'))`), 1);
+run(`Paniers._popMult = Paniers.__pm; Paniers._learnMult = Paniers.__lm;`);
 paniers([sp('a', 'Adulte seul', { days: 200, price: 4, meat: 'Agneau', tags: { age: ['11+'], resistance: 'faible' } }),
          sp('b', 'Sénior aussi', { days: 200, price: 4, meat: 'Boeuf', tags: { age: ['11+', 'senior'], resistance: 'faible' } })], { risks: { teeth: true } });
 eq('16b dents fragiles : le produit « Sénior » passe devant', build(4), ['Sénior aussi']);
@@ -633,6 +637,19 @@ paniers([sp('a', 'Court faible', { days: 20, price: 4, meat: 'Boeuf' }), sp('b',
 run(`Paniers.candidates = (orig => function (d) { const out = orig.call(this, d); out.forEach(c => { c.coeff = c.name === 'Loin fort' ? 4 : 1.1; }); return out; })(Paniers.candidates);`);
 eq('36a commande site + « Écouler » : la date à 20 j passe devant le gros coefficient', build(4), ['Court faible']);
 eq('36b raison donnée pour une date courte non retenue', run(`(r => r && r.reason)(Paniers._shortDates().find(r => r.p.id === 'c'))`), 'pour chat');
+
+/* ══════════ 37. LE GÉNÉRATEUR APPREND D'ANTHO (étape 2, 2026-11-19) ══════════ */
+paniers([sp('a', 'Oreille de lapin', { days: 200, price: 4, meat: 'Lapin' }), sp('b', 'Museau de bœuf', { days: 200, price: 4, meat: 'Boeuf' })]);
+run(`Store.isAdmin = () => true; Store.save = function () {}; Paniers.render = function () {}; U.toast = function () {}; Store.state.panLearn = { p: {} }; Store.state.sales = [];`);
+{ const pick1 = () => build(4)[0];
+const first = pick1(), other = first === 'Oreille de lapin' ? 'b' : 'a', firstId = first === 'Oreille de lapin' ? 'a' : 'b';
+run(`for (let i = 0; i < 3; i++) Paniers._learn('${firstId}', 'r');`);
+eq('37a retiré 3 fois : il passe derrière', pick1() !== first, true);
+run(`Paniers.forgetLearn('${firstId}');`);
+eq('37b « Oublier » : retour à zéro', pick1(), first);
+run(`for (let i = 0; i < 4; i++) Paniers._learn('${other}', 'a');`);
+eq('37c ajouté à la main 4 fois : il passe devant', pick1() !== first, true);
+eq('37d profil enregistré à part', run(`Object.keys(Store.state.panLearn.p['${other}']).sort()`), ['*', 'tout âge · toute taille']); }
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
