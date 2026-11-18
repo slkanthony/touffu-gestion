@@ -1804,6 +1804,10 @@ const Stock = {
     // donc d'elle-même une viande/un nom divergent côté prix (ex. « Bois Végétal » vs « Bois Naturel »).
     const linked = Store.state.stockM.filter(s=>s.catalogId===catalogId);
     const ref = linked[0];
+    // ⚠️ Piège corrigé (Antho 2026-11-18, barre qui clignote + enregistrement toutes les secondes) : quand DEUX produits du stock pointent sur la même fiche,
+    // leurs variantes réécrivaient tour à tour le SKU de la même ligne → « fiche modifiée » à CHAQUE affichage → enregistrement → l'autre onglet réaffiche → etc.
+    // Une ligne de fiche ne prend le SKU que d'UNE variante par passage (la première), donc le résultat est stable.
+    const skuTaken = new Set();
     if (ref) {
       if (ref.name && cat.name !== ref.name) { cat.name = ref.name; catChanged = true; }
       if (ref.meatType && cat.meatType !== ref.meatType) { cat.meatType = ref.meatType; catChanged = true; }
@@ -1822,7 +1826,7 @@ const Stock = {
         sv.mode=cv.mode; sv.value=cv.value;
         // SKU : le Stock est prioritaire (écrase celui du Catalogue) ; sinon, si le
         // Stock n'en a pas, on reprend celui du Catalogue comme avant.
-        if (sv.sku) { if (cv.sku !== sv.sku) { cv.sku = sv.sku; catChanged = true; } }
+        if (sv.sku) { if (!skuTaken.has(cv.id) && cv.sku !== sv.sku) { cv.sku = sv.sku; catChanged = true; } skuTaken.add(cv.id); }
         else if (cv.sku) sv.sku = cv.sku;
         sv.priceTTC=calc.priceTTC; sv.costUnit=calc.costBase;
       });

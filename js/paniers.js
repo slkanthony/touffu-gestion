@@ -686,6 +686,23 @@ const Paniers = {
     if (!a.cut) return false;
     return basket.some(b => { if (b.pId === c.pId) return false; const o = this._simOf(b); return o.cut === a.cut && (!a.res || !o.res || a.res === o.res); });
   },
+  /* LOTS (Antho 2026-11-18 : « deux rouleaux de porc à 4 € alors que le lot de 2 existe ») : une ligne à N exemplaires d'une taille qui a sa déclinaison
+     « LOT N » disponible devient 1 × LOT N (moins cher pour le client, conditionnement plus cohérent). Lignes verrouillées jamais touchées. Renvoie l'écart de prix. */
+  _packUp(basket, cands) {
+    let delta = 0;
+    basket.forEach((b, i) => {
+      if (b.locked || !(b.qty >= 2)) return;
+      const lot = cands.filter(c => c.pId === b.pId && c.vId !== b.vId && c.family && c.family === b.family && U.num(c.packQty) === b.qty && c.avail > 0)
+        .sort((x, y) => x.daysLeft - y.daysLeft)[0];
+      if (!lot) return;
+      const old = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId); if (old) old.avail += b.qty;
+      delta += lot.price - b.price * b.qty;
+      basket[i] = { pId: lot.pId, vId: lot.vId, lotId: lot.lotId, name: lot.name, meat: lot.meat, variant: lot.variant, price: lot.price, qty: 1, dluo: lot.dluo, daysLeft: lot.daysLeft,
+        coeff: lot.coeff, lotNumber: lot.lotNumber, locked: false, family: lot.family, dog: b.dog, ...this._simOf(lot) };
+      lot.avail--;
+    });
+    return delta;
+  },
   _buildBasket(maxAvailable, lockedItems) {
     const cands = this.candidates();
     const basket = lockedItems.map(b => ({...b}));
@@ -776,6 +793,7 @@ const Paniers = {
     }
 
     this._bal = null;
+    spent += this._packUp(basket, cands);   // 2 × la même taille → son « lot de 2 » s'il existe
 
     /* FINITION AU PLUS PRÈS DU BUDGET (Antho 2026-11-17). La boucle ci-dessus s'arrête quand plus rien ne rentre : il peut rester quelques euros.
        On tente alors, tant qu'il reste de la marge : (1) d'ajouter un produit qui rentre ; (2) sinon de remplacer UNE unité d'un produit non verrouillé
@@ -860,6 +878,8 @@ const Paniers = {
             spent -= b.price; b.qty--; if (b.qty <= 0) basket.splice(best.bi, 1);
           }
           put(best.c); spent += best.c.price;
+          spent += this._packUp(basket, cands);   // un 2e exemplaire devient le lot de 2 s'il existe…
+          if (maxAvailable - spent > 0.005) continue;   // … qui est moins cher : on recomplète
           break;   // montant atteint (au plus juste)
         }
         // Aucun produit seul ne suffit à atteindre le montant : on en ajoute un (le mieux noté, variété d'abord) et on recommence

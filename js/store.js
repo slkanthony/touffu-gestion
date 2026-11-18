@@ -497,7 +497,8 @@ const Store = {
       if (this._dirty.has(k) || this._flushing) { this._pendingReload = true; return; }   // changements en attente ici : rechargement après
       this.state[k] = it.data; this._rev[k] = it.rev; changed = true;
     });
-    if (changed) { clearTimeout(this._adoptT); this._adoptT = setTimeout(() => { if (!this._modalOpen()) window.App?.rerender?.(); }, 60); }
+    // Réaffichage SANS enregistrement : ce que l'affichage recalcule (prix recopiés…) a déjà été enregistré par l'autre onglet — sinon les onglets se relancent sans fin
+    if (changed) { clearTimeout(this._adoptT); this._adoptT = setTimeout(() => { if (this._modalOpen()) return; this._quiet = true; try { window.App?.rerender?.(); } finally { this._quiet = false; } }, 60); }
   },
   listenRealtime() {
     try {
@@ -562,6 +563,7 @@ const Store = {
 
   save(...domains) {
     if (typeof Accessoires !== 'undefined') Accessoires._famC = null;   // cache des familles de matières : périmé dès qu'on enregistre
+    if (this._quiet) return;   // réaffichage d'une version reçue d'un autre onglet : rien à renvoyer (voir _adoptFromTab)
     if (window.App && window.App.isViewer) {
       if (typeof U !== 'undefined' && U.toast) U.toast('Lecture seule : cette modification ne sera pas enregistree.', true);
       else alert('Lecture seule : cette modification ne sera pas enregistree.');

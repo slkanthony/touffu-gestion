@@ -604,6 +604,18 @@ run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped
   { pId: 'x', vId: 'xv', lotId: 'xl', name: 'Autre', meat: 'Agneau', price: 31.8, qty: 1, locked: true }]; Paniers.complete();`);
 eq('32 il manque 1,70 € : un 2e groin (+0,30 €) plutôt que le fromage à 11 €', run(`Math.round(Paniers.basket.reduce((a, b) => a + b.price * b.qty, 0) * 100) / 100`), 40.3);
 
+/* ══════════ 33. LOT DE 2 plutôt que 2 exemplaires ; synchro fiche stable (Antho 2026-11-18) ══════════ */
+paniers([{ id: 'r', name: 'Rouleau de porc', meatType: 'Porc', tags: {}, variants: [
+  { id: 'r25', mode: 'size', value: '25CM', label: '25CM', priceTTC: 4, costUnit: 1.76, lots: [{ id: 'r25l', lotNumber: 'L', dluo: '', qtyGeneral: 5, qtyEvent: 0 }] },
+  { id: 'r25x2', mode: 'piece', value: 2, label: '25CM LOT 2', parentId: 'r25', packQty: 2, priceTTC: 7.5, costUnit: 3.43, lots: [{ id: 'r25x2l', lotNumber: 'L', dluo: '', qtyGeneral: 3, qtyEvent: 0 }] }] }], { maxPerProduct: 2 });
+eq('33a 2 × 25CM → 1 × 25CM LOT 2', run(`(() => { const c = Paniers.candidates(); const b = [{ pId: 'r', vId: 'r25', lotId: 'r25l', name: 'Rouleau de porc', price: 4, qty: 2, family: c.find(x => x.vId === 'r25').family }]; const d = Paniers._packUp(b, c); return [b[0].vId, b[0].qty, d]; })()`), ['r25x2', 1, -0.5]);
+/* Deux produits du stock reliés à la même fiche : la synchro ne doit pas changer la fiche à chaque passage. */
+paniers([{ id: 'p1', name: 'Museau', meatType: 'Boeuf', catalogId: 'cat', tags: {}, variants: [{ id: 'v1', mode: 'piece', value: 1, sku: 'MUS-1', lots: [] }] },
+         { id: 'p2', name: 'Museau poils', meatType: 'Boeuf', catalogId: 'cat', tags: {}, variants: [{ id: 'v2', mode: 'piece', value: 1, sku: 'MUS-2', lots: [] }] }]);
+run(`Store.save = function () {}; Store.state.catalogM = [{ id: 'cat', name: 'Museau', meatType: 'Boeuf', coefficient: 2, suppliers: [], variants: [{ id: 'cv', mode: 'piece', value: 1, sku: 'X' }] }];`);
+run(`Stock.syncPricesFromCatalog('cat');`);
+eq('33b 2e passage : la fiche ne change plus', run(`Stock.syncPricesFromCatalog('cat')`), false);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {
