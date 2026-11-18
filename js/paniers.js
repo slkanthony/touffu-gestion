@@ -1167,7 +1167,7 @@ const Paniers = {
       else if (this.HARD.includes(c.tags.resistance) && this.basket.some(b => this.HARD.includes(this._resOf(b)))) reason = 'déjà un produit dur dans le panier';
       else if (c.price > left + 0.005) reason = 'ne rentre pas dans le budget restant';
       else reason = 'moins bien noté que les produits choisis';
-      rows.push({ p, v, lot: lots[0].l, d: lots[0].d, inBasket: inB.has(k), reason, canAdd: !!c });
+      rows.push({ p, v, lot: lots[0].l, d: lots[0].d, inBasket: inB.has(k), reason, canAdd: true });   // Antho 2026-11-19 : « Ajouter » sur TOUTES les dates courtes, même hors réglages (c'est lui qui juge)
     }));
     return rows.sort((a, b) => a.d - b.d);
   },
@@ -1179,7 +1179,7 @@ const Paniers = {
     return `<div class="pan-short">
       <div class="pan-short-h"><b>⏳ Dates courtes :</b> ${rows.length} en stock · <b>${inN}</b> dans ce panier
         ${out.length ? `<button type="button" class="btn-ghost btn-sm fit" onclick="Paniers._shortOpen=!Paniers._shortOpen;Paniers.render()">${this._shortOpen ? 'Masquer' : 'Voir les ' + out.length + ' non retenues'}</button>` : ''}
-        <span class="muted help">30 jours ou moins, ou date dépassée. Pour chacune : pourquoi elle n'est pas dans le panier. « Ajouter » la met quand même (et elle reste, même en régénérant). Objectif « Écouler » : elles passent toutes en premier.</span></div>
+        <span class="muted help">30 jours ou moins, ou date dépassée. Pour chacune : pourquoi elle n'est pas dans le panier. « Ajouter » la met quand même, même si elle ne correspond pas aux réglages (et elle reste, même en régénérant). Objectif « Écouler » : elles passent toutes en premier.</span></div>
       ${this._shortOpen && out.length ? `<div class="pan-short-list">${out.map(r => `<div class="pan-short-row"><span class="pan-short-n">${U.esc(r.p.name)} <span class="tag">${U.esc(Pricing.labelVariant(r.v))}</span></span>${dl(r.d)}<span class="muted pan-short-r">${U.esc(r.reason)}</span>${r.canAdd && !Clients.ro() ? `<button type="button" class="btn-ghost btn-sm fit" onclick="Paniers.pickManual('${r.p.id}','${r.v.id}','${r.lot.id}','M')">Ajouter</button>` : '<span></span>'}</div>`).join('')}</div>` : ''}
     </div>`;
   },
