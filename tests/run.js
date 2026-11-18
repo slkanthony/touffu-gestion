@@ -416,7 +416,7 @@ const coefPatch = `Paniers.candidates = (orig => function () { const out = orig.
 paniers(mid(), { kind: 'lot' }); run(coefPatch);
 eq('14a lot : la date courte d\'office', build(4), ['Court faible']);
 paniers(mid(), { kind: 'site' }); run(coefPatch);
-eq('14a commande site : une date très courte (20 j) passe encore devant', build(4), ['Court faible']);
+eq('14a commande site : coefficients plus élevés (Antho 2026-11-18) — coeff 4 contre 1,1 passe devant une date à 20 j', build(4), ['Loin fort']);
 paniers([sp('a', 'Court faible', { days: 60, price: 4, meat: 'Boeuf' }), sp('b', 'Loin fort', { days: 300, price: 4, meat: 'Canard' })], { kind: 'site' }); run(coefPatch);
 eq('14a commande site : à 2 mois, le gros coefficient passe devant (juste milieu)', build(4), ['Loin fort']);
 /* Compléter : les produits déjà là restent, on ajoute jusqu'au budget, jamais au-dessus. */
@@ -596,6 +596,13 @@ paniers([sp('a', 'Patte de chevreuil', { days: 200, price: 4, meat: 'Chevreuil' 
 run(`Paniers.render = function () {}; U.toast = function () {}; Store.save = function () {}; Store.state.stockM[0].twinId = 'b'; Store.state.stockM[1].twinId = 'a'; Paniers._dropped = [];
   Paniers.basket = [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Patte de chevreuil', meat: 'Chevreuil', price: 4, qty: 1 }]; Paniers.removeItem(0); Paniers.complete();`);
 eq('31 patte retirée puis « Compléter » : ni elle ni sa version avec poils', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+
+/* ══════════ 32. COMMANDE SITE : « Compléter » au plus juste (Antho 2026-11-18) ══════════ */
+paniers([sp('a', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' }), sp('b', 'Fromage a croquer', { days: 200, price: 11, meat: 'Fromages' }), sp('c', 'Museau de bœuf', { days: 200, price: 4.5, meat: 'Boeuf' })], { kind: 'site', budget: 40, maxPerProduct: 2 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers.basket = [
+  { pId: 'a', vId: 'av', lotId: 'al', name: 'Groin de porc', meat: 'Porc', price: 2, qty: 1 }, { pId: 'c', vId: 'cv', lotId: 'cl', name: 'Museau de bœuf', meat: 'Boeuf', price: 4.5, qty: 1 },
+  { pId: 'x', vId: 'xv', lotId: 'xl', name: 'Autre', meat: 'Agneau', price: 31.8, qty: 1, locked: true }]; Paniers.complete();`);
+eq('32 il manque 1,70 € : un 2e groin (+0,30 €) plutôt que le fromage à 11 €', run(`Math.round(Paniers.basket.reduce((a, b) => a + b.price * b.qty, 0) * 100) / 100`), 40.3);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

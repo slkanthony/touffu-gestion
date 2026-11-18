@@ -389,7 +389,7 @@ const Paniers = {
   _weights() {
     if (this.kind === 'lot') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
     // Commande site (Antho 2026-11-17) : le juste milieu entre dates courtes et bon coefficient (sans passage forcé des dates courtes, voir _buildBasket)
-    if (this.kind === 'site') return { dluo: 0.25, coeff: 0.25, div: 0.12, size: 0.07, type: 0.07, meat: 0.07, gab: 0.07, hypoGras: 0.05, like: 0.05 };
+    if (this.kind === 'site') return { dluo: 0.22, coeff: 0.34, div: 0.10, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.05, like: 0.05 };   // commande site : coefficients plus élevés (Antho 2026-11-18)
     return this.priority === 'dluo' ? { dluo: 0.36, coeff: 0.04, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : this.priority === 'coeff' ? { dluo: 0.08, coeff: 0.32, div: 0.14, size: 0.08, type: 0.08, meat: 0.08, gab: 0.08, hypoGras: 0.06, like: 0.08 }
       : { dluo: 0.26, coeff: 0.08, div: 0.14, size: 0.08, type: 0.10, meat: 0.10, gab: 0.10, hypoGras: 0.06, like: 0.08 };
@@ -831,10 +831,11 @@ const Paniers = {
          (Même ordre de préférence : variété, puis note ; jamais un produit urgent remplacé par un produit à date longue.) */
       for (let k = 0; k < 60 && this.kind === 'site' && maxAvailable - spent > 0.005; k++) {
         const gap = maxAvailable - spent;
-        let best = null;
-        // 1er passage : seulement des produits qui gardent la variété ; s'il n'y en a aucun, n'importe lequel (jamais sous le montant payé)
+        // Deux recherches : (1) en gardant la variété, (2) sans cette contrainte (2e exemplaire possible, sur la même ligne).
+        // On garde la variété SAUF si elle coûte plus de 0,50 € de dépassement de plus (Antho 2026-11-18 : 38,30 € → 49,30 € pour 40 € payés, avec un fromage à 11 €).
+        const bests = {};
         for (const strict of [true, false]) {
-        if (best) break;
+        let best = null;
         const consider = (o) => { if (!best || o.over < best.over - 0.005 || (Math.abs(o.over - best.over) <= 0.005 && o.sc > best.sc)) best = o; };
         cands.forEach(c => { if (c.price + 0.005 >= gap && canAdd(c, basket) && (!strict || this._isFresh(c, basket))) consider({ c, over: c.price - gap, sc: score(c) }); });
         basket.forEach((b, bi) => {
@@ -849,7 +850,9 @@ const Paniers = {
             consider({ c, bi, over: delta - gap, sc: score(c) });
           });
         });
+        bests[strict] = best;
         }
+        const best = bests.true && (!bests.false || bests.true.over <= bests.false.over + 0.505) ? bests.true : bests.false;
         if (best) {
           if (best.bi !== undefined) {
             const b = basket[best.bi], old = cands.find(x => x.pId === b.pId && x.vId === b.vId && x.lotId === b.lotId);
