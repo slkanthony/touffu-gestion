@@ -545,7 +545,9 @@ const Paniers = {
   /* true si une AUTRE variante de la même famille est déjà dans le panier (hors créneau `skipIdx`). */
   _famTaken(c, basket, skipIdx = -1) {
     const tw = Stock.twinIdOf(c.pId);   // jumeau avec / sans poils : jamais les deux dans le même panier (Antho 2026-11-17)
-    return basket.some((b, i) => i !== skipIdx && ((this._famOf(b) === c.family && b.vId !== c.vId) || (tw && b.pId === tw)));
+    // même PRODUIT dans un autre format, même si ce format n'est pas déclaré comme son lot (Trachée : « 1 pièce » et « Lot de 2 pc » indépendants, Antho 2026-11-19),
+    // y compris avec plusieurs chiens : un lot de 2 couvre déjà les deux. Ajout à la main : toujours possible.
+    return basket.some((b, i) => i !== skipIdx && ((this._famOf(b) === c.family && b.vId !== c.vId) || (b.pId === c.pId && b.vId !== c.vId) || (tw && b.pId === tw)));
   },
   _sizePrefScore(c) {
     // Taille déclinée en lots : plusieurs chiens → le lot, un seul chien → la pièce.

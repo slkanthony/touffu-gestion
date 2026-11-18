@@ -607,6 +607,12 @@ eq('31b corbeille (2026-11-19) : rien d écarté', run(`[Paniers._dropped.length
 run(`Paniers.complete();`);
 eq('31b corbeille puis « Compléter » : il peut revenir', run(`Paniers.candidates().some(c => c.pId === 'a')`), true);
 
+/* ══════════ 31c. MÊME PRODUIT, AUTRE FORMAT INDÉPENDANT (Antho 2026-11-19, Trachée « Lot de 2 pc » sans lien avec « 1 pièce ») ══════════ */
+paniers([sp('t', 'Trachée de bœuf', { days: 200, price: 3.5, meat: 'Boeuf' }), sp('f', 'Fletan', { days: 200, price: 3, meat: 'Poisson' }), sp('g', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' })], { budget: 20, maxPerProduct: 2, nbChiens: 2 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Store.state.stockM[0].variants.push({ id: 't2', label: 'Lot de 2 pc', mode: 'piece', priceTTC: 6.5, lots: [{ id: 't2l', qtyGeneral: 5, qtyEvent: 0, dluo: Store.state.stockM[0].variants[0].lots[0].dluo }] });
+  Paniers.basket = [{ pId: 't', vId: 't2', lotId: 't2l', name: 'Trachée de bœuf', meat: 'Boeuf', variant: 'Lot de 2 pc', price: 6.5, qty: 1, locked: true }]; Paniers.complete();`);
+eq('31c lot de 2 dans le panier (2 chiens) : la pièce seule n est pas reproposée', run(`Paniers.basket.filter(b => b.pId === 't').map(b => b.vId)`), ['t2']);
+
 /* ══════════ 32. COMMANDE SITE : « Compléter » au plus juste (Antho 2026-11-18) ══════════ */
 paniers([sp('a', 'Groin de porc', { days: 200, price: 2, meat: 'Porc' }), sp('b', 'Fromage a croquer', { days: 200, price: 11, meat: 'Fromages' }), sp('c', 'Museau de bœuf', { days: 200, price: 4.5, meat: 'Boeuf' })], { kind: 'site', budget: 40, maxPerProduct: 2 });
 run(`Paniers.render = function () {}; U.toast = function () {}; Paniers._dropped = []; Paniers.basket = [
