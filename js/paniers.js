@@ -949,7 +949,9 @@ const Paniers = {
   /* Produits RETIRÉS (🗑, quantité à 0) ou REMPLACÉS (🔄) par Antho (2026-11-18) : jamais reproposés par « Générer », « Compléter » ni « Remplacer »
      tant qu'on travaille sur ce panier (oublié à « Vider » / nouveau panier ; l'ajouter à la main le réautorise). « Exclure » (⊘) reste la liste durable. */
   _dropped: [],
-  _drop(pId) { if (pId && !this._dropped.includes(pId)) this._dropped.push(pId); },
+  _drop(pId) {
+    [pId, Stock.twinIdOf(pId)].forEach(id => { if (id && !this._dropped.includes(id)) this._dropped.push(id); });   // sa version avec / sans poils part aussi (Antho 2026-11-18)
+  },
   removeItem(idx) {
     const it = this.basket[idx]; if (it && (it.kind || 'M') === 'M') this._drop(it.pId);
     this.basket.splice(idx, 1);
@@ -993,7 +995,7 @@ const Paniers = {
     const item = this.basket[idx];
     if (!item) return;
     const oldName = item.name;
-    if (!this.excludeProducts.includes(item.pId)) this.excludeProducts.push(item.pId);
+    [item.pId, Stock.twinIdOf(item.pId)].forEach(id => { if (id && !this.excludeProducts.includes(id)) this.excludeProducts.push(id); });   // exclu = sa version avec / sans poils aussi
 
     const otherTotal = this.basket.reduce((a, b, i) => i === idx ? a : a + b.price * b.qty, 0);
     const maxPrice = this._avail() - otherTotal;

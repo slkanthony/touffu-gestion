@@ -590,6 +590,13 @@ eq('29a total inchangé', run(`Paniers.basket.reduce((a, b) => a + b.price * b.q
   run(`Store.state.settings.breeds = [{ id: 'bc', name: 'Border collie', wMin: 14, wMax: 20 }, { id: 'lab', name: 'Labrador retriever', wMin: 25, wMax: 36 }];`);
   eq('30c panier pour le chiot : le merlan oui, l\'églefin non', run(`Paniers.candidates().map(c => c.name)`), ['Merlan']); }
 
+/* ══════════ 31. RETIRER UN PRODUIT = AUSSI SA VERSION AVEC / SANS POILS (Antho 2026-11-18) ══════════ */
+paniers([sp('a', 'Patte de chevreuil', { days: 200, price: 4, meat: 'Chevreuil' }), sp('b', 'Patte de chevreuil avec poils', { days: 200, price: 4, meat: 'Chevreuil', tags: { poil: 'avec' } }),
+         sp('c', 'Oreille de lapin', { days: 200, price: 3, meat: 'Lapin' }), sp('d', 'Museau de bœuf', { days: 200, price: 5, meat: 'Boeuf' })], { budget: 12 });
+run(`Paniers.render = function () {}; U.toast = function () {}; Store.save = function () {}; Store.state.stockM[0].twinId = 'b'; Store.state.stockM[1].twinId = 'a'; Paniers._dropped = [];
+  Paniers.basket = [{ pId: 'a', vId: 'av', lotId: 'al', name: 'Patte de chevreuil', meat: 'Chevreuil', price: 4, qty: 1 }]; Paniers.removeItem(0); Paniers.complete();`);
+eq('31 patte retirée puis « Compléter » : ni elle ni sa version avec poils', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

@@ -198,7 +198,10 @@ const Store = {
     if (this._saveSeq !== seq || this._dirty.size || this._flushing || this._modalOpen()) { if (this._modalOpen()) this._pendingReload = true; return false; }
     const obj = {};
     if (!full) this.DOMAINS.forEach(d => { obj[d] = this.state[d]; });   // rechargement partiel : les clés inchangées gardent leur valeur en mémoire
-    rows.forEach(r => { obj[r.key] = r.data; if (r.rev !== undefined && r.rev !== null) this._rev[r.key] = r.rev; });
+    rows.forEach(r => {
+      if (!full && r.rev !== undefined && r.rev !== null && (this._rev[r.key] || 0) > r.rev) return;   // déjà plus récent (reçu d'un autre onglet)
+      obj[r.key] = r.data; if (r.rev !== undefined && r.rev !== null) this._rev[r.key] = r.rev;
+    });
     const gotJournal = rows.some(r => r.key === 'journal'), gotVault = rows.find(r => r.key === 'journalAdmin');
     if (gotVault) this._vault = gotVault.data;
     const role = this.session && this.session.user && this.session.user.app_metadata && this.session.user.app_metadata.role;
@@ -467,19 +470,34 @@ const Store = {
     });
   },
 
-  /* Deux onglets de l'appli ouverts sur le même ordinateur = deux « appareils » qui s'écrivent dessus (cause n° 1 des « Enregistrement refusé ») → on prévient
-     dans les DEUX onglets (Antho 2026-11-18). Lancé au chargement du fichier. */
+  /* PLUSIEURS ONGLETS (Antho 2026-11-18 : « j'aime travailler avec plusieurs onglets pour comparer ») : chaque onglet est un « appareil » pour la base.
+     Pour qu'un onglet ne reparte jamais d'une version en retard, celui qui vient d'enregistrer envoie aussitôt aux autres onglets du navigateur
+     les données enregistrées et leur numéro de version (BroadcastChannel, instantané, sans passer par Internet). L'onglet qui reçoit les adopte
+     tout de suite, sauf s'il a lui-même des changements en attente sur ce domaine ou une fenêtre ouverte (il se recharge alors après, comme avant). */
   watchTabs() {
     if (this._bc) return;
     try {
-      const bc = this._bc = new BroadcastChannel('touffu_onglets'), warn = () => {
-        if (this._tabWarned) return; this._tabWarned = true;
-        const say = () => { if (typeof U !== 'undefined' && U.toast) U.toast('Touffu Gestion est ouvert dans un AUTRE onglet : ferme-le, sinon les enregistrements peuvent être refusés.', true); else setTimeout(say, 500); };
-        say();
-      };
-      bc.onmessage = e => { if (e.data === 'ping') { bc.postMessage('pong'); warn(); } else if (e.data === 'pong') warn(); };
-      bc.postMessage('ping');
-    } catch (e) { /* navigateur sans BroadcastChannel : pas d'avertissement */ }
+      const bc = this._bc = new BroadcastChannel('touffu_onglets');
+      bc.onmessage = e => { try { if (e.data && e.data.t === 'saved') this._adoptFromTab(e.data.keys || {}); } catch (err) { console.error(err); } };
+    } catch (e) { /* navigateur sans BroadcastChannel : on garde le rechargement par la base */ }
+  },
+  _tellTabs(keys) {
+    if (!this._bc || !keys.length) return;
+    const out = {};
+    keys.forEach(k => { if (this.state && this.state[k] !== undefined && this._rev[k] && !this._dirty.has(k)) out[k] = { rev: this._rev[k], data: this.state[k] }; });
+    if (Object.keys(out).length) try { this._bc.postMessage({ t: 'saved', keys: out }); } catch (e) { console.error(e); }
+  },
+  _adoptFromTab(keys) {
+    if (!this.remote || !this.state) return;
+    if (this._modalOpen() || this._fileBusy()) { this._pendingReload = true; return; }
+    let changed = false;
+    Object.keys(keys).forEach(k => {
+      const it = keys[k];
+      if (!it || !(it.rev > (this._rev[k] || 0))) return;          // déjà à jour (ou plus récent ici)
+      if (this._dirty.has(k) || this._flushing) { this._pendingReload = true; return; }   // changements en attente ici : rechargement après
+      this.state[k] = it.data; this._rev[k] = it.rev; changed = true;
+    });
+    if (changed) { clearTimeout(this._adoptT); this._adoptT = setTimeout(() => { if (!this._modalOpen()) window.App?.rerender?.(); }, 60); }
   },
   listenRealtime() {
     try {
@@ -630,6 +648,7 @@ const Store = {
       retry.forEach(d => this._dirty.add(d));
       if (retry.length) { this._netRetry = (this._netRetry || 0) + 1; if (this._netRetry <= 5) { clearTimeout(this._saveT); this._saveT = setTimeout(() => this.flush(), 3000 * this._netRetry); } } else this._netRetry = 0;
       if (!retry.length) this._justSynced = Date.now();
+      this._tellTabs(sent.filter(k => rank(k) === 1));   // les autres onglets reprennent cette version tout de suite
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
         U.toast('⛔ Le serveur a refusé d’enregistrer : ' + denied.map(d => this.DOMAIN_NAMES[d] || d).join(', ') + ' (droits de ton profil). Ces modifications ne sont pas gardées.', true);
