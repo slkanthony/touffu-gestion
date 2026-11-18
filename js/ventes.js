@@ -241,7 +241,7 @@ const Ventes = {
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
           <h2 class="mb0">🧾 Historique des sorties</h2>
-          <div class="frow" style="gap:6px;flex:0;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
             <button class="btn-ghost btn-sm" title="Exporte les ventes affichées par les filtres" onclick="Ventes.exportSales()">⬇️ Exporter (CSV)</button>
             <button class="btn-danger btn-sm" onclick="Ventes.restoreAll()">↩️ Restaurer Tout</button>
           </div>
