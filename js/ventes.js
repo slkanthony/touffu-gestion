@@ -2493,6 +2493,8 @@ const Ventes = {
     { const _cc = Store.state.settings.cardConsoId && Store.state.consumables.find(x => x.id === Store.state.settings.cardConsoId); if (_cc && U.num(d.cardsGiven) > 0 && U.num(_cc.qty) <= 0) setTimeout(() => U.toast('🪪 Plus de cartes de visite en stock : pense à en recommander.', true), 900); }
     const _recapSales = createdSales.slice();
     if (created) { if (deduct) Store.save('sales', 'stockM', 'catalogA', 'consumables'); else Store.save('sales'); }
+    // Le générateur de paniers apprend du fichier en arrière-plan : les articles d'un même paiement = un panier de client (Antho 2026-11-19)
+    try { if (typeof Paniers !== 'undefined' && Paniers.learnFromSumup) Paniers.learnFromSumup(groups.flatMap(g => g.lines)); } catch (e) { console.error(e); }
     this.retourData = null;
     this.retourDeduct = true;   // retour au défaut sûr (déduction) après chaque import
     this.retourConsoId = ''; this.retourConsoQty = 1;

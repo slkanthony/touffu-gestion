@@ -651,6 +651,17 @@ run(`for (let i = 0; i < 4; i++) Paniers._learn('${other}', 'a');`);
 eq('37c ajouté à la main 4 fois : il passe devant', pick1() !== first, true);
 eq('37d profil enregistré à part', run(`Object.keys(Store.state.panLearn.p['${other}']).sort()`), ['*', 'tout âge · toute taille']); }
 
+/* ══════════ 38. SOUVENT PRIS ENSEMBLE (étape 3, 2026-11-19) ══════════ */
+paniers([sp('s', 'Sprat', { days: 200, price: 3, meat: 'Poisson' }), sp('m', 'Moule séchée', { days: 200, price: 3, meat: 'Poisson' }), sp('c', 'Peau de cerf avec poils', { days: 200, price: 3, meat: 'Cerf' }),
+         sp('c2', 'Peau de cerf', { days: 200, price: 3, meat: 'Cerf' }), sp('b', 'Sabot  de bœuf', { days: 200, price: 3, meat: 'Boeuf' })]);
+run(`Store.isAdmin = () => true; Store.save = function () {}; Store.state.panLearn = { p: {} }; Store.state.sales = [];`);
+eq('38a noms SumUp → produits du stock', run(`['SPRATS 100g', 'PEAUX DE CERF + POILS 100g', 'Sabot de boeuf  PCS', 'MINI SAUCISSE', 'Peau de cerf L', 'MOULES 50G'].map(n => Paniers._matchName(n))`), ['s', 'c', 'b', '', 'c2', 'm']);
+run(`Paniers.learnFromSumup([{ ref: 'T1', desc: 'SPRATS 100g' }, { ref: 'T1', desc: 'Sabot de boeuf PCS' }, { ref: 'T2', desc: 'SPRATS 100g' }, { ref: 'T2', desc: 'Sabot de boeuf PCS' }]);`);
+eq('38b paire comptée par paiement', run(`Store.state.panLearn.pairs['b|s']`), 2);
+run(`Paniers.learnFromSumup([{ ref: 'T1', desc: 'SPRATS 100g' }, { ref: 'T1', desc: 'Sabot de boeuf PCS' }]);`);
+eq('38c un paiement déjà appris n\'est pas recompté', run(`Store.state.panLearn.pairs['b|s']`), 2);
+eq('38d avec un sabot dans le panier, le sprat passe devant', run(`Paniers._pairMult({ pId: 's' }, [{ pId: 'b' }]) > Paniers._pairMult({ pId: 'm' }, [{ pId: 'b' }])`), true);
+
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
 function fakeDb() {

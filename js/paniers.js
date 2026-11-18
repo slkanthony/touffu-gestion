@@ -768,7 +768,100 @@ const Paniers = {
       ${down.length ? `<div class="pan-learn-h">Passés derrière</div>${down.map(line).join('')}` : ''}
       ${!up.length && !down.length ? '<p class="muted">Rien encore : ça se remplit à mesure que tu retouches et vends des paniers.</p>' : ''}
       ${pop.length ? `<div class="pan-learn-h">Les plus vendus (12 mois)</div><p class="muted" style="margin:2px 0;">${pop.join(' · ')}</p>` : ''}
+      ${(() => { const m = this._pairsAll(), nm = id => (Store.state.stockM.find(p => p.id === id) || {}).name, top = Object.entries(m).filter(([k]) => k.split('|').every(nm)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        return top.length ? `<div class="pan-learn-h">Souvent pris ensemble</div><p class="muted" style="margin:2px 0;">${top.map(([k, n]) => U.esc(k.split('|').map(nm).join(' + ')) + ` (${n})`).join(' · ')}</p>` : ''; })()}
+      ${(() => { const u = Object.entries(L.unk || {}).sort((a, b) => b[1] - a[1]); return u.length ? `<p class="muted" style="font-size:.8rem;margin-top:6px;">${u.length} libellé${u.length > 1 ? 's' : ''} SumUp non reconnu${u.length > 1 ? 's' : ''} (ignoré${u.length > 1 ? 's' : ''} pour les associations) : ${u.slice(0, 8).map(([k, n]) => U.esc(k) + ' (' + n + ')').join(' · ')}${u.length > 8 ? '…' : ''}</p>` : ''; })()}
+      <div class="pan-learn-h">Apprendre d'anciens rapports</div>
+      <p class="muted" style="margin:2px 0 6px;font-size:.82rem;">Chaque retour d'événement apprend tout seul. Pour ton passé : choisis un « Rapport des ventes » SumUp (CSV). Rien n'est déduit du stock ni compté en compta ; un paiement déjà appris n'est jamais compté deux fois.</p>
+      <input type="file" accept=".csv,text/csv" onchange="Paniers.learnFromSumupFile(this)">
     </div></details>`;
+  },
+  /* ═══ SOUVENT PRIS ENSEMBLE (étape 3, 2026-11-19) ═══
+     Sources : (1) chaque RETOUR D'ÉVÉNEMENT (rapport des ventes SumUp) — les articles d'une même « Réf. transaction » = le panier d'un client ;
+     (2) un ancien rapport importé une fois (« Apprendre d'anciens rapports ») ; (3) les ventes de l'appli hors événements (site, direct, paniers envoyés en vente).
+     On ne garde QUE des compteurs par paire de produits du stock (panLearn.pairs) et les références déjà comptées (panLearn.tx) : aucun nom de client.
+     Un libellé SumUp sans SKU est rattaché à un produit du stock seulement si son nom correspond nettement (sinon il est compté « non reconnu », visible). */
+  _nameTok(s) {
+    const stop = new Set(['de', 'd', 'du', 'des', 'la', 'le', 'les', 'l', 'en', 'et', 'a', 'au', 'aux', 'pour', 'pcs', 'pc', 'piece', 'pieces', 'lot', 'unite', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'g', 'kg', 'cm', 'mini', 'maxi', 'touffu', 'shop']);
+    return String(s || '').toLowerCase().replace(/œ/g, 'oe').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\+\s*poils?/g, ' avec poils')
+      .split(/[^a-z0-9]+/).filter(w => w && !stop.has(w) && !/^\d+(g|kg|cm|mm|m)?$/.test(w)).map(w => (w.length > 3 && /[sx]$/.test(w) ? w.slice(0, -1) : w));
+  },
+  _matchName(desc) {
+    const dt = [...new Set(this._nameTok(desc))]; if (!dt.length) return '';
+    let best = null, second = 0;
+    (Store.state.stockM || []).forEach(p => {
+      const pt = new Set(this._nameTok(p.name)); if (!pt.size) return;
+      const inter = dt.filter(w => pt.has(w)).length; if (!inter) return;
+      /* tous les mots du rapport sont dans le nom du stock (« MOULES 50G » → « Moule séchée ») : bon score, un peu moins s'il y a des mots en plus */
+      const sc = inter === dt.length ? (inter === pt.size ? 1 : Math.max(0.7, 0.95 - 0.05 * (pt.size - inter))) : inter / new Set([...dt, ...pt]).size;
+      if (!best || sc > best.sc) { second = best ? best.sc : 0; best = { id: p.id, sc }; } else if (sc > second) second = sc;
+    });
+    return best && best.sc >= 0.6 && best.sc - second >= 0.15 ? best.id : '';
+  },
+  /* lignes = [{ ref, desc, target? }] (format du retour d'événement). Compte chaque transaction une seule fois. Renvoie { tx, pairs, unknown }. */
+  learnFromSumup(lines) {
+    if (!(Store.isAdmin && Store.isAdmin()) || !Array.isArray(lines) || !lines.length) return null;
+    const L = this._L(); L.pairs = L.pairs || {}; L.tx = L.tx || {}; L.unk = L.unk || {};
+    const byRef = {};
+    lines.forEach(l => { if (!l || !l.ref || L.tx[l.ref]) return; (byRef[l.ref] = byRef[l.ref] || []).push(l); });
+    let tx = 0, pairs = 0, unknown = 0;
+    Object.keys(byRef).forEach(ref => {
+      const ids = new Set();
+      byRef[ref].forEach(l => {
+        const t = l.target, mt = !t && typeof Ventes !== 'undefined' && Ventes._mapTarget ? Ventes._mapTarget(l.desc) : null;
+        const id = t && t.kind === 'M' ? t.pId : mt && mt.kind === 'M' ? mt.pId : (t || mt) ? '' : this._matchName(l.desc);
+        if (id) ids.add(id);
+        else if (!t && !mt && l.desc && !/montant personnalis|commande|livraison/i.test(l.desc)) { const k = l.desc.trim().slice(0, 60); L.unk[k] = (L.unk[k] || 0) + 1; unknown++; }
+      });
+      const a = [...ids].sort();
+      for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) { const k = a[i] + '|' + a[j]; L.pairs[k] = (L.pairs[k] || 0) + 1; pairs++; }
+      L.tx[ref] = 1; tx++;
+    });
+    if (tx) { this._pairCache = null; Store.save('panLearn'); }
+    return { tx, pairs, unknown };
+  },
+  /* Ancien rapport « Rapport des ventes » SumUp importé une seule fois pour apprendre (ni stock, ni compta). */
+  learnFromSumupFile(input) {
+    const f = input && input.files && input.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const rows = Ventes._csvRows(rd.result), h = (rows[0] || []).map(x => x.trim().toLowerCase()), find = (...k) => h.findIndex(x => k.some(y => x.includes(y)));
+        const iRef = find('transaction'), iDesc = find('description'), iSku = h.findIndex(x => x === 'sku'), iType = find('type');
+        if (iRef < 0 || iDesc < 0) { U.toast('Ce fichier n\'est pas un « Rapport des ventes » SumUp (colonnes Réf. transaction / Description introuvables).', true); return; }
+        const { idx } = Ventes._skuIndex(), lines = [];
+        rows.slice(1).forEach(r => {
+          if (iType >= 0 && String(r[iType] || '').trim().toLowerCase() !== 'vente' && String(r[iType] || '').trim().toLowerCase() !== 'sales') return;
+          const sku = iSku >= 0 ? String(r[iSku] || '').trim().toUpperCase() : '';
+          lines.push({ ref: String(r[iRef] || '').trim(), desc: String(r[iDesc] || '').trim(), target: sku ? idx[sku] || null : null });
+        });
+        const res = this.learnFromSumup(lines);
+        input.value = '';
+        this.render();
+        U.toast(res && res.tx ? `Appris : ${res.tx} paiements, ${res.pairs} associations de produits${res.unknown ? ` (${res.unknown} libellés non reconnus)` : ''}.` : 'Rien de nouveau dans ce fichier (déjà appris ?).');
+      } catch (e) { console.error(e); U.toast('Fichier illisible : ' + e.message, true); }
+    };
+    rd.readAsText(f);
+  },
+  /* Paires vues dans les ventes de l'appli hors événements (site, direct, paniers envoyés en vente) : recalculées à la volée. */
+  _pairCache: null,
+  _pairsAll() {
+    const sales = Store.state.sales || [], L = this._L(), key = sales.length + ':' + Object.keys(L.pairs || {}).length;
+    if (this._pairCache && this._pairCache.key === key) return this._pairCache.m;
+    const m = Object.assign({}, L.pairs || {});
+    sales.forEach(s => {
+      if (s.cancelled || s.source === 'event') return;
+      const ids = [...new Set((s.items || []).filter(i => (i.kind || 'M') === 'M').map(i => { const f = this._stockOf(i); return f ? f.p.id : ''; }).filter(Boolean))].sort();
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] + '|' + ids[j]; m[k] = (m[k] || 0) + 1; }
+    });
+    this._pairCache = { key, m };
+    return m;
+  },
+  _pairMult(c, basket) {
+    if (!basket || !basket.length) return 1;
+    const m = this._pairsAll(); let s = 0;
+    [...new Set(basket.map(b => b.pId))].forEach(id => { if (id === c.pId) return; const k = id < c.pId ? id + '|' + c.pId : c.pId + '|' + id; s += Math.min(6, m[k] || 0); });
+    return Math.min(1.3, 1 + 0.03 * s);
   },
   forgetLearn(id) { const L = this._L(); delete L.p[id]; Store.save('panLearn'); this.render(); U.toast('Oublié : ce produit repart de zéro.'); },
   _buildBasket(maxAvailable, lockedItems) {
@@ -798,7 +891,7 @@ const Paniers = {
       if (c) c.avail = Math.max(0, c.avail - b.qty);
     });
 
-    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult);
+    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) * this._pairMult(c, basket);   // « souvent pris ensemble » avec ce qui est déjà dans le panier (étape 3)
 
     for (let i = 0; i < 500; i++) {
       const affordable = cands.filter(c => c.price <= maxAvailable - spent && c.avail > 0);
