@@ -388,7 +388,7 @@ eq('12e lot à gagner : une seule proposition, jamais au-dessus', gen('lot').eve
 /* Lot à gagner : à date égale, le plus fort coefficient d'abord ; une date dépassée passe quand même en premier. */
 const lotSt = () => { const a = sp('a', 'Faible coeff', { days: 200, price: 4, meat: 'Boeuf' }), b = sp('b', 'Fort coeff', { days: 200, price: 4, meat: 'Canard' }), c = sp('c', 'Dépassé', { days: -3, price: 4, meat: 'Lapin' }); return [a, b, c]; };
 paniers(lotSt(), { budget: 4, kind: 'lot' });
-run(`Pricing._calcAllM = Pricing._calcAllM; Paniers.candidates = (orig => function () { const out = orig.call(this); out.forEach(c => { c.coeff = c.name === 'Fort coeff' ? 3 : c.name === 'Faible coeff' ? 1.2 : 2; }); return out; })(Paniers.candidates);`);
+run(`Pricing._calcAllM = Pricing._calcAllM; Paniers.candidates = (orig => function (...a) { const out = orig.apply(this, a); out.forEach(c => { c.coeff = c.name === 'Fort coeff' ? 3 : c.name === 'Faible coeff' ? 1.2 : 2; }); return out; })(Paniers.candidates);`);
 eq('12f lot : une date dépassée passe en premier', build(4), ['Dépassé']);
 eq('12f lot : puis le plus fort coefficient', build(8).sort(), ['Dépassé', 'Fort coeff']);
 run(`Paniers.kind = 'site';`);
@@ -412,7 +412,7 @@ run(`Store.state.settings.breeds = null;`);
 /* ══════════ 14. PANIERS : commande site = juste milieu ; compléter le panier (Antho 2026-11-17) ══════════ */
 /* Date courte (20 j) à faible coefficient contre date lointaine à très fort coefficient : le lot prend la date courte d'office, la commande site pèse les deux. */
 const mid = () => [sp('a', 'Court faible', { days: 20, price: 4, meat: 'Boeuf' }), sp('b', 'Loin fort', { days: 300, price: 4, meat: 'Canard' })];
-const coefPatch = `Paniers.candidates = (orig => function () { const out = orig.call(this); out.forEach(c => { c.coeff = c.name === 'Loin fort' ? 4 : 1.1; }); return out; })(Paniers.candidates);`;
+const coefPatch = `Paniers.candidates = (orig => function (...a) { const out = orig.apply(this, a); out.forEach(c => { c.coeff = c.name === 'Loin fort' ? 4 : 1.1; }); return out; })(Paniers.candidates);`;
 paniers(mid(), { kind: 'lot' }); run(coefPatch);
 eq('14a lot : la date courte d\'office', build(4), ['Court faible']);
 paniers(mid(), { kind: 'site' }); run(coefPatch);
@@ -627,6 +627,12 @@ run(`Paniers._dropped = ['g']; Paniers._qtyCap = { m: 1 };`);
 eq('35a panier en attente : écartés et plafonds rangés avec', run(`(d => [d.dropped, d.qtyCap.m])(Paniers._pendingData({}, 'Cliente', 1))`), [['g'], 1]);
 run(`Paniers._dropped = []; Paniers._qtyCap = {}; Paniers._loadRec({ items: [], dropped: ['g'], qtyCap: { m: 1 }, name: 'Cliente' });`);
 eq('35b « Reprendre » : retrouvés', run(`[Paniers._dropped, Paniers._qtyCap.m]`), [['g'], 1]);
+
+/* ══════════ 36. OBJECTIF ÉCOULER + RAISONS DES DATES COURTES (Antho 2026-11-19) ══════════ */
+paniers([sp('a', 'Court faible', { days: 20, price: 4, meat: 'Boeuf' }), sp('b', 'Loin fort', { days: 300, price: 4, meat: 'Canard' }), sp('c', 'Chat seul', { days: 10, price: 3, meat: 'Lapin', tags: { species: ['chat'] } })], { kind: 'site', priority: 'dluo' });
+run(`Paniers.candidates = (orig => function (d) { const out = orig.call(this, d); out.forEach(c => { c.coeff = c.name === 'Loin fort' ? 4 : 1.1; }); return out; })(Paniers.candidates);`);
+eq('36a commande site + « Écouler » : la date à 20 j passe devant le gros coefficient', build(4), ['Court faible']);
+eq('36b raison donnée pour une date courte non retenue', run(`(r => r && r.reason)(Paniers._shortDates().find(r => r.p.id === 'c'))`), 'pour chat');
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */

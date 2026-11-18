@@ -386,7 +386,12 @@ const Paniers = {
     return 0.05;
   },
   /* Poids de chaque critère dans la note d'un produit (somme = 1). Une seule définition pour générer, exclure et remplacer. */
+  /* Objectif choisi en haut (Antho 2026-11-19) : « Écouler » et « Rentable » s'appliquent à tous les types de panier ; « Équilibré » garde le réglage propre au type. */
+  OBJECTIVES: [['dluo', 'Écouler'], ['mix', 'Équilibré'], ['coeff', 'Rentable']],
+  setObjective(v) { this.priority = v; this.proposals = null; this.render(); },
   _weights() {
+    if (this.priority === 'dluo') return { dluo: 0.40, coeff: 0.06, div: 0.12, size: 0.07, type: 0.07, meat: 0.07, gab: 0.08, hypoGras: 0.06, like: 0.07 };
+    if (this.priority === 'coeff') return { dluo: 0.08, coeff: 0.38, div: 0.12, size: 0.07, type: 0.07, meat: 0.07, gab: 0.08, hypoGras: 0.06, like: 0.07 };
     if (this.kind === 'lot') return { dluo: 0.28, coeff: 0.30, div: 0.12, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.03, like: 0.03 };
     // Commande site (Antho 2026-11-17) : le juste milieu entre dates courtes et bon coefficient (sans passage forcé des dates courtes, voir _buildBasket)
     if (this.kind === 'site') return { dluo: 0.22, coeff: 0.34, div: 0.10, size: 0.06, type: 0.06, meat: 0.06, gab: 0.06, hypoGras: 0.05, like: 0.05 };   // commande site : coefficients plus élevés (Antho 2026-11-18)
@@ -426,8 +431,9 @@ const Paniers = {
   },
 
   /* ---------- Données disponibles ---------- */
-  candidates() {
+  candidates(diag) {   // diag (facultatif) : { 'pId|vId' ou 'pId' : raison } — pourquoi un produit n'est pas candidat (Antho 2026-11-19)
     const out = [];
+    const why = (p, v, r) => { if (diag) diag[p.id + (v ? '|' + v.id : '')] = r; };
     const pd = this._perDog() ? this._dogList() : null;   // profils différents : on regarde, pour chaque produit, quels chiens peuvent le manger
     const cl = pd ? null : this._clientRules();
     // Chiens au même profil (ou un seul chien) : l'âge et le gabarit de la fiche comptent aussi (avant, seulement en « chien par chien »)
@@ -438,48 +444,48 @@ const Paniers = {
     const ago = this._boughtAgo();   // produits déjà achetés par la cliente : exclus s'ils sont récents, évités sinon
 
     Store.state.stockM.forEach(p => {
-      if (this.excludeMeats.includes(p.meatType)) return;
-      if (ago[p.id] !== undefined && ago[p.id] < this.RECENT_DAYS) return;   // acheté récemment : jamais reproposé (doublon), même à date courte
-      if (this.excludeProducts.includes(p.id)) return;
-      if (this._dropped.includes(p.id)) return;   // retiré / remplacé dans ce panier
+      if (this.excludeMeats.includes(p.meatType)) return why(p, null, 'viande exclue (réglages)');
+      if (ago[p.id] !== undefined && ago[p.id] < this.RECENT_DAYS) return why(p, null, 'acheté par la cliente il y a moins d\'un mois');   // acheté récemment : jamais reproposé (doublon), même à date courte
+      if (this.excludeProducts.includes(p.id)) return why(p, null, 'produit exclu (⊘)');
+      if (this._dropped.includes(p.id)) return why(p, null, 'retiré de ce panier');   // retiré / remplacé dans ce panier
 
       const pTags = Stock.effTags(p);
-      if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return;
-      if (this.poilFilter === 'sans' && pTags.poil === 'avec') return;
-      if (this.hypoOnly && pTags.hypo !== 'oui') return;
+      if (this.poilFilter === 'avec' && pTags.poil !== 'avec' && pTags.poil !== 'les_deux') return why(p, null, 'sans poil (filtre « avec poil »)');
+      if (this.poilFilter === 'sans' && pTags.poil === 'avec') return why(p, null, 'avec poil (filtre « sans poil »)');
+      if (this.hypoOnly && pTags.hypo !== 'oui') return why(p, null, 'pas hypoallergénique');
       if (cl) {
-        if (Clients.conflictsFor(cl.dogs, { kind: 'M', type: p.meatType || '', name: p.name }).length) return;
-        if (cl.hair && pTags.poil === 'avec') return;
-        if (this._triedVerdict(cl.dogs, p.name) === 'avoid') return;   // produit déjà goûté et noté « pas aimé » sur la fiche
+        if (Clients.conflictsFor(cl.dogs, { kind: 'M', type: p.meatType || '', name: p.name }).length) return why(p, null, 'viande à éviter / allergie (fiche du chien)');
+        if (cl.hair && pTags.poil === 'avec') return why(p, null, 'avec poil (fiche du chien)');
+        if (this._triedVerdict(cl.dogs, p.name) === 'avoid') return why(p, null, 'pas aimé (fiche du chien)');   // produit déjà goûté et noté « pas aimé » sur la fiche
         const nm = Clients._norm(p.meatType || '');
-        if (cl.dogs.some(d => this._traits(d).avoidMeats.some(m => Clients._norm(m) === nm))) return;   // viande à éviter pour la race d'un des chiens
+        if (cl.dogs.some(d => this._traits(d).avoidMeats.some(m => Clients._norm(m) === nm))) return why(p, null, 'viande déconseillée pour la race');   // viande à éviter pour la race d'un des chiens
       }
 
       p.variants.forEach(v => {
-        if (v.mode === 'vrac') return;
+        if (v.mode === 'vrac') return why(p, v, 'vendu en vrac');
 
         const tags = this._mergeTags(pTags, Stock.variantTags(p, v));
-        if (cl && ((cl.odor && tags.odeur === 'forte') || (cl.fat && tags.gras === 'gras'))) return;
+        if (cl && ((cl.odor && tags.odeur === 'forte') || (cl.fat && tags.gras === 'gras'))) return why(p, v, cl.odor && tags.odeur === 'forte' ? 'odeur forte (fiche du chien)' : 'gras (fiche du chien)');
 
         if (this.resistanceInclude.length) {
           const r = tags.resistance;
-          if (r && !this.resistanceInclude.includes(r)) return;
+          if (r && !this.resistanceInclude.includes(r)) return why(p, v, 'résistance non cochée (' + r + ')');
         }
-        if (this.typeFilter !== 'all' && (tags.type || 'occupation') !== this.typeFilter) return;
-        if (this.odeurInclude.length && tags.odeur && !this.odeurInclude.includes(tags.odeur)) return;
-        if (this.grasInclude.length && tags.gras && !this.grasInclude.includes(tags.gras)) return;
-        if (this.ageInclude.length && tags.age.length > 0 && !tags.age.some(a => this.ageInclude.includes(a))) return;
-        if (this.gabaritInclude.length && tags.gabarit.length > 0 && !tags.gabarit.some(g => this.gabaritInclude.includes(g))) return;
-        if (tags.species && tags.species.length && !tags.species.includes('chien')) return;   // produit réservé aux chats : jamais dans un panier pour chiens
-        if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return;
-        if (dg && tags.gabarit.length > 0 && !tags.gabarit.includes(dg)) return;
-        if (!pd && this._tooBigForGrowing(g0, tags)) return;
-        if (!pd && this._tooHardForPuppy(da || selAges, tags)) return;
+        if (this.typeFilter !== 'all' && (tags.type || 'occupation') !== this.typeFilter) return why(p, v, 'type (éducation / occupation)');
+        if (this.odeurInclude.length && tags.odeur && !this.odeurInclude.includes(tags.odeur)) return why(p, v, 'odeur (réglages)');
+        if (this.grasInclude.length && tags.gras && !this.grasInclude.includes(tags.gras)) return why(p, v, 'gras (réglages)');
+        if (this.ageInclude.length && tags.age.length > 0 && !tags.age.some(a => this.ageInclude.includes(a))) return why(p, v, 'âge (réglages)');
+        if (this.gabaritInclude.length && tags.gabarit.length > 0 && !tags.gabarit.some(g => this.gabaritInclude.includes(g))) return why(p, v, 'gabarit (réglages)');
+        if (tags.species && tags.species.length && !tags.species.includes('chien')) return why(p, v, 'pour chat');   // produit réservé aux chats : jamais dans un panier pour chiens
+        if (da && tags.age.length > 0 && !tags.age.some(x => da.includes(x))) return why(p, v, 'pas pour l\'âge du chien');
+        if (dg && tags.gabarit.length > 0 && !tags.gabarit.includes(dg)) return why(p, v, 'pas pour la taille du chien' + (g0 ? ' (il grandit)' : ''));
+        if (!pd && this._tooBigForGrowing(g0, tags)) return why(p, v, 'trop gros pour un chien qui grandit');
+        if (!pd && this._tooHardForPuppy(da || selAges, tags)) return why(p, v, 'trop dur pour un chiot');
         const small = (dg || (this._gabSel() || []).join()) === 'petit';
-        if (this._riskBlocks(this.risks, tags, v, small)) return;   // particularités cochées dans les réglages avancés
+        if (this._riskBlocks(this.risks, tags, v, small)) return why(p, v, 'particularités (glouton, dents, surpoids…)');   // particularités cochées dans les réglages avancés
         let suits = null;
         this._curVar = v;
-        if (pd) { suits = pd.filter(d => this._dogSuits(d, p, pTags, tags)); if (!suits.length) return; }
+        if (pd) { suits = pd.filter(d => this._dogSuits(d, p, pTags, tags)); if (!suits.length) return why(p, v, 'ne convient à aucun des chiens'); }
         const dogsFor = suits || (cl ? cl.dogs : []), liked = this._likedBy(dogsFor, p);
         let chews = [...new Set(dogsFor.map(d => this._chewOf(d)).filter(Boolean))];
         if (this.risks.tendre) chews = ['doux'];   // « préfère le tendre » : l'emporte sur l'énergie et le gabarit
@@ -492,11 +498,11 @@ const Paniers = {
           // les lots périmés restent candidats (paniers pour associations) : ils passent en tête grâce au score de DLUO
           return true;
         });
-        if (!lots.length) return;
+        if (!lots.length) return why(p, v, 'plus en stock');
 
         const rc = Stock.refCalc(p, v);   // prix = fiche Prix mastication (la référence), jamais la copie du Stock
         const price = rc ? rc.calc.priceTTC : U.num(v.priceTTC);
-        if (price <= 0) return;
+        if (price <= 0) return why(p, v, 'pas de prix');
         const coeff = rc ? (rc.calc.effCoeff || 0) : 0;
 
         lots.forEach(l => {
@@ -763,7 +769,8 @@ const Paniers = {
       // Dates dépassées ou courtes D'ABORD (Antho 2026-11-17) : tant qu'un produit urgent convient et rentre dans le budget, on ne choisit que parmi eux (sauf priorité « rentabilité »)
       // (un produit urgent déjà dans le panier ne force pas un 2e exemplaire : il repasse par la note normale, pour garder de la variété)
       // (commande site : pas de passage forcé, les dates courtes comptent autant que le coefficient dans la note — seules les dates DÉPASSÉES passent d'office)
-      if (this.priority !== 'coeff') { const urg = eligible.filter(c => (this.kind === 'site' ? c.daysLeft < 0 : c.daysLeft <= this.URGENT_DAYS) && !usedProducts.has(c.pId)); if (urg.length) eligible = urg; }
+      // Écouler : toutes les dates ≤ 30 j passent d'office, quel que soit le type ; Équilibré + commande site : seulement les dates dépassées ; Rentable : rien d'office
+      if (this.priority !== 'coeff') { const urg = eligible.filter(c => (this.kind === 'site' && this.priority !== 'dluo' ? c.daysLeft < 0 : c.daysLeft <= this.URGENT_DAYS) && !usedProducts.has(c.pId)); if (urg.length) eligible = urg; }
       const gramN = basket.filter(b => { const sp = Store.state.stockM.find(x => x.id === b.pId), sv = sp && sp.variants.find(x => x.id === b.vId); return sv && sv.mode === 'gram'; }).length;
       this._bal = { gram: gramN, vrac: basket.length - gramN, hard: hardInBasket };
       // Alternance gramme / vrac : on prend le format le moins représenté tant qu'il en reste dans le budget
@@ -989,6 +996,44 @@ const Paniers = {
      Commande site (déjà payée) : rouge s'il MANQUE quelque chose (le client a payé plus que le panier), vert dès que le montant est atteint. */
   /* Case « Reste » (Antho 2026-11-19 : « -0,10 € Reste, ce n'est pas ce qui reste, c'est ce que j'ai dépassé ») : au-dessus du budget elle devient
      « Dépassement » avec un montant positif (+0,10 €). La couleur garde son sens : vert = bon, rouge = à corriger. */
+  /* DATES COURTES (Antho 2026-11-19 : « beaucoup de dates courtes en stock, une seule dans le panier ») : combien sont en stock, combien sont dans le panier,
+     et pour chacune des autres la RAISON (filtre, fiche du chien, variété, budget…) avec « Ajouter ». Une ligne par produit + taille, son lot le plus court. */
+  _shortOpen: false,
+  _shortDates() {
+    const diag = {}, cands = this.candidates(diag), rows = [];
+    const inB = new Set(this.basket.map(b => b.pId + '|' + b.vId));
+    const spent = this.basket.reduce((a, b) => a + b.price * b.qty, 0), left = this._avail() - spent;
+    Store.state.stockM.forEach(p => (p.variants || []).forEach(v => {
+      if (v.mode === 'vrac') return;
+      const lots = (v.lots || []).filter(l => U.num(l.qtyGeneral) + U.num(l.qtyEvent) > 0 && l.dluo).map(l => ({ l, d: U.daysTo(l.dluo) })).filter(x => x.d !== null && x.d <= this.URGENT_DAYS).sort((a, b) => a.d - b.d);
+      if (!lots.length) return;
+      const k = p.id + '|' + v.id, c = cands.find(x => x.pId === p.id && x.vId === v.id && x.lotId === lots[0].l.id) || cands.find(x => x.pId === p.id && x.vId === v.id);
+      let reason = '';
+      if (inB.has(k)) reason = '';
+      else if (diag[k] || diag[p.id]) reason = diag[k] || diag[p.id];
+      else if (!c) reason = 'pas proposé';
+      else if (this.basket.some(b => b.pId === p.id)) reason = 'déjà dans le panier (autre format)';
+      else if (this._famTaken(c, this.basket)) reason = 'sa version avec / sans poils ou un autre format est déjà là';
+      else if (this._tooClose(c, this.basket)) { const o = this.basket.find(b => b.pId !== c.pId && (s => s.cut === this._simOf(c).cut)(this._simOf(b))); reason = 'trop proche de « ' + (o ? o.name : '?') + ' »'; }
+      else if (this.HARD.includes(c.tags.resistance) && this.basket.some(b => this.HARD.includes(this._resOf(b)))) reason = 'déjà un produit dur dans le panier';
+      else if (c.price > left + 0.005) reason = 'ne rentre pas dans le budget restant';
+      else reason = 'moins bien noté que les produits choisis';
+      rows.push({ p, v, lot: lots[0].l, d: lots[0].d, inBasket: inB.has(k), reason, canAdd: !!c });
+    }));
+    return rows.sort((a, b) => a.d - b.d);
+  },
+  _shortHTML() {
+    if (Clients.ro() && !this.basket.length) return '';
+    const rows = this._shortDates(); if (!rows.length) return '';
+    const inN = rows.filter(r => r.inBasket).length, out = rows.filter(r => !r.inBasket);
+    const dl = d => d < 0 ? `<span class="badge bad">dépassée (${-d} j)</span>` : `<span class="badge warn">${d} j</span>`;
+    return `<div class="pan-short">
+      <div class="pan-short-h"><b>⏳ Dates courtes :</b> ${rows.length} en stock · <b>${inN}</b> dans ce panier
+        ${out.length ? `<button type="button" class="btn-ghost btn-sm fit" onclick="Paniers._shortOpen=!Paniers._shortOpen;Paniers.render()">${this._shortOpen ? 'Masquer' : 'Voir les ' + out.length + ' non retenues'}</button>` : ''}
+        <span class="muted help">30 jours ou moins, ou date dépassée. Pour chacune : pourquoi elle n'est pas dans le panier. « Ajouter » la met quand même (et elle reste, même en régénérant). Objectif « Écouler » : elles passent toutes en premier.</span></div>
+      ${this._shortOpen && out.length ? `<div class="pan-short-list">${out.map(r => `<div class="pan-short-row"><span class="pan-short-n">${U.esc(r.p.name)} <span class="tag">${U.esc(Pricing.labelVariant(r.v))}</span></span>${dl(r.d)}<span class="muted pan-short-r">${U.esc(r.reason)}</span>${r.canAdd && !Clients.ro() ? `<button type="button" class="btn-ghost btn-sm fit" onclick="Paniers.pickManual('${r.p.id}','${r.v.id}','${r.lot.id}','M')">Ajouter</button>` : '<span></span>'}</div>`).join('')}</div>` : ''}
+    </div>`;
+  },
   _resteKPI(remaining) {
     const v = remaining * (1 - this._disc()), over = v < -0.005;
     return `<div class="kpi ${this._resteCls(remaining)}"><span class="kpi-val">${over ? '+' + U.eur(-v) : U.eur(v)}</span><span class="kpi-label">${over ? 'Dépassement' : (this.kind === 'site' && v > 0.005 ? 'Manque' : 'Reste')}</span></div>`;
@@ -2061,8 +2106,11 @@ const Paniers = {
           <input type="text" data-clcombo autocomplete="off" id="pan_client" value="${U.esc(Clients.show(this.client))}" placeholder="nom de la cliente ou du chien…" onchange="Paniers.setClient(this.value)">
           <div class="muted" style="font-size:.82rem;margin-top:4px;">${U.esc(this._clientSummary())}</div>${this._lastHTML()}</div>
 
-        <div class="fg" style="margin-bottom:12px;"><label>Type de panier <span class="muted help">Vente : deux propositions, au plus près du budget et jusqu'à 10 % au-dessus. Commande site et Lot à gagner : jamais au-dessus du budget (le client ne paiera pas la différence), les dates courtes d'abord puis les produits au plus fort coefficient : si tu ajoutes ensuite un produit pour améliorer le panier, la marge reste bonne.</span></label>
+        <div class="fg" style="margin-bottom:12px;"><label>Type de panier <span class="muted help">Vente : deux propositions, au plus près du budget et jusqu'à 10 % au-dessus. Commande site : déjà payée → jamais EN DESSOUS du montant, au plus juste au-dessus. Lot à gagner : jamais au-dessus du budget (le client ne paiera pas la différence), les dates courtes d'abord puis les produits au plus fort coefficient : si tu ajoutes ensuite un produit pour améliorer le panier, la marge reste bonne.</span></label>
           ${U.seg(this.KINDS.map(([v, l]) => ({ l, on: this.kind === v, js: `Paniers.setKind('${v}')` })), { sm: true })}</div>
+
+        <div class="fg" style="margin-bottom:12px;"><label>Objectif <span class="muted help">Écouler : toutes les dates courtes (30 jours ou moins, et dépassées) passent en premier. Équilibré : le réglage habituel du type de panier (commande site : seules les dates dépassées d'office, puis date et coefficient). Rentable : les meilleurs coefficients d'abord.</span></label>
+          ${U.seg(this.OBJECTIVES.map(([v, l]) => ({ l, on: this.priority === v, js: `Paniers.setObjective('${v}')` })), { sm: true })}</div>
 
         <div class="frow" style="gap:12px;">
           <div class="fg"><label>💰 Budget TTC</label>
@@ -2092,9 +2140,6 @@ const Paniers = {
           <summary><span class="pan-adv-t">Réglages avancés</span> <span class="muted pan-adv-sum">${U.esc(this._advSummary())}</span></summary>
           <div class="fold-body">
         <div class="frow" style="gap:12px;">
-          <div class="fg"><label>🎯 Priorité</label>
-            ${U.customSelect({ value: this.priority, options: [{v:'mix',l:'Mix (DLUO + rentabilité)'},{v:'dluo',l:"DLUO courte d'abord"},{v:'coeff',l:"Meilleur coeff d'abord"}], onPick: 'Paniers.setPriority' })}
-          </div>
           <div class="fg"><label>🐾 Poil</label>
             ${U.customSelect({ value: this.poilFilter, options: [{v:'all',l:'Tous'},{v:'avec',l:'Avec poil'},{v:'sans',l:'Sans poil'}], onPick: 'Paniers.setPoil' })}
           </div>
@@ -2196,6 +2241,7 @@ const Paniers = {
         </div>
         ${this.basket.length ? `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"><div class="pan-bal">${this._balBox()}</div><span class="badge info" id="pan_dvno" title="N° de devis (définitif à la copie ou à la mise en attente)">Devis n° ${U.esc(this._shareData().no)}</span></div>` : ''}
 
+        ${this._shortHTML()}
         <div class="kpi-row" id="pan_kpi" style="margin-bottom:16px;">
           <div class="kpi"><span class="kpi-val">${U.eur(this.budget)}</span><span class="kpi-label">Budget</span></div>
           ${this.livraison > 0 ? `<div class="kpi"><span class="kpi-val">− ${U.eur(this.livraison)}</span><span class="kpi-label">Livraison</span></div>` : ''}
