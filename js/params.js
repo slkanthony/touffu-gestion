@@ -2818,9 +2818,9 @@ S.uvCartridgeVolume = U.numVal('p_uv_vol'); S.uvMaintPct = U.numVal('p_uv_maint_
   async loadSnaps() {
     const days = await Store.listSnapshots();
     const box = document.getElementById('snapList'); if (!box) return;
-    box.innerHTML = days.length ? days.map(d => `<div class="frow" style="align-items:center; margin-bottom:6px;">
-      <span class="tag dluo-ok">${U.frDate(d)}</span>
-      <button class="btn-ghost btn-sm" style="flex:0;" onclick="Store.restoreSnapshot('${d}')">Restaurer</button></div>`).join('')
+    // une ligne par jour : date à gauche, « Restaurer » à sa taille à droite (Antho 2026-11-19 : bouton coupé, date étirée) ; repliée au-delà de 7 jours
+    box.innerHTML = days.length ? U.fold('snaps', days.length, days.map(d => `<div class="snap-row"><span>${U.frDate(d)}</span>
+      <button class="btn-ghost btn-sm fit" onclick="Store.restoreSnapshot('${d}')">Restaurer</button></div>`).join(''), { limit: 7, h: 260, unit: 'jours' })
       : '<p class="muted">Aucun instantané pour l\u2019instant.</p>';
   },
   async snapshotNow() { await Store.takeSnapshot(U.today()); this.loadSnaps(); },

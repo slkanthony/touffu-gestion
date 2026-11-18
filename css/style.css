@@ -1960,6 +1960,8 @@ details.fold.pan-adv .fold-body { padding-bottom: 10px; }
 /* Paniers : ce que le générateur a appris */
 .pan-learn { margin-top: 12px; }
 .pan-dog { color: var(--caramel); font-weight: 700; }
+.snap-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 2px; border-top: 1px dashed var(--card-border); }
+.snap-row:first-child { border-top: 0; }
 .pan-ct input { width: 80px; }
 .pan-ct-ok { color: var(--ok); font-weight: 600; }
 .pan-ct-low { color: var(--warn); font-weight: 600; }
