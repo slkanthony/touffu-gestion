@@ -568,7 +568,9 @@ run(`Paniers.swapItem(0);`);
 eq('28a remplacer « Cou de dinde » : ni un 2e « Cou d\'oie » ni un autre cou', run(`Paniers.basket.map(b => b.name).filter(n => /^Cou/.test(n)).length`), 1);
 eq('28a le remplaçant est d un autre type (pas un cou)', run(`/^Cou/.test(Paniers.basket[0].name)`), false);
 run(`Paniers.excludeItem(Paniers.basket.findIndex(b => b.pId === 'a')); Paniers.complete();`);
-eq('28b écarté (🚫) puis « Compléter » : pas remis', run(`Paniers.basket.some(b => b.pId === 'a' || b.pId === 'b')`), false);
+eq('28b écarté (🚫) puis « Compléter » : pas remis', run(`Paniers.basket.some(b => b.pId === 'a')`), false);
+eq('28c remplacé (🔄) : pas écarté, il reste proposable (2026-11-19)', run(`[Paniers._dropped.includes('b'), Paniers.candidates().some(c => c.pId === 'b')]`), [false, true]);
+eq('28d écarté (🚫) : dans « Écartés de ce panier », pas dans les réglages', run(`[Paniers._dropped.includes('a'), Paniers.excludeProducts.includes('a')]`), [true, false]);
 
 /* ══════════ 29. REMPLACER = un ou plusieurs produits pour le même budget (Antho 2026-11-18) ══════════ */
 paniers([sp('a', 'Museau de bœuf', { days: 200, price: 6, meat: 'Boeuf', tags: { resistance: 'moyenne' } }), sp('b', 'Groin de porc', { days: 200, price: 3, meat: 'Porc', tags: { resistance: 'moyenne' } }),

@@ -1139,7 +1139,7 @@ const Paniers = {
     const items = (this._dropped || []).filter(nm).map(id => ({ id, l: U.esc(nm(id)), js: `Paniers.undrop('${id}')` }))
       .concat(Object.keys(this._qtyCap || {}).filter(nm).map(id => ({ id, l: `${U.esc(nm(id))} <span class="muted">(${this._qtyCap[id]} max)</span>`, js: `Paniers.uncap('${id}')` })));
     if (!items.length) return '';
-    return `<div class="pan-ecartes"><span class="muted">Écartés de ce panier <span class="help">Produits remplacés (🔄) et quantités baissées à la main : « Générer », « Compléter » et « Remplacer » ne les reprennent pas. « Rétablir » les autorise de nouveau. Tout est oublié à « Vider ».</span> :</span>
+    return `<div class="pan-ecartes"><span class="muted">Écartés de ce panier <span class="help">Produits écartés (🚫) et quantités baissées à la main : « Générer », « Compléter » et « Remplacer » ne les reprennent pas. « Rétablir » les autorise de nouveau. Tout est oublié à « Vider ».</span> :</span>
       ${items.map(it => `<span class="pan-ecarte">${it.l} <button type="button" class="btn-ghost btn-sm fit" onclick="${it.js}">Rétablir</button></span>`).join('')}</div>`;
   },
   undrop(id) { const tw = Stock.twinIdOf(id); this._dropped = (this._dropped || []).filter(x => x !== id && x !== tw); this._draft(); this.render(); },
@@ -1255,7 +1255,7 @@ const Paniers = {
     if (!item) return;
     const oldName = item.name;
     this._dropLearn(item);
-    [item.pId, Stock.twinIdOf(item.pId)].forEach(id => { if (id && !this.excludeProducts.includes(id)) this.excludeProducts.push(id); });   // exclu = sa version avec / sans poils aussi
+    this._drop(item.pId);   // Antho 2026-11-19 : écarté de CE panier seulement (avec sa version avec / sans poils) → « Écartés de ce panier », « Rétablir »
 
     const otherTotal = this.basket.reduce((a, b, i) => i === idx ? a : a + b.price * b.qty, 0);
     const maxPrice = this._avail() - otherTotal;
@@ -1315,7 +1315,7 @@ const Paniers = {
     U.toast(`${oldName} exclu → ${pick.name}`);
   },
   /* « Remplacer » (🔄, Antho 2026-11-18) : le produit part, et son budget (+ le reste éventuel) est recomposé — UN OU PLUSIEURS produits,
-     mêmes règles que la génération (variété, dates, dureté…), en évitant le même type de produit. Le produit remplacé n'est plus repris dans ce panier.
+     mêmes règles que la génération (variété, dates, dureté…), en évitant le même type de produit. Le produit remplacé N'EST PAS écarté (Antho 2026-11-19) : « Compléter » peut le reprendre.
      Les autres lignes ne bougent pas. Rien qui convienne → le panier reste tel quel. */
   swapItem(idx) {
     const item = this.basket[idx];
@@ -1323,13 +1323,13 @@ const Paniers = {
     const before = this.basket.map(b => ({ ...b }));
     const others = this.basket.filter((b, i) => i !== idx);
     const was = others.map(b => !!b.locked);
-    this._drop(item.pId); this._dropLearn(item);
+    const keepDropped = this._dropped.slice();
+    this._drop(item.pId);   // mis de côté le temps de chercher le remplaçant seulement (Antho 2026-11-19 : remplacer ≠ écarter)
     this._avoidLike = [item];
     let out;
-    try { out = this._compose(this._avail(), others.map(b => ({ ...b, locked: true }))); } finally { this._avoidLike = null; }
+    try { out = this._compose(this._avail(), others.map(b => ({ ...b, locked: true }))); } finally { this._avoidLike = null; this._dropped = keepDropped; }
     const fresh = out.slice(others.length);   // lignes nouvelles (les autres lignes gardent leur place)
     if (!fresh.length) {
-      this._dropped = this._dropped.filter(x => x !== item.pId);
       this.basket = before; this.render();
       U.toast('Aucun remplacement trouvé avec ces réglages : le produit reste.', true);
       return;
@@ -2437,7 +2437,7 @@ const Paniers = {
               <td class="num pl-sub"><b>${U.eur(b.price * b.qty)}</b></td>
               <td class="pl-dluo${b.dluo ? '' : ' pl-none'}">${b.dluo ? `<span class="badge ${dluoClass}">${U.frDate(b.dluo)}${daysLeft !== null ? (daysLeft < 0 ? ` (périmé depuis ${-daysLeft} j)` : ` (${daysLeft} j)`) : ''}</span>` : '<span class="muted">—</span>'}</td>
               <td class="num pl-coef${b.coeff > 0 ? '' : ' pl-none'}">${b.coeff > 0 ? b.coeff.toFixed(2) : '<span class="muted">—</span>'}</td>
-              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? `<button class="btn-icon" onclick="Paniers.dupItem(${i})" title="Dupliquer la ligne (même accessoire, autres couleurs / autre motif)">⧉</button>` : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Écarter : ne plus le proposer (remplacé tout de suite)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer la ligne (pourra être reproposé par « Compléter »)">🗑️</button></td>
+              <td class="pl-ac" style="white-space:nowrap;">${b.kind === 'A' ? `<button class="btn-icon" onclick="Paniers.dupItem(${i})" title="Dupliquer la ligne (même accessoire, autres couleurs / autre motif)">⧉</button>` : `<button class="btn-icon" onclick="Paniers.swapItem(${i})" title="Remplacer par un autre produit (il reste proposable)">🔄</button><button class="btn-icon" onclick="Paniers.excludeItem(${i})" title="Écarter : ne plus le proposer dans ce panier (remplacé tout de suite)">🚫</button>`}<button class="btn-icon" onclick="Paniers.removeItem(${i})" title="Retirer la ligne (pourra être reproposé par « Compléter »)">🗑️</button></td>
             </tr>`;
           }).join('')}</tbody>
         </table></div>
