@@ -507,8 +507,7 @@ const Store = {
           if (this._flushing || this._dirty.size) return;
           if (this._justSynced && Date.now() - this._justSynced < 2000) return; // echo de notre propre sauvegarde : rien a recharger
           if (this._modalOpen() || this._fileBusy()) { this._pendingReload = true; return; }
-          await this.loadRemote();
-          window.App?.rerender?.();
+          if (await this.loadRemote()) window.App?.rerender?.();   // réaffiche seulement si quelque chose a vraiment changé (sinon : boucle avec les autres onglets, 2026-11-19)
         }).subscribe();
     } catch (e) { /* temps réel non activé : rechargement au focus */ }
     // ⚠️ Piège (repéré en corrigeant les suggestions de liaison stock↔catalogue) :
@@ -525,7 +524,7 @@ const Store = {
       if (this._fileBusy()) return; // ne pas écraser une sélection de fichier en cours (retour du sélecteur de fichier)
       if (this.remote && !this._flushing && !this._dirty.size) {
         if (this._modalOpen()) { this._pendingReload = true; return; }
-        await this.loadRemote(); window.App?.rerender?.();
+        if (await this.loadRemote()) window.App?.rerender?.();
       }
     });
   },

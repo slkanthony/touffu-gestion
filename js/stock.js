@@ -1791,6 +1791,7 @@ const Stock = {
      SKU identique, puis libellé/valeur identique (même logique que Params.applyLink). */
   syncPricesFromCatalog(catalogId) {
     const cat=Store.state.catalogM.find(c=>c.id===catalogId); if(!cat) return false;
+    const catBefore = JSON.stringify(cat);   // la fiche n'est enregistrée que si elle a VRAIMENT changé (voir plus bas)
     const norm = s => String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
     const sameVar = (cv, sv) => {
       if ((cv.mode==='gram'||cv.mode==='piece') && sv.mode===cv.mode) { const pv = x => (cv.mode==='piece' ? (U.num(x.value) || 1) : U.num(x.value)); return pv(cv)===pv(sv); }   // « pièce » sans valeur (0) = 1 pièce
@@ -1869,6 +1870,7 @@ const Stock = {
           const ns = Pricing.skuWithBase(base, cv); if (ns && ns !== cv.sku && !taken.has(norm(ns))) { cv.sku = ns; catChanged = true; }
         });
       }); }
+    if (catChanged && JSON.stringify(cat) === catBefore) catChanged = false;   // modifiée puis remise pareille dans le même passage : rien à enregistrer (Antho 2026-11-19, boucle d'enregistrements)
     if (catChanged) Store.save('catalogM');
     return catChanged;
   },
