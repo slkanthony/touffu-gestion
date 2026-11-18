@@ -467,6 +467,20 @@ const Store = {
     });
   },
 
+  /* Deux onglets de l'appli ouverts sur le même ordinateur = deux « appareils » qui s'écrivent dessus (cause n° 1 des « Enregistrement refusé ») → on prévient
+     dans les DEUX onglets (Antho 2026-11-18). Lancé au chargement du fichier. */
+  watchTabs() {
+    if (this._bc) return;
+    try {
+      const bc = this._bc = new BroadcastChannel('touffu_onglets'), warn = () => {
+        if (this._tabWarned) return; this._tabWarned = true;
+        const say = () => { if (typeof U !== 'undefined' && U.toast) U.toast('Touffu Gestion est ouvert dans un AUTRE onglet : ferme-le, sinon les enregistrements peuvent être refusés.', true); else setTimeout(say, 500); };
+        say();
+      };
+      bc.onmessage = e => { if (e.data === 'ping') { bc.postMessage('pong'); warn(); } else if (e.data === 'pong') warn(); };
+      bc.postMessage('ping');
+    } catch (e) { /* navigateur sans BroadcastChannel : pas d'avertissement */ }
+  },
   listenRealtime() {
     try {
       this.sb.channel('touffu-sync')
@@ -567,7 +581,7 @@ const Store = {
       /* UN SEUL envoi pour toutes les clés, « tout ou rien » (2026-11-16, fonction SQL app_state_put_many) : chaque vraie donnée part avec le numéro de
          version chargé. Si une seule a été modifiée ailleurs entre-temps, la base n'écrit RIEN (jamais une vente sans son stock) et on passe par _onConflict.
          Une clé refusée par les droits du profil est signalée et abandonnée, les autres s'enregistrent ; une coupure réseau garde tout en attente. */
-      const denied = [], retry = [], sent = [], wireErr = [], items = [];
+      const denied = [], retry = [], sent = [], wireErr = [], items = [], sentNow = {};
       let conflicts = null;
       try {
         for (const k of dirty) {
@@ -575,6 +589,7 @@ const Store = {
           try { data = this._wire(k); }
           catch (e) { console.error('préparation de', k, e); wireErr.push(k + ' : ' + ((e && e.message) || e)); if (rank(k) === 1) retry.push(k); continue; }   // une copie dérivée qui plante est ABANDONNÉE (jamais bloquante pour les vraies données)
           items.push({ key: k, data, rev: rank(k) === 1 ? (this._rev[k] || 0) : null });
+          if (rank(k) === 1) { sentNow[k] = this._canon(data); this._lastSent[k] = [sentNow[k]].concat(this._lastSent[k] || []).slice(0, 3); }   // empreintes des derniers envois (voir _selfConflict), notées AVANT l'envoi : la réponse peut se perdre
         }
         if (items.length) {
           const { data: res, error } = await this.sb.rpc('app_state_put_many', { p_items: items });
@@ -602,9 +617,18 @@ const Store = {
         console.error(e);
         items.forEach(it => { if (!retry.includes(it.key)) retry.push(it.key); });
       } finally { this._flushing = false; }
-      if (conflicts) { await this._onConflict(conflicts, items.map(it => it.key)); return; }
+      if (conflicts && (this._selfRetry || 0) < 2 && await this._selfConflict(conflicts)) {
+        // Faux conflit : la base contient exactement ce que CET onglet a envoyé en dernier (réponse perdue / numéro pas à jour) → on renvoie, sans alerte
+        this._selfRetry = (this._selfRetry || 0) + 1;
+        items.forEach(it => this._dirty.add(it.key));
+        clearTimeout(this._saveT); this._saveT = setTimeout(() => this.flush(), 50);
+        return;
+      }
+      if (conflicts) { this._selfRetry = 0; await this._onConflict(conflicts, items.map(it => it.key)); return; }
+      this._selfRetry = 0;
       try { if (typeof Visite !== 'undefined') Visite.afterFlush(sent, wireErr); } catch (e) { console.error(e); }
       retry.forEach(d => this._dirty.add(d));
+      if (retry.length) { this._netRetry = (this._netRetry || 0) + 1; if (this._netRetry <= 5) { clearTimeout(this._saveT); this._saveT = setTimeout(() => this.flush(), 3000 * this._netRetry); } } else this._netRetry = 0;
       if (!retry.length) this._justSynced = Date.now();
       this.updateSyncBadge(retry.length ? '⚠ hors ligne' : denied.length ? '⚠ refusé' : '✓ synchronisé');
       if (denied.length && typeof U !== 'undefined' && U.toast) {
@@ -614,6 +638,26 @@ const Store = {
       localStorage.setItem('touffu_state', JSON.stringify(this.state));
       this.updateSyncBadge('✓ enregistré (local)');
     }
+  },
+  /* FAUX CONFLITS (Antho 2026-11-18, « Enregistrement refusé » alors qu'il est seul sur son ordinateur) : si la version de la base est EXACTEMENT
+     la dernière que cet onglet a lui-même enregistrée (réponse du serveur perdue, numéro de version resté en retard), ce n'est pas un autre appareil :
+     on reprend le bon numéro et on renvoie. Comparaison sur une écriture « canonique » (clés triées : la base réordonne les champs). */
+  _lastSent: {},
+  _canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(x => this._canon(x)).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + this._canon(v[k])).join(',') + '}';
+    return JSON.stringify(v === undefined ? null : v);
+  },
+  async _selfConflict(conflicts) {
+    try {
+      const keys = (conflicts || []).filter(k => this._lastSent[k] !== undefined);
+      if (!keys.length || keys.length !== conflicts.length) return false;
+      const { data, error } = await this.sb.from('app_state').select('key,data,rev').in('key', keys);
+      if (error || !data || data.length !== keys.length) return false;
+      if (!data.every(r => (this._lastSent[r.key] || []).includes(this._canon(r.data)))) return false;
+      data.forEach(r => { this._rev[r.key] = r.rev; });
+      return true;
+    } catch (e) { console.error(e); return false; }
   },
   /* Un autre appareil a enregistré entre-temps : RIEN n'a été écrit. On recharge la version à jour de tout ce que cet enregistrement touchait
      (les changements locaux de cette action sont abandonnés, pour ne laisser aucun état à moitié enregistré) et on le dit clairement. */
@@ -838,3 +882,4 @@ const Store = {
   productTypeLabel(v) { const t = this.productTypes().find(x => x.value === v); return t ? t.label : ''; },
 
 };
+try { Store.watchTabs(); } catch (e) {}
