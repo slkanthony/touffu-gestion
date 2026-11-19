@@ -646,9 +646,12 @@ const Paniers = {
     const gs = b.gram / n;
     return c.mode === 'gram' ? 1 - gs : gs;
   },
-  _itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) {
+  /* Rentabilité d'un produit = marge laissée par euro vendu (1 − 1/coeff), sur une échelle FIXE (Antho 2026-11-19) :
+     coeff 1,4 ou moins → 0 ; 2 → 0,4 ; 2,6 → 0,63 ; 5 et plus → 1. Avant : coeff ÷ plus haut coeff du stock → un seul produit à coeff 12 écrasait tous les écarts. */
+  _marginScore(coeff) { return coeff > 0 ? Math.max(0, Math.min(1, ((1 - 1 / coeff) - 0.3) / 0.5)) : 0; },
+  _itemScore(c, usedProducts, usedMeats, weights, mult) {
     const dluoScore = this._dluoScore(c.daysLeft);
-    const coeffScore = maxCoeff > 0 ? c.coeff / maxCoeff : 0;
+    const coeffScore = this._marginScore(c.coeff);
     let divScore = 1;
     if (usedProducts.has(c.pId)) divScore = 0.15;
     else if ((usedMeats[c.meat] || 0) >= 2 * mult) divScore = 0.4;
@@ -847,7 +850,8 @@ const Paniers = {
      Tant que le coeff moyen du panier en cours est SOUS la cible, les produits au-dessus de la cible passent devant et ceux en dessous
      reculent (×0,75 à ×1,3) ; cible atteinte = plus d'effet. Jamais en objectif « Écouler » (les dates courtes priment). */
   _coeffTarget() { return Math.max(0, U.num(Store.state.settings && Store.state.settings.panCoeffTarget)); },
-  _avgCoeff(lines) { const ci = (lines || []).filter(b => b.coeff > 0), q = ci.reduce((a, b) => a + U.num(b.qty), 0); return q > 0 ? ci.reduce((a, b) => a + b.coeff * U.num(b.qty), 0) / q : 0; },
+  // coeff pondéré par les euros : Σ prix ÷ Σ (prix ÷ coeff) — même résultat que total HT ÷ total des coûts
+  _avgCoeff(lines) { const ci = (lines || []).filter(b => b.coeff > 0 && b.price > 0), v = ci.reduce((a, b) => a + b.price * U.num(b.qty), 0), c = ci.reduce((a, b) => a + b.price * U.num(b.qty) / b.coeff, 0); return c > 0 ? v / c : 0; },
   _coeffMult(c, basket) {
     const t = this._coeffTarget(); if (!t || this.priority === 'dluo' || !(c.coeff > 0)) return 1;
     const avg = this._avgCoeff(basket), strength = avg > 0 ? Math.max(0, Math.min(1, (t - avg) / 0.4)) : 0.3;
@@ -868,7 +872,6 @@ const Paniers = {
     let spent = basket.reduce((a, b) => a + b.price * b.qty, 0);
     if (!cands.length) return basket;
 
-    const maxCoeff = Math.max(...cands.map(c => c.coeff), 1);
 
     const weights = this._weights();
 
@@ -889,7 +892,7 @@ const Paniers = {
       if (c) c.avail = Math.max(0, c.avail - b.qty);
     });
 
-    const score = (c) => this._itemScore(c, usedProducts, usedMeats, maxCoeff, weights, mult) * this._pairMult(c, basket) * this._coeffMult(c, basket);   // « souvent pris ensemble » (étape 3) + coeff visé (étape 4)
+    const score = (c) => this._itemScore(c, usedProducts, usedMeats, weights, mult) * this._pairMult(c, basket) * this._coeffMult(c, basket);   // « souvent pris ensemble » (étape 3) + coeff visé (étape 4)
     // Ligne VERROUILLÉE par Antho (cadenas) : sa quantité ne bouge jamais, ni d'autre exemplaire de ce produit (Antho 2026-11-19).
     // _frozen explicite (Compléter) ; sinon toute ligne verrouillée reçue (Générer avec cadenas, Remplacer) est figée.
     const frozenP = new Set(lockedItems.filter(b => b._frozen === undefined ? b.locked : b._frozen).map(b => b.pId));
@@ -989,6 +992,7 @@ const Paniers = {
         const adds = cands.filter(c => c.price <= gap + 0.005 && canAdd(c, basket) && this._isFresh(c, basket)).sort((a, b) => score(b) - score(a));
         if (adds.length) { put(adds[0]); spent += adds[0].price; continue; }
         let best = null;
+        const mgOf = x => x.coeff > 0 ? x.price * (1 - 1 / x.coeff) : 0;   // marge d'une unité (au prix TTC, proportionnelle à la marge HT)
         basket.forEach((b, bi) => {
           if (b.locked) return;
           const rest = basket.map((x, i) => i === bi ? { ...x, qty: x.qty - 1 } : x).filter(x => x.qty > 0);
@@ -998,6 +1002,8 @@ const Paniers = {
             if (delta < 0.005 || delta > gap + 0.005) return;
             if (c.pId === b.pId && c.vId === b.vId) return;
             if (bUrgent && c.daysLeft > this.URGENT_DAYS) return;
+            // jamais un échange qui fait BAISSER la marge en euros, même s'il rapproche du budget (Antho 2026-11-19 : museau coeff 3 remplacé par un sprat à 1,6)
+            if (mgOf(c) < mgOf(b) - 0.005) return;
             if (!canAdd(c, rest) || !this._isFresh(c, rest)) return;
             const sc = score(c);
             if (!best || delta > best.delta + 0.005 || (Math.abs(delta - best.delta) <= 0.005 && sc > best.sc)) best = { bi, c, delta, sc };
@@ -1290,7 +1296,6 @@ const Paniers = {
       return;
     }
 
-    const maxCoeff = Math.max(...cands.map(c => c.coeff), 1);
     const weights = this._weights();
     const mult = Math.max(1, this.nbChiens);
     const usedProducts = new Set();
@@ -1303,8 +1308,8 @@ const Paniers = {
 
     eligible.sort((a, b) => {
       const rest = this.basket.filter((x, i) => i !== idx);
-      const sa = this._itemScore(a, usedProducts, usedMeats, maxCoeff, weights, mult) * this._coeffMult(a, rest);
-      const sb = this._itemScore(b, usedProducts, usedMeats, maxCoeff, weights, mult) * this._coeffMult(b, rest);
+      const sa = this._itemScore(a, usedProducts, usedMeats, weights, mult) * this._coeffMult(a, rest);
+      const sb = this._itemScore(b, usedProducts, usedMeats, weights, mult) * this._coeffMult(b, rest);
       return sb - sa;
     });
 
@@ -2208,7 +2213,7 @@ const Paniers = {
           <h3 style="margin:0;">${label}</h3>
           <span style="font-size:1.15em;font-weight:700;">${U.eur(total)} ${isOver ? `<span class="badge warn">+${U.eur(diff)}</span>` : remain > 0.005 ? `<span class="muted" style="font-size:0.8em;">reste ${U.eur(remain)}</span>` : ''}</span>
         </div>
-        <p class="muted" style="margin:0 0 8px;">${nb} article(s) · ${nProd} produit(s) · ${nMeat} viande(s)${(() => { const ci = prop.filter(b => b.coeff > 0); const cq = ci.reduce((a,b) => a + b.qty, 0); const cm = cq > 0 ? ci.reduce((a,b) => a + b.coeff * b.qty, 0) / cq : 0; return cm > 0 ? ` · <span class="sensitive"><b>Coeff moyen : ${cm.toFixed(2)}</b>${this._coeffTag(cm)}</span>` : ''; })()}</p>
+        <p class="muted" style="margin:0 0 8px;">${nb} article(s) · ${nProd} produit(s) · ${nMeat} viande(s)${(() => { const cm = this._avgCoeff(prop); return cm > 0 ? ` · <span class="sensitive"><b>Coeff moyen : ${cm.toFixed(2)}</b>${this._coeffTag(cm)}</span>` : ''; })()}</p>
         ${nb ? `<div class="table-wrap"><table>
           <thead><tr><th class="col-name">Produit</th><th>Variante</th><th>Viande</th><th class="num">Qté</th><th class="num">S/total</th><th>DLUO</th></tr></thead>
           <tbody>${prop.map(b => {
@@ -2529,7 +2534,9 @@ const Paniers = {
     const totSocial = rows.reduce((a, r) => a + r.social * r.qty, 0);
     const totProfit = rows.reduce((a, r) => a + r.profit * r.qty, 0);
     const totActuel = rows.reduce((a, r) => a + r.profitActuel * r.qty, 0);
-    const avgCoeff = nbArticles > 0 ? rows.reduce((a, r) => a + r.coeff * r.qty, 0) / nbArticles : 0;
+    // Coeff du panier = total HT ÷ total des coûts (pondéré par les euros, comme les Statistiques — Antho 2026-11-19 : une trachée à 1 € et coeff 7 ne doit pas gonfler la moyenne)
+    const withCost = rows.filter(r => r.cost > 0), cHT = withCost.reduce((a, r) => a + r.priceHT * r.qty, 0), cCost = withCost.reduce((a, r) => a + r.cost * r.qty, 0);
+    const avgCoeff = cCost > 0 ? cHT / cCost : 0;
     return { rows, nbArticles, fd, valeur, totVente, totCost, totMargin, totSocial, totProfit, totActuel, avgCoeff };
   },
   _renderFinanceSummary() {
