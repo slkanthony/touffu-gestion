@@ -27,6 +27,7 @@ const ICONS = {
   "chart-column": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\" /><path d=\"M18 17V9\" /><path d=\"M13 17V5\" /><path d=\"M8 17v-3\" />",
   "circle": "<circle cx=\"12\" cy=\"12\" r=\"10\" />",
   "circle-check": "<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"m16 9-5.5 5.5L8 12\" />",
+  "circle-half-stroke": "<path d=\"M12 2a10 10 0 0 1 0 20\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12\" cy=\"12\" r=\"10\"/>",
   "circle-question-mark": "<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"M9 9.5a3 2.5 0 016 0c0 2-2 2-3 3.5\" /><path d=\"M12 17h.01\" />",
   "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /><path d=\"M12 11h4\" /><path d=\"M12 16h4\" /><path d=\"M8 11h.01\" /><path d=\"M8 16h.01\" />",
   "clock": "<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"M12 6v6l4 2\" />",

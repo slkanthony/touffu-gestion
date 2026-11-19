@@ -229,13 +229,6 @@ const App = {
   buildNav() {
     const inner = document.getElementById('topnavInner');
     inner.querySelectorAll('.nav-items,.sync-state,.theme-toggle').forEach(n => n.remove());
-    // Bouton thème (soleil / lune) à gauche du logo
-    const themeBtn = document.createElement('button');
-    themeBtn.className = 'btn-ghost btn-sm theme-toggle';
-    themeBtn.title = Theme.get() === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre';
-    themeBtn.innerHTML = U.icon(Theme.get() === 'dark' ? 'sun' : 'moon', { size: 1.1 });
-    themeBtn.onclick = () => { Theme.toggle(); App.rerender(); };
-    inner.insertBefore(themeBtn, inner.firstChild);
     // Les onglets sont dans un conteneur qui occupe tout l'espace disponible entre le logo
     // et l'état de sync, et les répartit (space-evenly) → barre équilibrée sur grand écran,
     // défilement horizontal si l'écran est trop étroit (voir .nav-items dans le CSS).
@@ -257,6 +250,13 @@ const App = {
     sync.className = 'sync-state';
     sync.textContent = Store.remote ? '☁ Supabase' : '💾 mode local';
     inner.appendChild(sync);
+    // Bouton thème (demi-cercle) à droite de la barre, après Synchronisé
+    const themeBtn = document.createElement('button');
+    themeBtn.className = 'btn-icon theme-toggle';
+    themeBtn.title = Theme.get() === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre';
+    themeBtn.innerHTML = U.icon('circle-half-stroke', { size: 1.3 });
+    themeBtn.onclick = () => { Theme.toggle(); App.rerender(); };
+    inner.appendChild(themeBtn);
     this.fitNav();
     if (!this._navFitOn) {   // une seule fois : le menu se réajuste quand la fenêtre change de largeur et quand les polices sont chargées
       this._navFitOn = true;
