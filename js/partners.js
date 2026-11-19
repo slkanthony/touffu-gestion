@@ -40,7 +40,7 @@ const Partners = {
 
   /* ---------- gestion ---------- */
   _save() { Store.save('settings'); },
-  _rerender() { if (Stats.tab === 'partners') Stats.render(); },
+  _rerender() { if (App.current === 'repertoire' && Repertoire.tab === 'partners') Repertoire.render(); },
   addPartner() {
     const i = document.getElementById('pt_new'), name = ((i || {}).value || '').trim();
     if (!name) { U.toast('Indique le nom du partenaire.', true); return; }
@@ -110,9 +110,9 @@ const Partners = {
     if (c) { const ids = new Set(cur.avoirIds || []); c.balanceLog = (c.balanceLog || []).filter(l => !ids.has(l.id)); Clients._recalc(c); Store.save('clients'); }
     return true;
   },
-  setMonth(m) { this._month = m; Stats.render(); },
+  setMonth(m) { this._month = m; Repertoire.render(); },
   _chartP: '',   // partenaire affiché dans la courbe ('' = tous)
-  setChartP(v) { this._chartP = v; Stats.render(); },
+  setChartP(v) { this._chartP = v; Repertoire.render(); },
   /* Courbe des 12 derniers mois : commandes avec un code (axe de droite) et montant reversé (axe de gauche). Existe dès le départ, même à zéro. */
   _draw() {
     const cv = document.getElementById('partnersChart'); if (!cv || typeof Chart === 'undefined') return;
@@ -134,7 +134,7 @@ const Partners = {
     });
   },
   _code: '',   // filtre par code (toutes les listes) : '' = tous
-  setCodeF(v) { this._code = v; Stats.render(); },
+  setCodeF(v) { this._code = v; Repertoire.render(); },
   /* Clic sur une commande → fiche du client (Stats → Clients), commande sélectionnée */
   goSale(id) {
     const s = (Store.state.sales || []).find(x => x.id === id); if (!s) return;
@@ -209,8 +209,8 @@ const Partners = {
         <div class="table-wrap mt"><table class="pt-tbl"><thead><tr><th style="text-align:left;">Date</th><th style="text-align:left;">Client · code</th><th class="num" title="Articles après réduction, livraison exclue : la base du reversement">Commande</th><th class="num">À reverser</th></tr></thead><tbody>${shown.map(x => `<tr class="pt-ord" title="Ouvrir la commande dans la fiche du client" onclick="Partners.goSale('${x.s.id}')"><td style="text-align:left;white-space:nowrap;">${new Date(x.s.ts).toLocaleDateString('fr-FR')}</td><td style="text-align:left;">${U.esc(Clients.show(x.s.customerName || '') || '—')}<br><span class="muted" style="font-size:.78rem;">${U.esc(x.code)}${x.pct ? ' · ' + U.qty(x.pct) + ' %' : ' · sans affiliation'}</span></td><td class="num sensitive">${U.eur(x.base)}</td><td class="num sensitive">${x.amt ? U.eur(x.amt) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
     };
     App.mount(`
-      <div class="view-title"><h1>Statistiques</h1><span class="sub">partenaires &amp; codes</span></div>
-      ${Stats.tabBar()}
+      <div class="view-title"><h1>Répertoire</h1><span class="sub">partenaires &amp; codes</span></div>
+      ${Repertoire.tabBar()}
       <div class="card"><h2>💶 Reversements ${U.info("Chaque commande faite avec le code d'un partenaire lui rapporte un pourcentage, calculé sur les articles APRÈS réduction (la livraison est exclue). Ex : panier 40 € −5 % = 38 € de produits ; à 5 % tu reverses 1,90 €. C'est une charge : elle baisse ton bénéfice net, mais pas tes cotisations URSSAF (calculées sur le chiffre d'affaires encaissé). Les ventes annulées ne comptent pas.")}</h2>
         <div class="frow" style="align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div class="fg" style="max-width:220px;margin:0;"><label>Mois</label><select onchange="Partners.setMonth(this.value)"><option value="all" ${allM ? 'selected' : ''}>Tous les mois</option>${months.map(m => `<option value="${m}" ${m === this._month ? 'selected' : ''}>${Compta.monthLabel(m)}</option>`).join('')}</select></div>

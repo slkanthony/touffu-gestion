@@ -2,6 +2,7 @@
 const App = {
   views: [
     { id: 'dashboard', ico: '🏠', label: 'Tableau de bord', group: '' },
+    { id: 'repertoire', ico: '📋', label: 'Répertoire', group: '' },
     { id: 'stock', ico: '📦', label: 'Stock', group: 'Stock & ventes' },
     { id: 'ventes', ico: '🛒', label: 'Ventes', group: 'Stock & ventes' },
 
@@ -19,7 +20,7 @@ const App = {
     { id: 'params', ico: '⚙️', label: 'Paramètres', group: '' }
   ],
   renderers: {
-    dashboard: () => App.renderDashboard(), ventes: () => Ventes.render(), stock: () => Stock.render(),
+    dashboard: () => App.renderDashboard(), repertoire: () => Repertoire.render(), ventes: () => Ventes.render(), stock: () => Stock.render(),
     paniers: () => Paniers.render(), achats: () => Achats.render(), reception: () => Achats.renderReception(), compta: () => Compta.render(),
     catalogue: () => Catalogue.render(), accessoires: () => Accessoires.render(),
     calc: () => Calc.render(),

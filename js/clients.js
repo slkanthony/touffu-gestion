@@ -106,18 +106,18 @@ const Clients = {
     if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
     const a = Math.round(U.num((document.getElementById('cl_ba_' + cid) || {}).value) * 100) / 100;
     if (!a) { U.toast('Tape un montant (positif = je lui dois, négatif = il me doit).', true); return; }
-    this.adjustBalance(c.name, a, ((document.getElementById('cl_bn_' + cid) || {}).value || '').trim() || 'Ajout manuel'); Stats.render();
+    this.adjustBalance(c.name, a, ((document.getElementById('cl_bn_' + cid) || {}).value || '').trim() || 'Ajout manuel'); Repertoire.render();
   },
   editBalEntry(cid, eid, field, v) {
     if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
     const l = (c.balanceLog || []).find(x => x.id === eid); if (!l) return;
     if (field === 'amount') l.amount = Math.round(U.num(v) * 100) / 100; else l.note = String(v || '').trim();
-    this._recalc(c); Store.save('clients'); Stats.render();
+    this._recalc(c); Store.save('clients'); Repertoire.render();
   },
   async delBalEntry(cid, eid) {
     if (this.ro()) return; const c = this.list().find(x => x.id === cid); if (!c) return;
     if (!await U.confirm('Supprimer cette ligne du solde ?', { okLabel: 'Supprimer' })) return;
-    c.balanceLog = (c.balanceLog || []).filter(x => x.id !== eid); this._recalc(c); Store.save('clients'); Stats.render();
+    c.balanceLog = (c.balanceLog || []).filter(x => x.id !== eid); this._recalc(c); Store.save('clients'); Repertoire.render();
   },
   _balUI(c) {
     this._recalc(c);
@@ -151,7 +151,7 @@ const Clients = {
     const c = this.list().find(x => x.id === cid); if (!c) return;
     c.partnerCodeId = v || '';
     if (!v && typeof Partners !== 'undefined' && Partners.byCode(c.discCode)) c.discCode = '';   // détachement : le code tapé à la main ne doit pas re-rattacher la fiche
-    Store.save('clients'); Stats.render();
+    Store.save('clients'); Repertoire.render();
     if (v) { const d = this.discountOf(c.name); if (d) U.toast(`🤝 Rattaché au code ${d.code} (${d.partner}) : −${U.qty(d.pct)} % pour ce client.`); }
   },
   setDisc(cid, f, v) {
@@ -160,7 +160,7 @@ const Clients = {
     if (f === 'discOn') c.discOn = !!v;
     else if (f === 'discPct') c.discPct = Math.min(99, Math.max(0, Math.round(U.num(v) * 100) / 100));
     else c.discCode = String(v || '').trim();
-    Store.save('clients'); Stats.render();
+    Store.save('clients'); Repertoire.render();
   },
   discBadge(c) { const d = this.discountOf(c.name); return d ? ` <span class="badge ok" title="Réduction habituelle${d.code ? ' — code ' + U.esc(d.code) : ''}">🏷️ −${U.qty(d.pct)} %</span>` : ''; },
   balBadge(c) { const b = this.balanceOf(c.name); return !b ? '' : b > 0 ? ` <span class="badge info" title="Je lui dois cet avoir">💶 Avoir ${U.eur(b)}</span>` : ` <span class="badge warn" title="Il me doit cette somme">💶 Dette ${U.eur(-b)}</span>`; },
@@ -221,18 +221,18 @@ const Clients = {
   },
 
   /* ---------- actions ---------- */
-  toggle(id) { this._open[id] = !this._open[id]; Stats.render(); },
+  toggle(id) { this._open[id] = !this._open[id]; Repertoire.render(); },
   /* Fiche client : clic sur une commande → seuls les produits de CETTE commande sont listés ; re-clic (ou ✕) → tous les achats. */
-  pickOrder(cid, sid) { this._ord[cid] = this._ord[cid] === sid ? '' : sid; Stats.render(); },
-  setQ(v) { this._q = v; Stats.render(); U.refocus('cl_q'); },
-  setSort(k) { this._sort = this._sort.k === k ? { k, dir: this._sort.dir === 'asc' ? 'desc' : 'asc' } : { k, dir: k === 'name' ? 'asc' : 'desc' }; Stats.render(); },
+  pickOrder(cid, sid) { this._ord[cid] = this._ord[cid] === sid ? '' : sid; Repertoire.render(); },
+  setQ(v) { this._q = v; Repertoire.render(); U.refocus('cl_q'); },
+  setSort(k) { this._sort = this._sort.k === k ? { k, dir: this._sort.dir === 'asc' ? 'desc' : 'asc' } : { k, dir: k === 'name' ? 'asc' : 'desc' }; Repertoire.render(); },
   create() {
     if (this.ro()) return;
     const el = document.getElementById('cl_new'); const n = (el && el.value || '').trim();
     if (!n) { U.toast('Tape le nom du client.', true); return; }
     if (this.find(n)) { U.toast('Ce client existe déjà.', true); return; }
     const c = this._new(n);
-    this.list().push(c); this._open[c.id] = true; Store.save('clients'); Stats.render();
+    this.list().push(c); this._open[c.id] = true; Store.save('clients'); Repertoire.render();
   },
   setField(cid, f, v) {
     if (this.ro()) return;
@@ -240,15 +240,15 @@ const Clients = {
     if (f === 'firstName' || f === 'lastName') {
       const first = String(f === 'firstName' ? v : c.firstName || '').trim(), last = String(f === 'lastName' ? v : c.lastName || '').trim();
       const full = (first + ' ' + last).trim();
-      if (!first) { U.toast('Le prénom ne peut pas être vide.', true); Stats.render(); return; }
-      if (App.isTeam) { U.toast('Seul un administrateur peut renommer un client (ses ventes sont liées à son nom).', true); Stats.render(); return; }
-      const other = this.find(full); if (other && other.id !== cid) { U.toast('Un autre client porte déjà ce nom.', true); Stats.render(); return; }
+      if (!first) { U.toast('Le prénom ne peut pas être vide.', true); Repertoire.render(); return; }
+      if (App.isTeam) { U.toast('Seul un administrateur peut renommer un client (ses ventes sont liées à son nom).', true); Repertoire.render(); return; }
+      const other = this.find(full); if (other && other.id !== cid) { U.toast('Un autre client porte déjà ce nom.', true); Repertoire.render(); return; }
       const ok = this.key(c.name);
       (Store.state.sales || []).forEach(s => { if (this.key(s.customerName) === ok) s.customerName = full; });
       Store.save('sales');
-      c.firstName = first; c.lastName = last; c.name = full; Store.save('clients'); Stats.render(); return;
+      c.firstName = first; c.lastName = last; c.name = full; Store.save('clients'); Repertoire.render(); return;
     }
-    c[f] = v; Store.save('clients'); Stats.render();
+    c[f] = v; Store.save('clients'); Repertoire.render();
   },
   async remove(cid) {
     if (this.ro()) return;
@@ -257,28 +257,28 @@ const Clients = {
     const snap = Store.snapshot('clients', c);
     Store.state.clients = this.list().filter(x => x.id !== cid);
     const entry = Store.commitSnapshot(snap, 'client', `Client supprimé — ${c.name}`);
-    Store.save('clients'); U.toast('Fiche supprimée.', false, entry.id); Stats.render();
+    Store.save('clients'); U.toast('Fiche supprimée.', false, entry.id); Repertoire.render();
   },
   addDog(cid) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); if (!c) return;
     c.dogs.push({ id: U.uid(), name: '', breed: '', breeds: [], birth: '', gabarit: '', chew: '', meats: {}, allergies: '', health: '', food: '', hair: '', odor: '', fat: '', energy: '', glouton: '', choke: '', teeth: '', body: '', liked: '', note: '' });
-    this._dogOpen[c.dogs[c.dogs.length - 1].id] = true; Store.save('clients'); Stats.render();
+    this._dogOpen[c.dogs[c.dogs.length - 1].id] = true; Store.save('clients'); Repertoire.render();
   },
   async delDog(cid, did) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); if (!c) return;
     const d = c.dogs.find(x => x.id === did); if (!d) return;
     if (!await U.confirm(`Supprimer la fiche de ${d.name || 'ce chien'} ?`)) return;
-    c.dogs = c.dogs.filter(x => x.id !== did); Store.save('clients'); Stats.render();
+    c.dogs = c.dogs.filter(x => x.id !== did); Store.save('clients'); Repertoire.render();
   },
   /* ---------- Race(s) du chien : base Paramètres → Races (js/races.js), plusieurs pour un croisé ---------- */
   _brQ: {}, _brOpen: '', _brAdd: '',
   /* « + » du titre Race : affiche la case de recherche à la place des races déjà choisies */
-  showBrAdd(did) { this._brAdd = did; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
-  setBrQ(did, v) { this._brQ[did] = v; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
-  openBr(did) { if (this._brOpen === did) return; this._brOpen = did; Stats.render(); U.refocus('cl_br_' + did); },
-  closeBr() { if (!this._brOpen && !this._brAdd) return; this._brOpen = ''; this._brAdd = ''; Stats.render(); },
+  showBrAdd(did) { this._brAdd = did; this._brOpen = did; Repertoire.render(); U.refocus('cl_br_' + did); },
+  setBrQ(did, v) { this._brQ[did] = v; this._brOpen = did; Repertoire.render(); U.refocus('cl_br_' + did); },
+  openBr(did) { if (this._brOpen === did) return; this._brOpen = did; Repertoire.render(); U.refocus('cl_br_' + did); },
+  closeBr() { if (!this._brOpen && !this._brAdd) return; this._brOpen = ''; this._brAdd = ''; Repertoire.render(); },
   addBreed(cid, did, rid) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did); if (!d) return;
@@ -286,14 +286,14 @@ const Clients = {
     if (!d.breeds.includes(rid)) d.breeds.push(rid);
     const pf = Races.profile(d); d.breed = pf ? pf.names.join(' × ') : d.breed;
     if (pf && !d.gabarit) d.gabarit = pf.gabarit;   // gabarit déduit du poids de la race, seulement s'il n'est pas déjà renseigné
-    this._brQ[did] = ''; this._brOpen = ''; this._brAdd = ''; Store.save('clients'); Stats.render();
+    this._brQ[did] = ''; this._brOpen = ''; this._brAdd = ''; Store.save('clients'); Repertoire.render();
   },
   delBreed(cid, did, rid) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did); if (!d) return;
     d.breeds = (Array.isArray(d.breeds) ? d.breeds : Races.ofDog(d).map(r => r.id)).filter(x => x !== rid);
     const pf = Races.profile(d); d.breed = pf ? pf.names.join(' × ') : '';
-    Store.save('clients'); Stats.render();
+    Store.save('clients'); Repertoire.render();
   },
   _breedUI(c, d) {
     const ro = this.ro(), rs = Races.ofDog(d), q = this._brQ[d.id] || '', open = this._brOpen === d.id;
@@ -318,14 +318,14 @@ const Clients = {
   setDog(cid, did, f, v) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); const d = c && c.dogs.find(x => x.id === did); if (!d) return;
-    d[f] = v; Store.save('clients'); if (f === 'birth' || f === 'name') Stats.render();
+    d[f] = v; Store.save('clients'); if (f === 'birth' || f === 'name') Repertoire.render();
   },
   cycleMeat(cid, did, m) {
     if (this.ro()) return;
     const c = this.list().find(x => x.id === cid); const d = c && c.dogs.find(x => x.id === did); if (!d) return;
     d.meats = d.meats || {}; const cur = d.meats[m];
     if (!cur) d.meats[m] = 'like'; else if (cur === 'like') d.meats[m] = 'avoid'; else delete d.meats[m];
-    Store.save('clients'); Stats.render();
+    Store.save('clients'); Repertoire.render();
   },
 
   /* ---------- Produits déjà mastiqués (par chien) : d.tried = [{id, name, label, event, verdict:'' | 'like' | 'avoid'}] ----------
@@ -355,17 +355,17 @@ const Clients = {
     return [...set.values()].sort((a, b) => U.sortFr(a.name + ' ' + a.label, b.name + ' ' + b.label));
   },
   _dogOf(cid, did) { const c = this.list().find(x => x.id === cid); return c && c.dogs.find(x => x.id === did); },
-  setAddEv(did, v) { this._addEv[did] = v; Stats.render(); },
-  setTQ(did, v) { this._tQ[did] = v; this._tOpen = did; Stats.render(); U.refocus('cl_t_' + did); },
-  openT(did) { if (this._tOpen === did) return; this._tOpen = did; this._tVarsOpen = false; Stats.render(); U.refocus('cl_t_' + did); },
+  setAddEv(did, v) { this._addEv[did] = v; Repertoire.render(); },
+  setTQ(did, v) { this._tQ[did] = v; this._tOpen = did; Repertoire.render(); U.refocus('cl_t_' + did); },
+  openT(did) { if (this._tOpen === did) return; this._tOpen = did; this._tVarsOpen = false; Repertoire.render(); U.refocus('cl_t_' + did); },
   closeT() {
     if (!this._tOpen) return;
     if (document.activeElement && /^cl_t_/.test(document.activeElement.id)) return;   // le clic dans le champ arrive après son « focus » : pas un clic extérieur
-    this._tOpen = ''; Stats.render();
+    this._tOpen = ''; Repertoire.render();
   },
-  toggleTVar(v) { const i = this._tVars.indexOf(v); if (i >= 0) this._tVars.splice(i, 1); else this._tVars.push(v); Stats.render(); },
-  setAllTVar(all) { this._tVars = all ? Stock.allVariantGroups().flatMap(g => g.items) : []; Stats.render(); },
-  setTVarsOpen(v) { this._tVarsOpen = v; if (v && this._tOpen) { this._tOpen = ''; Stats.render(); } },
+  toggleTVar(v) { const i = this._tVars.indexOf(v); if (i >= 0) this._tVars.splice(i, 1); else this._tVars.push(v); Repertoire.render(); },
+  setAllTVar(all) { this._tVars = all ? Stock.allVariantGroups().flatMap(g => g.items) : []; Repertoire.render(); },
+  setTVarsOpen(v) { this._tVarsOpen = v; if (v && this._tOpen) { this._tOpen = ''; Repertoire.render(); } },
   _pushTried(d, name, label, ev) {
     name = String(name || '').trim(); label = String(label || '').trim(); if (!name) return false;
     d.tried = d.tried || [];
@@ -376,30 +376,30 @@ const Clients = {
   pickTried(cid, did, idx) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did), c = this._tCandidates(did)[idx]; if (!d || !c) return;
-    if (this._pushTried(d, c.name, c.label, this._addEv[did] || '')) { this._tQ[did] = ''; this._tOpen = ''; Store.save('clients'); Stats.render(); }
+    if (this._pushTried(d, c.name, c.label, this._addEv[did] || '')) { this._tQ[did] = ''; this._tOpen = ''; Store.save('clients'); Repertoire.render(); }
   },
   addTriedFree(cid, did) {   // texte libre + Entrée (produit absent de la liste)
     if (this.ro()) return;
     const d = this._dogOf(cid, did); if (!d) return;
     const v = (this._tQ[did] || '').trim(); if (!v) return;
-    if (this._pushTried(d, v, '', this._addEv[did] || '')) { this._tQ[did] = ''; this._tOpen = ''; Store.save('clients'); Stats.render(); }
+    if (this._pushTried(d, v, '', this._addEv[did] || '')) { this._tQ[did] = ''; this._tOpen = ''; Store.save('clients'); Repertoire.render(); }
   },
   addTriedFromEvent(cid, did, idx) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did), p = this._eventProds(this._addEv[did] || '')[idx]; if (!d || !p) return;
-    if (this._pushTried(d, p.name, p.label, this._addEv[did] || '')) { Store.save('clients'); Stats.render(); }
+    if (this._pushTried(d, p.name, p.label, this._addEv[did] || '')) { Store.save('clients'); Repertoire.render(); }
   },
   /* Clic = neutre → aimé (vert) → pas aimé (rouge) → neutre */
   cycleTried(cid, did, tid) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did), t = d && (d.tried || []).find(x => x.id === tid); if (!t) return;
     t.verdict = !t.verdict ? 'like' : t.verdict === 'like' ? 'avoid' : '';
-    Store.save('clients'); Stats.render();
+    Store.save('clients'); Repertoire.render();
   },
   delTried(cid, did, tid) {
     if (this.ro()) return;
     const d = this._dogOf(cid, did); if (!d) return;
-    d.tried = (d.tried || []).filter(x => x.id !== tid); Store.save('clients'); Stats.render();
+    d.tried = (d.tried || []).filter(x => x.id !== tid); Store.save('clients'); Repertoire.render();
   },
   _triedUI(c, d) {
     const ro = this.ro(), tried = d.tried || [], ev = this._addEv[d.id] || '';
@@ -519,8 +519,8 @@ const Clients = {
       return `<tr style="cursor:pointer;" onclick="Clients.toggle('${c.id}')"><td class="col-name" style="text-align:left;"><b>${open ? '▾' : '▸'} 👤 ${U.esc(this.show(c.name))}</b>${this.balBadge(c)}${this.discBadge(c)}</td><td style="text-align:left;">${c.dogs.length ? c.dogs.map(d => '🐕 ' + U.esc(d.name || '?')).join(' · ') : '<span class="muted">—</span>'}</td><td class="num">${a.n}</td><td class="num sensitive">${U.eur(a.ca)}</td><td class="num sensitive ${a.net >= 0 ? 'pos' : 'neg'}">${a.n ? U.eur(a.net) : '—'}</td><td class="num">${a.last ? new Date(a.last).toLocaleDateString('fr-FR') : '—'}</td></tr>${open ? this._fiche(c, a.n ? a : null) : ''}`;
     }).join('');
     App.mount(`
-      <div class="view-title"><h1>Statistiques</h1><span class="sub">clients &amp; chiens</span></div>
-      ${Stats.tabBar()}
+      <div class="view-title"><h1>Répertoire</h1><span class="sub">clients &amp; chiens</span></div>
+      ${Repertoire.tabBar()}
       <div class="card cl-card">
         <h2>👤 Mes clients</h2>
         <div class="frow" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
