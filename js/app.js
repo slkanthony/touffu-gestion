@@ -2,7 +2,6 @@
 const App = {
   views: [
     { id: 'dashboard', ico: '🏠', label: 'Tableau de bord', group: '' },
-    { id: 'repertoire', ico: '📋', label: 'Répertoire', group: '' },
     { id: 'stock', ico: '📦', label: 'Stock', group: 'Stock & ventes' },
     { id: 'ventes', ico: '🛒', label: 'Ventes', group: 'Stock & ventes' },
 
@@ -15,6 +14,7 @@ const App = {
     { id: 'calc', ico: '🧮', label: 'Calculateur', group: 'Catalogue & prix' },
     { id: 'b2b', ico: '🤝', label: 'Revente pro', group: 'Catalogue & prix' },
     { id: 'stats', ico: '📊', label: 'Statistiques', group: 'Analyse & site' },
+    { id: 'repertoire', ico: '📋', label: 'Répertoire', group: 'Analyse & site' },
     { id: 'compta', ico: '📒', label: 'Compta', group: 'Analyse & site', admin: true },
     { id: 'woo', ico: '🌐', label: 'Synchro', group: 'Analyse & site' },
     { id: 'params', ico: '⚙️', label: 'Paramètres', group: '' }
