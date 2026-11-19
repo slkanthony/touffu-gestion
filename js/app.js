@@ -229,6 +229,13 @@ const App = {
   buildNav() {
     const inner = document.getElementById('topnavInner');
     inner.querySelectorAll('.nav-items,.sync-state,.theme-toggle').forEach(n => n.remove());
+    // Bouton thème (soleil / lune) à gauche du logo
+    const themeBtn = document.createElement('button');
+    themeBtn.className = 'btn-ghost btn-sm theme-toggle';
+    themeBtn.title = Theme.get() === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre';
+    themeBtn.innerHTML = U.icon(Theme.get() === 'dark' ? 'sun' : 'moon', { size: 1.1 });
+    themeBtn.onclick = () => { Theme.toggle(); App.rerender(); };
+    inner.insertBefore(themeBtn, inner.firstChild);
     // Les onglets sont dans un conteneur qui occupe tout l'espace disponible entre le logo
     // et l'état de sync, et les répartit (space-evenly) → barre équilibrée sur grand écran,
     // défilement horizontal si l'écran est trop étroit (voir .nav-items dans le CSS).

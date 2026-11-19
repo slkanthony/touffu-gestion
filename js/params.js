@@ -24,9 +24,8 @@ const Params = {
     const finPos = k => finOrder.indexOf(k);
     const finTools = k => `<div style="text-align:right;margin-bottom:2px;"><button class="btn btn-ghost btn-sm" title="Monter ce bloc" onclick="Params.moveFin('${k}',-1)" ${finPos(k) === 0 ? 'disabled' : ''}>↑</button> <button class="btn btn-ghost btn-sm" title="Descendre ce bloc" onclick="Params.moveFin('${k}',1)" ${finPos(k) === finOrder.length - 1 ? 'disabled' : ''}>↓</button></div>`;
     App.mount(`
-      <div class="view-title" style="justify-content:center;text-align:center;position:relative;">
+      <div class="view-title" style="justify-content:center;text-align:center;">
         <div><h1>Paramètres</h1><span class="sub">réglages, données & sauvegardes</span></div>
-        <button class="btn-ghost btn-sm" style="position:absolute;right:0;top:0;flex:0 0 auto;" onclick="Params.toggleTheme()" title="Basculer thème clair / sombre">${Theme.get() === 'dark' ? '☀️ Mode clair' : '🌙 Mode sombre'}</button>
       </div>
 
       <details class="fold card params-fold" ${this._financeOpen ? 'open' : ''} ontoggle="Params._financeOpen=this.open">
