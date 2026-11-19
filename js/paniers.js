@@ -646,9 +646,10 @@ const Paniers = {
     const gs = b.gram / n;
     return c.mode === 'gram' ? 1 - gs : gs;
   },
-  /* Rentabilité d'un produit = marge laissée par euro vendu (1 − 1/coeff), sur une échelle FIXE (Antho 2026-11-19) :
-     coeff 1,4 ou moins → 0 ; 2 → 0,4 ; 2,6 → 0,63 ; 5 et plus → 1. Avant : coeff ÷ plus haut coeff du stock → un seul produit à coeff 12 écrasait tous les écarts. */
-  _marginScore(coeff) { return coeff > 0 ? Math.max(0, Math.min(1, ((1 - 1 / coeff) - 0.3) / 0.5)) : 0; },
+  /* Rentabilité d'un produit = marge laissée par euro vendu (1 − 1/coeff) = 1 − coût par euro affiché, sur une échelle FIXE (Antho 2026-11-19) :
+     coeff 1,4 ou moins → 0 ; 2 → 0,29 ; 2,6 → 0,44 ; 5 → 0,71 ; 12 → 0,88. Sans plafond : pour un lot à gagner, un coeff 12 coûte moins à offrir qu'un 5.
+     Avant : coeff ÷ plus haut coeff du stock → un seul produit à coeff 12 écrasait tous les écarts. */
+  _marginScore(coeff) { return coeff > 0 ? Math.max(0, Math.min(1, ((1 - 1 / coeff) - 0.3) / 0.7)) : 0; },
   _itemScore(c, usedProducts, usedMeats, weights, mult) {
     const dluoScore = this._dluoScore(c.daysLeft);
     const coeffScore = this._marginScore(c.coeff);

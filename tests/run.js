@@ -692,8 +692,8 @@ eq('39g stats : coeff de toute la mastication', run(`const m39g = Stats._salesAg
 run(`Store.state.sales = [];`);
 // 2026-11-19 : coeff du panier pondéré par les euros — trachée 1 € coeff 7 + sprat 6 € coeff 1,6 → 7 ÷ (1/7 + 6/1,6) = 7 ÷ 3,893 = 1,80 (et non 4,3)
 eq('39h coeff du panier pondéré par les euros', run(`Paniers._avgCoeff([{ price: 1, qty: 1, coeff: 7 }, { price: 6, qty: 1, coeff: 1.6 }])`), 7 / (1 / 7 + 6 / 1.6));
-// note « rentabilité » à échelle fixe : coeff 1,4 → 0 ; 2 → 0,4 ; 5 → 1 ; 12 → 1 (un coeff extrême ne vaut pas plus qu'un 5)
-eq('39i note de rentabilité', run(`[1.4, 2, 5, 12].map(k => Math.round(Paniers._marginScore(k) * 100) / 100)`), [0, 0.4, 1, 1]);
+// note « rentabilité » = 1 − coût par euro affiché, échelle fixe : coeff 1,4 → 0 ; 2 → (0,5 − 0,3) ÷ 0,7 = 0,29 ; 5 → 0,71 ; 12 → 0,88
+eq('39i note de rentabilité', run(`[1.4, 2, 5, 12].map(k => Math.round(Paniers._marginScore(k) * 100) / 100)`), [0, 0.29, 0.71, 0.88]);
 
 /* ══════════ 6. DEUX APPAREILS : numéros de version, rien n'est écrasé ══════════ */
 /* Fausse base qui applique les mêmes règles que la fonction SQL app_state_put_many (voir supabase_versions_2026-11-16.sql). */
