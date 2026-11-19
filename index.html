@@ -1,20 +1,20 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Touffu Gestion â€” Stock & Prix</title>
+  <title>Touffu Gestion — Stock & Prix</title>
   <link rel="stylesheet" href="css/style.css?v=20261119y">
-  <!-- BibliothÃ¨ques en version figÃ©e, hÃ©bergÃ©es dans l'appli (js/vendor/) : plus aucun script chargÃ© depuis Internet (audit 2026-11-16, S5) -->
+  <!-- Bibliothèques en version figée, hébergées dans l'appli (js/vendor/) : plus aucun script chargé depuis Internet (audit 2026-11-16, S5) -->
   <script src="js/vendor/supabase-2.119.0.js"></script>
   <script src="js/vendor/chart-4.6.1.js"></script>
 </head>
 <body>
 
-  <!-- Ã‰cran de connexion (mode Supabase uniquement) -->
+  <!-- Écran de connexion (mode Supabase uniquement) -->
   <div id="loginScreen" class="login-wrap" style="display:none;">
     <div class="login-card">
-      <div class="logo">Touffu <small>GESTION Â· STOCK & PRIX</small></div>
+      <div class="logo">Touffu <small>GESTION · STOCK & PRIX</small></div>
       <div class="fg mt"><label>Email</label><input type="email" id="loginEmail" autocomplete="username"></div>
       <div class="fg"><label>Mot de passe</label>
         <div style="position:relative">
@@ -24,7 +24,7 @@
       </div>
       <button class="btn-cta" id="loginBtn" style="width:100%;">Se connecter</button>
       <p class="muted mt" id="loginMsg"></p>
-      <p class="mt" style="text-align:center"><a href="#" id="forgotLink" style="font-size:13px;color:var(--caramel);text-decoration:none;border-bottom:1px dotted var(--caramel)">Mot de passe oubliÃ©Â ?</a></p>
+      <p class="mt" style="text-align:center"><a href="#" id="forgotLink" style="font-size:13px;color:var(--caramel);text-decoration:none;border-bottom:1px dotted var(--caramel)">Mot de passe oublié ?</a></p>
     </div>
   </div>
 
@@ -32,15 +32,15 @@
   <div id="appScreen" class="app" style="display:none;">
     <nav class="topnav" id="sideNav">
       <div class="topnav-inner" id="topnavInner">
-        <div class="topnav-brand" onclick="App.toggleVisitMode()" title="Masquer / afficher les donnÃ©es sensibles"><span class="logo">Touffu</span><small>GESTION</small><span class="visit-eye" id="visitEye"></span></div>
+        <div class="topnav-brand" onclick="App.toggleVisitMode()" title="Masquer / afficher les données sensibles"><span class="logo">Touffu</span><small>GESTION</small><span class="visit-eye" id="visitEye"></span></div>
       </div>
     </nav>
     <main class="main" id="main"></main>
   </div>
 
   <div id="scrollFab" class="scroll-fab" style="display:none;">
-    <button id="scrollUpBtn" title="Remonter en haut" onclick="window.scrollTo({top:0,behavior:'smooth'})">â–²</button>
-    <button id="scrollDownBtn" title="Descendre en bas" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">â–¼</button>
+    <button id="scrollUpBtn" title="Remonter en haut" onclick="window.scrollTo({top:0,behavior:'smooth'})">▲</button>
+    <button id="scrollDownBtn" title="Descendre en bas" onclick="window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})">▼</button>
   </div>
 
   <div id="toast"></div>
