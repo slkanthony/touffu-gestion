@@ -2138,7 +2138,12 @@ const Paniers = {
   setAllGras(all) { this.grasInclude = all ? ['non','peu','moyen','gras'] : []; this.render(); },
   setGrasOpen(v) { this.grasOpen = v; },
 
+  /* Bouton « Compléter » : aussi remis à jour quand on tape le budget / la livraison (Antho 2026-11-19 : panier repris à 33,10 € pour 40 €, pas de bouton) */
+  _completeBtn() {
+    return this.basket.length && this._avail() - this.basket.reduce((a, b) => a + b.price * b.qty, 0) >= 0.05 ? `<button class="btn-ghost" onclick="Paniers.complete()" title="Garde tous les produits du panier et ajoute de quoi arriver au budget">＋ Compléter le panier</button>` : '';
+  },
   _updateKPI() {
+    { const cs = document.getElementById('pan_complete_slot'); if (cs) cs.innerHTML = this._completeBtn(); }
     const totalBasket = this.basket.reduce((a, b) => a + b.price * b.qty, 0);
     const available = this._avail();
     const remaining = available - totalBasket;
@@ -2376,7 +2381,7 @@ const Paniers = {
 
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-cta" onclick="Paniers.generate()">🎲 Générer le panier</button>
-          ${this.basket.length && this._avail() - this.basket.reduce((a, b) => a + b.price * b.qty, 0) >= 0.05 ? `<button class="btn-ghost" onclick="Paniers.complete()" title="Garde tous les produits du panier et ajoute de quoi arriver au budget">＋ Compléter le panier</button>` : ''}
+          <span id="pan_complete_slot" style="display:contents;">${this._completeBtn()}</span>
           ${this.basket.length || this.proposals ? `<button class="btn-ghost" onclick="Paniers.clearBasket()">🧹 Vider</button>` : ''}
         </div>
       </div>
