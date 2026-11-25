@@ -207,30 +207,32 @@ const Inventaire = {
   },
 
   _lotRowHTML(p, v, l, multiLot) {
-    const k    = this._lotKey(v.id, l.id);
-    const dk   = this._domKey(k);
-    const pool = this._pool();
-    const cur  = l[pool] || 0;
-    const qty  = k in this._draft.entries ? this._draft.entries[k] : cur;
+    const k     = this._lotKey(v.id, l.id);
+    const dk    = this._domKey(k);
+    const pool  = this._pool();
+    const cur   = l[pool] || 0;
+    const qty   = k in this._draft.entries ? this._draft.entries[k] : cur;
     const delta = qty - cur;
     const touched = this._draft.touched.has(k);
 
-    const lotBadge = l.lotNumber
-      ? `<span class="muted" style="font-size:.8em;margin-left:4px;">lot ${U.esc(l.lotNumber)}</span>`
-      : '';
-    const dluoBadge = l.dluo
-      ? `<span class="muted" style="font-size:.8em;margin-left:4px;">${U.esc(l.dluo)}</span>`
-      : '';
+    const varLabel = U.esc(Pricing.labelVariant(v));
+    const lotInfo  = [l.lotNumber ? 'Lot ' + U.esc(l.lotNumber) : '', l.dluo || ''].filter(Boolean).join(' · ');
     const multiAlert = multiLot && !touched
-      ? `<span class="badge warn" style="font-size:.78em;padding:1px 5px;" title="Plusieurs lots — vérifie chacun">${U.icon('triangle-alert',{size:.8})} multi-lot</span>`
+      ? `<span class="badge warn" style="font-size:.75em;padding:2px 6px;">${U.icon('triangle-alert',{size:.8})} multi-lot</span>`
       : '';
-    const deltaEl = `<span id="${dk}_d" class="muted" style="font-size:.82em;min-width:38px;text-align:right;${touched ? (delta>0?'color:var(--ok)':delta<0?'color:var(--alerte)':'') : ''}">${touched ? ((delta>0?'+':'')+delta||'±0') : ''}</span>`;
+    const deltaColor = delta > 0 ? 'var(--ok)' : delta < 0 ? 'var(--alerte)' : 'var(--gris)';
+    const deltaText  = touched ? (delta > 0 ? '+' : '') + (delta !== 0 ? delta : '±0') : '';
 
-    return `<div class="frow" style="gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid var(--ligne);">
-      <span style="flex:1;font-size:.88em;">${U.esc(Pricing.labelVariant(v))}${lotBadge}${dluoBadge}${multiAlert}</span>
-      <input id="${dk}" type="number" min="0" style="width:68px;text-align:center;" value="${qty}"
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--ligne);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:1em;font-weight:600;line-height:1.2;">${varLabel} ${multiAlert}</div>
+        ${lotInfo ? `<div class="muted" style="font-size:.78em;margin-top:2px;">${lotInfo}</div>` : ''}
+      </div>
+      <span id="${dk}_d" style="font-size:.88em;font-weight:600;min-width:36px;text-align:right;color:${deltaColor};">${deltaText}</span>
+      <input id="${dk}" type="number" min="0"
+        style="width:76px;height:44px;text-align:center;font-size:1.1em;border-radius:8px;border:2px solid var(--ligne);background:var(--fond);color:var(--texte);flex-shrink:0;"
+        value="${qty}"
         oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
-      ${deltaEl}
     </div>`;
   },
 
@@ -241,31 +243,31 @@ const Inventaire = {
       return lots.map(l => this._lotRowHTML(p, v, l, lots.length > 1));
     }).join('');
     if (!rows) return '';
-    return `<div style="margin-bottom:12px;">
-      <div style="font-size:.85em;font-weight:600;margin-bottom:4px;color:var(--caramel);">${U.esc(p.name)}${p.meatType ? ' <span style="font-weight:400;color:var(--gris);">'+U.esc(p.meatType)+'</span>' : ''}</div>
+    return `<div style="background:var(--fond-carte);border:1px solid var(--ligne);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+      <div style="font-size:.95em;font-weight:700;color:var(--caramel);padding-bottom:6px;border-bottom:1px solid var(--ligne);margin-bottom:2px;">${U.esc(p.name)}</div>
       ${rows}
     </div>`;
   },
 
   _sectionHTML(id, title, inner, count) {
     if (!inner.trim() || !count) return '';
-    const open = this._secOpen[id] !== false; // ouvert par défaut
-    return `<details class="fold card" ${open?'open':''} style="margin-bottom:8px;" ontoggle="Inventaire._secOpen['${id}']=this.open">
-      <summary style="font-weight:600;">${title} <span class="muted" style="font-weight:400;">(${count} produit${count>1?'s':''})</span></summary>
-      <div class="fold-body">${inner}</div>
+    const open = this._secOpen[id] !== false;
+    return `<details class="fold card" ${open?'open':''} style="margin-bottom:10px;padding:0;" ontoggle="Inventaire._secOpen['${id}']=this.open">
+      <summary style="font-weight:700;font-size:1.05em;padding:12px 14px;border-radius:var(--radius);">${title} <span class="muted" style="font-weight:400;font-size:.85em;">${count} produit${count>1?'s':''}</span></summary>
+      <div style="padding:0 10px 10px;">${inner}</div>
     </details>`;
   },
 
   _toolbar() {
     const count = this._countUntouched();
     const badge = count > 0
-      ? `<span class="badge warn" style="font-size:.85em;">${U.icon('triangle-alert',{size:.85})} ${count} non renseigné${count>1?'s':''}</span>`
-      : `<span class="badge ok" style="font-size:.85em;">${U.icon('circle-check',{size:.85})} Tout renseigné</span>`;
-    return `<div class="card" style="padding:10px 16px;margin-bottom:12px;">
-      <div class="frow" style="gap:8px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-ghost btn-sm" onclick="Inventaire.close()">← Retour au stock</button>
-        <span id="inv-untouched" style="margin-left:auto;">${badge}</span>
-        <button class="btn-cta btn-sm" onclick="Inventaire.validate()">${U.icon('clipboard-list',{size:.9})} Valider l'inventaire</button>
+      ? `<span class="badge warn">${U.icon('triangle-alert',{size:.9})} ${count} non renseigné${count>1?'s':''}</span>`
+      : `<span class="badge ok">${U.icon('circle-check',{size:.9})} Tout renseigné</span>`;
+    return `<div class="card" style="padding:10px 14px;margin-bottom:14px;position:sticky;top:0;z-index:50;background:var(--fond-carte);">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="Inventaire.close()" style="white-space:nowrap;">← Retour</button>
+        <span id="inv-untouched" style="flex:1;text-align:center;">${badge}</span>
+        <button class="btn-cta btn-sm" onclick="Inventaire.validate()" style="white-space:nowrap;">${U.icon('clipboard-list',{size:.9})} Valider</button>
       </div>
     </div>`;
   },
@@ -290,9 +292,8 @@ const Inventaire = {
       : '';
 
     App.mount(`
-      <div class="view-title">
-        <h1>${U.icon('clipboard-list')} Inventaire stock événement</h1>
-        <span class="sub">brouillon — aucune modification avant validation</span>
+      <div class="view-title" style="padding-bottom:4px;">
+        <h1 style="font-size:1.3em;">${U.icon('clipboard-list')} Inventaire événement</h1>
       </div>
       ${this._toolbar()}
       <div id="invBody">
@@ -321,9 +322,8 @@ const Inventaire = {
     }).join('');
 
     App.mount(`
-      <div class="view-title">
-        <h1>${U.icon('clipboard-list')} Inventaire stock général</h1>
-        <span class="sub">brouillon — aucune modification avant validation</span>
+      <div class="view-title" style="padding-bottom:4px;">
+        <h1 style="font-size:1.3em;">${U.icon('clipboard-list')} Inventaire général</h1>
       </div>
       ${this._toolbar()}
       <div id="invBody">

@@ -39,7 +39,7 @@ const Stock = {
     const route = 'stock/' + this.tab + (this.focusId ? '/' + this.focusId + (this.focusVid ? '/' + this.focusVid : '') : '');
     if (location.hash.replace(/^#\/?/, '') !== route) history.replaceState(null, '', '#/' + route);
     App.mount(`
-      <div class="view-title"><h1>Stock</h1><span class="sub">général & événement · lots, DLUO, seuils</span><button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="Inventaire.open()" title="Faire un inventaire rapide">${U.icon('clipboard-list',{size:.95})} Inventaire</button></div>
+      <div class="view-title"><h1>Stock</h1><span class="sub">général & événement · lots, DLUO, seuils</span></div>
       <div class="tabs-seg">
         ${U.seg([
           ['mastication', '🥩', 'Mastication (' + Store.state.stockM.length + ')'],
@@ -681,6 +681,7 @@ const Stock = {
           ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? t : t.btn; })()}
           ${f.pastMode ? `<button class="btn-cta btn-sm fit" onclick="Stock.togglePastMode()" title="Revenir à l'affichage du stock">🏷️ Mode pastilles ✖</button>` : U.seg([{ l: '▼ Tout déplier', js: 'Stock.foldAll(false)' }, { l: '▲ Tout réduire', js: 'Stock.foldAll(true)' }], { sm: true })}
           <span class="muted" style="margin-left:auto;">${list.length} produit(s) · ${list.reduce((a,p)=>a+p.variants.reduce((b,v)=>b+v.lots.reduce((c,l)=>c+U.num(l.qtyGeneral)+U.num(l.qtyEvent),0),0),0).toFixed(0)} unités en stock</span>
+          <button class="btn btn-ghost btn-sm" onclick="Inventaire.open()" title="Inventaire rapide">${U.icon('clipboard-list',{size:.95})} Inventaire</button>
         </div>
       </div>
       ${(() => { const t = this.tagFilterHTML(); return typeof t === 'string' ? '' : `<div class="card" style="padding:12px 16px;">${t.panel}</div>`; })()}
