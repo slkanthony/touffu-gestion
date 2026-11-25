@@ -207,7 +207,7 @@ const Inventaire = {
     return k in this._draft.entries ? this._draft.entries[k] : (l[this._pool()] || 0);
   },
 
-  _lotRowHTML(p, v, l, multiLot, rowIdx) {
+  _lotRowHTML(p, v, l, lotTotal, lotIdx, rowIdx) {
     const k       = this._lotKey(v.id, l.id);
     const dk      = this._domKey(k);
     const pool    = this._pool();
@@ -217,10 +217,9 @@ const Inventaire = {
     const bgRow   = rowIdx % 2 === 0 ? 'var(--fond-carte)' : 'var(--fond)';
 
     const varLabel = U.esc(Pricing.labelVariant(v));
-    const lotInfo  = [l.lotNumber ? 'Lot ' + U.esc(l.lotNumber) : '', l.dluo || ''].filter(Boolean).join(' · ');
-    const multiAlert = multiLot
-      ? ` <span class="badge warn" style="font-size:.68em;padding:1px 4px;">${U.icon('triangle-alert',{size:.7})}</span>`
-      : '';
+    const lotNumLabel = lotTotal > 1 ? `Lot ${lotIdx+1}/${lotTotal}` : '';
+    const lotRef   = l.lotNumber ? (lotTotal > 1 ? 'Réf. ' : 'Lot ') + U.esc(l.lotNumber) : '';
+    const lotInfo  = [lotNumLabel, lotRef, l.dluo || ''].filter(Boolean).join(' · ');
 
     const delta = touched && k in this._draft.entries ? this._draft.entries[k] - cur : null;
     const dHtml = delta !== null && delta !== 0
@@ -231,17 +230,17 @@ const Inventaire = {
 
     return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bgRow};border-top:1px solid var(--ligne);">
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:.95em;line-height:1.3;">${varLabel}${multiAlert}</div>
-        ${lotInfo ? `<div class="muted" style="font-size:.78em;margin-top:1px;">${lotInfo}</div>` : ''}
+        <div style="font-weight:600;font-size:.95em;line-height:1.3;">${varLabel}</div>
+        ${lotInfo ? `<div class="muted" style="font-size:.78em;margin-top:2px;">${lotInfo}</div>` : ''}
       </div>
       <button id="${dk}_btn" onclick="Inventaire.confirmQty('${k}')"
         title="Valider : quantité correcte (${cur})"
-        style="flex-shrink:0;background:var(--ok);color:#fff;border:none;border-radius:6px;min-width:46px;height:40px;cursor:pointer;font-size:.88em;font-weight:700;padding:0 8px;white-space:nowrap;${btnOpacity}">
+        style="flex-shrink:0;background:var(--ok);color:#fff;border:none;border-radius:6px;min-width:46px;height:46px;cursor:pointer;font-size:.88em;font-weight:700;padding:0 8px;white-space:nowrap;${btnOpacity}">
         ${U.icon('check',{size:.85})} ${cur}
       </button>
       <div style="position:relative;flex-shrink:0;">
         <input id="${dk}" type="number" min="0" placeholder="—"
-          style="width:70px;height:46px;text-align:center;font-size:1.2em;font-weight:700;border-radius:8px;border:2px solid ${inputBorder};background:var(--fond);color:var(--texte);"
+          style="width:82px;height:52px;text-align:center;font-size:1.3em;font-weight:700;border-radius:8px;border:2px solid ${inputBorder};background:var(--fond);color:var(--texte);"
           value="${qty}"
           oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
         ${dHtml}
@@ -254,12 +253,20 @@ const Inventaire = {
     const rows = (p.variants || []).flatMap(v => {
       const lots = this._lotsOfType(v);
       if (!lots.length) return [];
-      return lots.map(l => this._lotRowHTML(p, v, l, lots.length > 1, rowIdx++));
+      const result = [];
+      if (lots.length > 1) {
+        result.push(`<div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:1px solid var(--ligne);background:var(--th-bg);color:var(--warn);">
+          ${U.icon('triangle-alert',{size:.85})}
+          <span style="font-size:.82em;font-weight:600;">${U.esc(Pricing.labelVariant(v))} — ${lots.length} lots en stock, renseigner chaque ligne</span>
+        </div>`);
+      }
+      result.push(...lots.map((l, li) => this._lotRowHTML(p, v, l, lots.length, li, rowIdx++)));
+      return result;
     }).join('');
     if (!rows) return '';
-    return `<div style="border:1px solid var(--ligne);border-radius:10px;margin-bottom:10px;overflow:hidden;">
-      <div style="background:var(--th-bg);padding:8px 14px;border-bottom:1px solid var(--ligne);">
-        <span style="font-weight:700;font-size:.92em;text-transform:uppercase;letter-spacing:.04em;">${U.esc(p.name)}</span>
+    return `<div style="border:1px solid var(--caramel);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+      <div style="background:var(--th-bg);padding:9px 14px;border-bottom:1px solid var(--caramel);text-align:center;">
+        <span style="font-weight:700;font-size:.92em;text-transform:uppercase;letter-spacing:.04em;color:var(--caramel);">${U.esc(p.name)}</span>
       </div>
       ${rows}
     </div>`;
