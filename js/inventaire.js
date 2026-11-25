@@ -181,7 +181,7 @@ const Inventaire = {
   },
 
   start(type) {
-    this._draft   = { type, entries: {}, touched: new Set() };
+    this._draft   = { type, entries: {}, touched: new Set(), filters: { q: '', meats: new Set() }, excluded: new Set() };
     this._secOpen = {};
     this._saveDraft();
     this.render();
@@ -218,7 +218,11 @@ const Inventaire = {
     const varLabel    = U.esc(Pricing.labelVariant(v));
     const lotNumLabel = lotTotal > 1 ? `Lot ${lotIdx+1}/${lotTotal}` : '';
     const lotRef      = l.lotNumber ? (lotTotal > 1 ? 'Réf. ' : 'Lot ') + U.esc(l.lotNumber) : '';
-    const lotInfo     = [lotNumLabel, lotRef, l.dluo || ''].filter(Boolean).join(' · ');
+    const lastInvStr  = l.lastInv ? (() => {
+      const d = new Date(l.lastInv);
+      return 'Inv. ' + d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' à ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    })() : '';
+    const lotInfo     = [lotNumLabel, lotRef, l.dluo || '', lastInvStr].filter(Boolean).join(' · ');
 
     const delta = touched && k in this._draft.entries ? this._draft.entries[k] - cur : null;
     const dHtml = delta !== null && delta !== 0
@@ -273,6 +277,116 @@ const Inventaire = {
       ${rows}
       <div style="height:5px;"></div>
     </div>`;
+  },
+
+  /* ───── Filtres & exclusions ───── */
+
+  _filtersHTML() {
+    const f    = this._draft.filters || { q: '', meats: new Set() };
+    const exc  = this._draft.excluded || new Set();
+    const pool = this._pool();
+
+    const hasPool = p => (p.variants||[]).some(v => (v.lots||[]).some(l => (l[pool]||0) > 0));
+    const allMeats = [...new Set(
+      Store.state.stockM.filter(hasPool).map(p => p.meatType || 'Autre')
+    )].sort((a,b) => a.localeCompare(b,'fr'));
+
+    // Viandes avec lastInv < 30 jours
+    const now   = Date.now();
+    const MS_30 = 30 * 24 * 3600 * 1000;
+    const recentByMeat = {};
+    Store.state.stockM.filter(hasPool).forEach(p => {
+      const m = p.meatType || 'Autre';
+      (p.variants||[]).forEach(v => (v.lots||[]).forEach(l => {
+        if (l.lastInv && (!recentByMeat[m] || l.lastInv > recentByMeat[m])) recentByMeat[m] = l.lastInv;
+      }));
+    });
+    const recentMeats = Object.entries(recentByMeat)
+      .filter(([,ts]) => (now - ts) < MS_30)
+      .sort(([,a],[,b]) => b - a);
+
+    // Boutons filtre viande (hors exclus)
+    const meatBtns = allMeats.filter(m => !exc.has(m)).map(m => {
+      const on = f.meats.has(m);
+      return `<button onclick="Inventaire._toggleMeat('${U.esc(m)}')"
+        style="border:1px solid ${on?'var(--caramel)':'var(--ligne)'};border-radius:20px;padding:3px 10px;font-size:.82em;cursor:pointer;white-space:nowrap;background:${on?'var(--caramel)':'var(--fond)'};color:${on?'#fff':'var(--texte)'};">
+        ${U.esc(m)}
+      </button>`;
+    }).join('');
+
+    // Badges exclusion active
+    const exclBadges = [...exc].map(m =>
+      `<button onclick="Inventaire._toggleExclude('${U.esc(m)}')" title="Réintégrer ${U.esc(m)}"
+        style="border:none;border-radius:20px;padding:3px 9px;font-size:.80em;cursor:pointer;white-space:nowrap;background:var(--alerte);color:#fff;">
+        ${U.icon('x',{size:.75})} ${U.esc(m)}
+      </button>`
+    ).join('');
+
+    // Section viandes inventoriées ce mois
+    const recentHTML = recentMeats.length ? `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ligne);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span class="muted" style="font-size:.78em;white-space:nowrap;">Inventoriés ce mois :</span>
+        ${recentMeats.map(([m, ts]) => {
+          const d  = new Date(ts);
+          const ds = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+          const exl = exc.has(m);
+          return `<button onclick="Inventaire._toggleExclude('${U.esc(m)}')" title="${exl?'Réintégrer':'Exclure'} ${U.esc(m)}"
+            style="border:1px solid ${exl?'var(--ok)':'var(--warn)'};border-radius:20px;padding:3px 9px;font-size:.80em;cursor:pointer;white-space:nowrap;background:${exl?'var(--ok)':'transparent'};color:${exl?'#fff':'var(--warn)'};">
+            ${exl ? U.icon('check',{size:.75})+' ' : ''} ${U.esc(m)} · ${ds}
+          </button>`;
+        }).join('')}
+      </div>` : '';
+
+    return `<div class="card" style="padding:10px 12px;margin-bottom:10px;">
+      <input id="inv-search" type="text" placeholder="Rechercher un produit…" value="${U.esc(f.q)}"
+        style="width:100%;box-sizing:border-box;${allMeats.length > 1 ? 'margin-bottom:8px;' : ''}"
+        oninput="Inventaire._setQ(this.value);U.refocus('inv-search')">
+      ${allMeats.length > 1 ? `<div style="display:flex;gap:5px;flex-wrap:wrap;">${meatBtns}</div>` : ''}
+      ${exclBadges ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;align-items:center;"><span class="muted" style="font-size:.78em;">Exclus :</span> ${exclBadges}</div>` : ''}
+      ${recentHTML}
+    </div>`;
+  },
+
+  _historyHTML() {
+    const hist = (Store.state.settings.inventoryHistory || []).slice(0, 20);
+    if (!hist.length) return '';
+    const open = this._secOpen['_hist'] || false;
+    const rows = hist.map(h => {
+      const d  = new Date(h.date);
+      const ds = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' à ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+      const typeLabel = h.type === 'qtyEvent' ? 'Événement' : 'Général';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--ligne);font-size:.85em;flex-wrap:wrap;">
+        <span style="white-space:nowrap;font-weight:600;">${ds}</span>
+        <span class="badge" style="font-size:.8em;">${typeLabel}</span>
+        <span style="flex:1;min-width:0;">${(h.meatTypes||[]).join(', ')}</span>
+        <span class="muted" style="white-space:nowrap;">${h.count} ajust.</span>
+      </div>`;
+    }).join('');
+    return `<details class="fold card" style="margin-top:10px;padding:0;" ${open?'open':''} ontoggle="Inventaire._secOpen['_hist']=this.open">
+      <summary style="padding:10px 14px;font-weight:700;font-size:.95em;">${U.icon('list',{size:.9})} Historique des inventaires</summary>
+      <div style="padding:4px 14px 10px;">${rows}</div>
+    </details>`;
+  },
+
+  _toggleMeat(meat) {
+    if (!this._draft) return;
+    const meats = this._draft.filters.meats;
+    if (meats.has(meat)) meats.delete(meat); else meats.add(meat);
+    this._saveDraft(); this.render();
+  },
+
+  _setQ(q) {
+    if (!this._draft) return;
+    this._draft.filters.q = q;
+    this._saveDraft(); this.render();
+  },
+
+  _toggleExclude(meat) {
+    if (!this._draft) return;
+    const exc = this._draft.excluded;
+    if (exc.has(meat)) exc.delete(meat);
+    else { exc.add(meat); this._draft.filters.meats.delete(meat); }
+    this._saveDraft(); this.render();
   },
 
   _sectionHTML(id, title, inner, count) {
@@ -330,11 +444,16 @@ const Inventaire = {
   },
 
   _renderGeneral() {
-    const pool    = 'qtyGeneral';
-    const hasGen  = p => (p.variants || []).some(v => (v.lots || []).some(l => (l[pool] || 0) > 0));
-    const prods   = Store.state.stockM.filter(hasGen);
+    const pool   = 'qtyGeneral';
+    const f      = this._draft.filters || { q: '', meats: new Set() };
+    const exc    = this._draft.excluded || new Set();
+    const hasGen = p => (p.variants||[]).some(v => (v.lots||[]).some(l => (l[pool]||0) > 0));
+    let prods    = Store.state.stockM.filter(hasGen);
 
-    // Grouper par type de viande
+    if (exc.size)              prods = prods.filter(p => !exc.has(p.meatType || 'Autre'));
+    if (f.meats && f.meats.size) prods = prods.filter(p => f.meats.has(p.meatType || 'Autre'));
+    if (f.q && f.q.trim())    prods = prods.filter(p => U.has(p.name, f.q));
+
     const byMeat = {};
     prods.forEach(p => {
       const m = p.meatType || 'Autre';
@@ -352,9 +471,11 @@ const Inventaire = {
         <h1 style="font-size:1.3em;">${U.icon('clipboard-list')} Inventaire général</h1>
       </div>
       ${this._toolbar()}
+      ${this._filtersHTML()}
       <div id="invBody">
-        ${sections || '<div class="card empty" style="padding:16px;">Aucun stock général pour le moment.</div>'}
-      </div>`);
+        ${sections || '<div class="card empty" style="padding:16px;">Aucun produit ne correspond aux filtres.</div>'}
+      </div>
+      ${this._historyHTML()}`);
   },
 
   /* ───── Persistance brouillon (localStorage) ───── */
@@ -362,8 +483,13 @@ const Inventaire = {
   _saveDraft() {
     if (!this._draft) { this._clearDraft(); return; }
     try {
+      const f = this._draft.filters || { q: '', meats: new Set() };
       localStorage.setItem('touffu_inv_draft', JSON.stringify({
-        type: this._draft.type, entries: this._draft.entries, touched: [...this._draft.touched]
+        type: this._draft.type,
+        entries: this._draft.entries,
+        touched: [...this._draft.touched],
+        filters: { q: f.q || '', meats: [...(f.meats || [])] },
+        excluded: [...(this._draft.excluded || [])]
       }));
     } catch(e) {}
   },
@@ -373,7 +499,13 @@ const Inventaire = {
       if (!raw) return false;
       const d = JSON.parse(raw);
       if (!d || !d.type) return false;
-      this._draft   = { type: d.type, entries: d.entries || {}, touched: new Set(d.touched || []) };
+      this._draft = {
+        type: d.type,
+        entries: d.entries || {},
+        touched: new Set(d.touched || []),
+        filters: { q: (d.filters || {}).q || '', meats: new Set((d.filters || {}).meats || []) },
+        excluded: new Set(d.excluded || [])
+      };
       this._secOpen = {};
       return true;
     } catch(e) { return false; }
@@ -508,9 +640,16 @@ const Inventaire = {
   },
 
   _applyChanges(changes, pool) {
-    const snaps = changes.map(c => ({ pid: c.p.id, varId: c.v.id, lotId: c.l.id, old: c.l[pool] || 0, qty: c.qty }));
-    changes.forEach(c => { c.l[pool] = c.qty; });
+    const now = Date.now();
+    changes.forEach(c => { c.l[pool] = c.qty; c.l.lastInv = now; });
+    // Historique
+    const S = Store.state.settings;
+    if (!S.inventoryHistory) S.inventoryHistory = [];
+    const meatTypes = [...new Set(changes.map(c => c.p.meatType || 'Autre'))];
+    S.inventoryHistory.unshift({ date: now, type: pool, meatTypes, count: changes.length });
+    if (S.inventoryHistory.length > 20) S.inventoryHistory.length = 20;
     Store.save('stockM');
+    Store.save('settings');
     Store.log('inventaire', `Inventaire ${pool === 'qtyEvent' ? 'événement' : 'général'} — ${changes.length} ajustement${changes.length>1?'s':''}`, null);
     this._clearDraft();
     U.closeModal();
