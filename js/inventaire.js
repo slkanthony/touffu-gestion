@@ -207,40 +207,39 @@ const Inventaire = {
     return k in this._draft.entries ? this._draft.entries[k] : (l[this._pool()] || 0);
   },
 
-  _lotRowHTML(p, v, l, lotTotal, lotIdx, rowIdx) {
+  _lotRowHTML(p, v, l, lotTotal, lotIdx) {
     const k       = this._lotKey(v.id, l.id);
     const dk      = this._domKey(k);
     const pool    = this._pool();
     const cur     = l[pool] || 0;
     const touched = this._draft.touched.has(k);
     const qty     = touched && k in this._draft.entries ? this._draft.entries[k] : '';
-    const bgRow   = rowIdx % 2 === 0 ? 'var(--fond-carte)' : 'var(--fond)';
 
-    const varLabel = U.esc(Pricing.labelVariant(v));
+    const varLabel    = U.esc(Pricing.labelVariant(v));
     const lotNumLabel = lotTotal > 1 ? `Lot ${lotIdx+1}/${lotTotal}` : '';
-    const lotRef   = l.lotNumber ? (lotTotal > 1 ? 'Réf. ' : 'Lot ') + U.esc(l.lotNumber) : '';
-    const lotInfo  = [lotNumLabel, lotRef, l.dluo || ''].filter(Boolean).join(' · ');
+    const lotRef      = l.lotNumber ? (lotTotal > 1 ? 'Réf. ' : 'Lot ') + U.esc(l.lotNumber) : '';
+    const lotInfo     = [lotNumLabel, lotRef, l.dluo || ''].filter(Boolean).join(' · ');
 
     const delta = touched && k in this._draft.entries ? this._draft.entries[k] - cur : null;
     const dHtml = delta !== null && delta !== 0
-      ? `<span style="position:absolute;top:-8px;right:-4px;font-size:.68em;font-weight:700;color:${delta>0?'var(--ok)':'var(--alerte)'};background:${bgRow};border-radius:3px;padding:0 3px;line-height:1.4;">${delta>0?'+':''}${delta}</span>`
+      ? `<span style="position:absolute;top:-8px;right:-4px;font-size:.68em;font-weight:700;color:${delta>0?'var(--ok)':'var(--alerte)'};background:var(--fond-carte);border-radius:3px;padding:0 3px;line-height:1.4;">${delta>0?'+':''}${delta}</span>`
       : `<span id="${dk}_d" style="display:none;position:absolute;top:-8px;right:-4px;"></span>`;
     const inputBorder = touched ? 'var(--ok)' : 'var(--caramel)';
     const btnOpacity  = touched && delta === 0 ? 'opacity:.45;' : '';
 
-    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bgRow};border-top:1px solid var(--ligne);">
+    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 10px 10px 12px;margin:5px 10px;border-radius:8px;background:var(--fond);box-shadow:0 1px 4px rgba(0,0,0,.18);">
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;font-size:.95em;line-height:1.3;">${varLabel}</div>
         ${lotInfo ? `<div class="muted" style="font-size:.78em;margin-top:2px;">${lotInfo}</div>` : ''}
       </div>
       <button id="${dk}_btn" onclick="Inventaire.confirmQty('${k}')"
         title="Valider : quantité correcte (${cur})"
-        style="flex-shrink:0;background:var(--ok);color:#fff;border:none;border-radius:6px;min-width:46px;height:46px;cursor:pointer;font-size:.88em;font-weight:700;padding:0 8px;white-space:nowrap;${btnOpacity}">
+        style="flex-shrink:0;background:var(--ok);color:#fff;border:none;border-radius:6px;min-width:48px;height:48px;cursor:pointer;font-size:.88em;font-weight:700;padding:0 8px;white-space:nowrap;${btnOpacity}">
         ${U.icon('check',{size:.85})} ${cur}
       </button>
       <div style="position:relative;flex-shrink:0;">
         <input id="${dk}" type="number" min="0" placeholder="—"
-          style="width:82px;height:52px;text-align:center;font-size:1.3em;font-weight:700;border-radius:8px;border:2px solid ${inputBorder};background:var(--fond);color:var(--texte);"
+          style="width:92px;height:56px;text-align:center;font-size:1.35em;font-weight:700;border-radius:8px;border:2px solid ${inputBorder};background:var(--fond-carte);color:var(--texte);"
           value="${qty}"
           oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
         ${dHtml}
@@ -249,26 +248,30 @@ const Inventaire = {
   },
 
   _prodHTML(p, pool) {
-    let rowIdx = 0;
     const rows = (p.variants || []).flatMap(v => {
       const lots = this._lotsOfType(v);
       if (!lots.length) return [];
       const result = [];
       if (lots.length > 1) {
-        result.push(`<div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-top:1px solid var(--ligne);background:var(--th-bg);color:var(--warn);">
+        result.push(`<div style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--th-bg);color:var(--warn);">
           ${U.icon('triangle-alert',{size:.85})}
           <span style="font-size:.82em;font-weight:600;">${U.esc(Pricing.labelVariant(v))} — ${lots.length} lots en stock, renseigner chaque ligne</span>
         </div>`);
       }
-      result.push(...lots.map((l, li) => this._lotRowHTML(p, v, l, lots.length, li, rowIdx++)));
+      result.push(...lots.map((l, li) => this._lotRowHTML(p, v, l, lots.length, li)));
       return result;
     }).join('');
     if (!rows) return '';
-    return `<div style="border:1px solid var(--caramel);border-radius:10px;margin-bottom:10px;overflow:hidden;">
-      <div style="background:var(--th-bg);padding:9px 14px;border-bottom:1px solid var(--caramel);text-align:center;">
+    return `<div style="border:1px solid var(--ligne);border-left:4px solid var(--caramel);border-radius:10px;margin-bottom:12px;overflow:hidden;background:var(--fond-carte);">
+      <div style="background:var(--th-bg);padding:9px 14px;border-bottom:1px solid var(--ligne);text-align:center;">
         <span style="font-weight:700;font-size:.92em;text-transform:uppercase;letter-spacing:.04em;color:var(--caramel);">${U.esc(p.name)}</span>
       </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding:3px 10px 0;">
+        <span class="muted" style="font-size:.70em;text-align:center;min-width:48px;">Réf.</span>
+        <span class="muted" style="font-size:.70em;text-align:center;width:92px;">Inventaire</span>
+      </div>
       ${rows}
+      <div style="height:5px;"></div>
     </div>`;
   },
 
