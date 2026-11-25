@@ -183,6 +183,7 @@ const Inventaire = {
   start(type) {
     this._draft   = { type, entries: {}, touched: new Set() };
     this._secOpen = {};
+    this._saveDraft();
     this.render();
   },
 
@@ -206,54 +207,61 @@ const Inventaire = {
     return k in this._draft.entries ? this._draft.entries[k] : (l[this._pool()] || 0);
   },
 
-  _lotRowHTML(p, v, l, multiLot) {
-    const k      = this._lotKey(v.id, l.id);
-    const dk     = this._domKey(k);
-    const pool   = this._pool();
-    const cur    = l[pool] || 0;
-    const qty    = k in this._draft.entries ? this._draft.entries[k] : cur;
-    const delta  = qty - cur;
+  _lotRowHTML(p, v, l, multiLot, rowIdx) {
+    const k       = this._lotKey(v.id, l.id);
+    const dk      = this._domKey(k);
+    const pool    = this._pool();
+    const cur     = l[pool] || 0;
     const touched = this._draft.touched.has(k);
+    const qty     = touched && k in this._draft.entries ? this._draft.entries[k] : '';
+    const bgRow   = rowIdx % 2 === 0 ? 'var(--fond-carte)' : 'var(--fond)';
 
     const varLabel = U.esc(Pricing.labelVariant(v));
     const lotInfo  = [l.lotNumber ? 'Lot ' + U.esc(l.lotNumber) : '', l.dluo || ''].filter(Boolean).join(' · ');
     const multiAlert = multiLot
-      ? `<span class="badge warn" style="font-size:.72em;padding:1px 5px;vertical-align:middle;">${U.icon('triangle-alert',{size:.75})} multi-lot</span>`
+      ? ` <span class="badge warn" style="font-size:.68em;padding:1px 4px;">${U.icon('triangle-alert',{size:.7})}</span>`
       : '';
-    const deltaColor = delta > 0 ? 'var(--ok)' : 'var(--alerte)';
-    const deltaText  = touched && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
-    const dStyle = deltaText
-      ? `position:absolute;top:-8px;right:-4px;font-size:.72em;font-weight:700;color:${deltaColor};background:var(--fond-carte);border-radius:4px;padding:1px 3px;line-height:1;`
-      : `display:none;position:absolute;top:-8px;right:-4px;font-size:.72em;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1;`;
 
-    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--ligne);">
+    const delta = touched && k in this._draft.entries ? this._draft.entries[k] - cur : null;
+    const dHtml = delta !== null && delta !== 0
+      ? `<span style="position:absolute;top:-8px;right:-4px;font-size:.68em;font-weight:700;color:${delta>0?'var(--ok)':'var(--alerte)'};background:${bgRow};border-radius:3px;padding:0 3px;line-height:1.4;">${delta>0?'+':''}${delta}</span>`
+      : `<span id="${dk}_d" style="display:none;position:absolute;top:-8px;right:-4px;"></span>`;
+    const inputBorder = touched ? 'var(--ok)' : 'var(--caramel)';
+    const btnOpacity  = touched && delta === 0 ? 'opacity:.45;' : '';
+
+    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bgRow};border-top:1px solid var(--ligne);">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:1em;font-weight:600;line-height:1.3;">${varLabel} ${multiAlert}</div>
-        ${lotInfo ? `<div class="muted" style="font-size:.8em;margin-top:3px;">${lotInfo}</div>` : ''}
+        <div style="font-weight:600;font-size:.95em;line-height:1.3;">${varLabel}${multiAlert}</div>
+        ${lotInfo ? `<div class="muted" style="font-size:.78em;margin-top:1px;">${lotInfo}</div>` : ''}
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
-        <span class="muted" style="font-size:.75em;white-space:nowrap;">Stocké&nbsp;: ${cur}</span>
-        <div style="position:relative;">
-          <input id="${dk}" type="number" min="0"
-            style="width:80px;height:52px;text-align:center;font-size:1.3em;font-weight:700;border-radius:8px;border:2px solid var(--caramel);background:var(--fond);color:var(--texte);"
-            value="${qty}"
-            oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
-          <span id="${dk}_d" style="${dStyle}">${deltaText}</span>
-        </div>
+      <button id="${dk}_btn" onclick="Inventaire.confirmQty('${k}')"
+        title="Valider : quantité correcte (${cur})"
+        style="flex-shrink:0;background:var(--ok);color:#fff;border:none;border-radius:6px;min-width:46px;height:40px;cursor:pointer;font-size:.88em;font-weight:700;padding:0 8px;white-space:nowrap;${btnOpacity}">
+        ${U.icon('check',{size:.85})} ${cur}
+      </button>
+      <div style="position:relative;flex-shrink:0;">
+        <input id="${dk}" type="number" min="0" placeholder="—"
+          style="width:70px;height:46px;text-align:center;font-size:1.2em;font-weight:700;border-radius:8px;border:2px solid ${inputBorder};background:var(--fond);color:var(--texte);"
+          value="${qty}"
+          oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
+        ${dHtml}
       </div>
     </div>`;
   },
 
   _prodHTML(p, pool) {
+    let rowIdx = 0;
     const rows = (p.variants || []).flatMap(v => {
       const lots = this._lotsOfType(v);
       if (!lots.length) return [];
-      return lots.map(l => this._lotRowHTML(p, v, l, lots.length > 1));
+      return lots.map(l => this._lotRowHTML(p, v, l, lots.length > 1, rowIdx++));
     }).join('');
     if (!rows) return '';
-    return `<div style="background:var(--fond-carte);border:2px solid var(--ligne);border-radius:12px;margin-bottom:14px;overflow:hidden;">
-      <div style="text-align:center;padding:12px 14px 10px;border-bottom:2px solid var(--ligne);font-size:1.08em;font-weight:800;letter-spacing:.03em;text-transform:uppercase;">${U.esc(p.name)}</div>
-      <div style="padding:0 12px;">${rows}</div>
+    return `<div style="border:1px solid var(--ligne);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+      <div style="background:var(--th-bg);padding:8px 14px;border-bottom:1px solid var(--ligne);">
+        <span style="font-weight:700;font-size:.92em;text-transform:uppercase;letter-spacing:.04em;">${U.esc(p.name)}</span>
+      </div>
+      ${rows}
     </div>`;
   },
 
@@ -339,6 +347,46 @@ const Inventaire = {
       </div>`);
   },
 
+  /* ───── Persistance brouillon (localStorage) ───── */
+
+  _saveDraft() {
+    if (!this._draft) { this._clearDraft(); return; }
+    try {
+      localStorage.setItem('touffu_inv_draft', JSON.stringify({
+        type: this._draft.type, entries: this._draft.entries, touched: [...this._draft.touched]
+      }));
+    } catch(e) {}
+  },
+  _restoreDraft() {
+    try {
+      const raw = localStorage.getItem('touffu_inv_draft');
+      if (!raw) return false;
+      const d = JSON.parse(raw);
+      if (!d || !d.type) return false;
+      this._draft   = { type: d.type, entries: d.entries || {}, touched: new Set(d.touched || []) };
+      this._secOpen = {};
+      return true;
+    } catch(e) { return false; }
+  },
+  _clearDraft() { try { localStorage.removeItem('touffu_inv_draft'); } catch(e) {} },
+
+  /* ───── Validation d'une ligne (bouton vert) ───── */
+
+  confirmQty(key) {
+    if (!this._draft) return;
+    const [varId, lotId] = key.split(':');
+    const p = Store.state.stockM.find(p => (p.variants||[]).some(v => v.id === varId));
+    const v = p ? (p.variants||[]).find(v => v.id === varId) : null;
+    const l = v ? (v.lots||[]).find(l => l.id === lotId) : null;
+    if (!l) return;
+    const cur = l[this._pool()] || 0;
+    const inp = document.getElementById(this._domKey(key));
+    if (inp) inp.value = cur;
+    this.setQty(key, cur);
+    const btn = document.getElementById(this._domKey(key) + '_btn');
+    if (btn) btn.style.opacity = '.45';
+  },
+
   /* ───── Mise à jour en temps réel (sans re-render) ───── */
 
   setQty(key, val) {
@@ -378,6 +426,7 @@ const Inventaire = {
         ? `<span class="badge warn" style="font-size:.85em;">${U.icon('triangle-alert',{size:.85})} ${count} non renseigné${count>1?'s':''}</span>`
         : `<span class="badge ok" style="font-size:.85em;">${U.icon('circle-check',{size:.85})} Tout renseigné</span>`;
     }
+    this._saveDraft();
   },
 
   _countUntouched() {
@@ -453,6 +502,7 @@ const Inventaire = {
     changes.forEach(c => { c.l[pool] = c.qty; });
     Store.save('stockM');
     Store.log('inventaire', `Inventaire ${pool === 'qtyEvent' ? 'événement' : 'général'} — ${changes.length} ajustement${changes.length>1?'s':''}`, null);
+    this._clearDraft();
     U.closeModal();
     U.toast(`Inventaire appliqué — ${changes.length} lot${changes.length>1?'s':''} mis à jour.`);
     this.close();
@@ -460,6 +510,7 @@ const Inventaire = {
 
   close() {
     this._draft = null;
+    this._clearDraft();
     Stock.render();
   }
 };

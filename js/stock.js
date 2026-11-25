@@ -28,6 +28,11 @@ const Stock = {
   _faibleVariantsCache: [],
 
   render() {
+    // Inventaire en cours ? Restaurer depuis le brouillon (résiste au F5)
+    if (typeof Inventaire !== 'undefined') {
+      if (Inventaire._draft) return Inventaire.render();
+      if (!Inventaire._draft && Inventaire._restoreDraft && Inventaire._restoreDraft()) return Inventaire.render();
+    }
     // Compat : les anciens onglets « faible-total » / « faible-event » sont fusionnés dans
     // un seul onglet « faible » (3 boutons Général/Événement/Total). On remappe avant tout
     // rendu pour que l'état actif et l'URL soient corrects (anciens liens/KPI/hash).
