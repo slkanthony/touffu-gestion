@@ -207,32 +207,40 @@ const Inventaire = {
   },
 
   _lotRowHTML(p, v, l, multiLot) {
-    const k     = this._lotKey(v.id, l.id);
-    const dk    = this._domKey(k);
-    const pool  = this._pool();
-    const cur   = l[pool] || 0;
-    const qty   = k in this._draft.entries ? this._draft.entries[k] : cur;
-    const delta = qty - cur;
+    const k      = this._lotKey(v.id, l.id);
+    const dk     = this._domKey(k);
+    const pool   = this._pool();
+    const cur    = l[pool] || 0;
+    const qty    = k in this._draft.entries ? this._draft.entries[k] : cur;
+    const delta  = qty - cur;
     const touched = this._draft.touched.has(k);
 
     const varLabel = U.esc(Pricing.labelVariant(v));
     const lotInfo  = [l.lotNumber ? 'Lot ' + U.esc(l.lotNumber) : '', l.dluo || ''].filter(Boolean).join(' · ');
-    const multiAlert = multiLot && !touched
-      ? `<span class="badge warn" style="font-size:.75em;padding:2px 6px;">${U.icon('triangle-alert',{size:.8})} multi-lot</span>`
+    const multiAlert = multiLot
+      ? `<span class="badge warn" style="font-size:.72em;padding:1px 5px;vertical-align:middle;">${U.icon('triangle-alert',{size:.75})} multi-lot</span>`
       : '';
-    const deltaColor = delta > 0 ? 'var(--ok)' : delta < 0 ? 'var(--alerte)' : 'var(--gris)';
-    const deltaText  = touched ? (delta > 0 ? '+' : '') + (delta !== 0 ? delta : '±0') : '';
+    const deltaColor = delta > 0 ? 'var(--ok)' : 'var(--alerte)';
+    const deltaText  = touched && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
+    const dStyle = deltaText
+      ? `position:absolute;top:-8px;right:-4px;font-size:.72em;font-weight:700;color:${deltaColor};background:var(--fond-carte);border-radius:4px;padding:1px 3px;line-height:1;`
+      : `display:none;position:absolute;top:-8px;right:-4px;font-size:.72em;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1;`;
 
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--ligne);">
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--ligne);">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:1em;font-weight:600;line-height:1.2;">${varLabel} ${multiAlert}</div>
-        ${lotInfo ? `<div class="muted" style="font-size:.78em;margin-top:2px;">${lotInfo}</div>` : ''}
+        <div style="font-size:1em;font-weight:600;line-height:1.3;">${varLabel} ${multiAlert}</div>
+        ${lotInfo ? `<div class="muted" style="font-size:.8em;margin-top:3px;">${lotInfo}</div>` : ''}
       </div>
-      <span id="${dk}_d" style="font-size:.88em;font-weight:600;min-width:36px;text-align:right;color:${deltaColor};">${deltaText}</span>
-      <input id="${dk}" type="number" min="0"
-        style="width:76px;height:44px;text-align:center;font-size:1.1em;border-radius:8px;border:2px solid var(--ligne);background:var(--fond);color:var(--texte);flex-shrink:0;"
-        value="${qty}"
-        oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
+        <span class="muted" style="font-size:.75em;white-space:nowrap;">Stocké&nbsp;: ${cur}</span>
+        <div style="position:relative;">
+          <input id="${dk}" type="number" min="0"
+            style="width:80px;height:52px;text-align:center;font-size:1.3em;font-weight:700;border-radius:8px;border:2px solid var(--caramel);background:var(--fond);color:var(--texte);"
+            value="${qty}"
+            oninput="Inventaire.setQty('${k}',this.value)" onchange="Inventaire.setQty('${k}',this.value)">
+          <span id="${dk}_d" style="${dStyle}">${deltaText}</span>
+        </div>
+      </div>
     </div>`;
   },
 
@@ -243,9 +251,9 @@ const Inventaire = {
       return lots.map(l => this._lotRowHTML(p, v, l, lots.length > 1));
     }).join('');
     if (!rows) return '';
-    return `<div style="background:var(--fond-carte);border:1px solid var(--ligne);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
-      <div style="font-size:.95em;font-weight:700;color:var(--caramel);padding-bottom:6px;border-bottom:1px solid var(--ligne);margin-bottom:2px;">${U.esc(p.name)}</div>
-      ${rows}
+    return `<div style="background:var(--fond-carte);border:2px solid var(--ligne);border-radius:12px;margin-bottom:14px;overflow:hidden;">
+      <div style="text-align:center;padding:12px 14px 10px;border-bottom:2px solid var(--ligne);font-size:1.08em;font-weight:800;letter-spacing:.03em;text-transform:uppercase;">${U.esc(p.name)}</div>
+      <div style="padding:0 12px;">${rows}</div>
     </div>`;
   },
 
@@ -349,10 +357,16 @@ const Inventaire = {
       const pool  = this._pool();
       const cur   = l[pool] || 0;
       const delta = qty - cur;
-      const dEl   = document.getElementById(dk + '_d');
+      const dEl = document.getElementById(dk + '_d');
       if (dEl) {
-        dEl.textContent = (delta > 0 ? '+' : '') + (delta !== 0 ? delta : '±0');
-        dEl.style.color = delta > 0 ? 'var(--ok)' : delta < 0 ? 'var(--alerte)' : '';
+        if (delta !== 0) {
+          dEl.textContent = (delta > 0 ? '+' : '') + delta;
+          dEl.style.color = delta > 0 ? 'var(--ok)' : 'var(--alerte)';
+          dEl.style.display = '';
+        } else {
+          dEl.textContent = '';
+          dEl.style.display = 'none';
+        }
       }
     }
 
