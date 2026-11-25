@@ -39,7 +39,7 @@ const Stock = {
     const route = 'stock/' + this.tab + (this.focusId ? '/' + this.focusId + (this.focusVid ? '/' + this.focusVid : '') : '');
     if (location.hash.replace(/^#\/?/, '') !== route) history.replaceState(null, '', '#/' + route);
     App.mount(`
-      <div class="view-title"><h1>Stock</h1><span class="sub">général & événement · lots, DLUO, seuils</span></div>
+      <div class="view-title"><h1>Stock</h1><span class="sub">général & événement · lots, DLUO, seuils</span><button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="Inventaire.open()" title="Faire un inventaire rapide">${U.icon('clipboard-list',{size:.95})} Inventaire</button></div>
       <div class="tabs-seg">
         ${U.seg([
           ['mastication', '🥩', 'Mastication (' + Store.state.stockM.length + ')'],

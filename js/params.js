@@ -238,6 +238,12 @@ const Params = {
 
 
       ${Races.paramsHTML()}
+
+      <details class="fold card params-fold" ${this._emplacementsOpen ? 'open' : ''} ontoggle="Params._emplacementsOpen=this.open">
+        <summary><h2 style="display:inline;">${U.icon('clipboard-list',{size:1})} Emplacements inventaire</h2> <span class="muted">(colonnes et boîtes de ton stock événement)</span></summary>
+        <div class="fold-body">${Inventaire.locsCard()}</div>
+      </details>
+
       <details class="fold card params-fold" ${this._linksOpen ? 'open' : ''} ontoggle="Params._linksOpen=this.open">
         <summary><h2 style="display:inline;">🔗 Mes liens</h2> <span class="muted">(Caisse, réseaux sociaux, Linktree…)</span></summary>
         <div class="fold-body">${this.linksCard()}</div>

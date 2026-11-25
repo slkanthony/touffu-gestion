@@ -67,7 +67,8 @@ const Store = {
         wooLinks: {},// liaisons manuelles {SKU appli: ID de la fiche du site} : fiche du site à laquelle on remplace l'UGS (l'appli reste prioritaire) — voir Woo.openLink
         wooExclude: [], // SKU exclus DÉFINITIVEMENT de l'export WooCommerce (produits événement-only, tests…) — jamais envoyés au site
         links: [{ id: 'caisse', emoji: '🧾', label: 'Caisse', url: 'https://touffu-caisse.duckdns.org/#/calculette' }], // 🔗 Mes liens (Paramètres) : {id, emoji, label, url} — « caisse » est verrouillé (bouton dans Ventes, seule l'adresse change)
-        sumupExclude: [] // SKU (majuscules) exclus DÉFINITIVEMENT de l'export SumUp (ex: sachets 500g+ jamais emmenés sur les marchés) — jamais proposés à l'export
+        sumupExclude: [], // SKU (majuscules) exclus DÉFINITIVEMENT de l'export SumUp (ex: sachets 500g+ jamais emmenés sur les marchés) — jamais proposés à l'export
+        inventoryLocations: [] // emplacements de rangement pour l'inventaire rapide : [{id,name,type:'column'|'box',floors,products:[prodId]}]
       },
       catalogM: [],    // produits mastication (tarification) — voir pricing.js
       stockM: [],      // stock mastication : {id, catalogId, name, meatType, variants:[{id,label,mode,value,priceTTC,lots:[{id,lotNumber,dluo,qtyGeneral,qtyEvent,costUnit}]}]}
