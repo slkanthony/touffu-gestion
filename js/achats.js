@@ -8,7 +8,7 @@
    Montants = ce qui a été PAYÉ (TTC). Aucune écriture dans le stock ni dans les prix à cette étape : rien n'est modifié ailleurs.
    Réservé à l'admin (ni viewer, ni équipe). */
 const Achats = {
-  mode: 'list', _priceOpen: false, _ppkOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication',
+  mode: 'list', _priceOpen: false, _ppkOpen: true, _d: null, _editId: '', _dirty: false, _open: {}, _lastCat: 'mastication', _lineQ: '',
   f: { period: 'year', from: '', to: '', supplier: '', cat: '', pay: '', q: '', refund: false, sort: 'date', sortDir: 'desc' },
   CATS: [
     { id: 'mastication', ico: '🥩', label: 'Mastication', detail: true, link: 'M' },
@@ -209,6 +209,7 @@ const Achats = {
   /* ---------- filtres ---------- */
   setF(k, v) { this.f[k] = v; this.render(); },
   setQ(v) { this.f.q = v; this.render(); U.refocus('ach_q'); },
+  setLineQ(v) { this._lineQ = v; this.render(); U.refocus('ach_lq'); },
   setSort(k) { this.f = Object.assign({}, this.f, this.f.sort === k ? { sortDir: this.f.sortDir === 'asc' ? 'desc' : 'asc' } : { sort: k, sortDir: k === 'date' || k === 'total' ? 'desc' : 'asc' }); this.render(); },
   _range() {
     const f = this.f, now = new Date(), y = now.getFullYear(), iso = d => d.toISOString().slice(0, 10);
@@ -675,11 +676,11 @@ const Achats = {
   },
 
   /* ---------- actions sur les factures ---------- */
-  create() { this._d = this._newPurchase(); this._editId = ''; this._dirty = false; this.mode = 'edit'; this._saveDraft(); this.render(); window.scrollTo({ top: 0 }); },
+  create() { this._d = this._newPurchase(); this._editId = ''; this._dirty = false; this._lineQ = ''; this.mode = 'edit'; this._saveDraft(); this.render(); window.scrollTo({ top: 0 }); },
   edit(id) {
     const p = this.list().find(x => x.id === id); if (!p) return;
     this._d = JSON.parse(JSON.stringify(p)); this._d.lines.forEach(l => { if (!l.id) l.id = U.uid(); });
-    this._editId = id; this._dirty = false; this.mode = 'edit'; this._saveDraft(); this.render(); window.scrollTo({ top: 0 });
+    this._editId = id; this._dirty = false; this._lineQ = ''; this.mode = 'edit'; this._saveDraft(); this.render(); window.scrollTo({ top: 0 });
   },
   dup(id) {
     const p = this.list().find(x => x.id === id); if (!p) return;
@@ -952,7 +953,9 @@ const Achats = {
     const pay = this.PAYS.map(p => `<button type="button" class="${d.payment === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('payment','${p[0]}')">${p[1]}</button>`).join('');
     const who = [['pro', '🏢 Compte pro'], ['perso', '💳 Carte perso (à me rembourser)']].map(p => `<button type="button" class="${d.paidBy === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('paidBy','${p[0]}')">${p[1]}</button>`).join('');
     App.mount(`<div class="ach-ed">
-      <div class="view-title"><h1>${this._editId ? 'Modifier la facture' : 'Nouvelle facture'}</h1><span class="sub">achat fournisseur</span></div>
+      <div class="view-title"><h1>${this._editId ? 'Modifier la facture' : 'Nouvelle facture'}</h1><span class="sub">achat fournisseur</span>
+        <div class="ach-line-search"><input id="ach_lq" value="${U.esc(this._lineQ)}" placeholder="Rechercher une ligne (produit, catégorie…)" oninput="Achats.setLineQ(this.value)">${this._lineQ ? `<button class="btn-ghost btn-sm" onclick="Achats.setLineQ('')">✕</button>` : ''}</div>
+      </div>
       <div class="card">
         <div class="grid c4">
           <div class="fg"><label>Date de la facture</label><input type="date" value="${U.esc(d.date)}" onchange="Achats.setHead('date',this.value)"></div>
@@ -972,7 +975,8 @@ const Achats = {
       <div class="card">
         <h2>🧾 Lignes de la facture</h2>
         <p class="muted help" style="font-size:.85rem;">Mastication, matière première, consommable et investissement se détaillent ligne par ligne (quantité × prix). Outillage et frais généraux : un seul montant. Pour la mastication, note le n° de lot et la DLUO : acheté à la pièce, la quantité entre tout de suite en stock avec eux ; acheté au kilo, ils te seront proposés quand tu rangeras les pièces dans le stock. Lier la ligne à un produit du stock est facultatif.</p>
-        ${d.lines.map((l, i) => this._lineHTML(l, i)).join('')}
+        ${(this._lineQ ? d.lines.map((l,i)=>({l,i})).filter(({l})=>U.has((l.label||'')+' '+(l.cat||''),this._lineQ)) : d.lines.map((l,i)=>({l,i}))).map(({l,i})=>this._lineHTML(l,i)).join('')}
+        ${this._lineQ && !d.lines.some(l=>U.has((l.label||'')+' '+(l.cat||''),this._lineQ)) ? `<p class="muted" style="padding:12px 0;">Aucune ligne ne correspond à « ${U.esc(this._lineQ)} ».</p>` : ''}
         <button class="btn-ghost btn-sm" onclick="Achats.addLine()">＋ Ajouter une ligne</button>
         <div class="ach-sum">
           <div><span class="muted">Sous-total ${this.isHT(d) ? 'HT' : ''}</span> <b class="sensitive" id="ach_sub">${U.eur(this.subTotal(d))}</b></div>
