@@ -284,7 +284,7 @@ const Achats = {
         <div class="kpi ${toRefund > 0 ? 'warn' : ''} sensitive" style="${toRefund > 0 ? 'cursor:pointer;' : ''}" ${toRefund > 0 ? `onclick="Achats.setF('refund',${!f.refund})"` : ''}><div class="v">${U.eur(toRefund)}</div><div class="l">À me rembourser (carte perso)</div></div>
       </div>
       <div class="card">
-        <div class="grid c4" style="align-items:end;">
+        <div class="grid c4 ach-filters" style="align-items:end;">
           <div class="fg"><label>Période</label><select onchange="Achats.setF('period',this.value)">${periods.map(p => opt(p[0], p[1], f.period)).join('')}</select></div>
           ${f.period === 'custom' ? `<div class="fg"><label>Du</label><input type="date" value="${U.esc(f.from)}" onchange="Achats.setF('from',this.value)"></div><div class="fg"><label>Au</label><input type="date" value="${U.esc(f.to)}" onchange="Achats.setF('to',this.value)"></div>` : ''}
           <div class="fg"><label>Fournisseur</label><select onchange="Achats.setF('supplier',this.value)">${opt('', 'Tous', f.supplier)}${sups.map(s => opt(s.id, s.name, f.supplier)).join('')}</select></div>
@@ -951,7 +951,7 @@ const Achats = {
     const mode = [['ttc', 'TTC'], ['ht', 'HT (TVA détaillée en bas)']].map(p => `<button type="button" class="${(d.taxMode || 'ttc') === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('taxMode','${p[0]}')">${p[1]}</button>`).join('');
     const pay = this.PAYS.map(p => `<button type="button" class="${d.payment === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('payment','${p[0]}')">${p[1]}</button>`).join('');
     const who = [['pro', '🏢 Compte pro'], ['perso', '💳 Carte perso (à me rembourser)']].map(p => `<button type="button" class="${d.paidBy === p[0] ? 'btn-cta' : 'btn-ghost'} btn-sm" onclick="Achats.setHead('paidBy','${p[0]}')">${p[1]}</button>`).join('');
-    App.mount(`
+    App.mount(`<div class="ach-ed">
       <div class="view-title"><h1>${this._editId ? 'Modifier la facture' : 'Nouvelle facture'}</h1><span class="sub">achat fournisseur</span></div>
       <div class="card">
         <div class="grid c4">
@@ -990,7 +990,7 @@ const Achats = {
           <button class="btn-ghost" style="flex:0 0 auto;" onclick="Achats.cancel()">Annuler</button>
           <button class="btn-ghost" style="flex:0 0 auto;" onclick="Achats.copyLabels()" title="Copie la liste « produit — lot — DLUO (mois/année) » de cette facture, à donner à Claude pour mettre tes étiquettes à jour">🏷️ Copier lots et DLUO</button>
         </div>
-      </div>`);
+      </div></div>`);
   },
   /* 🏷️ Liste pour les étiquettes (Antho 2026-11-05) : « Produit — Lot X — DLUO MM/AAAA », une ligne par produit de mastication de la facture, à coller à Claude (mise à jour de ses étiquettes Canva). */
   copyLabels(id) {   // avec un id : facture enregistrée (liste Achats) ; sans id : facture en cours de saisie
