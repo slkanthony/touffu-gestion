@@ -443,7 +443,7 @@ const Pricing = {
     const nm0 = String(a.name || '').replace(/(\s*[—–-]\s*(personnalisation\s+uv|cr[ée]ation\s+th[èe]me\s+uv|gravure\s+laser))+\s*$/i, '');
     let parts = this.slugify((a.sizeLabel ? nm0.replace(/\s*(?:[—–-]\s*)?\btaille\s+[A-Za-z0-9]{1,4}\b/gi, '') : nm0).replace(/\([^)]*\)/g, ' ').replace(/(\d)[.,](?=\d)/g, '$1XDOTX')).replace(/XDOTX/g, '.').split('-').filter(x => x && !noise.has(x));
     const tp = type.split('-').filter(Boolean);
-    while (parts.length && tp.some(t => parts[0].length >= 3 && (t === parts[0] || t.startsWith(parts[0]) || parts[0].startsWith(t)))) parts.shift();   // « Collier » / « Colliers »
+    while (parts.length && tp.some(t => t === parts[0] || (parts[0].length >= 3 && (t.startsWith(parts[0]) || parts[0].startsWith(t))))) parts.shift();   // « Collier » / « Colliers » ; correspondance exacte aussi pour les tokens courts (ex. « 3 » dans « Laisse 3 points »)
     parts = parts.filter(x => x !== w);
     // longueur du produit fini (champ « Longueur produit fini ») : ajoutée seulement si le nom n'en cite pas déjà une
     const plen = U.num(a.productLength);
